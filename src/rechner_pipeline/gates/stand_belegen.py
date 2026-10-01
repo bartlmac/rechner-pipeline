@@ -18,12 +18,14 @@ brauchen (``models.standabnahme``):
   T-Box, Tarifwerk) bzw. den der Beleg des Anfangsbestands bezeugt. Das Gate
   schreibt ihn beim Zeichnen als Feld ``stand`` in den Snapshot und haelt ihn
   bei A-M4 per ``==`` gegen jeden abgenommenen Stand.
-* ``verweisen`` — der Weg "keine Aenderung": Ein Fall, dessen Stand eine
-  FRUEHER angenommene Abnahme schon abgenommen hat — die Erstabnahme der
-  Linie (``--linie``: ihre geltende Spitze) oder ein frueherer Fall
-  (``--snapshot``) —, legt eine vollstaendige Kopie dieses Snapshots an den
+* ``verweisen`` — der Weg "keine Aenderung": Ein Fall, dessen Stand die
+  GELTENDE Abnahme der Linie schon abgenommen hat (``--linie``: die Spitze
+  der Kette des Gates), legt eine vollstaendige Kopie dieses Snapshots an den
   festen Ort. Die Kopie ist selbstadressiert und signiert; A-M4 prueft
-  Signatur, Rolle, Klasse und Stand. Kein neuer Entscheid.
+  Signatur, Rolle, Klasse und Stand UND haelt nach, dass sie noch die
+  geltende, angenommene Spitze der Linie ist (Gueltigkeit, nicht nur
+  Echtheit; Pruefrunde G, G11). Kein neuer Entscheid. ``--snapshot`` (ein
+  beliebiger frueherer Snapshot, auch eines anderen Falls) ist entfallen.
 * ``tbox`` — der Aenderungsbeleg eines T-Box-Uebergangs aus der
   Versionslinie des Codes, mit dem ganzen Vokabular und der lesbaren Sicht
   (``abgeleitet/tbox/aenderung.md``: Vokabular-Diff gegen das zuletzt
@@ -36,7 +38,7 @@ Run via::
     python -m rechner_pipeline.gates.stand_belegen ordnung --linie linie \\
         --ordnung <ordnung.json> --vorgaenger keiner|<glied> [--vorstand-schluessel <datei>]
     python -m rechner_pipeline.gates.stand_belegen verweisen --fall faelle/<fall> \\
-        --gate A-K2|A-O1|A-T1 (--linie linie | --snapshot <datei>) --repo-root .
+        --gate A-K2|A-O1|A-T1 --linie linie --repo-root .
     python -m rechner_pipeline.gates.stand_belegen tbox \\
         (--fall faelle/<fall> --vorher-linie linie | --linie linie) \\
         --artefakt <adr-oder-vermerk> --begruendung "<text>" --repo-root .
@@ -54,6 +56,7 @@ import secrets
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline.gates import kernstand_belegen as _kern
 from rechner_pipeline.gates._common import (
     Exit,
@@ -74,7 +77,11 @@ COMMAND = "stand_belegen"
 #: Aufruf wird rot): ``tbox --fall`` verlangt ``--vorher-linie``, ein zweites
 #: Vokabular unter einer abgenommenen Version wird verweigert, der lebende
 #: Stand von A-O1 traegt ``vokabular_sha256``.
-GATE_VERSION = "3.0.0"
+#: 4.0.0 (2026-10-01, Pruefrunde G; Major: ein vorher gruener Aufruf wird
+#: rot): ``verweisen --snapshot`` entfaellt (G11), ``--repo-root`` muss das
+#: ausgefuehrte Paket tragen (G12), ``ordnung`` liest die Linie mit dem Ring
+#: des Vorstands (G09; ``--vorstand-schluessel`` wiederholbar).
+GATE_VERSION = "4.0.0"
 
 #: Fester Ort des T-Box-Aenderungsbelegs (wie bisher von A-O1 gelesen).
 TBOX_AENDERUNG_RELATIV = "abgeleitet/tbox/aenderung.json"
@@ -93,6 +100,24 @@ TBOX_AENDERUNG_SCHEMA_VERSION = 2
 
 class StandFehler(RuntimeError):
     """Der Stand oder ein Beleg dazu ist nicht bestimmbar — mit dem Grund."""
+
+
+#: Was ``verweisen --snapshot`` jetzt sagt (Pruefrunde G, G11).
+SNAPSHOT_ENTFALLEN = (
+    "--snapshot ist entfallen (Pruefrunde G, ADR-018/ADR-025): Ein Verweis zeigt nur noch "
+    "auf die GELTENDE Abnahme der Linie — ein frueherer Snapshot (auch der eines anderen "
+    "Falls) kann inzwischen abgeloest oder abgelehnt sein, und seine Herkunftskette ist vom "
+    "Gate aus nicht pruefbar. Ausweg: den Stand in der Linie abnehmen (gate_entscheid "
+    "--linie <linie> --gate <gate>) und mit --linie <linie> verweisen; aendert der Fall den "
+    "Stand, im Fall zeichnen")
+
+
+class _SnapshotEntfallen(argparse.Action):
+    """Verweigert ``--snapshot`` sprechend statt mit "unrecognized arguments" —
+    das Muster der entfallenen Tarifschalter (spez.tarifregeln)."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        parser.error(SNAPSHOT_ENTFALLEN)
 
 
 def _tbox_modul():
@@ -480,16 +505,22 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     o.add_argument("--ordnung", required=True, help="die Ordnungsdatei (ausserhalb der Linie)")
     o.add_argument("--vorgaenger", required=True,
                    help="die Spitze, wie der Mensch sie gesehen hat (glied_sha256), oder 'keiner'")
-    o.add_argument("--vorstand-schluessel", dest="vorstand_schluessel", default=None,
-                   help="Schluessel der Wurzelrolle (Vorstand) laut Spitze (ab dem zweiten Glied)")
+    o.add_argument("--vorstand-schluessel", dest="vorstand_schluessel", action="append",
+                   default=None,
+                   help="Schluessel der Wurzelrolle (Vorstand) laut Spitze (ab dem zweiten Glied); "
+                        "wiederholbar: nach einem Schluesselwechsel auch die frueheren, mit "
+                        "denen die Glieder der Linie gezeichnet sind — der zuletzt genannte "
+                        "zeichnet")
     o.add_argument("--eingetragen-am", dest="eingetragen_am", default=None)
-    v = unter.add_parser("verweisen", help="Verweis auf eine frueher angenommene Abnahme")
+    v = unter.add_parser("verweisen", help="Verweis auf die geltende Abnahme der Linie")
     v.add_argument("--fall", required=True)
-    v.add_argument("--repo-root", dest="repo_root", required=True)
+    v.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", required=True)
     v.add_argument("--gate", required=True, choices=[g.gate for g in sa.AM4_GEGENSTAENDE])
-    quelle = v.add_mutually_exclusive_group(required=True)
-    quelle.add_argument("--snapshot", help="der frueher angenommene Snapshot (Datei)")
-    quelle.add_argument("--linie", help="Linienbereich: seine geltende Abnahme des Gates")
+    v.add_argument("--linie", required=True,
+                   help="Linienbereich: seine geltende Abnahme des Gates — die einzige Quelle "
+                        "eines Verweises (Pruefrunde G, G11)")
+    v.add_argument("--snapshot", action=_SnapshotEntfallen,
+                   default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     t = unter.add_parser("tbox", help="Aenderungsbeleg des letzten T-Box-Uebergangs")
     ziel = t.add_mutually_exclusive_group(required=True)
     ziel.add_argument("--fall", default=None)
@@ -497,7 +528,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     t.add_argument("--vorher-linie", dest="vorher_linie", default=None,
                    help="Linienbereich mit der zuletzt abgenommenen T-Box; mit --fall Pflicht: "
                         "Sicht und Regel 'eine Version, ein Vokabular' halten Fall UND Linie")
-    t.add_argument("--repo-root", dest="repo_root", required=True)
+    t.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", required=True)
     t.add_argument("--artefakt", required=True,
                    help="ADR oder Aenderungsvermerk, relativ zu Bereich oder Repo")
     t.add_argument("--begruendung", required=True)
@@ -530,14 +561,20 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
             return _fehler(Exit.USAGE, "die Ordnung liegt innerhalb der Linie — sie wird extern "
                                        "verwahrt; die Linie traegt ihre Kopie im Glied")
         schluessel = None
+        # Der Ring des Vorstands (Pruefrunde G, G09): Wer anhaengt, gruendet auf
+        # der Linie — er liest sie mit dem Ring; jeder Schluessel, den die Linie
+        # dem Vorstand je gab, darf genannt werden (nach einem Wechsel der alte
+        # UND der neue), der zuletzt genannte zeichnet.
+        ring: Dict[str, bytes] = {}
         if args.vorstand_schluessel:
             from rechner_pipeline.models.freigabe import lade_schluesselring
 
-            ring, rf, aktiv = lade_schluesselring(args.vorstand_schluessel, ausserhalb=linie)
+            ring, rf, aktiv = lade_schluesselring(list(args.vorstand_schluessel),
+                                                  ausserhalb=linie)
             if rf or aktiv is None:
                 return _fehler(Exit.USAGE, "; ".join(rf) or "Schluessel des Vorstands nicht geladen")
             schluessel = ring[aktiv]
-        glieder, lf = ol.lade_linie(linie)
+        glieder, lf = ol.lade_linie(linie, ring=ring)
         if lf:
             return _fehler(Exit.FILE_CONTRACT, "die Linie ist verletzt: " + "; ".join(lf[:3]))
         try:
@@ -552,7 +589,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
         ziel.parent.mkdir(parents=True, exist_ok=True)
         daten = _json_bytes(glied)
         schreibe_exklusiv(ziel, daten)
-        neu, _ = ol.lade_linie(linie)
+        neu, _ = ol.lade_linie(linie, ring=ring)
         _ersetze(linie / "abgeleitet" / "ordnung" / "linie.md",
                  rendere_ordnungslinie(neu).encode("utf-8"))
         return build_result(
@@ -571,17 +608,11 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
             return _fehler(Exit.USAGE, f"kein Fall-Arbeitsbereich: {fall}")
         repo = Path(args.repo_root).resolve()
         gegenstand = sa.gegenstand_fuer(args.gate)
-        if args.linie:
-            if sa.bereich_art(Path(args.linie)) != "linie":
-                return _fehler(Exit.USAGE, f"kein Linienbereich: {args.linie}")
-            snapshot, sf = geltende_spitze(Path(args.linie), args.gate)
-            if snapshot is None:
-                return _fehler(Exit.FILE_CONTRACT, "; ".join(sf[:3]))
-        else:
-            try:
-                snapshot = json.loads(Path(args.snapshot).read_text(encoding="utf-8"))
-            except (OSError, ValueError) as exc:
-                return _fehler(Exit.USAGE, f"--snapshot nicht lesbar: {exc}")
+        if sa.bereich_art(Path(args.linie)) != "linie":
+            return _fehler(Exit.USAGE, f"kein Linienbereich: {args.linie}")
+        snapshot, sf = geltende_spitze(Path(args.linie), args.gate)
+        if snapshot is None:
+            return _fehler(Exit.FILE_CONTRACT, "; ".join(sf[:3]))
         verweis = baue_verweis(snapshot)
         fehler = verweis_fehler(verweis, gegenstand, lebender_stand(args.gate, repo, fall))
         if fehler:

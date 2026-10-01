@@ -24,6 +24,7 @@ from rechner_pipeline.models.zeichnung import lade_zeichnungsordnung
 
 from tests.e2e_fixture import bereite_pk1_fall
 from tests.zeichnung_fixture import linie_args, AGENT, VA, auftrag_args, ordnung_schreiben, schluessel_anlegen
+from tests.zeichnung_fixture import VORSTAND_SCHLUESSEL_DATEI
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -81,7 +82,7 @@ def test_simulierte_rolle_traegt_ihre_klasse_und_ihr_mandat(fall, tmp_path):
     snapshot = json.loads(Path(ergebnis.paths["snapshot"]).read_text(encoding="utf-8"))
     assert snapshot["schema_version"] == P9_SNAPSHOT_SCHEMA_VERSION
     assert snapshot["rolle"] == VA
-    from rechner_pipeline.models.ordnungslinie import lade_linie
+    from rechner_pipeline.models.ordnungslinie import lade_linie_strukturell_zur_anzeige
 
     assert snapshot["zeichnung"] == {
         "rolle": VA,
@@ -89,7 +90,8 @@ def test_simulierte_rolle_traegt_ihre_klasse_und_ihr_mandat(fall, tmp_path):
         "schluesselklasse": "simulation",
         "mandat_sha256": hashlib.sha256(mandat.read_bytes()).hexdigest(),
         # das Glied der Linie, unter dem gezeichnet wurde (ADR-025: Pflicht)
-        "ordnungsglied_sha256": lade_linie(fall.parent / "linie")[0][-1]["glied_sha256"],
+        "ordnungsglied_sha256": lade_linie_strukturell_zur_anzeige(
+            fall.parent / "linie")[0][-1]["glied_sha256"],
     }
     # Der Renderer liest die Besetzung aus dem Snapshot.
     import sys
@@ -165,7 +167,10 @@ def test_behauptete_rolle_mit_schluessel_ohne_ordnung_nimmt_nicht_an(fall, tmp_p
     ergebnis = gate_entscheid.main([
         "--fall", str(fall), *linie_args(fall), "--gate", "A-Q1", "--entscheid", "angenommen",
         "--rolle", VA, "--entscheider", "fachrolle", "--begruendung", "geprueft",
-        "--repo-root", str(REPO_ROOT), "--freigabe-schluessel", str(key),
+        "--repo-root", str(REPO_ROOT),
+        # Der Vorstand im Ring: die Linie hat zwei Glieder (Pruefrunde G, G09).
+        "--freigabe-schluessel", str(fall.parent / VORSTAND_SCHLUESSEL_DATEI),
+        "--freigabe-schluessel", str(key),
     ])
     assert ergebnis.exit_code == 20
     assert ergebnis.errors[0]["code"] == "zeichnung"

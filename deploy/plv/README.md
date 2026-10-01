@@ -98,6 +98,31 @@ Fingerabdruck die Spitze der Betriebsrolle gibt, und zeichnet ihn in
 Betriebsschluessels braucht ein Glied der Linie UND eine neue Bindung
 (belegen, A-B3, binden); eine Bindung nach Schema 1 wird neu gebunden.
 
+**Der Schluessel des Vorstands im Ring** (Pruefrunde G). Jedes Kommando,
+das auf der Linie gruendet, prueft ihre Glieder nach dem ersten gegen den
+Schluessel, den die Spitze davor dem Vorstand gibt: Ein Glied, das jemand
+mit Schreibrecht auf `linie/ordnung/`, aber ohne diesen Schluessel
+angehaengt hat, wird verweigert, und darunter gruendet nichts. Der Schluessel
+kommt auf demselben Weg wie jeder andere, mit dem ein Kommando prueft — als
+weiterer `--freigabe-schluessel` (Datei 0600 ausserhalb von `daten/`, wie
+die anderen unter `~/apps/plv/schluessel/`): in `gate_entscheid` (jede
+Annahme; im Fall stand er schon im Ring, der Fallauftrag wird damit
+geprueft), in der Registrierung, der Zugangsprobe, dem Neuaufsetzen und in
+`anfangsbestand binden`. Fehlt er, verweigert das Kommando mit dem Ausweg —
+nicht still. Solange die Linie nur ihr erstes Glied traegt, gibt es nichts zu
+pruefen (die Wurzel ist unsigniert). Der Nachtlauf liest die Linie nicht und
+braucht den Schluessel nicht. Grenze (HMAC): Wer pruefen kann, kann auch
+zeichnen — der Schluessel des Vorstands liegt damit in diesen Ringen
+(ADR-025, ADR-026).
+
+**`--repo-root` ist der Baum des Pakets, das rechnet** (Pruefrunde G).
+Jedes Kommando der Gates haelt den Baum unter `--repo-root` gegen das
+ausgefuehrte Paket (Hash von `src/rechner_pipeline`) und verweigert einen
+Baum mit anderem Code — der lebende Stand von Kern und Tarifwerk und der
+Systemstand der Snapshots waeren sonst die eines anderen Codes. Im Image ist
+das `/opt/rechner-pipeline`; auf dem Host der Klon, aus dem die `.venv`
+installiert ist.
+
 **Einmaliger Schritt beim ersten Lauf nach dem Umstieg.** Eine Ablage,
 die schon vor dem Betriebsschluessel gefuehrt wurde, traegt ein
 Protokoll ohne gezeichnete Zeile. Darauf verweigern Tageslauf, Export
@@ -173,6 +198,7 @@ ein Eingang ohne sie tritt nicht ein.
 ```
 python -m rechner_pipeline.betrieb.zugangsprobe --stand ~/apps/plv/daten \
     --fall faelle/<fall> --stichtag 2026-01-01 [--bis <ISO>] \
+    --freigabe-schluessel <schluessel-vorstand> \
     --freigabe-schluessel <schluessel-mensch-aktuariat> \
     --schluessel ~/apps/plv/schluessel/betrieb.key \
     --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json \
@@ -180,7 +206,8 @@ python -m rechner_pipeline.betrieb.zugangsprobe --stand ~/apps/plv/daten \
 ```
 
    Die Probe liest A-M4 und den A-M1, den A-M4 pinnt; sie braucht den
-   Schluessel der Rolle, die beide signiert hat (`mensch/aktuariat`).
+   Schluessel der Rolle, die beide signiert hat (`mensch/aktuariat`), und
+   den des Vorstands fuer die Glieder der Linie.
 
 2. **Zugangsabnahme A-B2** — `mensch/betrieb` zeichnet (in der Vorfuehrung
    mit Schluesselklasse `simulation` unter Mandat); `agent/betrieb` legt
@@ -238,6 +265,7 @@ python -m rechner_pipeline.gates.gate_entscheid --fall faelle/<fall> \
 ```
 python -m rechner_pipeline.betrieb.uebernahme --stand ~/apps/plv/daten \
     --fall faelle/<fall> --stichtag 2026-01-01 \
+    --freigabe-schluessel <schluessel-vorstand> \
     --freigabe-schluessel <schluessel-mensch-aktuariat> \
     --freigabe-schluessel <schluessel-mensch-betrieb> \
     --betriebsschluessel ~/apps/plv/schluessel/betrieb.key \
@@ -245,10 +273,12 @@ python -m rechner_pipeline.betrieb.uebernahme --stand ~/apps/plv/daten \
     --linie ~/apps/plv/linie
 ```
 
-Der Schalter steht zweifach, weil die Registrierung die Signaturen aller
+Der Schalter steht dreifach, weil die Registrierung die Signaturen aller
 drei Abnahmen prueft: A-M1 und A-M4 (Schluessel von `mensch/aktuariat`)
-und A-B2 (Schluessel von `mensch/betrieb`). Mit nur einem verweigert sie
-am anderen Snapshot ("nicht bereitgestellter Schluessel"). Auch die
+und A-B2 (Schluessel von `mensch/betrieb`) — und die Glieder der Linie
+(Schluessel des Vorstands). Fehlt einer, verweigert sie am Snapshot bzw.
+Glied, das ihn braucht ("nicht bereitgestellter Schluessel", "nicht im
+Ring"). Auch die
 Schluesselklasse ist die der Ordnung: Gibt sie einer Rolle `simulation`,
 muss der Snapshot das sagen und sein Mandat tragen.
 
@@ -331,10 +361,11 @@ python -m rechner_pipeline.betrieb.anfangsbestand belegen --stand ~/apps/plv/dat
 # ansehen: ~/apps/plv/linie/abgeleitet/anfangsbestand/beleg.md
 python -m rechner_pipeline.gates.gate_entscheid --linie ~/apps/plv/linie --gate A-B3 \
     --entscheid angenommen --entscheider "<Rolle>" --begruendung "..." --repo-root . \
-    --zeichnungsordnung <ordnung-der-spitze> --freigabe-schluessel <schluessel-mensch-betrieb> \
-    [--mandat <mandat>]
+    --zeichnungsordnung <ordnung-der-spitze> --freigabe-schluessel <schluessel-vorstand> \
+    --freigabe-schluessel <schluessel-mensch-betrieb> [--mandat <mandat>]
 python -m rechner_pipeline.betrieb.anfangsbestand binden --stand ~/apps/plv/daten \
-    --linie ~/apps/plv/linie --freigabe-schluessel <schluessel-mensch-betrieb> \
+    --linie ~/apps/plv/linie --freigabe-schluessel <schluessel-vorstand> \
+    --freigabe-schluessel <schluessel-mensch-betrieb> \
     --schluessel ~/apps/plv/schluessel/betrieb.key \
     --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json
 ```
@@ -381,6 +412,7 @@ uebergeben. Ohne A-B2 baut die Routine nichts auf.
 systemctl --user stop tageslauf.timer
 python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
     --fall faelle/<fall> --stichtag 2026-01-01 \
+    --freigabe-schluessel <schluessel-vorstand> \
     --freigabe-schluessel <schluessel-mensch-aktuariat> \
     --freigabe-schluessel <schluessel-mensch-betrieb> \
     --betriebsschluessel ~/apps/plv/schluessel/betrieb.key \

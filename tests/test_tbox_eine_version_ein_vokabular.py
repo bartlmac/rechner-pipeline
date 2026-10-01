@@ -154,6 +154,59 @@ def test_zweites_vokabular_gegen_die_abnahme_der_linie(tmp_path, monkeypatch):
     assert "genau ein Vokabular" in meldung and str(linie) in meldung, meldung
 
 
+def test_a_m4_haelt_die_regel_gegen_seine_linie(tmp_path, monkeypatch):
+    """Pruefrunde G (G13, Teil 1): Die Regel lief nur beim Zeichnen von A-O1,
+    gegen die Bereiche, die DIESES Zeichnen sah. Fall und Linie sehen
+    einander beim Zeichnen nicht immer: Der Fall nimmt die T-Box 0.2.0 ab,
+    solange die Linie noch keine A-O1 traegt; danach nimmt die Linie dieselbe
+    Version mit einem ANDEREN Vokabular ab (sie sieht den Fall nicht). Zwei
+    Vokabulare unter einer abgenommenen Version — A-M4 bekommt Fall und
+    Linie und haelt die Regel jetzt selbst nach.
+
+    Der Weg des Pruefers (A-O1 im Fall unter einer Kopie der Linie ohne
+    Entscheide) ist seit Teil 2 schon beim Zeichnen zu: die Kopie ist nicht
+    die Linie des Auftrags (``tests/test_lebenslauf_runde_g.py``).
+
+    Rot vor dem Fix: A-M4 exit 0 ("abgenommen im Fall"). Mutationsprobe: den
+    Aufruf der Regel in ``standabnahme_pruefen`` entfernen -> rot."""
+    linie, fall = _fall_mit_linie(tmp_path, gates=("A-K2", "A-T1"))
+    _verweise_ohne_tbox(fall, linie)
+    assert not list((linie / "entscheide").glob("A-O1-*.json"))
+
+    assert _lege_vor(fall, linie).exit_code == 0
+    (fall / stand_belegen.TBOX_STELLUNGNAHME_RELATIV).write_text(json.dumps({
+        "schema_version": 1, "nach_version": tbox.TBOX_VERSION,
+        "verfasser_rolle": "mensch/aktuariat",
+        "felder": [{"name": "tarifwerk", "wirkung": "bewertungsrelevant",
+                    "begruendung": "Tarifwerk der Generation"}]}), encoding="utf-8")
+    ao1 = _zeichne_ao1(fall)
+    assert ao1.exit_code == 0, ao1.errors
+
+    # Die Linie nimmt dieselbe Version mit einem anderen Vokabular ab.
+    with monkeypatch.context() as m:
+        _anderes_vokabular(m)
+        zweites = tbox.vokabular_sha256()
+        in_linie = _zeichne_in_linie(linie, "A-O1")
+        assert in_linie.exit_code == 0, in_linie.errors
+    assert tbox.vokabular_sha256() != zweites  # der Code traegt wieder das erste
+
+    am4 = gate_entscheid.main([
+        "--fall", str(fall), "--gate", "A-M4", "--entscheid", "angenommen",
+        "--entscheider", "fachrolle", "--begruendung", "Migration abgenommen",
+        "--repo-root", str(REPO), *annahme_args(fall)])
+    meldung = _meldung(am4)
+    assert "genau ein Vokabular" in meldung and str(linie) in meldung, meldung
+    assert zweites[:16] in meldung, meldung
+
+
+def _verweise_ohne_tbox(fall: Path, linie: Path) -> None:
+    for gate in ("A-K2", "A-T1"):
+        ergebnis = stand_belegen.main([
+            "verweisen", "--fall", str(fall), "--gate", gate, "--linie", str(linie),
+            "--repo-root", str(REPO)])
+        assert ergebnis.exit_code == 0, (gate, ergebnis.errors)
+
+
 def test_zweites_vokabular_in_der_linie_selbst(tmp_path, monkeypatch):
     linie = linie_anlegen(tmp_path)
     assert _zeichne_in_linie(linie, "A-O1").exit_code == 0
@@ -239,7 +292,7 @@ def test_tbox_im_fall_verlangt_die_linie(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# Ratsche: die Regel hat genau zwei Aufrufer
+# Ratsche: die Regel hat genau drei Aufrufer
 # --------------------------------------------------------------------------- #
 
 def _aufrufe(name: str) -> dict:
@@ -254,10 +307,13 @@ def _aufrufe(name: str) -> dict:
     return treffer
 
 
-def test_die_regel_hat_genau_ihre_zwei_aufrufer():
-    """Produzent und Gate, je einmal. Ein dritter Aufrufer oder ein
-    entfallener ist eine Entscheidung, kein Versehen."""
+def test_die_regel_hat_genau_ihre_drei_aufrufer():
+    """Produzent (einmal) und Gate (zweimal): beim Zeichnen von A-O1 und in
+    der Standabnahme von A-M4 gegen Fall UND die Linie, die A-M4 bekommt
+    (Pruefrunde G, G13 — die Regel lief vorher nur beim Zeichnen, gegen die
+    Bereiche DIESES Zeichnens). Ein weiterer Aufrufer oder ein entfallener
+    ist eine Entscheidung, kein Versehen."""
     assert _aufrufe("tbox_vokabular_fehler") == {
-        "gates/gate_entscheid.py": 1, "gates/stand_belegen.py": 1}
+        "gates/gate_entscheid.py": 2, "gates/stand_belegen.py": 1}
     # Positivkontrolle des Zaehlers: ein Name mit bekannter Aufrufzahl.
     assert _aufrufe("tbox_modul_sha256").get("gates/stand_belegen.py", 0) >= 2

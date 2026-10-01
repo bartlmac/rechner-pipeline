@@ -39,6 +39,7 @@ from rechner_pipeline.models import standabnahme as sa
 from rechner_pipeline.models import tarifwerkabnahme as tw
 from rechner_pipeline.models.zeichnung import GUELTIGE_GATES, zeichnende_rolle_fehler
 from rechner_pipeline.ontologie import tbox
+from tests.freigabe_testschluessel import VORSTANDRING
 from tests.zeichnung_fixture import (
     ARCHITEKTUR,
     VORSTAND_SCHLUESSEL_DATEI,
@@ -97,13 +98,14 @@ def _spitze(bereich: Path, gate: str) -> dict:
     return snap
 
 
-def _fall_mit_linie(tmp_path: Path):
-    """Linie (mit Ordnungslinie) und Erstabnahme der drei Code-Gegenstaende,
-    dann ein Tariffall, der unter derselben Linie zeichnet."""
+def _fall_mit_linie(tmp_path: Path, gates=("A-K2", "A-O1", "A-T1")):
+    """Linie (mit Ordnungslinie) und Erstabnahme der drei Code-Gegenstaende
+    (oder der in ``gates`` genannten), dann ein Tariffall, der unter
+    derselben Linie zeichnet."""
     from tests.test_pk1_am4_beweisvertrag import _bereite_fall, _o3_tg2012
 
     linie = linie_anlegen(tmp_path)
-    for gate in ("A-K2", "A-O1", "A-T1"):
+    for gate in gates:
         ergebnis = _zeichne_in_linie(linie, gate)
         assert ergebnis.exit_code == 0, (gate, ergebnis.errors)
     fall = _bereite_fall(tmp_path, ("klv/tg2012",), mit_kernstand=False,
@@ -128,7 +130,7 @@ def _am4(fall: Path):
 
 def _haenge_an(linie: Path, ordnung: dict, datei: Path, **kw):
     datei.write_text(json.dumps(ordnung, sort_keys=True), encoding="utf-8")
-    glieder, _ = ol.lade_linie(linie)
+    glieder, _ = ol.lade_linie_strukturell_zur_anzeige(linie)
     argv = ["ordnung", "--linie", str(linie), "--ordnung", str(datei),
             "--vorgaenger", kw.pop("vorgaenger", glieder[-1]["glied_sha256"] if glieder
                                    else "keiner"),
@@ -177,7 +179,7 @@ def test_die_tabelle_der_vier_gegenstaende_ist_vollstaendig():
 
 def test_die_wurzel_ist_unsigniert_und_benennt_die_vorstand_rolle(tmp_path):
     linie = linie_anlegen(tmp_path)
-    (glied,), fehler = ol.lade_linie(linie)
+    (glied,), fehler = ol.lade_linie(linie, ring=VORSTANDRING)
     assert fehler == []
     assert glied["zeichnung"] is None and glied["eintrag"]["art"] == "wurzel"
     assert "unsigniert" in glied["eintrag"]["vermerk"]
@@ -235,7 +237,7 @@ def test_ein_spaeteres_glied_zeichnet_der_vorstand_mit_dem_schluessel_der_spitze
     assert falscher.exit_code != 0 and "nicht die Spitze" in falscher.errors[0]["message"]
     gut = _haenge_an(linie, neu, tmp_path / "o2.json")
     assert gut.exit_code == 0, gut.errors
-    glieder, fehler = ol.lade_linie(linie, {hashlib.sha256(
+    glieder, fehler = ol.lade_linie(linie, ring={hashlib.sha256(
         (tmp_path / VORSTAND_SCHLUESSEL_DATEI).read_bytes()).hexdigest():
         (tmp_path / VORSTAND_SCHLUESSEL_DATEI).read_bytes()})
     assert fehler == [] and len(glieder) == 2
@@ -252,7 +254,7 @@ def test_die_aenderungsliste_unterscheidet_verbreiterung_und_neue_rolle(tmp_path
     neu["rollen"]["mensch/revision"] = {
         "schluessel_sha256": "ab" * 32, "schluesselklasse": "simulation", "gates": []}
     assert _haenge_an(linie, neu, tmp_path / "o2.json").exit_code == 0
-    glieder, _ = ol.lade_linie(linie)
+    glieder, _ = ol.lade_linie(linie, ring=VORSTANDRING)
     arten = {(a["art"], a["rolle"]) for a in glieder[1]["aenderungen"]}
     assert arten == {("gates_erweitert", ARCHITEKTUR), ("neue_rolle", "mensch/revision")}
     sicht = (linie / "abgeleitet" / "ordnung" / "linie.md").read_text(encoding="utf-8")
@@ -264,7 +266,7 @@ def test_die_aenderungsliste_unterscheidet_verbreiterung_und_neue_rolle(tmp_path
     glied["glied_sha256"] = ol.glied_sha256(glied)
     pfad.unlink()
     (pfad.parent / ol.dateiname(glied)).write_text(json.dumps(glied), encoding="utf-8")
-    _, fehler = ol.lade_linie(linie)
+    _, fehler = ol.lade_linie(linie, ring=VORSTANDRING)
     assert any("Aenderungsliste" in f for f in fehler), fehler
 
 
@@ -279,11 +281,11 @@ def test_ein_umgeschriebenes_oder_entferntes_glied_bricht_die_linie(tmp_path):
     daten = json.loads(roh)
     daten["eingetragen_am"] = "2020-01-01T00:00:00+00:00"
     erstes.write_text(json.dumps(daten), encoding="utf-8")
-    assert ol.lade_linie(linie)[1]
+    assert ol.lade_linie(linie, ring=VORSTANDRING)[1]
     erstes.write_bytes(roh)
-    assert ol.lade_linie(linie)[1] == []
+    assert ol.lade_linie(linie, ring=VORSTANDRING)[1] == []
     erstes.unlink()
-    assert ol.lade_linie(linie)[1]
+    assert ol.lade_linie(linie, ring=VORSTANDRING)[1]
 
 
 # --------------------------------------------------------------------------- #
@@ -322,6 +324,74 @@ def test_verweis_auf_die_erstabnahme_ohne_fall_loest_auf_und_verweigert_nach_aen
     erneut = stand_belegen.main(["verweisen", "--fall", str(fall), "--gate", "A-T1",
                                  "--linie", str(linie), "--repo-root", str(REPO)])
     assert erneut.exit_code != 0 and "es gab eine Aenderung" in erneut.errors[0]["message"]
+
+
+def test_ein_verweis_auf_eine_in_der_linie_widerrufene_abnahme_traegt_nicht(tmp_path):
+    """Pruefrunde G (G11): Weg (b) verweist auf die GELTENDE Abnahme der
+    Linie — Gueltigkeit, nicht nur Echtheit. Der Verweis wurde angelegt,
+    solange die Erstabnahme galt; danach lehnt ``mensch/rechenkern`` sie in
+    der Linie ab (Kette, Vorgaenger die Annahme). Die Kopie im Fall bleibt
+    echt und signiert — sie gilt nicht mehr.
+
+    Rot vor dem Fix: A-M4 exit 0. Mutationsprobe: in
+    ``gate_entscheid.standabnahme_pruefen`` den Abgleich mit der geltenden
+    Spitze der Linie aussetzen -> rot."""
+    linie, fall = _fall_mit_linie(tmp_path)
+    _verweise(fall, linie)
+    alt = _spitze(linie, "A-K2")
+    abgelehnt = gate_entscheid.main([
+        "--linie", str(linie), "--gate", "A-K2", "--entscheid", "abgelehnt",
+        "--rolle", RECHENKERN, "--entscheider", "r", "--begruendung", "zurueckgenommen",
+        "--repo-root", str(REPO), *annahme_args(linie, fuer="A-K2")])
+    assert abgelehnt.exit_code == 0, abgelehnt.errors
+    neu = _spitze(linie, "A-K2")
+    assert neu["entscheid"] == "abgelehnt" and neu["vorgaenger"] == [alt["snapshot_sha256"]]
+    am4 = _am4(fall)
+    assert am4.exit_code != 0, "ein Verweis auf eine abgeloeste Abnahme trug A-M4"
+    meldung = am4.errors[0]["message"]
+    assert "kern/verweis.json" in meldung and "geltende" in meldung, meldung
+    assert alt["snapshot_sha256"][:16] in meldung and neu["snapshot_sha256"][:16] in meldung
+
+
+def test_ein_verweis_auf_eine_abgeloeste_annahme_traegt_nicht(tmp_path):
+    """Dieselbe Regel, wenn eine NEUERE Annahme die alte abloest: Der Stand
+    beider ist derselbe, gilt aber nur die Spitze. Der Verweis ist von Hand
+    an den festen Ort gelegt (der Produzent nimmt nur noch die Spitze)."""
+    linie, fall = _fall_mit_linie(tmp_path)
+    _verweise(fall, linie, gates=("A-O1", "A-T1"))
+    alt = _spitze(linie, "A-K2")
+    zweite = gate_entscheid.main([
+        "--linie", str(linie), "--gate", "A-K2", "--entscheid", "angenommen",
+        "--entscheider", "verantwortung", "--begruendung", "erneut geprueft",
+        "--repo-root", str(REPO), *annahme_args(linie, fuer="A-K2")])
+    assert zweite.exit_code == 0, zweite.errors
+    assert _spitze(linie, "A-K2")["snapshot_sha256"] != alt["snapshot_sha256"]
+    ziel = fall / sa.gegenstand_fuer("A-K2").verweis_relativ
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    ziel.write_text(json.dumps(stand_belegen.baue_verweis(alt)), encoding="utf-8")
+    am4 = _am4(fall)
+    assert am4.exit_code != 0
+    assert "geltende" in am4.errors[0]["message"], am4.errors
+
+
+def test_verweisen_mit_snapshot_ist_entfallen(tmp_path, capsys):
+    """``verweisen --snapshot <datei>`` nahm jeden frueheren Snapshot —
+    entfallen (G11); die Meldung verweigert und nennt den Weg ueber die
+    Linie, statt "unrecognized arguments"."""
+    linie = linie_anlegen(tmp_path)
+    assert _zeichne_in_linie(linie, "A-T1").exit_code == 0
+    from tests.test_pk1_am4_beweisvertrag import _bereite_fall
+
+    fall = _bereite_fall(tmp_path, ("klv/tg2012",), mit_kernstand=False,
+                         mit_tboxstand=False, mit_tarifwerk=False)
+    snapshot = next((linie / "entscheide").glob("A-T1-*.json"))
+    with pytest.raises(SystemExit) as ende:
+        stand_belegen.main(["verweisen", "--fall", str(fall), "--gate", "A-T1",
+                            "--snapshot", str(snapshot), "--repo-root", str(REPO)])
+    assert ende.value.code == 2
+    err = capsys.readouterr().err
+    assert "--snapshot" in err and "entfallen" in err and "--linie" in err, err
+    assert not (fall / sa.gegenstand_fuer("A-T1").verweis_relativ).exists()
 
 
 def test_gezeichnet_wird_nur_unter_der_spitze_der_linie(tmp_path):
@@ -453,17 +523,21 @@ def test_ein_snapshot_ohne_glied_ist_nicht_lokalisierbar(tmp_path):
     (tmp_path / "neu").mkdir()
     linie, fall = _fall_mit_linie(tmp_path / "neu")
     _verweise(fall, linie, gates=("A-K2", "A-O1"))
-    ergebnis = stand_belegen.main([
-        "verweisen", "--fall", str(fall), "--gate", "A-T1", "--snapshot",
-        str(next((alt / "entscheide").glob("A-T1-*.json"))), "--repo-root", str(REPO)])
-    assert ergebnis.exit_code == 0, ergebnis.errors
+    # Von Hand an den festen Ort gelegt: Der Produzent nimmt seit Runde G
+    # (G11) nur noch die geltende Spitze der Linie (``verweisen --snapshot``
+    # ist entfallen).
+    snap = json.loads(next((alt / "entscheide").glob("A-T1-*.json")).read_text(encoding="utf-8"))
+    ziel = fall / sa.gegenstand_fuer("A-T1").verweis_relativ
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    ziel.write_text(json.dumps(stand_belegen.baue_verweis(snap)), encoding="utf-8")
     am4 = _am4(fall)
     assert am4.exit_code != 0
     # Der fruehere Fall zeichnete unter SEINER Linie (die Linie ist Pflicht,
-    # ADR-025, Nachtrag 2026-10-01): In dieser Linie ist sein Glied nicht
-    # lokalisierbar — als Grundlage nicht verwendbar.
+    # ADR-025, Nachtrag 2026-10-01): Sein Snapshot ist nicht die geltende
+    # Abnahme DIESER Linie, und sein Glied ist dort nicht lokalisierbar — als
+    # Grundlage nicht verwendbar.
     meldung = am4.errors[0]["message"]
-    assert ("nicht lokalisierbar" in meldung
+    assert ("nicht lokalisierbar" in meldung or "geltende" in meldung
             or "steht nicht in der Ordnungslinie" in meldung), am4.errors
     assert _o3_tg2012 is not None
 
@@ -630,7 +704,7 @@ def test_belegen_zeichnen_binden_dann_laeuft_der_tag(aufgebaut, tmp_path):
     assert (linie / ab.SICHT_RELATIV).read_text(encoding="utf-8").startswith("# Abnahme")
     sha = zeichne_ab3(linie, beleg)
     bindung = anf.binden(aufgebaut.wurzel, linie, _zeichner(), schluesselring=TESTRING,
-                         snapshot_sha256=sha, ordnungslinie=ol.lade_linie(linie)[0])
+                         snapshot_sha256=sha, ordnungslinie=ol.lade_linie(linie, ring=VORSTANDRING)[0])
     assert bindung["stand"] == ab.stand_aus_beleg(beleg)
     code, zeile = tageslauf(aufgebaut, dt.date(2026, 2, 3))
     assert code == EXIT_OK, zeile.get("fehler")
@@ -653,7 +727,7 @@ def test_binden_verweigert_fremden_stand_und_unberechtigte_rolle(aufgebaut):
     with pytest.raises(anf.AnfangsbestandFehler, match="nicht der, den die Ablage"):
         anf.binden(aufgebaut.wurzel, linie, _zeichner(), schluesselring=TESTRING,
                    snapshot_sha256=falsch["snapshot_sha256"],
-                   ordnungslinie=ol.lade_linie(linie)[0])
+                   ordnungslinie=ol.lade_linie(linie, ring=VORSTANDRING)[0])
     fremd = ab3_snapshot(linie, beleg_sha256=roh_sha, stand=ab.stand_aus_beleg(beleg),
                          vorgaenger=[falsch["snapshot_sha256"]], schluessel=TESTKEY,
                          rolle=VA)
@@ -662,7 +736,7 @@ def test_binden_verweigert_fremden_stand_und_unberechtigte_rolle(aufgebaut):
     with pytest.raises(anf.AnfangsbestandFehler, match="A-B3"):
         anf.binden(aufgebaut.wurzel, linie, _zeichner(), schluesselring=TESTRING,
                    snapshot_sha256=fremd["snapshot_sha256"],
-                   ordnungslinie=ol.lade_linie(linie)[0])
+                   ordnungslinie=ol.lade_linie(linie, ring=VORSTANDRING)[0])
     assert not (aufgebaut.wurzel / ab.BINDUNG_DATEI).exists()
 
 
@@ -719,7 +793,7 @@ def test_der_leser_des_betriebs_haelt_die_damalige_ordnung(tmp_path):
     assert am4.exit_code == 0, am4.errors
     ring, _, _ = lade_schluesselring(
         [str(p) for p in sorted(tmp_path.glob("*.key"))], ausserhalb=fall)
-    glieder, _ = ol.lade_linie(linie)
+    glieder, _ = ol.lade_linie(linie, ring=VORSTANDRING)
     sha = am4.summary["snapshot_sha256"]
     daten, _, verifiziert = ueb.lies_am4_snapshot(
         fall, sha, schluesselring=ring, ordnung=None, ordnungslinie=glieder)

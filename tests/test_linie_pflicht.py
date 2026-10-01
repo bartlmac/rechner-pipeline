@@ -15,6 +15,10 @@ Was hier gehalten wird:
   hat keinen Zweig ohne Linie; ihr Parameter hat keinen Default, jeder
   Aufruf in ``src`` reicht ``linie=`` (Ratsche ``==`` mit Positivkontrolle);
   die Leser des Betriebs verlangen ``ordnungslinie`` ohne Default.
+* ... und reichen den Ring (Pruefrunde G, G09): Wer die Linie liest, um auf
+  ihr zu gruenden, ruft ``lade_linie`` mit ``ring=`` (Pflicht, kein Default);
+  der strukturelle Einstieg ``lade_linie_strukturell_zur_anzeige`` ist
+  benannt und gezaehlt (Ratsche ``==`` mit Positivkontrolle).
 * Anzeigen: die Darstellungswerkzeuge rufen die Regel nicht (sie gruenden
   nichts; Altsnapshots bleiben fuer ihre Anzeige lesbar).
 * Betrieb: die Kommandos, die auf einer Abnahme gruenden, verlangen
@@ -167,6 +171,97 @@ def test_ratsche_positivkontrolle_des_aufrufdetektors():
               "def c(s, o):\n    zeichnende_rolle_fehler(s, 'A-M4', o)\n")
     assert _regelaufrufe(quelle, "x.py") == Counter({
         ("x.py", "a", True): 1, ("x.py", "b", False): 1, ("x.py", "c", False): 1})
+
+
+# --------------------------------------------------------------------------- #
+# Gruenden: ... und reicht den Ring (Pruefrunde G, G09)
+# --------------------------------------------------------------------------- #
+
+
+def test_der_leser_der_linie_hat_fuer_den_ring_keinen_default():
+    """Wer die Linie liest, um darauf zu gruenden, reicht den Ring — ein
+    vergessenes Argument ist ein TypeError, kein Rueckfall auf "nur die Form"
+    (der alte Default ``ring=None`` pruefte keine Signatur)."""
+    from rechner_pipeline.models import ordnungslinie as ol
+
+    p = inspect.signature(ol.lade_linie).parameters["ring"]
+    assert p.default is inspect.Parameter.empty and p.kind is p.KEYWORD_ONLY
+    with pytest.raises(TypeError, match="ring ist Pflicht"):
+        ol.lade_linie(REPO, ring=None)
+    assert "ring" not in inspect.signature(ol.lade_linie_strukturell_zur_anzeige).parameters
+
+
+def _linienaufrufe(quelle: str, datei: str) -> Counter:
+    """Je umschliessender Funktion: Aufrufe der Leser der Linie — ``ring``
+    (``lade_linie`` mit ``ring=`` ausser dem Literal None), ``ohne`` (ohne
+    Ring) oder ``anzeige`` (der benannte strukturelle Einstieg)."""
+    aufrufe: Counter = Counter()
+
+    class Besucher(ast.NodeVisitor):
+        def __init__(self):
+            self.funktion = "<modul>"
+
+        def visit_FunctionDef(self, knoten):
+            vorher, self.funktion = self.funktion, knoten.name
+            self.generic_visit(knoten)
+            self.funktion = vorher
+
+        def visit_Call(self, knoten):
+            f = knoten.func
+            name = f.id if isinstance(f, ast.Name) else getattr(f, "attr", "")
+            if name == "lade_linie":
+                mit = any(k.arg == "ring" and not (isinstance(k.value, ast.Constant)
+                                                   and k.value.value is None)
+                          for k in knoten.keywords)
+                aufrufe[(datei, self.funktion, "ring" if mit else "ohne")] += 1
+            elif name == "lade_linie_strukturell_zur_anzeige":
+                aufrufe[(datei, self.funktion, "anzeige")] += 1
+            self.generic_visit(knoten)
+
+    Besucher().visit(ast.parse(quelle))
+    return aufrufe
+
+
+#: Die Leser der Linie in ``src``, gemessen 2026-10-01 (Pruefrunde G): Jeder,
+#: der auf ihr gruendet, reicht den Ring. Vorher: fuenf Aufrufe, keiner mit Ring.
+#: * das Gate (``main``): jede Annahme;
+#: * der Produzent eines Glieds (``stand_belegen main``, zweimal: vor dem
+#:   Anhaengen und fuer die Sicht danach) — wer anhaengt, gruendet auf der Spitze;
+#: * der Zeichner des Betriebs (``betriebszeichner``): Registrierung,
+#:   Zugangsprobe, Neuaufsetzen;
+#: * die Bindung des Anfangsbestands (``anfangsbestand main``).
+GRUENDENDE_LINIENLESER = Counter({
+    ("betrieb/anfangsbestand.py", "main", "ring"): 1,
+    ("betrieb/tageslauf.py", "betriebszeichner", "ring"): 1,
+    ("gates/gate_entscheid.py", "main", "ring"): 1,
+    ("gates/stand_belegen.py", "main", "ring"): 2,
+})
+#: Der strukturelle Einstieg, benannt: die Ablehnung im Gate — sie zeichnet
+#: nichts und gruendet nichts, die Linie steht nur in ihrer Ausgabe.
+ANZEIGENDE_LINIENLESER = Counter({
+    ("gates/gate_entscheid.py", "main", "anzeige"): 1,
+})
+
+
+def test_ratsche_jeder_gruendende_leser_der_linie_reicht_den_ring():
+    gefunden: Counter = Counter()
+    for pfad in sorted(SRC.rglob("*.py")):
+        if pfad.name == "ordnungslinie.py":
+            continue                       # die Definition selbst
+        gefunden += _linienaufrufe(pfad.read_text(encoding="utf-8"),
+                                   str(pfad.relative_to(SRC)))
+    assert gefunden == GRUENDENDE_LINIENLESER + ANZEIGENDE_LINIENLESER
+    assert not [k for k in gefunden if k[2] == "ohne"]
+
+
+def test_ratsche_positivkontrolle_des_linienaufrufdetektors():
+    quelle = ("def a(b, r):\n    lade_linie(b, ring=r)\n"
+              "def b(b):\n    ol.lade_linie(b, ring=None)\n"
+              "def c(b):\n    ol.lade_linie(b)\n"
+              "def d(b):\n    ol.lade_linie_strukturell_zur_anzeige(b)\n")
+    assert _linienaufrufe(quelle, "x.py") == Counter({
+        ("x.py", "a", "ring"): 1, ("x.py", "b", "ohne"): 1, ("x.py", "c", "ohne"): 1,
+        ("x.py", "d", "anzeige"): 1})
 
 
 def test_anzeigende_leser_rufen_die_regel_nicht():

@@ -94,8 +94,8 @@ flowchart TD
     system_assurance -- 3 --> system_entscheid
     system_assurance -- 1 --> system_fall
     system_entscheid -- 3 --> bu
-    system_entscheid -- 11 --> klv
-    system_entscheid -- 10 --> system_assurance
+    system_entscheid -- 12 --> klv
+    system_entscheid -- 11 --> system_assurance
     system_entscheid -- 1 --> system_fall
 ```
 

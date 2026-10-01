@@ -88,6 +88,7 @@ from typing import Dict, List, Optional
 # Abschluss-Produzent sie erreicht (Schichtenkarte verbietet
 # bestand -> gates). Der Name bleibt hier im Namensraum des Gates: der
 # Abnahmebericht ruft ihn als bestand_validate.pruefe_pb1_eingaenge.
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline.bestand.manifest import (
     ManifestError,
     ROLLEN_DATEIEN,
@@ -193,7 +194,7 @@ def _build_parser() -> GateArgumentParser:
                 help=f"{datei} des fortschreiben-Laufs (optional; Rolle {rolle!r}, "
                 "geht in die Ledger-Herleitung ein).",
             )
-    parser.add_argument("--repo-root", dest="repo_root", default=None)
+    parser.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", default=None)
     parser.add_argument(
         "--diagnostics-dir", dest="diagnostics_dir", default=None,
         help="Verzeichnis fuer den Gate-Ledger-Eintrag "

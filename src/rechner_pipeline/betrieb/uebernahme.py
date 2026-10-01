@@ -2065,7 +2065,10 @@ def eingang_anlegen(
         zeichner = betriebszeichner(
             _Ablage(Path(stand)), betriebsschluessel, zeichnungsordnung,
             wofuer="die Registrierung", ohne="keine Registrierung",
-            flag="--betriebsschluessel", linie=linie)
+            flag="--betriebsschluessel", linie=linie,
+            # Die Linie wird mit dem Ring gelesen, der die Abnahmen prueft —
+            # unter ihnen der Schluessel des Vorstands (Pruefrunde G, G09).
+            ring=schluesselring if schluesselring is not None else _STANDARD_SCHLUESSELRING)
     except _TageslaufError as exc:
         raise UebernahmeError(str(exc)) from exc
     vor = registrierung_vorbedingungen(

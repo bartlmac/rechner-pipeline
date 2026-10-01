@@ -453,10 +453,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         # Die Ordnungslinie der Linie ist Pflicht (ADR-025, Nachtrag
         # 2026-10-01): A-B3 wird gegen den Stand der Ordnung gelesen, unter dem
         # es gezeichnet wurde, und der Schluessel der Ablage wird unter ihr
-        # aufgeloest.
+        # aufgeloest. Gelesen mit dem Ring der Freigabeschluessel — der des
+        # Vorstands prueft die Glieder nach dem ersten (Pruefrunde G, G09).
         from rechner_pipeline.models.ordnungslinie import lade_linie
 
-        glieder, lf = lade_linie(Path(a.linie))
+        glieder, lf = lade_linie(Path(a.linie), ring=ring)
         if lf or not glieder:
             print("anfangsbestand: Ordnungslinie " + ("; ".join(lf[:3]) or "leer"),
                   file=sys.stderr)

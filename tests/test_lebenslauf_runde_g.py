@@ -211,6 +211,10 @@ LESER = Counter({
     ("lesen", "fallauftrag_pruefen"): 1,
     ("lesen", "_lebenslauf_vorlage"): 1,
     ("lesen", "main"): 5, ("anmelden", "main"): 4,
+    # Weg (b) der Standabnahme (Pruefrunde G, G11): liest die Kette der LINIE,
+    # um die Gueltigkeit des Verweises zu halten. Eine Abnahme der Linie
+    # traegt keinen Auftrag und wird nicht angemeldet.
+    ("lesen", "_verweis_gilt_fehler"): 1,
 })
 
 

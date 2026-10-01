@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.bestand.parquet_io import (
     read_portfolio,
@@ -1024,7 +1025,7 @@ def main(argv: Optional[List[str]] = None) -> int:
              "Ohne ihn bleibt der rohe Wertvergleich: gueltig, solange "
              "der Fall keine Schichten fuehrt; sonst zeigt jeder "
              "Vertrag sein unabsorbiertes Verankerungs-Residuum.")
-    p.add_argument("--repo-root", dest="repo_root", default=".")
+    p.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", default=".")
     p.add_argument("--out", default=None)
     for name, vorgabe in VORGABE.items():
         p.add_argument(f"--spalte-{name}", dest=f"spalte_{name}",

@@ -105,6 +105,18 @@ def _regression(**abweichend):
     return daten
 
 
+@pytest.fixture(autouse=True)
+def _ergebnis_zweig(monkeypatch):
+    """Dieses Modul prueft den ERGEBNIS-Zweig des Regressionsbelegs (die
+    Regel vom 2026-09-16). Solange es kein Regressionswerkzeug gibt
+    (``REGRESSION_AUSNAHME_ERLAUBT``), verweigert A-K2 jedes Ergebnis
+    (Pruefrunde G, G10); die Tests stellen die Konstante deshalb
+    ausdruecklich auf den Stand NACH dem Werkzeug."""
+    from rechner_pipeline.models import kernabnahme as ka
+
+    monkeypatch.setattr(ka, "REGRESSION_AUSNAHME_ERLAUBT", False)
+
+
 def _schreibe(pfad: Path, daten) -> Path:
     pfad.parent.mkdir(parents=True, exist_ok=True)
     pfad.write_text(json.dumps(daten), encoding="utf-8")

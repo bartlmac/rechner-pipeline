@@ -252,7 +252,9 @@ def linie_sicherstellen(fall: Path, ordnung: Path) -> Path:
         # erstes Glied): Was der Betrieb liest, ist in JEDER Linie der Suite
         # lokalisierbar; die Ordnung des Falls haengt der Vorstand an.
         suitelinie_anlegen(linie)
-    glieder, fehler = ol.lade_linie(linie)
+    # Der Helfer sucht nur die Spitze (Aufbau der Testwelt); gruenden tun die
+    # Kommandos, die er ruft — sie lesen die Linie mit dem Ring.
+    glieder, fehler = ol.lade_linie_strukturell_zur_anzeige(linie)
     assert not fehler, fehler
     sha = hashlib.sha256(Path(ordnung).read_bytes()).hexdigest()
     if glieder and glieder[-1]["ordnung_sha256"] == sha:

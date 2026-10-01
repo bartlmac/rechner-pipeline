@@ -471,7 +471,8 @@ python -m rechner_pipeline.ontologie.entscheide --fall ... --diskrepanz ... \
     --zeichnungsordnung /sicher/zeichnungsordnung.json \
     --freigabe-schluessel /sicher/verantwortlicher-aktuar.key
 # (jeder Entscheid nennt die Linie, ADR-025: Pflicht; der Ring traegt den
-# Schluessel des Vorstands, der den Fallauftrag prueft, ADR-026)
+# Schluessel des Vorstands, der den Fallauftrag und die Glieder der Linie
+# prueft, ADR-026 und ADR-025; --repo-root ist der Baum des Pakets, das rechnet)
 python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate A-Q1 \
     --entscheid angenommen --entscheider ... --begruendung ... --linie linie \
     --zeichnungsordnung /sicher/zeichnungsordnung.json \

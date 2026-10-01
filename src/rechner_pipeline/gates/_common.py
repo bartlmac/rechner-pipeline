@@ -959,7 +959,23 @@ def parse_gate_args(
             contract=parser.gate_contract,
             namespace=args,
         ) from exc
-    return merge_request_into_args(args, request)
+    unbesetzt = {k for k, v in vars(args).items() if v is None}
+    args = merge_request_into_args(args, request)
+    # Was das Request-Objekt fuellt, geht durch denselben ``type`` wie ein
+    # Schalter (Pruefrunde G, G12: ``--repo-root`` loest ueber EINE Stelle
+    # auf) — sonst waere der Request ein Weg an der Pruefung vorbei.
+    for action in parser._actions:
+        wert = getattr(args, action.dest, None)
+        if action.dest in unbesetzt and isinstance(wert, str) and callable(action.type):
+            try:
+                setattr(args, action.dest, action.type(wert))
+            except (argparse.ArgumentTypeError, TypeError, ValueError) as exc:
+                raise GateArgumentError(
+                    f"ungueltiges --request-json: {action.dest}: {exc}",
+                    contract=parser.gate_contract,
+                    namespace=args,
+                ) from exc
+    return args
 
 
 # --------------------------------------------------------------------------- #

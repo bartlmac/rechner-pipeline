@@ -99,4 +99,5 @@ def schreibe_anfangsbestand(ablage: Any, zeichner: Any) -> None:
     from rechner_pipeline.models.ordnungslinie import lade_linie
 
     anf.binden(ablage.wurzel, linie, zeichner, schluesselring=TESTRING,
-               snapshot_sha256=sha, ordnungslinie=lade_linie(linie)[0], sperre_gehalten=True)
+               snapshot_sha256=sha, ordnungslinie=lade_linie(linie, ring=TESTRING)[0],
+               sperre_gehalten=True)

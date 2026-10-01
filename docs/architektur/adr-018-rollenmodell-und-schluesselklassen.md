@@ -413,7 +413,8 @@ und die Vorzeige." Zeitpunkt: vor dem Merge.
    die Ordnung das Gate gibt (`models.zeichnung.zeichnende_rolle_fehler`),
    ihre Belege am festen Ort und gegen den lebenden Code nachgerechnet;
    (b) *keine Aenderung* — der Stand ist identisch zu dem, den ein FRUEHER
-   angenommener Snapshot abgenommen hat: Ein Verweis am festen Ort
+   angenommener Snapshot abgenommen hat (seit Pruefrunde G, G11: NUR die
+   geltende Abnahme der Linie, Nachtrag unten): Ein Verweis am festen Ort
    (`abgeleitet/kern/verweis.json` bzw. `abgeleitet/tbox/verweis.json`,
    Produzent `gates.stand_belegen verweisen`) traegt die vollstaendige,
    signierte Kopie dieses Snapshots; A-M4 prueft Signatur, Rolle und Klasse
@@ -442,11 +443,17 @@ und die Vorzeige." Zeitpunkt: vor dem Merge.
 4. **Die Regression ist eine benannte Ausnahme, kein Ergebnis.** Bis zum
    Produzenten traegt `abgeleitet/kern/regression.json` den Zustand
    `nicht_gefahren` mit dem Grund "Werkzeug noch nicht erstellt" — kein
-   Feld, das wie ein Ergebnis aussieht. Das Gate nimmt genau diese Form an,
-   solange `models.kernabnahme.REGRESSION_AUSNAHME_ERLAUBT` gilt, und
-   nichts anderes Unvollstaendiges; ein echter Regressionsbeleg wird nach
-   der Regel vom 2026-09-16 geprueft (jeder Vertrag, Differenz je Vertrag,
-   sauberer Arbeitsbaum). Snapshot (Feld `ausnahmen`), Ledger, Sicht und
+   Feld, das wie ein Ergebnis aussieht. Das Gate nimmt, solange
+   `models.kernabnahme.REGRESSION_AUSNAHME_ERLAUBT` gilt, NUR diese Form an
+   — nichts anderes Unvollstaendiges und auch keinen formal vollstaendigen
+   Ergebnis-Beleg: Es gibt kein Werkzeug, das ihn erzeugt haben kann, also
+   ist er eine Behauptung, die niemand gefahren hat (geschaerft nach
+   Pruefrunde G, G10; benannte Verweigerung "es gibt kein Werkzeug, das
+   dieses Ergebnis erzeugt haben kann"). Erst wenn die Konstante mit dem
+   Werkzeug kippt, wird ein echter Regressionsbeleg nach der Regel vom
+   2026-09-16 geprueft (jeder Vertrag, Differenz je Vertrag, sauberer
+   Arbeitsbaum); die Tests dieses Zweigs stellen die Konstante ausdruecklich
+   um. Snapshot (Feld `ausnahmen`), Ledger, Sicht und
    jede Anzeige fuehren den Satz woertlich: "Regression: Ausnahme — nicht
    gefahren, Werkzeug noch nicht erstellt". Die Zeichnung von A-K2 deckt
    damit ausdruecklich NUR die qualitative Pruefung. Zwei Waechter halten
@@ -568,6 +575,37 @@ Mensch sein"). Fuer dieses Rollenmodell aendert sich:
 3. **Agent.** `agent/programmleitung` beginnt einen Fall nur mit einem
    geltenden Auftrag (es liest ihn, es zeichnet ihn nie) und legt bei einem
    Abbruchkriterium die Vorlage des Fallabbruchs vor.
+
+## Nachtrag 2026-10-01: Pruefrunde G — Regression, Verweis, Linie, lebender Stand
+
+Befunde der blinden Pruefrunde G (Linse "Abnahme-Beleg"); die Regeln stehen
+ausfuehrlich in ADR-025 (Nachtrag Pruefrunde G). Fuer dieses Rollenmodell:
+
+1. **Die Regression ist bis zu ihrem Werkzeug eine Ausnahme, nie "bestanden"**
+   (G10; vom Widerleger als Vertragsbruch nicht bestaetigt, als Haertung
+   gebaut — Entscheid des Maintainers). Punkt 4 des Nachtrags "Der Stand des
+   Falls ist abgenommen" ist geschaerft: Solange die Konstante gilt, nimmt
+   A-K2 einen Ergebnis-Beleg nicht an. Gemessen vorher: ein von Hand
+   geschriebenes Ergebnis (1 von 1 Vertraegen, erfundener Bestands-Hash)
+   wurde angenommen, die Ausnahme verschwand aus dem signierten Snapshot,
+   waehrend die Sicht des Pruefers sie weiter zeigte. *Verworfen:* den
+   Ergebnis-Beleg nachrechnen — ohne Werkzeug gibt es nichts, womit; den
+   `bestand_sha256` an den Bestand binden — dann waere die Behauptung nur
+   besser verankert, nicht gefahren.
+2. **Weg (b) verweist nur auf die GELTENDE Abnahme der Linie** (G11).
+   Gueltigkeit, nicht nur Echtheit: Das Gate haelt den verwiesenen Snapshot
+   gegen die geltende, angenommene Spitze der Kette seines Gates in der Linie,
+   die es bekommt, gelesen mit Signaturpruefung. `stand_belegen verweisen
+   --snapshot` ist entfallen. *Verworfen:* der Verweis auf den Snapshot eines
+   frueheren Falls — seine Herkunftskette ist vom Gate aus nicht pruefbar.
+   Eine im Fall gezeichnete Aenderung (Weg a) gilt fuer den Fall; fuer den
+   naechsten Fall wird der Stand in der Linie abgenommen.
+3. **Wer auf der Linie gruendet, prueft ihre Glieder gegen den Vorstand**
+   (G09). Damit liegt der Schluessel der Wurzelrolle in mehr Ringen als
+   vorher — die HMAC-Grenze oben gilt mit ihm (ADR-025, ADR-026).
+4. **Der lebende Stand ist der des Codes, der rechnet** (G12): `--repo-root`
+   muss das ausgefuehrte Paket tragen (inhaltsgleich), sonst verweigert jedes
+   Kommando der Gates.
 
 ## Bewusst nicht Bestandteil
 

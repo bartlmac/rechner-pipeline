@@ -363,6 +363,9 @@ ERLAUBTE_WIEDERHOLBARE_TEXTE = {
     # <rolle>=<datei> je simulierter Rolle (ADR-026): In den Auftrag geht nur
     # der SHA-256 der Mandatsdatei je Rollenkennung — kein Wert je Police.
     ("fall_belegen", "--mandat"),
+    # Schluesseldateien des Vorstands (Pruefrunde G, G09): nach einem
+    # Schluesselwechsel der alte UND der neue — je Glied, nie je Police.
+    ("stand_belegen", "--vorstand-schluessel"),
 }
 
 

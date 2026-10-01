@@ -137,7 +137,9 @@ def neu_aufsetzen(
         zeichner = betriebszeichner(
             Ablage(stand), betriebsschluessel, zeichnungsordnung,
             wofuer="das Neuaufsetzen", ohne="kein Aufbau", flag="--betriebsschluessel",
-            linie=linie)
+            linie=linie,
+            # Die Linie mit dem Ring, der die Abnahmen prueft (Pruefrunde G, G09).
+            ring=schluesselring if schluesselring is not None else _ueb._STANDARD_SCHLUESSELRING)
     except TageslaufError as exc:
         raise NeuaufsetzenError(str(exc)) from exc
     # Die Zugangsabnahme VOR jedem Aufbau (ADR-022): Ohne sie verweigert die

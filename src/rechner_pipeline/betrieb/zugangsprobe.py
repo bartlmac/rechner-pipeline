@@ -715,7 +715,9 @@ def zugangsprobe(
     try:
         zeichner = tl.betriebszeichner(
             original, schluessel, zeichnungsordnung, wofuer="die Zugangsprobe",
-            ohne="keine Zugangsprobe", flag="--schluessel", linie=linie)
+            ohne="keine Zugangsprobe", flag="--schluessel", linie=linie,
+            # Die Linie mit dem Ring, der die Abnahmen prueft (Pruefrunde G, G09).
+            ring=schluesselring if schluesselring is not None else ueb._STANDARD_SCHLUESSELRING)
     except tl.TageslaufError as exc:
         raise ZugangsprobeError(str(exc)) from exc
     try:

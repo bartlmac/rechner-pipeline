@@ -106,7 +106,7 @@ try:  # Referenzumgebung ist Linux; ohne fcntl gibt es keine Prozess-Sperre.
 except ImportError:  # pragma: no cover - fremde Plattform
     fcntl = None  # type: ignore[assignment]
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import pandas as pd
 
@@ -438,6 +438,7 @@ def betriebszeichner(
     ohne: str = "kein Tageslauf",
     flag: str = "--schluessel",
     linie: Optional[Path] = None,
+    ring: Optional[Mapping[str, bytes]] = None,
 ) -> Zeichner:
     """Den Betriebsschluessel aufloesen: ausdruecklich > Naht > Fehler.
 
@@ -476,9 +477,14 @@ def betriebszeichner(
     # Mit Linie (ADR-025): die geprueften Glieder ihrer Ordnungslinie — die
     # Leser halten jede Abnahme gegen den Stand der Ordnung, unter dem sie
     # gezeichnet wurde.
+    # Pruefrunde G (G09): mit dem Ring des Aufrufers — die Freigabeschluessel,
+    # unter ihnen der des Vorstands. Jedes Glied nach dem ersten wird gegen
+    # ihn geprueft; ohne ihn verweigert eine Linie mit mehr als einem Glied
+    # benannt (der Ausweg steht in der Meldung). Die Wurzel allein braucht
+    # keinen.
     from rechner_pipeline.models.ordnungslinie import lade_linie
 
-    glieder, fehler = lade_linie(Path(linie))
+    glieder, fehler = lade_linie(Path(linie), ring=dict(ring or {}))
     if fehler or not glieder:
         raise TageslaufError(
             f"{linie}: die Ordnungslinie ist " + ("verletzt: " + "; ".join(fehler[:3])

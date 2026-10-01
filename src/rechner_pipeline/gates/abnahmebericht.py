@@ -89,6 +89,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.bestand.vorbedingungen import (
     PB1_ROLLEN_DATEIEN,
@@ -2232,7 +2233,7 @@ def _build_parser() -> GateArgumentParser:
         "--bericht", default=None,
         help="Zielpfad des HTML-Berichts (Vorgabe mit --fall: "
         "<fall>/abgeleitet/berichte/migrationsabnahme.html).")
-    parser.add_argument("--repo-root", dest="repo_root", default=None)
+    parser.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", default=None)
     parser.add_argument(
         "--diagnostics-dir", dest="diagnostics_dir", default=None,
         help="Verzeichnis fuer den Gate-Ledger-Eintrag.")

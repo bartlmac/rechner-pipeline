@@ -56,9 +56,16 @@ Agent hat kein Gegenstueck dazu — Zeichnungsrechte vergibt kein Agent. Die
 Rollen des Falls (:data:`ROLLEN_DES_FALLS`) fuehrt die Linie nicht; ihr Recht
 kommt aus dem Fallauftrag.
 
-Grenze der Aussage: Die Zeichnung ist ein HMAC. Wer den Vorstands-Schluessel
-nicht haelt, prueft Form und Fingerabdruck (gegen die Spitze davor), nicht die
-Signatur; mit dem Schluessel im Ring prueft :func:`lade_linie` auch sie.
+**Gelesen wird mit dem Schluessel des Vorstands** (Pruefrunde G, G09): Wer
+auf der Linie GRUENDET (Gate, Betriebskommandos mit ``--linie``, der
+Produzent, der ein Glied anhaengt), liest sie mit :func:`lade_linie`, und
+deren Ring ist Pflicht: Jedes Glied nach dem ersten wird gegen den Schluessel
+geprueft, den die Spitze davor dem Vorstand gibt; fehlt er im Ring, ist die
+Linie nicht verwendbar. Eine Linie mit genau einem Glied hat nichts zu
+pruefen (die Wurzel ist unsigniert). Wer sie nur ZEIGT, liest sie mit
+:func:`lade_linie_strukturell_zur_anzeige` — ohne Signaturen, und darauf
+gruendet nichts. Grenze: Die Zeichnung ist ein HMAC; wer pruefen kann,
+haelt den Schluessel und kann damit auch zeichnen.
 
 **Der Schnitt** (Entscheid 2026-10-01): Die Linie beginnt mit der Ordnung
 der Erstabnahme. Abnahmen unter aelteren, nicht eingetragenen Staenden —
@@ -81,7 +88,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 #: Das Verzeichnis der Glieder im Linienbereich.
 VERZEICHNIS = "ordnung"
@@ -283,16 +290,16 @@ def zeichne_glied(glied: Dict[str, Any], schluessel: bytes, klasse: str) -> Dict
     }
 
 
-def zeichnung_fehler(glied: Dict[str, Any], vorher: Dict[str, Any],
-                     ring: Optional[Dict[str, bytes]] = None) -> List[str]:
-    """Ob ``glied`` von der Wurzelrolle mit dem Schluessel gezeichnet ist,
-    den ``vorher`` (die Spitze davor) dieser Rolle gibt."""
-    import hmac
-
+def _zeichnung_form_fehler(glied: Dict[str, Any], vorher: Dict[str, Any]
+                           ) -> Tuple[List[str], Optional[str]]:
+    """Was sich an der Zeichnung eines Glieds OHNE Schluessel pruefen laesst:
+    Felder, Gate, Rolle, Verfahren, Fingerabdruck und Klasse gegen die Spitze
+    davor. Rueckgabe ``(fehler, fingerabdruck, den die Spitze davor dem
+    Vorstand gibt)``."""
     z = glied.get("zeichnung")
     if not isinstance(z, dict) or set(z) != ZEICHNUNG_FELDER:
         return [f"Glied {glied.get('nummer')}: ohne Zeichnung von {WURZELROLLE} "
-                f"({ORDNUNGS_GATE}) nicht gueltig — {sorted(ZEICHNUNG_FELDER)}"]
+                f"({ORDNUNGS_GATE}) nicht gueltig — {sorted(ZEICHNUNG_FELDER)}"], None
     alt = ordnung_aus(vorher)
     soll_fp = vorstand_schluessel_sha256(alt)
     fehler = []
@@ -308,11 +315,38 @@ def zeichnung_fehler(glied: Dict[str, Any], vorher: Dict[str, Any],
     if z.get("schluesselklasse") != alt["rollen"][WURZELROLLE].get("schluesselklasse"):
         fehler.append(f"Glied {glied.get('nummer')}: Schluesselklasse der Zeichnung ist nicht "
                       "die der Spitze davor")
-    if ring and soll_fp in ring:
-        erwartet = hmac.new(ring[soll_fp], _nachricht(glied), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(erwartet, str(z.get("signatur"))):
-            fehler.append(f"Glied {glied.get('nummer')}: die Signatur stimmt nicht mit dem "
-                          "Inhalt ueberein")
+    return fehler, soll_fp
+
+
+def zeichnung_fehler(glied: Dict[str, Any], vorher: Dict[str, Any],
+                     ring: Mapping[str, bytes]) -> List[str]:
+    """Ob ``glied`` von der Wurzelrolle mit dem Schluessel gezeichnet ist,
+    den ``vorher`` (die Spitze davor) dieser Rolle gibt — Form UND Signatur.
+
+    Pruefrunde G (G09): Die Signatur wurde nur geprueft, wenn der Schluessel
+    zufaellig im Ring lag, und kein gruendender Leser reichte einen Ring;
+    ein Glied mit geratener Signatur und richtigem Fingerabdruck galt. Jetzt
+    ist der Schluessel Pflicht: Fehlt er im Ring, ist das Glied NICHT
+    PRUEFBAR, und das ist ein Fehler, kein stiller Verzicht.
+    """
+    import hmac
+
+    fehler, soll_fp = _zeichnung_form_fehler(glied, vorher)
+    if soll_fp is None:
+        return fehler
+    if soll_fp not in ring:
+        fehler.append(
+            f"Glied {glied.get('nummer')}: der Schluessel von {WURZELROLLE}, den die Spitze "
+            f"davor (Glied {vorher.get('nummer')}) gibt ({soll_fp[:16]}), ist nicht im Ring — "
+            "ohne ihn ist die Zeichnung des Glieds nicht pruefbar, und auf einer ungeprueften "
+            "Linie gruendet nichts (ADR-025, Nachtrag Pruefrunde G). Ausweg: den Schluessel "
+            "des Vorstands in den Ring geben (gate_entscheid und die Kommandos des Betriebs: "
+            "als weiteren --freigabe-schluessel; stand_belegen ordnung: --vorstand-schluessel)")
+        return fehler
+    erwartet = hmac.new(ring[soll_fp], _nachricht(glied), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(erwartet, str(glied["zeichnung"].get("signatur"))):
+        fehler.append(f"Glied {glied.get('nummer')}: die Signatur stimmt nicht mit dem "
+                      "Inhalt ueberein")
     return fehler
 
 
@@ -375,13 +409,44 @@ def glied_fehler(glied: object) -> List[str]:
     return fehler
 
 
-def lade_linie(bereich: Path, ring: Optional[Dict[str, bytes]] = None,
+def lade_linie(bereich: Path, *, ring: Mapping[str, bytes],
                ) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """Die Glieder der Linie in ``<bereich>/ordnung/``, geprueft, aelteste zuerst.
+    """Die Glieder der Linie in ``<bereich>/ordnung/``, geprueft, aelteste zuerst
+    — der Einstieg fuer jeden Leser, der auf der Linie GRUENDET.
 
     Rueckgabe ``(glieder, fehler)``; bei Fehlern ist die Linie nicht
     verwendbar. Leere Liste ohne Fehler: es gibt (noch) keine Linie.
+
+    ``ring`` ist Pflicht und hat keinen Default (Pruefrunde G, G09): Jedes
+    Glied nach dem ersten wird gegen den Schluessel des Vorstands geprueft,
+    den die Spitze davor gibt; liegt er nicht im Ring, ist die Linie nicht
+    verwendbar (benannt, mit Ausweg). Eine Linie mit genau einem Glied hat
+    nichts zu pruefen: Die Wurzel ist unsigniert (ADR-025, Abschnitt 7).
+    Wer die Linie nur ZEIGT, liest sie mit
+    :func:`lade_linie_strukturell_zur_anzeige`.
     """
+    if ring is None:
+        raise TypeError("lade_linie: ring ist Pflicht (kein None) — wer die Linie nur "
+                        "zeigt, liest sie mit lade_linie_strukturell_zur_anzeige")
+    return _lade(Path(bereich), ring)
+
+
+def lade_linie_strukturell_zur_anzeige(bereich: Path) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Die Glieder der Linie STRUKTURELL — fuer anzeigende Werkzeuge (Sichten).
+
+    Prueft Form, Kette, Hashes, gerechnete Aenderungslisten und die Form der
+    Zeichnungen (Fingerabdruck und Klasse gegen die Spitze davor), NICHT die
+    Signaturen der Glieder. Darauf gruendet nichts: keine Annahme, kein
+    Verweis, keine Registrierung, keine Bindung (Ratsche in
+    ``tests/test_linie_pflicht.py``). Der Name sagt es, damit es kein
+    Aufrufer uebersieht.
+    """
+    return _lade(Path(bereich), None)
+
+
+def _lade(bereich: Path, ring: Optional[Mapping[str, bytes]]
+          ) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """``ring`` None: strukturell (nur ueber den benannten Anzeige-Einstieg)."""
     verzeichnis = Path(bereich) / VERZEICHNIS
     if not verzeichnis.is_dir():
         return [], []
@@ -419,7 +484,8 @@ def lade_linie(bereich: Path, ring: Optional[Dict[str, bytes]] = None,
             fehler.append(f"Glied {glied['nummer']}: die Aenderungsliste ist nicht die aus "
                           "beiden Staenden gerechnete — sie wird nicht behauptet")
         if i > 0 and not fehler:
-            fehler += zeichnung_fehler(glied, glieder[i - 1], ring)
+            fehler += (zeichnung_fehler(glied, glieder[i - 1], ring) if ring is not None
+                       else _zeichnung_form_fehler(glied, glieder[i - 1])[0])
         if glied["ordnung_sha256"] in gesehen:
             fehler.append(f"Glied {glied['nummer']}: dieselbe Ordnung steht schon als Glied "
                           f"{gesehen[glied['ordnung_sha256']]}")

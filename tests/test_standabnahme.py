@@ -5,8 +5,9 @@ Entscheid des Maintainers 2026-10-01 (ADR-018, Nachtrag 2026-10-01):
 'keiner Aenderung' durchgewunken (da keine Aenderung vorhanden)." A-M4
 verlangt je Gegenstand (Kernstand A-K2, T-Box-Stand A-O1), dass der Stand
 abgenommen ist: (a) im Fall gezeichnet, (b) "keine Aenderung" ueber einen
-Verweis auf einen frueher angenommenen Snapshot, (c) nur T-Box: die
-Versionslinie hat ein Element.
+Verweis auf die GELTENDE Abnahme der Linie (seit Pruefrunde G, G11; vorher
+auf einen beliebigen frueher angenommenen Snapshot), (c) nur T-Box: die
+Versionslinie hat ein Element (entfallen, ADR-025).
 
 Seit T-Box 0.2.0 (Entwurf, ADR-024) hat die ECHTE Versionslinie einen
 Uebergang (0.1.0 -> 0.2.0): Jeder Fall auf dem neuen Stand braucht (a) oder
@@ -68,10 +69,27 @@ def _snapshot(fall: Path, gate: str) -> Path:
     return pfad
 
 
-def _verweisen(fall: Path, gate: str, snapshot: Path):
+def _in_der_linie(fall: Path, gate: str) -> dict:
+    """Den Gegenstand in der Linie neben dem Fall abnehmen (Erstabnahme);
+    Rueckgabe: die geltende Spitze."""
+    from tests.test_erstabnahme_linie import _zeichne_in_linie
+
+    ergebnis = _zeichne_in_linie(fall.parent / "linie", gate)
+    assert ergebnis.exit_code == 0, ergebnis.errors
+    spitze, fehler = stand_belegen.geltende_spitze(fall.parent / "linie", gate)
+    assert spitze is not None, fehler
+    return spitze
+
+
+def _verweisen(fall: Path, gate: str):
+    """Weg (b) ueber die Linie — der einzige Weg seit Pruefrunde G (G11):
+    ``verweisen --snapshot`` ist entfallen. Die sieben Tests, die vorher ueber
+    ``--snapshot`` auf den Snapshot eines frueheren Falls verwiesen (sechs
+    hier, einer in ``test_erstabnahme_linie``), verweisen jetzt auf die
+    geltende Abnahme der Linie."""
     return stand_belegen.main([
         "verweisen", "--fall", str(fall), "--repo-root", str(REPO),
-        "--gate", gate, "--snapshot", str(snapshot)])
+        "--gate", gate, "--linie", str(fall.parent / "linie")])
 
 
 def _zeichne_tboxstand(fall: Path, *schluessel_args: str):
@@ -162,22 +180,21 @@ def test_der_lebende_stand_je_gegenstand():
 # --------------------------------------------------------------------------- #
 
 
-def test_kern_keine_aenderung_ueber_den_verweis_auf_einen_frueheren_snapshot(tmp_path):
-    frueher = _fall(tmp_path / "a")
+def test_kern_keine_aenderung_ueber_den_verweis_auf_die_abnahme_der_linie(tmp_path):
     neu = _fall(tmp_path / "b", mit_kernstand=False)
     assert _am4(neu).exit_code != 0
-    verweis = _verweisen(neu, "A-K2", _snapshot(frueher, "A-K2"))
+    snap = _in_der_linie(neu, "A-K2")
+    verweis = _verweisen(neu, "A-K2")
     assert verweis.exit_code == 0, verweis.errors
     am4 = _am4(neu)
     assert am4.exit_code == 0, am4.errors
-    snap = json.loads(_snapshot(frueher, "A-K2").read_text(encoding="utf-8"))
     daten = json.loads((neu / "abgeleitet/kern/verweis.json").read_text(encoding="utf-8"))
     assert set(daten) == sa.VERWEIS_FELDER and daten["snapshot"] == snap
     eintrag = am4.summary["standabnahmen"]["kernstand"]
     assert eintrag["weg"] == sa.KEINE_AENDERUNG
     assert eintrag["anzeige"] == (
         f"keine Aenderung seit Abnahme {snap['snapshot_sha256'][:16]} "
-        f"(Fall fall, entscheide/A-K2-{snap['snapshot_sha256']}.json); "
+        f"(Linie linie, entscheide/A-K2-{snap['snapshot_sha256']}.json); "
         + ka.ANZEIGE_REGRESSION)
     assert not list((neu / "entscheide").glob("A-K2-*.json")), "kein neuer Entscheid"
 
@@ -187,9 +204,9 @@ def test_kern_verweis_auf_einen_anderen_stand_wird_verweigert(tmp_path, monkeypa
     per == gegen den lebenden gehalten.
 
     Mutationsprobe: die Gleichheitspruefung in verweis_fehler entfernen -> rot."""
-    frueher = _fall(tmp_path / "a")
     neu = _fall(tmp_path / "b", mit_kernstand=False)
-    assert _verweisen(neu, "A-K2", _snapshot(frueher, "A-K2")).exit_code == 0
+    _in_der_linie(neu, "A-K2")
+    assert _verweisen(neu, "A-K2").exit_code == 0
     echt = stand_belegen.lebender_stand
 
     def anderer_kern(gate, repo_root):
@@ -214,18 +231,21 @@ def test_kern_verweis_auf_den_snapshot_einer_unberechtigten_rolle_wird_verweiger
     from rechner_pipeline.models.freigabe import freigabe_fuer
     from rechner_pipeline.models.schemas import p9_snapshot_sha256
 
-    frueher = _fall(tmp_path / "a")
     neu = _fall(tmp_path / "b", mit_kernstand=False)
-    snap = json.loads(_snapshot(frueher, "A-K2").read_text(encoding="utf-8"))
+    snap = _in_der_linie(neu, "A-K2")
     rest = {k: v for k, v in snap.items() if k not in ("freigabe", "snapshot_sha256")}
     rest["rolle"] = "mensch/architektur"
     rest["zeichnung"] = {**rest["zeichnung"], "rolle": "mensch/architektur"}
     rest["freigabe"] = freigabe_fuer(
-        rest, (frueher.parent / "p9-architektur.key").read_bytes())
+        rest, (neu.parent / "p9-architektur.key").read_bytes())
     rest["snapshot_sha256"] = p9_snapshot_sha256(rest)
-    fremd = tmp_path / "a-k2-architektur.json"
-    fremd.write_text(json.dumps(rest), encoding="utf-8")
-    assert _verweisen(neu, "A-K2", fremd).exit_code == 0
+    # In der Linie ausgetauscht (wer linie/entscheide/ beschreiben kann): echt
+    # signiert, von einem Schluessel, dessen Rolle A-K2 nicht zeichnet.
+    entscheide = neu.parent / "linie" / "entscheide"
+    (entscheide / f"A-K2-{snap['snapshot_sha256']}.json").unlink()
+    (entscheide / f"A-K2-{rest['snapshot_sha256']}.json").write_text(
+        json.dumps(rest), encoding="utf-8")
+    assert _verweisen(neu, "A-K2").exit_code == 0
     am4 = _am4(neu)
     assert am4.exit_code != 0
     meldung = am4.errors[0]["message"]
@@ -234,28 +254,33 @@ def test_kern_verweis_auf_den_snapshot_einer_unberechtigten_rolle_wird_verweiger
 
 def test_eine_kette_im_fall_geht_jedem_verweis_vor(tmp_path):
     """Eine Ablehnung im Fall laesst sich nicht durch einen Verweis umgehen."""
-    frueher = _fall(tmp_path / "a")
     neu = _fall(tmp_path / "b", mit_kernstand=False)
+    _in_der_linie(neu, "A-K2")
     abgelehnt = gate_entscheid.main([
         "--fall", str(neu), *linie_args(neu), "--gate", "A-K2", "--entscheid", "abgelehnt",
         "--rolle", "agent/rechenkern", "--entscheider", "agent", "--begruendung", "offen",
         "--repo-root", str(REPO)])
     assert abgelehnt.exit_code == 0, abgelehnt.errors
-    assert _verweisen(neu, "A-K2", _snapshot(frueher, "A-K2")).exit_code == 0
+    assert _verweisen(neu, "A-K2").exit_code == 0
     am4 = _am4(neu)
     assert am4.exit_code != 0
     assert "geht jedem Verweis vor" in am4.errors[0]["message"], am4.errors
 
 
 def test_der_verweis_produzent_nimmt_keine_ablehnung_und_kein_fremdes_gate(tmp_path):
-    frueher = _fall(tmp_path / "a")
     neu = _fall(tmp_path / "b", mit_kernstand=False)
-    fremd = _verweisen(neu, "A-O1", _snapshot(frueher, "A-K2"))
-    assert fremd.exit_code != 0 and "gehoert zu 'A-K2'" in fremd.errors[0]["message"]
-    snap = json.loads(_snapshot(frueher, "A-K2").read_text(encoding="utf-8"))
-    falsch = tmp_path / "abgelehnt.json"
-    falsch.write_text(json.dumps({**snap, "entscheid": "abgelehnt"}), encoding="utf-8")
-    abgelehnt = _verweisen(neu, "A-K2", falsch)
+    snap = _in_der_linie(neu, "A-K2")
+    stand = stand_belegen.lebender_stand("A-O1", REPO)
+    fremd = stand_belegen.verweis_fehler(stand_belegen.baue_verweis(snap),
+                                         sa.gegenstand_fuer("A-O1"), stand)
+    assert any("gehoert zu 'A-K2'" in f for f in fremd), fremd
+    linie = neu.parent / "linie"
+    abgelehnt = gate_entscheid.main([
+        "--linie", str(linie), "--gate", "A-K2", "--entscheid", "abgelehnt",
+        "--rolle", "mensch/rechenkern", "--entscheider", "r", "--begruendung", "zurueck",
+        "--repo-root", str(REPO), *annahme_args(linie, fuer="A-K2")])
+    assert abgelehnt.exit_code == 0, abgelehnt.errors
+    abgelehnt = _verweisen(neu, "A-K2")
     assert abgelehnt.exit_code != 0 and "keine Annahme" in abgelehnt.errors[0]["message"]
 
 
@@ -323,14 +348,12 @@ def test_a_m4_verweigert_ein_a_o1_dessen_rollenfeld_nicht_die_rolle_des_schluess
 
 def test_t_box_keine_aenderung_ueber_den_verweis(tmp_path, monkeypatch):
     monkeypatch.setattr(tbox, "TBOX_VERSIONEN", LINIE_MIT_UEBERGANG)
-    frueher = _fall(tmp_path / "a", mit_tboxstand=False)
-    assert _zeichne_tboxstand(frueher).exit_code == 0
     neu = _fall(tmp_path / "b", mit_tboxstand=False)
     assert _am4(neu).exit_code != 0
-    assert _verweisen(neu, "A-O1", _snapshot(frueher, "A-O1")).exit_code == 0
+    snap = _in_der_linie(neu, "A-O1")
+    assert _verweisen(neu, "A-O1").exit_code == 0
     am4 = _am4(neu)
     assert am4.exit_code == 0, am4.errors
-    snap = json.loads(_snapshot(frueher, "A-O1").read_text(encoding="utf-8"))
     eintrag = am4.summary["standabnahmen"]["tboxstand"]
     assert eintrag["anzeige"] == sa.anzeige_keine_aenderung(
         snap["snapshot_sha256"], sa.herkunft(snap))

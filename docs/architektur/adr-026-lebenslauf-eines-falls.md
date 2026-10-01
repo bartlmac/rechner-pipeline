@@ -241,6 +241,16 @@ Abbruchkriterium fuehrt zur VORLAGE des Fallabbruchs fuer
   — der Abbruch nach einer A-M4 geht in einem Haus mit getrennten Funktionen
   nur gemeinsam mit dem Aktuariat. Welches Gate welche Schluessel braucht,
   steht in der Tabelle des Nachtrags Runde G, c.
+  **Fortgeschrieben (Pruefrunde G, G09):** Seit jeder gruendende Leser die
+  Glieder der Ordnungslinie gegen den Vorstand prueft (ADR-025, Nachtrag
+  Pruefrunde G), liegt der Wurzelschluessel nicht nur im Ring jeder Annahme
+  im Fall, sondern auch im Linienbereich (ab dem zweiten Glied) und in den
+  Ringen der Betriebskommandos mit `--linie` (Registrierung, Zugangsprobe,
+  Neuaufsetzen, Bindung des Anfangsbestands). Jeder dieser Aufrufer kann
+  damit pruefen — und, weil HMAC, auch Glieder zeichnen und Faelle
+  beauftragen. Die Pruefung schliesst den Faelscher aus, der `linie/ordnung/`
+  beschreiben kann, ohne den Schluessel zu halten; gegen einen Halter des
+  Schluessels schuetzt sie nicht.
 * **Betrieb:** Er rechnet den Auftrag nicht nach. Er gruendet auf A-M4 und
   A-B2, die ohne geltenden Auftrag nicht zeichenbar sind und ihn signiert
   nennen; einen abgebrochenen Fall registriert er nicht, weil der Abbruch

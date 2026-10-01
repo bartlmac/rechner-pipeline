@@ -406,7 +406,11 @@ bisher, auch im Linienbereich und als Wurzelrolle; nichts Neues.
 
 Je Rolle "ansehen, zeichnen" — mit dem Schluessel der Rolle (64 Byte, 0600,
 ausserhalb des Repos), der Zeichnungsordnung ausserhalb des Linienbereichs
-und bei Schluesselklasse `simulation` dem Mandat.
+und bei Schluesselklasse `simulation` dem Mandat. Hat die Linie mehr als ein
+Glied, steht vor dem zeichnenden Schluessel auch der des Vorstands im Ring
+(`--freigabe-schluessel <vorstand.key>`): Jede Annahme liest die Linie mit
+ihm (Nachtrag Pruefrunde G). `--repo-root` ist der Baum des Pakets, das
+rechnet (Nachtrag Pruefrunde G).
 
 1. **Schluessel des Vorstands anlegen** (wie die anderen):
    `head -c 64 /dev/urandom > <schluessel>/vorstand.key && chmod 600
@@ -456,7 +460,10 @@ und bei Schluesselklasse `simulation` dem Mandat.
 9. **Eine Ordnungsaenderung spaeter:** `... stand_belegen ordnung --linie
    linie --ordnung <neue ordnung> --vorgaenger <glied_sha256 der Spitze>
    --vorstand-schluessel <vorstand.key>`; ansehen, was sich aendert:
-   `linie/abgeleitet/ordnung/linie.md`.
+   `linie/abgeleitet/ordnung/linie.md`. Nach einem Wechsel des
+   Vorstandsschluessels werden der alte UND der neue genannt
+   (`--vorstand-schluessel <alt.key> --vorstand-schluessel <neu.key>`, der
+   zuletzt genannte zeichnet): Der Produzent liest die Linie mit beiden.
 
 ## Nachtrag 2026-10-01: Die Linie ist Pflicht
 
@@ -538,13 +545,165 @@ Installation deshalb nicht im Repository, nur ihre Hashes in den Snapshots
 Aussage ueber die Pruefbarkeit, nicht ueber die Datenhygiene. Der Weg, sie
 ihm vorzulegen: das Verzeichnis `linie/ordnung/` (die Glieder, mit den
 Ordnungen im Klartext und ohne Geheimnisse) und `linie/linie.json` als
-Pruefpaket; `models.ordnungslinie.lade_linie` rechnet Hash-Kette, Nummern
-und Aenderungslisten ohne Schluessel nach, die Signaturen der Glieder nur
-mit dem Schluessel des Vorstands im Ring (HMAC); jeder Snapshot der
-Installation laesst sich damit in der Linie lokalisieren.
+Pruefpaket; `models.ordnungslinie.lade_linie_strukturell_zur_anzeige`
+rechnet Hash-Kette, Nummern und Aenderungslisten ohne Schluessel nach,
+`models.ordnungslinie.lade_linie` dazu die Signaturen der Glieder — nur mit
+dem Schluessel des Vorstands im Ring (HMAC; ohne ihn verweigert sie ab dem
+zweiten Glied, Nachtrag Pruefrunde G); jeder Snapshot der Installation
+laesst sich damit in der Linie lokalisieren.
 
 *Verworfen:* **die Linie optional lassen** ("ohne Linie der bisherige Weg,
 benannt"). Benannt ist nicht erzwungen: Jede Lesestelle mit einem Zweig
 ohne Linie macht die Wurzel durch Weglassen abschaltbar, und die Suite
 bezeugte genau diesen Zweig. Dieselbe Abwaegung wie am 2026-09-16 beim
 Manifest.
+
+## Nachtrag 2026-10-01: Pruefrunde G — die Linie wird mit dem Schluessel des Vorstands gelesen, verwiesen wird nur auf die geltende Abnahme, gerechnet wird der Stand des Codes, der rechnet
+
+Befunde der blinden Pruefrunde G (Linse "Abnahme-Beleg"), bestaetigt vom
+Widerleger; gebaut nach den Entscheiden des Maintainers.
+
+**1. Die Glieder der Linie werden gegen den Vorstand geprueft (G09, hoch).**
+`lade_linie` pruefte die Signatur eines Glieds nur, wenn ihr ein Ring
+uebergeben wurde — und kein gruendender Leser uebergab einen, auch das Gate
+nicht, das den Schluessel des Vorstands fuer jede Annahme im Fall ohnehin
+haelt (der Fallauftrag wird damit geprueft, ADR-026). Gemessen: Ein Glied
+mit richtigem Fingerabdruck und geratener Signatur wurde Spitze; darunter
+vergab sich ein fremder Schluessel die Rolle `mensch/rechenkern`, zeichnete
+A-K2, und A-M4 nahm an. Abschnitt 7 ("ohne diese Zeichnung ist ein Glied
+nicht anhaengbar") galt nur fuer den Produzenten, nicht fuer die Leser.
+
+*Regel.* Keine Annahme, kein Verweis, keine Registrierung und keine Bindung
+gruendet auf einer Linie, deren Glieder nicht gegen den Schluessel des
+Vorstands geprueft sind. `models.ordnungslinie.lade_linie` nimmt den Ring als
+Pflichtargument ohne Default (`ring=None` ist ein Fehler); jedes Glied nach
+dem ersten wird gegen den Schluessel geprueft, den die Spitze davor dem
+Vorstand gibt; liegt er nicht im Ring, ist die Linie nicht verwendbar — eine
+benannte Verweigerung mit Ausweg, kein "ohne Ring nur Form". Wer die Linie
+nur ZEIGT, liest sie ueber den benannten zweiten Einstieg
+`lade_linie_strukturell_zur_anzeige` (Form, Kette, gerechnete
+Aenderungslisten, Fingerabdruck und Klasse der Zeichnung — keine Signatur);
+darauf gruendet nichts. Die gruendenden Leser sind gemessen und gehalten
+(`tests/test_linie_pflicht.py`, `==`): das Gate (jede Annahme), der
+Produzent eines Glieds (`stand_belegen ordnung`), der Zeichner des Betriebs
+(Registrierung, Zugangsprobe, Neuaufsetzen) und die Bindung des
+Anfangsbestands. Den strukturellen Einstieg nutzt nur die Ablehnung im Gate:
+Sie zeichnet nichts und gruendet nichts, die Linie steht nur in ihrer
+Ausgabe.
+
+*Was das fuer die Wurzel heisst.* Eine Linie mit genau einem Glied hat nichts
+zu pruefen: Die Wurzel ist unsigniert (Abschnitt 7), ihr Inhalt ist durch die
+Glied-Pins der Zeichnungen gebunden, nicht durch eine Signatur. Solange die
+Linie nur die Wurzel traegt, braucht kein Leser den Vorstandsschluessel —
+und eine ausgetauschte Wurzel faellt weiter nur ueber die Pins auf. Ab dem
+zweiten Glied ist der Schluessel Pflicht, auch im Linienbereich.
+
+*Ein Glied, das den Vorstand selbst austauscht* (vom Pruefer abgeleitet,
+nicht gemessen; jetzt gemessen): Das gefaelschte Glied gibt der Wurzelrolle
+einen fremden Schluessel, jedes Glied danach zeichnet der Faelscher "richtig".
+Gefangen wird es am gefaelschten Glied — seine Signatur prueft der Schluessel
+des alten Vorstands, den der Ring traegt; den Faelscherschluessel im Ring zu
+halten, aendert daran nichts. Nach einem echten Schluesselwechsel braucht der
+Leser beide Schluessel: den alten fuer die Glieder bis zum Wechsel, den
+neuen danach (`stand_belegen ordnung --vorstand-schluessel` ist dafuer
+wiederholbar, der zuletzt genannte zeichnet).
+
+*Zufuehrung.* Auf demselben Weg wie jeder andere Schluessel, den ein Leser
+zum Pruefen braucht: als weiterer `--freigabe-schluessel` — im Gate (im Fall
+lag er schon im Ring, im Linienbereich wird er Pflicht, sobald die Linie mehr
+als ein Glied hat) und in den vier Kommandos des Betriebs mit `--linie`
+(Registrierung, Zugangsprobe, Neuaufsetzen, `anfangsbestand binden`). Der
+Nachtlauf braucht die Linie nicht (`tageslauf.KOMMANDOS_OHNE_LINIE`) und
+bleibt ohne Vorstandsschluessel. Bedienfolge: `deploy/plv/README.md`.
+
+*Verworfen:* **die Signatur nur pruefen, wenn der Schluessel zufaellig im
+Ring liegt** (der Stand vorher) — ein Default, der beim Weglassen still auf
+"nur Form" faellt, ist das Loch vom 2026-09-16 noch einmal. **Ein eigener
+Schalter `--vorstand-schluessel` an jedem Leser** — zwei Wege fuer dieselbe
+Sache; der Ring ist die eine Stelle, an der ein Leser Schluessel bekommt.
+**Ein asymmetrisches Verfahren fuer die Glieder** (Pruefen ohne
+Zeichenrecht): richtig, aber eine neue Abhaengigkeit und ein eigener ADR;
+bis dahin gilt die Grenze unten.
+
+**Grenze (HMAC), benannt.** Wer die Glieder pruefen kann, haelt den
+Schluessel des Vorstands — und kann damit auch Glieder zeichnen und Faelle
+beauftragen. Die Pruefung schuetzt gegen jeden, der `linie/ordnung/`
+beschreiben kann, ohne den Schluessel zu halten; sie schuetzt nicht gegen
+einen Leser, der ihn haelt. Dieselbe Grenze wie bei A-M4 und den
+Standabnahmen (ADR-018) und beim Fallauftrag (ADR-026), hier mit dem
+Wurzelschluessel: Er liegt jetzt in mehr Ringen als vorher (in jedem Ring des
+Betriebs, der eine Linie mit zwei Gliedern liest). Ein externer Gutachter
+ohne den Schluessel liest die Linie mit dem strukturellen Einstieg und
+bekommt Form, Kette und Fingerabdruecke, nicht die Signaturen
+("Pruefbarkeit von aussen" oben).
+
+**2. Weg (b) verweist nur auf die GELTENDE Abnahme der Linie (G11).** Der
+Verweis wurde auf Echtheit geprueft (Signatur, Rolle, Stand), nicht auf
+Gueltigkeit: Ein Verweis auf eine Erstabnahme, die in der Linie inzwischen
+durch eine Ablehnung (oder eine neuere Annahme) abgeloest ist, trug A-M4;
+`verweisen --snapshot <datei>` nahm jeden frueheren Snapshot, auch den eines
+anderen Falls.
+
+*Regel.* (1) `stand_belegen verweisen --snapshot` entfaellt; der Aufruf
+verweigert sprechend und nennt den Weg (wie die entfallenen Tarifschalter).
+`--linie` ist Pflicht. (2) Das Gate (`standabnahme_pruefen`, Weg b) haelt
+beim Lesen nach, dass der verwiesene Snapshot die geltende, angenommene Spitze
+der Kette seines Gates in der Linie ist, die das Gate bekommt — gelesen mit
+Signaturpruefung, ueber denselben Kettenleser wie jede Kette im Fall. Eine im
+Fall gezeichnete Aenderung (Weg a) gilt fuer den Fall; fuer den naechsten
+Fall wird der Stand in der Linie abgenommen. Dieselbe Invariante
+"Gueltigkeit, nicht nur Echtheit" haelt der Betrieb schon
+(`betrieb.uebernahme`, Pruefrunde T27 Befund 05).
+
+*Verworfen:* **Verweis auf den Snapshot eines frueheren Falls** (der Weg
+`--snapshot`): Seine Herkunftskette ist vom Gate aus nicht pruefbar — das
+Gate bekommt die Linie, nicht den frueheren Fall; ob dort eine Ablehnung oder
+ein Abbruch folgte, sieht es nicht. **Die Kette des frueheren Falls
+mitliefern**: verschoebe die Frage nur (welcher Fall, welche Kette, wer
+haelt sie) und machte den Fall zum Gegenstand fremder Abnahmen.
+
+**3. Der lebende Stand ist der des Codes, der rechnet (G12).** Der lebende
+Stand von Kern (A-K2) und Tarifwerk (A-T1) wurde aus den Dateien unter
+`--repo-root` gerechnet, Commit und `dirty` des Systemstands ebenfalls — das
+Paket, das rechnete, kam ueber `PYTHONPATH` von woanders. Gemessen: Klon mit
+verdoppeltem Stornoabzug ausgefuehrt, `--repo-root` auf das Original, A-M4
+"keine Aenderung seit Abnahme". A-O1 nahm schon das importierte Modul.
+
+*Regel.* EINE Stelle, durch die jeder Pfad muss: `--repo-root` wird in jedem
+Kommando der Schicht gates ueber `gates._provenienz.lebendes_repo` aufgeloest
+(der `type` des Arguments; auch ein Wert aus `--request-json` geht durch ihn).
+Sie verlangt, dass `<repo_root>/src/rechner_pipeline` INHALTSGLEICH mit dem
+ausgefuehrten Paket ist (derselbe Hash wie `quellcode_sha256` im
+Systemstand), sonst Aufruffehler mit beiden Hashes und dem Ausweg. Verlangt
+wird der Inhalt, nicht der Ort — ein nicht editierbar installiertes Paket
+neben seinem Repo bleibt moeglich. Kein Schalter zum Abschalten. Die
+Kommandos sind gemessen und gehalten (`tests/test_repo_root_lebendes_paket.py`,
+`==`); `ontologie.landkarte` und `ontologie.impact` lesen den Baum als
+Gegenstand (eine Karte des Codes, der dort liegt) und weisen keinen Stand
+aus — benannte Ausnahmen.
+
+*Grenze, benannt.* Gehalten wird das Paket. Was der lebende Stand ausserhalb
+des Pakets liest — Configs und Tarifplaene (A-T1), Referenzwerte und
+Grundsatzdokumentation (A-K2) —, liest er weiter aus `--repo-root`.
+
+*Verworfen:* **den lebenden Stand aus dem importierten Paket rechnen statt aus
+`--repo-root`** — fuer Code moeglich, fuer Configs, Referenzwerte und die
+Commit-Angaben nicht; die zwei Quellen fielen nur anders auseinander. **Ein
+Schalter fuer Tests mit fremdem Repo** — eine Regel mit Schalter ist keine;
+die eine Probe, die ein fremdes Repo braucht, bekommt eine inhaltsgleiche
+Kopie des Pakets.
+
+**4. Eine Version, ein Vokabular — auch in A-M4 (G13, Teil 1).** Die Regel
+(ADR-024, dritter Nachtrag) lief nur beim Zeichnen von A-O1, gegen die
+Bereiche DIESES Zeichnens. Unter einer Kopie der Linie ohne Entscheide
+(dieselben Glieder, also lokalisierbar) zeichnete ein Fall A-O1 mit einem
+zweiten Vokabular unter der in der Linie abgenommenen Version, und A-M4 mit
+der echten Linie nahm an. Jetzt ruft `standabnahme_pruefen` die Regel fuer
+A-O1 gegen Fall UND die Linie, die A-M4 bekommt, in beiden Wegen.
+
+**Versionen.** `stand_belegen` 4.0.0 (Major: `verweisen --snapshot` und ein
+fremder `--repo-root` waren gruen). Die Gate-Version P9 bleibt 5.0.0 und das
+Snapshot-Schema 10: Die Gestalt des Snapshots aendert sich nicht, und unter
+5.0.0 ist noch nichts gezeichnet. Die uebrigen Kommandos mit `--repo-root`
+behalten ihre Versionen: Rot wird nur ein Aufruf, dessen Stand nie der des
+rechnenden Codes war.

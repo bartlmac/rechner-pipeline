@@ -256,5 +256,8 @@ Namen des Moduls, zweiklassig (Vokabular oder Regel) und mit `==` gehalten.
 **Benannte Grenzen.** Die Regel liest die Ketten strukturell, ohne
 Signatur: Ein untergeschobener Snapshot kann nur verweigern, nichts
 erlauben. Sie sieht die Bereiche, die sie bekommt (Fall und Linie), keine
-fremden Faelle. Die Vergleichsgrundlage der Sicht (`vorher`) liefert der
+fremden Faelle. Seit Pruefrunde G (G13) haelt auch A-M4 sie in der
+Standabnahme gegen Fall UND die Linie, die A-M4 bekommt (ADR-025, Nachtrag
+Pruefrunde G): Wer A-O1 unter einer Kopie der Linie ohne Entscheide
+zeichnete, kam vorher bis zur Annahme der Migration. Die Vergleichsgrundlage der Sicht (`vorher`) liefert der
 Produzent; das Gate prueft an ihr nur die innere Stimmigkeit.

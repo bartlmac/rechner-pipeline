@@ -42,6 +42,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.gates import stand_belegen as _stand
 from rechner_pipeline.gates._common import (
@@ -283,7 +284,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     a.add_argument("--auftrag", required=True, help="der Auftragstext des Vorstands")
     b = unter.add_parser("abbruch", help="die Vorlage des Fallabbruchs")
     b.add_argument("--fall", required=True)
-    b.add_argument("--repo-root", dest="repo_root", required=True)
+    b.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", required=True)
     b.add_argument("--grund", required=True)
     b.add_argument("--bestand", required=True)
     b.add_argument("--uebergabe", required=True)

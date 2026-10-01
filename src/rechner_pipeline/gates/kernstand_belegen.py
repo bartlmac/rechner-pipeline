@@ -49,6 +49,7 @@ import secrets
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline.gates._common import (
     Exit,
     ToolboxResult,
@@ -428,7 +429,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     ziel.add_argument("--fall", default=None)
     ziel.add_argument("--linie", default=None,
                       help="Linienbereich: Abnahme ausserhalb eines Falls (Erstabnahme, ADR-025)")
-    p.add_argument("--repo-root", dest="repo_root", required=True)
+    p.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", required=True)
     p.add_argument("--von", required=True,
                    help="der zuletzt abgenommene Kernstand (Commit-Angabe); fuer die "
                         "erste Abnahme ausdruecklich anzugeben, es gibt keine Vorgabe")

@@ -45,6 +45,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline.bestand.migrationszugang import (
     MigrationszugangFehler,
     Uebernahme,
@@ -283,7 +284,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             "Schichtbeleg der Uebernahme erzeugen (Korrekturschicht je "
             "Police aus verankerung.parquet). Producer, kein Gate."))
     p.add_argument("--fall", required=True)
-    p.add_argument("--repo-root", dest="repo_root", required=True)
+    p.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", required=True)
     p.add_argument("--generation", required=True,
                    help="Knoten-Id der Tarifgeneration, z. B. klv/tg2015")
     p.add_argument("--uebernahme", default=None,

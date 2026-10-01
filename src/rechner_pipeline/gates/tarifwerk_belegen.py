@@ -39,6 +39,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline.gates._common import Exit, ToolboxResult, build_result, run_command
 from rechner_pipeline.gates._provenienz import (
     GitAngabeFehler,
@@ -272,7 +273,7 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     ziel = p.add_mutually_exclusive_group(required=True)
     ziel.add_argument("--fall", default=None)
     ziel.add_argument("--linie", default=None, help="Linienbereich (Erstabnahme, ADR-025)")
-    p.add_argument("--repo-root", dest="repo_root", required=True)
+    p.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", required=True)
     p.add_argument("--von", required=True,
                    help="der zuletzt abgenommene Stand (Commit-Angabe); fuer die "
                         "Erstabnahme ausdruecklich anzugeben, es gibt keine Vorgabe")

@@ -41,6 +41,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline.quellen.adapters.base import InputAdapter
 from rechner_pipeline.quellen.adapters.excel import ExcelAdapter, ExcelAdapterError
 from rechner_pipeline.models.bundle import InputBundle
@@ -127,7 +128,7 @@ def _build_parser() -> GateArgumentParser:
         description="Extract one source document into the info_from_excel bundle.",
     )
     # Every mergeable flag uses default=None so --request-json can supply it.
-    parser.add_argument("--repo-root", dest="repo_root", default=None)
+    parser.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", default=None)
     parser.add_argument("--input", dest="input", default=None)
     parser.add_argument("--out-dir", dest="out_dir", default=None)
     parser.add_argument(

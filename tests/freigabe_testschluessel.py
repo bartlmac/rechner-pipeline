@@ -30,7 +30,19 @@ import hashlib
 TESTKEY: bytes = hashlib.sha256(b"rechner-pipeline: testschluessel der freigabe").digest()
 BETRIEB_FREIGABEKEY: bytes = hashlib.sha256(
     b"rechner-pipeline: freigabeschluessel mensch/betrieb").digest()
-TESTRING: dict = {hashlib.sha256(k).hexdigest(): k for k in (TESTKEY, BETRIEB_FREIGABEKEY)}
+#: Der Schluessel der Wurzelrolle (Vorstand) der Test-Ordnung des Betriebs —
+#: ohne sie kommt die Ordnung nicht in die Linie (ADR-025).
+VORSTANDKEY: bytes = hashlib.sha256(b"rechner-pipeline: testschluessel des vorstands").digest()
+#: Der Ring des Vorstands allein — fuer Tests, die eine Linie lesen, um auf ihr
+#: zu gruenden (``models.ordnungslinie.lade_linie``, Ring Pflicht seit
+#: Pruefrunde G, G09).
+VORSTANDRING: dict = {hashlib.sha256(VORSTANDKEY).hexdigest(): VORSTANDKEY}
+#: Der Ring der Session: die beiden zeichnenden Rollen UND der Vorstand —
+#: produktiv reicht der Betrieb den Schluessel des Vorstands als weiteren
+#: ``--freigabe-schluessel`` (Pruefrunde G, G09): Die Kommandos mit
+#: ``--linie`` pruefen damit die Glieder der Ordnungslinie.
+TESTRING: dict = {hashlib.sha256(k).hexdigest(): k
+                  for k in (TESTKEY, BETRIEB_FREIGABEKEY, VORSTANDKEY)}
 FREMDER_SCHLUESSEL: bytes = hashlib.sha256(b"ein anderer schluessel").digest()
 
 #: Der Test-Betriebsschluessel (Rolle ``betrieb/tageslauf``, Klasse
@@ -68,9 +80,6 @@ def freigaberollen() -> dict:
     }
 
 
-#: Der Schluessel der Wurzelrolle (Vorstand) der Test-Ordnung des Betriebs —
-#: ohne sie kommt die Ordnung nicht in die Linie (ADR-025).
-VORSTANDKEY: bytes = hashlib.sha256(b"rechner-pipeline: testschluessel des vorstands").digest()
 #: Der Zeitpunkt, zu dem das erste Glied der Test-Linie eingetragen ist —
 #: fest, damit das Glied (und sein Hash) deterministisch ist.
 TESTLINIE_EINGETRAGEN = "2026-10-01T08:00:00+00:00"

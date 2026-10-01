@@ -1183,11 +1183,12 @@ def test_mensch_betrieb_zeichnet_die_zugangsabnahme_mit_ihren_drei_belegen(gatef
     assert ledger["summary"]["snapshot_sha256"] == snapshot["snapshot_sha256"]
     ring = {hashlib.sha256(schluessel["mensch"].read_bytes()).hexdigest(): schluessel["mensch"].read_bytes()}
     from rechner_pipeline.models.ordnungslinie import lade_linie
+    from tests.freigabe_testschluessel import VORSTANDRING
 
     daten, _, verifiziert = ueb.lies_abnahme_snapshot(
         fall, "A-B2", snapshot["snapshot_sha256"], schluesselring=ring,
         ordnung=json.loads(Path(ordnung).read_text(encoding="utf-8")),
-        ordnungslinie=lade_linie(fall.parent / "linie")[0])
+        ordnungslinie=lade_linie(fall.parent / "linie", ring=VORSTANDRING)[0])
     assert verifiziert is True and daten["gate"] == "A-B2"
 
 

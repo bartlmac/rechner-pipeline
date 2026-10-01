@@ -604,10 +604,17 @@ gilt genau einer von zwei Wegen:
 1. **Keine Aenderung** (der Normalfall) — der Stand ist identisch zu dem,
    den die geltende Abnahme der Linie abgenommen hat:
    `python -m rechner_pipeline.gates.stand_belegen verweisen --fall faelle/<fall> --gate A-K2|A-O1|A-T1 --linie linie --repo-root .`
-   legt die Kopie ihrer geltenden Spitze an den festen Ort (mit
-   `--snapshot <datei>` statt `--linie` auf einen frueheren Fall). Kein
-   neuer Entscheid; A-M4 prueft Signatur, Rolle, Klasse und Stand und fuehrt
-   woertlich "keine Aenderung seit Abnahme <snapshot> (Linie ...)".
+   legt die Kopie ihrer geltenden Spitze an den festen Ort. Verwiesen wird
+   NUR auf die geltende Abnahme der Linie (Pruefrunde G): `--snapshot` auf
+   einen frueheren Fall ist entfallen — dessen Herkunftskette kann A-M4 nicht
+   pruefen. Kein neuer Entscheid; A-M4 prueft Signatur, Rolle, Klasse und
+   Stand, haelt nach, dass der Verweis noch die geltende Spitze der Linie
+   ist (eine spaetere Ablehnung oder Annahme dort loest ihn ab — dann neu
+   verweisen oder im Fall abnehmen), und fuehrt woertlich "keine Aenderung
+   seit Abnahme <snapshot> (Linie ...)". Was der Fall selbst aendert (Weg 2),
+   gilt fuer diesen Fall; fuer den naechsten Fall nimmt die Rolle den Stand
+   in der Linie ab. `--repo-root` ist der Baum des Pakets, das rechnet:
+   Jedes Kommando verweigert einen Baum mit anderem Paket.
 2. **Abnahme im Fall** — der Fall erzwingt eine Aenderung (etwa eine
    T-Box-Erweiterung). Kern: Der Rechenkern-Agent legt vor mit
    `python -m rechner_pipeline.gates.kernstand_belegen --fall faelle/<fall> --repo-root . --von <zuletzt abgenommener Kernstand> --begruendung "<Kurzbegruendung>"`
@@ -756,7 +763,10 @@ Eingang, Beleg `abgeleitet/berichte/zugangsprobe.json`; (2) die
 Zugangsabnahme `gate_entscheid --gate A-B2` (zeichnet `mensch/betrieb`;
 `agent/betrieb` legt vor und kann nur ablehnen — hier STOPPST du); (3) die
 Registrierung `python -m rechner_pipeline.betrieb.uebernahme` auf
-derselben, unbewegten Ablage mit denselben Angaben wie die Probe. Eine rote
+derselben, unbewegten Ablage mit denselben Angaben wie die Probe. Probe,
+Zugangsabnahme und Registrierung lesen die Linie (`--linie <linie>`) mit dem
+Schluessel des Vorstands: Er steht als weiterer `--freigabe-schluessel` im
+Ring, sobald die Linie mehr als ein Glied hat (Pruefrunde G). Eine rote
 Probe ist ein Befund fuer den Menschen, kein Auftrag, die Abnahme
 nachzubessern (`deploy/plv/README.md`).
 

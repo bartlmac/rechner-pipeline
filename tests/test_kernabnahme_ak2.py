@@ -332,8 +332,35 @@ def _echte_regression(aenderung: dict, **abweichend) -> dict:
     return daten
 
 
-def test_ein_echter_regressionsbeleg_wird_nach_der_alten_regel_geprueft(tmp_path):
-    """(c) des Auftrags: Stichprobe, Bindung, sauberer Arbeitsbaum."""
+def test_solange_es_kein_werkzeug_gibt_ist_jedes_ergebnis_eine_behauptung(tmp_path):
+    """Pruefrunde G (G10, als Haertung gebaut; Entscheid des Maintainers):
+    Bis zu ihrem Werkzeug ist die Regression eine benannte AUSNAHME, nie
+    "bestanden". Ein handgeschriebener Ergebnis-Beleg — formal stimmig,
+    gebunden, sauberer Arbeitsbaum — hat niemand gefahren; A-K2 nimmt ihn
+    nicht an, sonst verschwaende die Ausnahme aus dem signierten Snapshot,
+    waehrend die Sicht des Pruefers sie weiter zeigt.
+
+    Rot vor dem Fix: ``[]``. Mutationsprobe: die Abfrage der Konstante im
+    Ergebnis-Zweig von ``pruefe_kernregression`` entfernen -> rot."""
+    assert ka.REGRESSION_AUSNAHME_ERLAUBT is True
+    fall, aenderung = _belege(tmp_path)
+    sauber = {**aenderung, "git": {**aenderung["git"], "dirty": "nein"}}
+    pfad = fall / ka.REGRESSION_RELATIV
+    pfad.write_text(json.dumps(_echte_regression(sauber)), encoding="utf-8")
+    fehler = pruefe_kernregression(pfad, fall, aenderung=sauber)
+    assert len(fehler) == 1 and "kein Werkzeug" in fehler[0], fehler
+    assert "Ausnahme" in fehler[0] and "kernstand_belegen" in fehler[0], fehler
+    # Die Ausnahme selbst bleibt die eine angenommene Form.
+    pfad.write_text(json.dumps(kernstand_belegen.regressionsausnahme(aenderung)),
+                    encoding="utf-8")
+    assert pruefe_kernregression(pfad, fall, aenderung=aenderung) == []
+
+
+def test_ein_echter_regressionsbeleg_wird_nach_der_alten_regel_geprueft(tmp_path, monkeypatch):
+    """(c) des Auftrags: Stichprobe, Bindung, sauberer Arbeitsbaum. Der
+    Ergebnis-Zweig gilt erst, wenn die Konstante kippt (es ein Werkzeug
+    gibt) — der Test stellt sie ausdruecklich um (Pruefrunde G, G10)."""
+    monkeypatch.setattr(ka, "REGRESSION_AUSNAHME_ERLAUBT", False)
     fall, aenderung = _belege(tmp_path)
     sauber = {**aenderung, "git": {**aenderung["git"], "dirty": "nein"}}
     pfad = fall / ka.REGRESSION_RELATIV
@@ -526,22 +553,40 @@ def test_der_aenderungsbeleg_faengt_die_naheliegenden_faelschungen(
     assert any(erwartet in f for f in fehler), fehler
 
 
-def test_ein_von_neben_dem_zweig_wird_nicht_belegt(kernrepo, tmp_path):
+def test_ein_von_neben_dem_zweig_wird_nicht_belegt(tmp_path):
     """Liegt der zuletzt abgenommene Stand nicht im lebenden Zweig, mischte
-    die Differenz fremde Aenderungen hinein — der Produzent verweigert."""
-    _git(kernrepo, "checkout", "-q", "-b", "nebenzweig", "abgenommen")
-    _schreibe(kernrepo / "docs/tarifplaene/klv.md", "# KLV neben\n")
-    _git(kernrepo, "commit", "-q", "-am", "docs: daneben")
-    _git(kernrepo, "tag", "daneben")
-    _git(kernrepo, "checkout", "-q", "main")
+    die Differenz fremde Aenderungen hinein — der Produzent verweigert.
+
+    Seit Pruefrunde G (G12) nimmt das Kommando nur einen ``--repo-root``, der
+    das ausgefuehrte Paket traegt: Das Repo dieser Probe traegt deshalb eine
+    inhaltsgleiche Kopie des Pakets (die Aenderungen liegen neben dem Kern)."""
+    import shutil
+
+    repo = tmp_path / "repo"
+    shutil.copytree(SRC, repo / "src" / "rechner_pipeline",
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    _schreibe(repo / ka.KERN_REFERENZWERTE / "referenz_a.json", "{}\n")
+    _schreibe(repo / "docs/mathematik/grundsatzdokumentation.md", "# Grundsatz\n")
+    _schreibe(repo / "docs/tarifplaene/klv.md", "# KLV\n")
+    _git(repo.parent, "init", "-q", "-b", "main", str(repo))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "feat: Ausgangsstand")
+    _git(repo, "tag", "abgenommen")
+    _git(repo, "checkout", "-q", "-b", "nebenzweig", "abgenommen")
+    _schreibe(repo / "docs/tarifplaene/klv.md", "# KLV neben\n")
+    _git(repo, "commit", "-q", "-am", "docs: daneben")
+    _git(repo, "tag", "daneben")
+    _git(repo, "checkout", "-q", "main")
+    _schreibe(repo / "docs/mathematik/grundsatzdokumentation.md", "# Grundsatz, weiter\n")
+    _git(repo, "commit", "-q", "-am", "docs: weiter")
     fall = tmp_path / "fall"
     fall.mkdir()
     (fall / "eingang.json").write_text("{}", encoding="utf-8")
     ergebnis = kernstand_belegen.main([
-        "--fall", str(fall), "--repo-root", str(kernrepo), "--von", "daneben",
+        "--fall", str(fall), "--repo-root", str(repo), "--von", "daneben",
         "--begruendung", "Probe"])
     assert ergebnis.exit_code != 0
-    assert "kein Vorfahre" in ergebnis.errors[0]["message"]
+    assert "kein Vorfahre" in ergebnis.errors[0]["message"], ergebnis.errors
 
 
 def test_eine_von_angabe_wird_nie_eine_option(kernrepo):

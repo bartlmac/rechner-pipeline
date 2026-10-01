@@ -331,7 +331,7 @@ def _lies_soll(fall: Path, ordnung: dict, tmp_path: Path):
                              expected_columns=STAMM_NAMES)
     identitaet = {int(p): int(p) for p in bestand["police_id"]}
     return zpb.lies_soll(fall, STICHTAG, identitaet, am4_snapshot_sha256=sha, ordnung=ordnung,
-                         ordnungslinie=lade_linie(linie)[0])
+                         ordnungslinie=lade_linie(linie, ring=TESTRING)[0])
 
 
 @pytest.mark.parametrize("gate", ("A-M1", "A-M4"))
@@ -390,7 +390,7 @@ def _gate_unter(fall: Path, pfad: Path) -> Path:
     from tests.zugangsabnahme_testhelfer import abnahmen_aus_fall, probenbeleg
 
     auftrag_args(fall, pfad)
-    spitze = lade_linie(fall.parent / "linie")[0][-1]
+    spitze = lade_linie(fall.parent / "linie", ring=TESTRING)[0][-1]
     _unter_glied(fall, {"ordnung_sha256": spitze["ordnung_sha256"],
                         "ordnungsglied_sha256": spitze["glied_sha256"]})
     (am4,) = [json.loads(p.read_text(encoding="utf-8"))
@@ -762,8 +762,12 @@ REGEL_AUFRUFE = Counter({
 #: Grund: Der Fallabbruch liest die A-M4-Kette ein zweites Mal, um eine
 #: geltende Migrationsabnahme zu ERKENNEN und den Abbruch zu VERWEIGERN — er
 #: gruendet nichts auf ihr, die Lesung kann nur sperren (ADR-026).
+#: ``gate``: die Kette der LINIE, auf die ein Verweis (Weg b) zeigt — er
+#: traegt nur ihre geltende Spitze (Pruefrunde G, G11; ``_verweis_gilt_fehler``),
+#: gelesen ueber denselben Kettenleser mit Signaturpruefung.
 GATE_KETTENLESER = Counter({"'A-M4'": 2, "'A-M1'": 1, "'A-Q1'": 1, "gegenstand.gate": 1,
-                            "abnahme_gate": 1, "args.gate": 1, "AUFTRAG_GATE": 1})
+                            "abnahme_gate": 1, "args.gate": 1, "AUFTRAG_GATE": 1,
+                            "gate": 1})
 
 
 def _regel_und_ketten(quelle: str, datei: str):

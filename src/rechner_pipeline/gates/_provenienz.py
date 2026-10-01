@@ -269,9 +269,71 @@ def zweig_ist_aktuell(vergleich: Mapping[str, str]) -> bool:
     return bool(basis) and basis == spitze and basis != "unbekannt"
 
 
+def _ausgefuehrtes_paket() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
 def _quellcode_sha256() -> str:
     """SHA-256 des ausfuehrbaren Paketstands, pfad- und laengengetrennt."""
-    paket = Path(__file__).resolve().parents[1]
+    return paket_sha256(_ausgefuehrtes_paket())
+
+
+#: Wo im Baum unter ``--repo-root`` das Paket liegt (src-Layout).
+PAKET_IM_REPO = ("src", "rechner_pipeline")
+
+
+def lebendes_repo(wert: object) -> Path:
+    """``--repo-root`` aufloesen — und verlangen, dass der Baum das Paket
+    traegt, das gerade rechnet (Pruefrunde G, G12).
+
+    Der ``type`` jedes ``--repo-root`` der Schicht gates (Ratsche in
+    ``tests/test_repo_root_lebendes_paket.py``): EINE Stelle, durch die jeder
+    Pfad muss. Befund: Den lebenden Stand von Kern (A-K2) und Tarifwerk
+    (A-T1) rechnete das System aus den Dateien unter ``--repo-root``, Commit
+    und ``dirty`` des Systemstands ebenfalls — das Paket, das rechnet, kam
+    ueber ``PYTHONPATH`` von woanders. A-M4 meldete "keine Aenderung seit
+    Abnahme", waehrend ein anderer Kern rechnete. A-O1 nahm schon das
+    importierte Modul.
+
+    Verlangt wird INHALTSGLEICHHEIT, nicht derselbe Ort: derselbe Hash wie
+    der Systemstand (``_quellcode_sha256``) ueber ``<repo_root>/src/
+    rechner_pipeline``. Ein nicht editierbar installiertes Paket neben
+    seinem Repo bleibt moeglich. Kein Schalter zum Abschalten.
+
+    Grenze, benannt: Gehalten wird das Paket (``.py``, ``.xml``). Was der
+    lebende Stand ausserhalb des Pakets liest — Configs und Tarifplaene des
+    Tarifwerks (A-T1), Referenzwerte und Grundsatzdokumentation des
+    Kernstands —, liest er aus ``--repo-root``; dass der rechnende Code
+    dieselben Dateien liest, sichert die Inhaltsgleichheit des Pakets nicht.
+
+    ``argparse.ArgumentTypeError`` mit beiden Hashes und dem Ausweg — der
+    Parser macht daraus den Aufruffehler (Exit 2).
+    """
+    import argparse
+
+    repo = Path(str(wert)).resolve()
+    paket = repo.joinpath(*PAKET_IM_REPO)
+    if not (paket / "__init__.py").is_file():
+        raise argparse.ArgumentTypeError(
+            f"{repo} traegt kein Paket unter {'/'.join(PAKET_IM_REPO)} — der lebende Stand "
+            "ist der des Codes, der rechnet (Pruefrunde G). Ausweg: --repo-root auf den Baum "
+            f"des ausgefuehrten Pakets ({_ausgefuehrtes_paket().parents[1]})")
+    soll, ist = _quellcode_sha256(), paket_sha256(paket)
+    if soll != ist:
+        raise argparse.ArgumentTypeError(
+            f"{repo} ist nicht das ausgefuehrte Paket: unter --repo-root liegt "
+            f"{'/'.join(PAKET_IM_REPO)} mit dem Hash {ist[:16]}, ausgefuehrt wird "
+            f"{_ausgefuehrtes_paket()} mit {soll[:16]} — der lebende Stand (Kern, Tarifwerk, "
+            "Systemstand) waere der eines anderen Codes als dessen, der rechnet (Pruefrunde "
+            "G). Ausweg: --repo-root auf den Baum des ausgefuehrten Pakets "
+            f"({_ausgefuehrtes_paket().parents[1]}), oder PYTHONPATH bzw. die Installation "
+            f"auf {paket.parent}")
+    return repo
+
+
+def paket_sha256(paket: Path) -> str:
+    """SHA-256 eines Paketbaums, pfad- und laengengetrennt (``.py``, ``.xml``)."""
+    paket = Path(paket)
     dateien = sorted(
         pfad for pfad in paket.rglob("*")
         if pfad.is_file() and pfad.suffix in {".py", ".xml"}
