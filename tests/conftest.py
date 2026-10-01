@@ -119,6 +119,38 @@ def pytest_configure(config) -> None:
             "markers", f"{name}: abgeleitete Testgruppe (tests/conftest.py)")
 
 
+def pytest_sessionstart(session) -> None:
+    """Den Baumwaechter starten — im Steuerprozess, nicht je xdist-Worker."""
+    if hasattr(session.config, "workerinput"):
+        return
+    from tests.baumwaechter import Baumwaechter
+
+    waechter = Baumwaechter(TESTS.parent)
+    waechter.start()
+    session.config._baumwaechter = waechter
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session, exitstatus) -> None:
+    """Hat sich der Baum waehrend des Laufs veraendert, ist der Lauf rot."""
+    waechter = getattr(session.config, "_baumwaechter", None)
+    if waechter is None:
+        return
+    from tests.baumwaechter import urteil
+
+    waechter.stop()
+    session.exitstatus = urteil(waechter, int(session.exitstatus))
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
+    """Der Waechter sagt in JEDEM Lauf, ob er geprueft hat und was er sah."""
+    waechter = getattr(config, "_baumwaechter", None)
+    if waechter is None:
+        return
+    for zeile in waechter.bericht():
+        terminalreporter.write_line(zeile, red=bool(waechter.funde))
+
+
 def pytest_collection_modifyitems(config, items) -> None:
     """Jedem Test die Marker seines Moduls geben."""
     je_datei: dict = {}

@@ -101,6 +101,11 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   seven minutes instead of twenty; `-n 12 --dist loadfile` gives one
   test FILE to one worker, so the module-scoped fixtures stay intact.
   Plain `python -m pytest` still works and is what CI uses.
+  Do not touch the working tree while a suite runs in it, and never let
+  a test write inside the repository (use `tmp_path`): every run is
+  watched (`tests/baumwaechter.py`), and a tree that changes during the
+  run turns the run red even if every test passed — read the
+  `Baumwaechter` line above the result line.
   Partial runs while building (never as a substitute for the full suite
   before a commit):
   `python -m pytest -m "not langsam"` — everything except the measured
