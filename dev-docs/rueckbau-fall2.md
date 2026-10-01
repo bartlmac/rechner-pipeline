@@ -87,7 +87,11 @@ Generation in der Config. Zwei Wege:
 1. Der Rechenkern-Agent baut sie im Fall unter Entwicklermandat neu; der
    Aenderungsbeleg von A-K2 zeigt die Kern-Aenderung. Schlussprobe: `git diff
    <stand-vor-dem-rueckbau> -- src/rechner_pipeline/kern configs` ist bis auf
-   Versionsprotokoll und Versionsnummer leer.
+   Versionsprotokoll und Versionsnummer leer. Nicht vorab gemessen: ob der
+   Tafelimport den entfernten Block byte-gleich wiederherstellt (Reihenfolge,
+   Provenienz-Kommentar) und ob ein neu gebauter Kernzweig zeichengleich
+   ausfaellt. Weicht etwas ab, zeigt es diese Probe; massgeblich ist dann,
+   dass die ausgesetzten Tests wieder laufen.
 2. Rueckfall, wenn die Vorfuehrung nicht warten kann: `git revert
    <rueckbau-commit>` stellt Code, Tafeln, Config und Tests in einem Schritt
    her.
