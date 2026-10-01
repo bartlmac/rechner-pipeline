@@ -27,20 +27,27 @@ Verankerungszeitpunkt, Zustand und der gelieferte Wert. Was das
 abgebende Unternehmen in den Jahren davor gebucht hat, sieht dieses
 Modul nicht und braucht es nicht.
 
-**Offener Punkt (Block F, Nachbesserung; Entscheid des Maintainers
-steht aus).** Der Migrationszugang leitet keine gelieferte
-Alt-TEILKUENDIGUNG im ausfinanzierten Nachlauf ab (``t <= Jahr < n``):
-:func:`leite_ursprungssumme_ab` bricht dort mit "Absetzungsjahr liegt
-nicht in der Beitragszahlungsdauer" ab (``0 < jahr < t``). Die
-Fuehrung kennt diesen Fall seit dem Entscheid 2026-09-30 — die
-Simulationsengine zieht die Teilkuendigung nach ``t`` und Kern und
-Datenmodell tragen sie (klv.md 7.1) —, die RUECKRECHNUNG einer
-gelieferten Alt-Teilkuendigung dort aber nicht. Bewusst NICHT gebaut:
-Ob und wie sie ableitbar sein soll (Teilkuendigung hat nach ``t``
-keine Beitragsgleichung; die Ursprungssumme folgt allein aus der
-ERLSUMME), entscheidet der Maintainer. Bis dahin scheitert die
-Ableitung fuer einen solchen Vertrag fail-fast mit der genannten
-Meldung, sie rechnet nicht still anders.
+**Alt-Absetzung nach dem Beitragsende.** Der Zugang integriert einen
+gelieferten Vertrag, der im ausfinanzierten Nachlauf (``t <= Jahr < n``)
+abgesetzt wurde, in jeder Generation (Entscheid des Maintainers
+2026-10-01: "ein Problem des Ziels, nicht der Migration"). Beitrags-
+herabsetzung und Teilkuendigung sind zwei Geschaeftsvorfaelle (ADR-023);
+eine gelieferte Absetzung nach dem Beitragsende war eine Teilkuendigung
+(Annahme A2, klv.md 7.2, ``alt_absetzung_ist_teilkuendigung``): Der
+gelieferte Vertrag ist
+der ZUSTANDSLOSE Vertrag mit der gelieferten Summe ERLSUMME = f x
+Ursprungssumme und wird ohne Anfangszustand uebernommen und gefuehrt
+(``migrationssuite_lauf.anfangszustaende_je_police``), wie jede
+Teilkuendigung. Die Ursprungssumme selbst ist aus der Lieferung nicht
+bestimmbar — eine Gleichung, zwei Unbekannte, und nach t keine
+Beitragsgleichung (JBRUTTO 0). Wo sie gefragt ist, bestimmt sie der
+fortgefuehrte Anteil als registrierte AUSKUNFT (``--red-anteile-datei``,
+POLNR;GEVO;DATUM;ANTEIL[;BEZUG], gelesen von ``lies_auskuenfte``):
+:func:`leite_ursprungssumme_ab` rechnet dann VS = ERLSUMME / f, und
+:func:`leite_absetzung_ab` verweigert ohne Auskunft mit genau diesem
+Ausweg (:func:`auskunft_meldung`). In einer Ereignis-SERIE (Erhoehungen
+vor t, Herabsetzung danach) ist die Auskunft bestimmend: f verteilt die
+gelieferte Summe auf Grund und Scheiben (:func:`leite_serie_aus_satz_ab`).
 
 Knoten: klv
 """
@@ -65,7 +72,10 @@ from rechner_pipeline.kern.korrekturschicht import (
     form_proportional_zur_basis,
 )
 from rechner_pipeline.kern.rechenkern import Rechenkern
-from rechner_pipeline.models.bestand import LEDGER_SPALTEN
+from rechner_pipeline.models.bestand import (
+    LEDGER_SPALTEN,
+    alt_absetzung_ist_teilkuendigung,
+)
 
 #: Ereigniskennung des Migrationszugangs im Bewegungsjournal.
 MIG = "MIG"
@@ -562,6 +572,7 @@ def leite_absetzung_ab(
     ein erfundenes (VS, f) zurueck.
     """
     from rechner_pipeline.kern.beitragsreduktion import (
+        TEILKUENDIGUNG,
         VERFAHREN,
         BeitragsreduktionFehler,
         reduziere,
@@ -572,6 +583,15 @@ def leite_absetzung_ab(
             f"unbekanntes Verfahren {verfahren!r} — bekannt sind "
             f"{list(VERFAHREN)}"
         )
+    t_vertrag = int(dict(modellpunkt_felder)["t"])
+    if alt_absetzung_ist_teilkuendigung(verfahren, jahr, t_vertrag):
+        # Unter der Teilkuendigung (Annahme A2: nach dem Beitragsende jede
+        # gelieferte Absetzung)
+        # tragen ERLSUMME = f x VS und JBRUTTO = f x Beitrag(VS) nur das
+        # Produkt f x VS — f ist aus der Lieferung nicht bestimmbar. Vorher
+        # lief die Teilkuendigung in die Umwandlungs-Zweige und scheiterte
+        # dort mit einer Meldung, die den Ausweg nicht nannte.
+        raise MigrationszugangFehler(auskunft_meldung(jahr, t_vertrag))
     if jbrutto <= 0.0:
         raise MigrationszugangFehler(
             "JBRUTTO <= 0: die Beitragszahlung ist am Stichtag beendet, "
@@ -785,7 +805,23 @@ def kalibriere_absetzung_aus_dk(
     Geschaeftsvorfaelle. Das ist dieselbe Kohorten-Logik wie beim
     Migrationszugang (Grundsatzdokumentation 9.12): Wer den Anker
     setzt, misst nicht mehr am Anker.
+
+    Unter der Teilkuendigung (Annahme A2: nach dem Beitragsende jede
+    gelieferte Absetzung) gibt es nichts zu kalibrieren: Der Vertrag danach ist der
+    zustandslose mit ERLSUMME, sein Wert haengt vom Anteil nicht ab.
     """
+    from rechner_pipeline.kern.beitragsreduktion import (
+        TEILKUENDIGUNG,
+    )
+
+    t_vertrag = int(dict(modellpunkt_felder)["t"])
+    if alt_absetzung_ist_teilkuendigung(verfahren, jahr, t_vertrag):
+        raise MigrationszugangFehler(
+            "Kalibrierung nicht durchfuehrbar: "
+            + auskunft_meldung(jahr, t_vertrag)
+            + " (der Wert des zustandslosen Vertrags haengt vom Anteil "
+            "nicht ab, der Ankerwert bestimmt ihn also nicht)")
+
     def wert(anteil: float) -> Tuple[float, float]:
         vs = leite_ursprungssumme_ab(
             modellpunkt_felder, jahr=jahr, erlsumme=erlsumme,
@@ -852,9 +888,8 @@ def leite_ursprungssumme_ab(
     voraus (Waechter) und liefern am Klemmrand sonst keine Loesung.
     """
     from rechner_pipeline.kern.beitragsreduktion import (
+        TEILKUENDIGUNG,
         VERFAHREN,
-        BeitragsreduktionFehler,
-        reduziere,
     )
 
     if verfahren not in VERFAHREN:
@@ -872,11 +907,25 @@ def leite_ursprungssumme_ab(
 
     einheit = ModelPoint(**{**dict(modellpunkt_felder), "sum_insured": 1.0})
     kern_einheit = Rechenkern(einheit)
-    if not 0 < jahr < einheit.t:
+    if not 0 < jahr < einheit.n:
         raise MigrationszugangFehler(
-            f"Absetzungsjahr {jahr} liegt nicht in der Beitragszahlungs"
-            f"dauer (0 < jahr < t = {einheit.t})"
+            f"Absetzungsjahr {jahr} liegt nicht in der Versicherungs"
+            f"dauer (0 < jahr < n = {einheit.n})"
         )
+    kandidaten: List[Tuple[str, float]] = []
+    if alt_absetzung_ist_teilkuendigung(verfahren, jahr, einheit.t):
+        # Teilkuendigung (Annahme A2: nach dem Beitragsende ist jede
+        # gelieferte Absetzung eine; davor, wenn die Quelle so rechnet):
+        # Der Anteil (1-f) der Grundversicherung ist gekuendigt und
+        # ausgezahlt, nichts wurde umgewandelt — ERLSUMME = f x VS, mit
+        # bekanntem Anteil also VS = ERLSUMME / f. Die Vorwaertsprobe
+        # rechnet den Vorgang, der geschah (die Teilkuendigung), nicht das
+        # Verfahren der Quelle. Die Umwandlungs-Zweige unten gehoeren zur
+        # Herabsetzung VOR t.
+        kandidaten.append(("teilkuendigung", erlsumme / anteil))
+        return _vorwaerts_ursprungssumme(
+            modellpunkt_felder, kandidaten, jahr=jahr, erlsumme=erlsumme,
+            anteil=anteil, verfahren=TEILKUENDIGUNG)
     zeile = kern_einheit.verlaufszeile(jahr)
     # Umgewandelt wird der Rueckkaufs-Track m (F1 (b), Entscheid
     # 2026-09-30), der Stornoabzug haengt an der Rueckstellung v.
@@ -892,7 +941,6 @@ def leite_ursprungssumme_ab(
         or kern_einheit.produkt.ist_flex_phase(jahr)
     )
 
-    kandidaten: List[Tuple[str, float]] = []
     if flex_oder_null:
         faktor = anteil + m * frei / vbfr
         kandidaten.append(("flex_oder_null", erlsumme / faktor))
@@ -923,6 +971,44 @@ def leite_ursprungssumme_ab(
                     max(einheit.stoab_min, s_satz * vs * (1.0 - v)))
         if stoab >= m * vs:
             kandidaten.append(("klemmrand", vs))
+    return _vorwaerts_ursprungssumme(
+        modellpunkt_felder, kandidaten, jahr=jahr, erlsumme=erlsumme,
+        anteil=anteil, verfahren=verfahren)
+
+
+def auskunft_meldung(jahr: int, t: int) -> str:
+    """Die Verweigerung einer Ableitung, die den fortgefuehrten Anteil
+    braucht und ihn aus der Lieferung nicht bestimmen kann — mit dem
+    Ausweg, der ihn bestimmt (registrierte Auskunft)."""
+    if jahr >= t:
+        lage = (f"nach dem Beitragsende (Jahr >= t = {t}): dort war jede "
+                "gelieferte Absetzung eine Teilkuendigung (Annahme A2, klv.md 7.2)")
+    else:
+        lage = "unter dem Verfahren teilkuendigung"
+    return (
+        f"Herabsetzung im Jahr {jahr} {lage} — ERLSUMME = f x Ursprungssumme "
+        "(und JBRUTTO) bestimmen nur das Produkt, nicht den fortgefuehrten "
+        "Anteil f. Ausweg: den Anteil als registrierte Auskunft der Quelle "
+        "nennen (--red-anteile-datei, POLNR;GEVO;DATUM;ANTEIL[;BEZUG]); mit "
+        "ihm ist die Ursprungssumme ERLSUMME / f bestimmt"
+    )
+
+
+def _vorwaerts_ursprungssumme(
+    modellpunkt_felder: Mapping[str, Any],
+    kandidaten: Sequence[Tuple[str, float]],
+    *,
+    jahr: int,
+    erlsumme: float,
+    anteil: float,
+    verfahren: str,
+) -> float:
+    """Den Kandidaten nehmen, dessen Vorwaertsprobe ueber den Kern die
+    gelieferte Summe trifft — derselbe Weg fuer jedes Verfahren."""
+    from rechner_pipeline.kern.beitragsreduktion import (
+        BeitragsreduktionFehler,
+        reduziere,
+    )
 
     fehler: List[str] = []
     for zweig, vs_alt in kandidaten:
@@ -1194,7 +1280,9 @@ def leite_serie_aus_satz_ab(
                 raise MigrationszugangFehler(
                     f"Absetzung im Jahr {jahr} ohne gueltigen "
                     f"fortgefuehrten Anteil ({anteil!r}) — je Ereignis "
-                    "nachliefern lassen (POLNR;GEVO;DATUM;ANTEIL)"
+                    "nachliefern lassen und als registrierte Auskunft "
+                    "nennen (--red-anteile-datei, POLNR;GEVO;DATUM;ANTEIL"
+                    "[;BEZUG])"
                 )
             grund_einheit *= anteil
             absetzungen.append((jahr, anteil))

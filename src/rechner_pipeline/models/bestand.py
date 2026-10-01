@@ -186,12 +186,12 @@ LEDGER_SPALTEN: Tuple[Tuple[str, str], ...] = (
     # GeVo-Code: meist der resultierende status_code, faellt aber davon ab,
     # wo der GeVo einen ANDEREN Zustand herstellt (INV -> BU, REA -> POL)
     # oder gar keinen (ERH/ZUG).
-    ("ereignis", "object"),          # PEX|STO|TOD|ABL|ERH|ZUG|INV|REA|RED
+    ("ereignis", "object"),          # PEX|STO|TOD|ABL|ERH|ZUG|INV|REA|RED|TKU
     ("vertragsjahr", "int64"),       # booked anniversary (completed years; ZUG: 0)
     ("status_date", "datetime64[ns]"),
     # Bezugsgroesse des Betrags — je Produkt verschieden: KLV fuehrt
     # Versicherungssummen/Rueckkaufswerte, BU die betroffene Jahresrente.
-    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung | VS_herabsetzung | dDK_absorption | RKW_teilkuendigung | VS (ZUG) | BU_Jahresrente
+    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung | VS_herabsetzung | VS_teilkuendigung | dDK_absorption | RKW_teilkuendigung | Kappung_teilkuendigung | VS (ZUG) | BU_Jahresrente
     ("betrag", "float64"),
     # Woher der BETRAG stammt. Im eigenen Bestand ist er immer
     # ``gerechnet`` — der Kern erzeugt ihn, und das ist der Normalfall.
@@ -215,8 +215,17 @@ BETRAG_HERKUNFT = ("geliefert", "gerechnet")
 #: GeVo-Codes des Ledgers. ``kennzahlen.EREIGNIS_REIHENFOLGE`` ist die
 #: Ausgabereihenfolge DERSELBEN Menge (Test haelt beide deckungsgleich).
 EREIGNIS_VALUES: Tuple[str, ...] = (
-    "ZUG", "MIG", "ERH", "RED", "PEX", "INV", "REA", "STO", "TOD", "ABL",
+    "ZUG", "MIG", "ERH", "RED", "TKU", "PEX", "INV", "REA", "STO", "TOD", "ABL",
 )
+#: Die beiden Geschaeftsvorfaelle, die eine Summe eines laufenden Vertrags
+#: senken (Entscheid des Maintainers 2026-10-01, ADR-023): die
+#: BEITRAGSHERABSETZUNG ``RED`` (Beitrag auf f, Umwandlung in beitragsfreie
+#: Summe, keine Zahlung, nur solange ein Beitrag laeuft) und die
+#: TEILKUENDIGUNG ``TKU`` (Summenanteil gekuendigt, Rueckkaufswert
+#: ausgezahlt, in jedem Vertragsjahr vor dem Ablauf). Beide registriert die
+#: Nebentabelle ``reduktionen``; welcher Vorgang es war, sagt dort das
+#: Verfahren (:func:`reduktion_ereignis`) und im Ledger der Code.
+REDUKTION_EREIGNISSE: Tuple[str, ...] = ("RED", "TKU")
 
 #: Welche GeVo einen ZUGANG zum Bestand bilden und welche eine LEISTUNG.
 #: Die Zuordnung ist fachlich und vom Maintainer abgenommen (2026-09-17);
@@ -237,13 +246,13 @@ EREIGNIS_VALUES: Tuple[str, ...] = (
 ZUGANG_EREIGNISSE: Tuple[str, ...] = ("ZUG", "ERH")
 LEISTUNG_EREIGNISSE: Tuple[str, ...] = ("ABL", "STO", "TOD", "INV", "REA")
 #: Vorfaelle, die NUR MIT einer Zahlung eine Leistung sind: Ereignis -> die
-#: Betragsarten, die die Zahlung tragen. Die Herabsetzung als
-#: Teilkuendigung (Bedingungswerk Ziffer 6) zahlt den gekuendigten
-#: Grundanteil aus, die prospektive wandelt nur um — beide buchen ``RED``.
-#: Gezaehlt wird der VORFALL (Police, Ereignis, Wirkungstag), nicht die
-#: Zeile (Pruefrunde T27, Befund 15: die Zaehlung hielt RED pauschal fuer
-#: zahlungsfrei, obwohl der Ledger 7.751 EUR auszahlte).
-LEISTUNG_BEI_ZAHLUNG: Mapping[str, Tuple[str, ...]] = {"RED": ("RKW_teilkuendigung",)}
+#: Betragsarten, die die Zahlung tragen. Die Teilkuendigung (``TKU``) zahlt
+#: den gekuendigten Grundanteil aus; die Beitragsherabsetzung (``RED``)
+#: wandelt nur um und zahlt nie (seit dem Entscheid 2026-10-01 zwei
+#: Vorgaenge mit eigenem Code; vorher buchten beide ``RED``). Gezaehlt wird
+#: der VORFALL (Police, Ereignis, Wirkungstag), nicht die Zeile (Pruefrunde
+#: T27, Befund 15).
+LEISTUNG_BEI_ZAHLUNG: Mapping[str, Tuple[str, ...]] = {"TKU": ("RKW_teilkuendigung",)}
 
 #: GeVo, die WEDER Zugang NOCH Leistung sind — je mit Grund. Hier stehen
 #: nur begruendete Ausnahmen: Eine Liste, die Ausnahmen und Versehen
@@ -254,9 +263,12 @@ LEISTUNG_BEI_ZAHLUNG: Mapping[str, Tuple[str, ...]] = {"RED": ("RKW_teilkuendigu
 WEDER_ZUGANG_NOCH_LEISTUNG: Mapping[str, str] = {
     "PEX": "Beitragsfreistellung wandelt um, sie zahlt nicht aus und "
            "bringt nichts hinzu",
-    "RED": "Herabsetzung senkt die Summe eines laufenden Vertrags; kein "
-           "Zugang. Zahlt sie als Teilkuendigung aus, zaehlt dieser Vorfall "
-           "ueber LEISTUNG_BEI_ZAHLUNG als Leistung; die prospektive nicht",
+    "RED": "Beitragsherabsetzung senkt Beitrag und Summe eines laufenden "
+           "Vertrags und wandelt um; sie zahlt nicht aus und bringt nichts "
+           "hinzu (die Teilkuendigung, die auszahlt, ist TKU)",
+    "TKU": "Teilkuendigung senkt die Summe und zahlt den gekuendigten Anteil "
+           "aus; als Leistung zaehlt der Vorfall ueber LEISTUNG_BEI_ZAHLUNG, "
+           "wenn die Auszahlung positiv ist (eine auf null gekappte zahlt nicht)",
     "MIG": "im Ledger nicht als eigene Art gebucht — ein Migrationszugang "
            "ist ein ZUG mit Quelle 'uebernahme'",
 }
@@ -278,16 +290,18 @@ BETRAG_ART_JE_EREIGNIS: Dict[str, Tuple[str, ...]] = {
     "ZUG": ("VS", "BU_Jahresrente", "BJB"),
     "MIG": ("dDK_uebernahme",),
     "ERH": ("VS_erhoehung", "BJB"),
-    # Zwei Zeilen: die neue Gesamtsumme, und — bei einem uebernommenen
-    # Vertrag — die Korrekturschicht, die in die Neuberechnung eingegangen
-    # ist. Eine Umbuchung ohne Zahlung, wie dDK_uebernahme beim Zugang.
-    # Dritte Zeile bei der TEILKUENDIGUNG (Bedingungswerk Ziffer 6,
-    # Bauauftrag T26-12): die Auszahlung des gekuendigten Grundanteils —
-    # Rueckkaufswert plus absorbierte Schicht. Eine Zahlung, wie RKW.
-    # Vierte Zeile, nur wenn die Auszahlung der Teilkuendigung auf null
-    # gekappt wurde: der gekappte Betrag, positiv, eine Umbuchung zulasten
-    # des Unternehmens — kein Kunde schuldet aus einer Migrationsdifferenz.
-    "RED": ("VS_herabsetzung", "dDK_absorption", "RKW_teilkuendigung",
+    # Beitragsherabsetzung: die neue Gesamtsumme, und — bei einem
+    # uebernommenen Vertrag — die Korrekturschicht, die in die
+    # Neuberechnung eingegangen ist. Eine Umbuchung ohne Zahlung, wie
+    # dDK_uebernahme beim Zugang.
+    "RED": ("VS_herabsetzung", "dDK_absorption"),
+    # Teilkuendigung (eigener Vorfall seit 2026-10-01; Bedingungswerk
+    # Ziffer 6, Bauauftrag T26-12): die neue Gesamtsumme, die absorbierte
+    # Schicht, die Auszahlung des gekuendigten Grundanteils (Rueckkaufswert
+    # plus Schicht, eine Zahlung wie RKW) und — nur wenn die Auszahlung auf
+    # null gekappt wurde — der gekappte Betrag, positiv, eine Umbuchung
+    # zulasten des Unternehmens.
+    "TKU": ("VS_teilkuendigung", "dDK_absorption", "RKW_teilkuendigung",
             "Kappung_teilkuendigung"),
     "PEX": ("VS_bfr", "VS"),
     "INV": ("BU_Jahresrente",),
@@ -298,7 +312,7 @@ BETRAG_ART_JE_EREIGNIS: Dict[str, Tuple[str, ...]] = {
 }
 
 #: Welchen Zustand ein GeVo herstellt (Historienzeile desselben Datums).
-#: ERH, RED, ZUG und MIG stellen keinen her: Sie aendern Summe, Beitrag
+#: ERH, RED, TKU, ZUG und MIG stellen keinen her: Sie aendern Summe, Beitrag
 #: oder Zugehoerigkeit, nicht den Zustand.
 EREIGNIS_ZUSTAND: Dict[str, str] = {
     "PEX": "PEX", "STO": "STO", "TOD": "TOD", "ABL": "ABL",
@@ -323,10 +337,23 @@ ANNAHME_ERZEUGT: Mapping[str, Tuple[str, str]] = {
     "beitragsfreistellung": ("klv", "PEX"),
     "erhoehung": ("klv", "ERH"),
     "herabsetzung": ("klv", "RED"),
+    "teilkuendigung": ("klv", "TKU"),
     "invalidisierung": ("bu", "INV"),
     "reaktivierung": ("bu", "REA"),
     "aktivensterblichkeit": ("bu", "TOD"),
     "invalidensterblichkeit": ("bu", "TOD"),
+}
+
+#: Annahmen, die ihr Ereignis NUR in einer bestimmten Generation zusaetzlich
+#: zu einem zweiten Ereignis ziehen: Annahmenfeld -> (Produkt, Ereignis).
+#: Annahme A1 (klv.md 7.2): Eine Generation mit ``red_verfahren =
+#: teilkuendigung`` kennt keine Beitragsherabsetzung ohne Auszahlung und
+#: fuehrt den Herabsetzungswunsch als Teilkuendigung aus — dort belegt die
+#: Rate ``herabsetzung`` auch eine ``TKU``. Ob die Generation einer Police so
+#: eine ist, sagt der Aufrufer (:func:`unbelegte_ereignisse`, Parameter
+#: ``auch_erzeugt``); die Regel selbst nennt kein Feld und keine Art.
+ANNAHME_AUCH_ERZEUGT: Mapping[str, Tuple[str, str]] = {
+    "herabsetzung": ("klv", "TKU"),
 }
 
 #: (Produkt, Ereignis), das von MEHR als einer Annahme gezogen wird — dort
@@ -453,6 +480,7 @@ def unbelegte_ereignisse(
     annahmen: Any,
     *,
     leistungsbezug: Optional[Any] = None,
+    auch_erzeugt: Optional[Any] = None,
 ) -> Dict[str, List[Tuple[int, int]]]:
     """Gebuchte Fortschreibungszeilen, die ihre Erfahrungsannahme nicht
     erzeugen kann: Annahmenfeld -> [(Police, Vertragsjahr), ...].
@@ -476,6 +504,11 @@ def unbelegte_ereignisse(
     gibt ``ledger_bindung.zustand_vor`` mit), ob die Sterblichkeit des
     Anwaerters oder des Leistungsbeziehers die Rate ist. Ohne Angabe gilt der
     Anwaerter — die Fuehrungsprobe ist ein KLV-Werkzeug.
+
+    ``auch_erzeugt(police) -> bool`` (Annahme A1, klv.md 7.2): Gilt fuer die
+    Generation der Police :data:`ANNAHME_AUCH_ERZEUGT` (der Herabsetzungs-
+    wunsch wird als Teilkuendigung ausgefuehrt), belegt auch dieses Feld die
+    Zeile. Ohne Angabe gilt allein :data:`ANNAHME_ERZEUGT`.
     """
     import pandas as pd
 
@@ -504,6 +537,11 @@ def unbelegte_ereignisse(
         if ereignis_zuordnungsfehler(produkt, art) is not None:
             continue      # ohne Zuordnung: Befund von unzugeordnete_ereignisse
         feld = annahme_fuer_ereignis(produkt, art, im_bezug)
+        if (feld in null_felder and auch_erzeugt is not None
+                and any(f not in null_felder and pe == (produkt, art)
+                        for f, pe in ANNAHME_AUCH_ERZEUGT.items())
+                and auch_erzeugt(pid)):
+            continue      # A1: von einem zweiten Feld belegt
         if feld in null_felder:
             treffer.setdefault(feld, set()).add((pid, int(z.vertragsjahr)))
     return {f: sorted(v) for f, v in treffer.items()}
@@ -1175,6 +1213,39 @@ ZUSTAENDE_TA: Tuple[str, ...] = ("beitragspflichtig", "beitragsfrei")
 #: ``tests/test_models_vokabel_kern.py``, nicht erst vier Schichten
 #: tiefer mit "unbekanntes Verfahren".
 RED_VERFAHREN: Tuple[str, ...] = ("prospektiv", "mit_abzug", "teilkuendigung")
+#: Das Verfahren der Nebentabelle ``reduktionen``, das eine TEILKUENDIGUNG
+#: registriert (Ledger-Code ``TKU``); jedes andere registriert eine
+#: Beitragsherabsetzung (``RED``). Literal aus demselben Grund wie
+#: :data:`RED_VERFAHREN`.
+TEILKUENDIGUNG_VERFAHREN = "teilkuendigung"
+
+
+def reduktion_ereignis(verfahren: str) -> str:
+    """Der Ledger-Code des Vorgangs, den eine Zeile der Nebentabelle
+    ``reduktionen`` registriert: ``TKU`` fuer die Teilkuendigung, ``RED`` fuer
+    die Beitragsherabsetzung (Entscheid des Maintainers 2026-10-01, ADR-023:
+    zwei Geschaeftsvorfaelle). Die EINE Zuordnung fuer P-B1, die
+    Fuehrungsprobe, die Auswertung und den Tagesbetrieb."""
+    return "TKU" if str(verfahren) == TEILKUENDIGUNG_VERFAHREN else "RED"
+
+
+def alt_absetzung_ist_teilkuendigung(
+    quell_verfahren: str, jahr: int, beitragsdauer: int
+) -> bool:
+    """Welcher Vorgang eine GELIEFERTE Alt-Absetzung der Vorgeschichte war
+    (Annahme A2, klv.md 7.2; ADR-023).
+
+    Vor dem Beitragsende sagt es das Verfahren des QUELLsystems (Beleg der
+    Migration, ``--red-verfahren``): ``teilkuendigung`` heisst, die Quelle
+    hat einen Herabsetzungswunsch als Teilkuendigung ausgefuehrt. Nach dem
+    Beitragsende (``jahr >= t``) war sie immer eine Teilkuendigung — es gab
+    keinen Beitrag, den eine Herabsetzung haette senken koennen.
+
+    Das ist KEINE Umdeutung eines Vorgangs des Zielsystems: Das Zielsystem
+    bucht zwei Geschaeftsvorfaelle mit eigenem Code. Diese Regel liest nur,
+    was eine Lieferung mit dem einen Code ``RED`` meint, die die
+    Unterscheidung nicht traegt."""
+    return str(quell_verfahren) == TEILKUENDIGUNG_VERFAHREN or int(jahr) >= int(beitragsdauer)
 #: ``verankerungszustand`` (schichten.parquet): der Startzustand der
 #: Korrekturschicht — ein ERLEBENSzustand des Zustandsmodells, mit dem sie
 #: bewertet wird ("aktiv" fuer Kapitalversicherungen, "aktiv"/"bu" fuer die
@@ -2288,15 +2359,18 @@ def bu_model_point_kwargs(
 def validate_reduktionen(
     stamm: Any, reduktionen: Any, historie: Any = None, horizont: Any = None
 ) -> List[str]:
-    """Herabsetzungen gegen den Stamm pruefen (leer = gueltig).
+    """Herabsetzungen und Teilkuendigungen gegen den Stamm pruefen (leer = gueltig).
 
-    Jede Zeile gehoert zu einem bekannten Vertrag, das Reduktionsjahr
-    liegt in der Beitragszahlungsdauer (bei der Teilkuendigung: in der
-    Versicherungsdauer), das Datum ist dessen Jahrestag, und der fortgefuehrte Anteil
-    liegt echt zwischen 0 und 1: ``1.0`` ist keine Herabsetzung, ``0.0``
-    ist eine Beitragsfreistellung und wird als PEX gefuehrt.
+    Zwei Geschaeftsvorfaelle in einer Tabelle, unterschieden am Verfahren
+    (ADR-023; ``reduktion_ereignis``): Die Beitragsherabsetzung (RED) liegt
+    in der Beitragszahlungsdauer (``0 < Jahr < t``), die Teilkuendigung
+    (TKU, Verfahren ``teilkuendigung``) in der Versicherungsdauer
+    (``0 < Jahr < n``). Jede Zeile gehoert zu einem bekannten Vertrag, das
+    Datum ist der Jahrestag, und der fortgefuehrte Anteil liegt echt
+    zwischen 0 und 1: ``1.0`` ist kein Vorgang, ``0.0`` ist eine
+    Beitragsfreistellung bzw. ein Rueckkauf.
 
-    **Hoechstens EINE Reduktion je Police.** Der Kern traegt den
+    **Hoechstens EIN Vorgang je Police** (Annahme A4, klv.md 7.2). Der Kern traegt den
     herabgesetzten Vertrag als EINEN Vertrag mit geknicktem Verlauf
     (``kern.beitragsreduktion.ReduzierterVertrag``); eine zweite
     Herabsetzung darauf ist nicht definiert. Lieber ein benannter Fehler
@@ -2317,20 +2391,14 @@ def validate_reduktionen(
     Vertrag, der beitragsfrei ist (PEX-Jahr <= Reduktionsjahr, auch ein
     beitragsfrei UEBERNOMMENER), traegt keine Herabsetzung.
 
-    **Ausnahme, bewusst (Fund N6, d2cb348): die Teilkuendigung im
-    beitragsfrei AUSFINANZIERTEN Nachlauf.** Nach dem Ende der
-    Beitragszahlung (``premium_duration`` <= Jahr < ``duration``) ist der
-    Vertrag nicht beitragsfrei GESTELLT (kein PEX): Ziffer 6 kuendigt einen
-    Summenanteil und setzt keinen laufenden Beitrag voraus, der Kern
-    rechnet sie bis zur Versicherungsdauer (Kern 3.4.0), und die Bewertung
-    laeuft durch. Sie bleibt zulaessig; die Herabsetzung auf Beitragsbasis
-    endet dagegen an ``premium_duration``. Die Probe-Invariante (P-B1 und
-    Fuehrungsprobe: 'kein Soll auf einem beitragsfreien Vertrag') haengt
-    deshalb am PEX-Jahr, nicht an ``premium_duration`` — das Soll einer
-    solchen Teilkuendigung wird hergeleitet und gehalten. Die Engine selbst
-    zieht sie nicht (Draw nur bei ``Jahr < premium_duration``): Eine
-    Teilkuendigung jenseits davon ist eine registrierte, keine gefahrene
-    (Pruefer-Befund zu RC03, Nachbesserung der Pruefstrecke).
+    **Der beitragsfrei AUSFINANZIERTE Nachlauf ist kein PEX.** Nach dem
+    Ende der Beitragszahlung (``premium_duration`` <= Jahr < ``duration``)
+    ist der Vertrag nicht beitragsfrei GESTELLT: Dort gibt es die
+    Teilkuendigung, die einen Summenanteil kuendigt und keinen laufenden
+    Beitrag voraussetzt (Entscheid des Maintainers 2026-10-01, klv.md 7.2);
+    Kern, Engine und Bewertung tragen sie bis zur Versicherungsdauer. Die Probe-Invariante (P-B1 und Fuehrungsprobe:
+    'kein Soll auf einem beitragsfreien Vertrag') haengt deshalb am
+    PEX-Jahr, nicht an ``premium_duration``.
 
     **Die Herabsetzung liegt im Lauf** (Runde C, Befund RC02): nach dem
     Bestandszugang des Vertrags (``bestandszugang``; beim eigenen Geschaeft
@@ -2402,21 +2470,21 @@ def validate_reduktionen(
             continue
         t = int(haupt.loc[pid, "premium_duration"])
         n = int(haupt.loc[pid, "duration"])
-        if str(verfahren) == "teilkuendigung":
-            # Ziffer 6 kuendigt einen Summen-Anteil und setzt keinen
-            # laufenden Beitrag voraus (Kern 3.4.0) — die Grenze ist die
-            # Versicherungsdauer, nicht die Beitragszahlungsdauer. Vorher
-            # widersprachen sich Datenmodell und Kern (Fund N6).
+        if reduktion_ereignis(verfahren) == "TKU":
+            # Teilkuendigung (eigener Vorfall, ADR-023): kuendigt einen
+            # Summenanteil und setzt keinen laufenden Beitrag voraus — die
+            # Grenze ist die Versicherungsdauer (Kern 3.4.0, Fund N6).
             if not 0 < jahr < n:
                 errors.append(
-                    f"reduktionen: police {pid}: Reduktionsjahr {jahr} ausserhalb "
-                    f"der Versicherungsdauer (0, {n}) — nach dem Ablauf gibt "
-                    "es nichts mehr zu kuendigen")
+                    f"reduktionen: police {pid}: Teilkuendigung im Jahr {jahr} "
+                    f"ausserhalb der Versicherungsdauer (0, {n}) — nach dem "
+                    "Ablauf gibt es nichts mehr zu kuendigen")
         elif not 0 < jahr < t:
             errors.append(
-                f"reduktionen: police {pid}: Reduktionsjahr {jahr} ausserhalb "
-                f"der Beitragszahlungsdauer (0, {t}) — ohne laufenden Beitrag "
-                "gibt es nichts herabzusetzen")
+                f"reduktionen: police {pid}: Beitragsherabsetzung im Jahr {jahr} "
+                f"ausserhalb der Beitragszahlungsdauer (0, {t}) — ohne laufenden "
+                "Beitrag gibt es nichts herabzusetzen; Ausweg: die Teilkuendigung "
+                "(Verfahren teilkuendigung, Ledger TKU)")
         # Der Wirkungstag ist der Jahrestag des Reduktionsjahres — an nichts
         # anderem haengt die Bewertung (Angriffsrunde 2, Fund N16: zwei
         # Sichten desselben Bestands zum selben Stichtag wichen um 20.880 EUR
@@ -2769,60 +2837,106 @@ def validate_schichten(stamm: Any, schichten: Any, verankerung: Any) -> List[str
 def red_sollbuchungen(
     vs_neu: float, absorbiert: float, auszahlung_rechnerisch: Optional[float],
 ) -> Dict[str, float]:
-    """Die Buchungen, die EINE registrierte Herabsetzung im Ledger haben
-    muss — Betragsart -> Betrag. Die eine Regel fuer P-B1 und die
-    Fuehrungsprobe (Angriffsrunde nach T27: die Probe pruefte nur die
-    Zeilen, die da waren; gestrichene Auszahlungen bestanden sie).
+    """Die Buchungen, die EINE registrierte Herabsetzung oder Teilkuendigung
+    im Ledger haben muss — Betragsart -> Betrag. Die eine Regel fuer P-B1
+    und die Fuehrungsprobe (Angriffsrunde nach T27).
 
-    Die neue Gesamtsumme immer; die absorbierte Korrekturschicht, wenn
-    eine traegt; bei der Teilkuendigung (``auszahlung_rechnerisch`` nicht
-    None) die Auszahlung, auf null gekappt, und die Kappung als eigene
-    Zeile, wenn gekappt wurde — dieselbe Regel wie in der Engine.
+    ``auszahlung_rechnerisch`` None: Beitragsherabsetzung (``RED``) — die
+    neue Gesamtsumme (``VS_herabsetzung``) und, wenn eine traegt, die
+    absorbierte Korrekturschicht. Sonst Teilkuendigung (``TKU``):
+    ``VS_teilkuendigung``, die Schicht, die Auszahlung auf null gekappt und
+    die Kappung als eigene Zeile, wenn gekappt wurde — dieselbe Regel wie in
+    der Engine.
     """
-    aus: Dict[str, float] = {"VS_herabsetzung": vs_neu}
+    if auszahlung_rechnerisch is None:
+        aus: Dict[str, float] = {"VS_herabsetzung": vs_neu}
+        if absorbiert:
+            aus["dDK_absorption"] = absorbiert
+        return aus
+    aus = {"VS_teilkuendigung": vs_neu}
     if absorbiert:
         aus["dDK_absorption"] = absorbiert
-    if auszahlung_rechnerisch is not None:
-        aus["RKW_teilkuendigung"] = max(0.0, auszahlung_rechnerisch)
-        if auszahlung_rechnerisch < 0.0:
-            aus["Kappung_teilkuendigung"] = -auszahlung_rechnerisch
+    aus["RKW_teilkuendigung"] = max(0.0, auszahlung_rechnerisch)
+    if auszahlung_rechnerisch < 0.0:
+        aus["Kappung_teilkuendigung"] = -auszahlung_rechnerisch
     return aus
 
 
 def red_bindung_fehler(
-    pid: int, anteil: float, verfahren: str, soll_verfahren: Optional[str],
-    red_anteil: float, rate: float,
+    pid: int, jahr: int, anteil: float, verfahren: str, *,
+    beitragsdauer: int, generation_verfahren: Optional[str], annahmen: Any,
 ) -> List[str]:
-    """Verfahren und Anteil einer registrierten Herabsetzung gegen das
-    System: das Verfahren steht im Tarifwerk der Generation, der Anteil
-    und die Rate in den Annahmen. Kennen die Annahmen keine Herabsetzung,
-    belegen sie keinen Anteil — dann ist die Herabsetzung unbelegt, nicht
-    frei (Angriffsrunde nach T27: jeder Anteil ging durch).
+    """Vorgang, Verfahren und Anteil einer registrierten Zeile gegen das
+    System — die EINE Regel fuer P-B1 und die Fuehrungsprobe.
 
-    ``rate`` ist die Herabsetzungsrate, mit der die Engine zieht
-    (``annahmen.herabsetzung(0.0)``, Runde C RC05): Eine Config mit
-    Rate 0 kann keine Herabsetzung erzeugt haben, auch wenn ein
-    ``red_anteil`` stehengeblieben ist — vorher galten 151 solche
-    Herabsetzungen als belegt. Kein Default: Wer die Regel ruft, sagt
-    die Rate, sonst faellt eine Wache still aus (wie die Anteilsbindung
-    vor der Angriffsrunde).
+    **Beitragsherabsetzung** (``RED``, Verfahren prospektiv/mit_abzug): Das
+    Verfahren ist das der Generation (Tarifwerk ``red_verfahren``), das Jahr
+    liegt in der Beitragszahlungsdauer, Rate ``annahmen.herabsetzung`` und
+    Anteil ``annahmen.red_anteil`` belegen sie. Eine Generation mit
+    ``red_verfahren = teilkuendigung`` kennt keine Herabsetzung ohne
+    Auszahlung (Annahme A1) — eine ``RED`` dort ist ein Befund.
 
-    Die Bindung Ereignisart -> Rate gilt fuer JEDE Ereignisart (Runde E,
-    Klasse geschlossen): Diese Funktion bindet die REGISTRIERTE Herabsetzung
-    (Tabelle) an ihre Rate; die gebuchten Zeilen aller Ereignisarten bindet
-    ``ledger_bindung.unbelegte_ereignisse`` an ihre Annahme
-    (:data:`ANNAHME_ERZEUGT`).
+    **Teilkuendigung** (``TKU``): moeglich in jeder Generation; belegt durch
+    die Rate ``annahmen.teilkuendigung`` mit dem Anteil ``tk_anteil`` — oder,
+    in einer Generation mit ``red_verfahren = teilkuendigung``, durch einen
+    Herabsetzungswunsch (Rate ``herabsetzung``, Anteil ``red_anteil``, nur
+    solange ein Beitrag laeuft), den diese Generation als Teilkuendigung
+    ausfuehrt (A1).
+
+    Kennen die Annahmen den Vorgang nicht (Rate oder Anteil null), ist die
+    Zeile unbelegt, nicht frei (Runde C RC05, Angriffsrunde nach T27). Kein
+    Default fuer Rate und Anteil: Wer die Regel ruft, gibt die Annahmen.
     """
     fehler: List[str] = []
-    if soll_verfahren is not None and verfahren != soll_verfahren:
+    red_rate = float(annahmen.herabsetzung(0.0))
+    red_anteil = float(getattr(annahmen, "red_anteil", 0.0) or 0.0)
+    tk_rate = float(annahmen.teilkuendigung(0.0))
+    tk_anteil = float(getattr(annahmen, "tk_anteil", 0.0) or 0.0)
+    if reduktion_ereignis(verfahren) == "TKU":
+        quellen = []
+        if tk_rate and tk_anteil:
+            quellen.append(("tk_anteil", tk_anteil))
+        if (generation_verfahren == TEILKUENDIGUNG_VERFAHREN and red_rate
+                and red_anteil and int(jahr) < int(beitragsdauer)):
+            quellen.append(("red_anteil", red_anteil))
+        if not quellen:
+            a1 = (f"; die Generation fuehrt den Herabsetzungswunsch als "
+                  f"Teilkuendigung aus, aber herabsetzung a = {red_rate!r}, "
+                  f"red_anteil = {red_anteil!r}"
+                  + ("" if int(jahr) < int(beitragsdauer)
+                     else " und das Jahr liegt nach dem Beitragsende")
+                  if generation_verfahren == TEILKUENDIGUNG_VERFAHREN else "")
+            fehler.append(
+                f"reduktionen police {pid}: Teilkuendigung mit Anteil {anteil!r}, die "
+                f"Annahmen kennen keine (teilkuendigung a = {tk_rate!r}, tk_anteil = "
+                f"{tk_anteil!r}{a1}) — der Anteil ist unbelegt")
+        elif not any(abs(anteil - a) <= 1e-12 for _, a in quellen):
+            fehler.append(
+                f"reduktionen police {pid}: Anteil {anteil!r} der Teilkuendigung, "
+                "die Annahmen sagen "
+                + " oder ".join(f"{q} = {a!r}" for q, a in quellen))
+        return fehler
+    if generation_verfahren is not None and verfahren != generation_verfahren:
+        if generation_verfahren == TEILKUENDIGUNG_VERFAHREN:
+            fehler.append(
+                f"reduktionen police {pid}: Beitragsherabsetzung mit Verfahren {verfahren!r} in "
+                "einer Generation, die keine Herabsetzung ohne Auszahlung kennt "
+                "(Tarifwerk: red_verfahren = teilkuendigung) — sie fuehrt den Wunsch als "
+                "Teilkuendigung aus (TKU)")
+        else:
+            fehler.append(
+                f"reduktionen police {pid}: Verfahren {verfahren!r}, das Tarifwerk "
+                f"der Generation sagt {generation_verfahren!r}")
+    if int(jahr) >= int(beitragsdauer):
         fehler.append(
-            f"reduktionen police {pid}: Verfahren {verfahren!r}, das Tarifwerk "
-            f"der Generation sagt {soll_verfahren!r}")
+            f"reduktionen police {pid}: Beitragsherabsetzung im Jahr {jahr} nach "
+            f"dem Beitragsende (t = {beitragsdauer}) — es gibt keinen Beitrag; "
+            "Ausweg: die Teilkuendigung (TKU)")
     if not red_anteil:
         fehler.append(
             f"reduktionen police {pid}: Herabsetzung mit Anteil {anteil!r}, die "
             "Annahmen kennen keine (red_anteil = 0) — der Anteil ist unbelegt")
-    elif not rate:
+    elif not red_rate:
         fehler.append(
             f"reduktionen police {pid}: Herabsetzung mit Anteil {anteil!r}, die "
             "Annahmen kennen keine (herabsetzung a = 0, die Rate ist null) — "
@@ -2836,9 +2950,9 @@ def red_bindung_fehler(
 
 def red_vollstaendigkeit_fehler(
     pid: int, jahr: int, eigene: pd.DataFrame, soll_arten: Iterable[str],
-    wirkungstag: pd.Timestamp, *, fremde_arten: bool = True,
+    wirkungstag: pd.Timestamp, *, ereignis: str, fremde_arten: bool = True,
 ) -> List[str]:
-    """Die RED-Zeilen einer Police gegen die Soll-Menge: jede Soll-Art
+    """Die RED- bzw. TKU-Zeilen (``ereignis``) einer Police gegen die Soll-Menge: jede Soll-Art
     genau einmal, am Wirkungstag der Tabelle, und (``fremde_arten``) keine
     Art, die die Herabsetzung nicht erzeugt — P-B1 meldet diese schon als
     unbelegte Buchung und schaltet den Teil ab."""
@@ -2848,16 +2962,16 @@ def red_vollstaendigkeit_fehler(
     falscher_tag = eigene[eigene["status_date"] != wirkungstag]
     if len(falscher_tag):
         fehler.append(
-            f"police {pid} RED Jahr {jahr}: Wirkungstag der Buchung "
+            f"police {pid} {ereignis} Jahr {jahr}: Wirkungstag der Buchung "
             f"{pd.Timestamp(falscher_tag['status_date'].iloc[0]).date()} "
             f"ist nicht der der Reduktionstabelle {pd.Timestamp(wirkungstag).date()}")
     soll_arten = list(soll_arten)
     for art in soll_arten:
         n = int((eigene["betrag_art"] == art).sum())
         if n != 1:
-            fehler.append(f"police {pid} RED Jahr {jahr}: {art} "
+            fehler.append(f"police {pid} {ereignis} Jahr {jahr}: {art} "
                           + ("fehlt" if n == 0 else f"{n}-mal gebucht"))
     fremd = sorted(set(str(a) for a in eigene["betrag_art"]) - set(soll_arten))
     if fremde_arten and fremd:
-        fehler.append(f"police {pid} RED Jahr {jahr}: {fremd} gehoert nicht zu dieser Herabsetzung")
+        fehler.append(f"police {pid} {ereignis} Jahr {jahr}: {fremd} gehoert nicht zu dieser Herabsetzung")
     return fehler

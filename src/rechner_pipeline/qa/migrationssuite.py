@@ -87,9 +87,10 @@ from rechner_pipeline.kern.beitragsreduktion import (
     TEILKUENDIGUNG,
     ReduzierterVertrag,
 )
+from rechner_pipeline.models.bestand import alt_absetzung_ist_teilkuendigung
 from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
 
-GEVO_ARTEN = ("ERH", "STO", "TOD", "PEX", "ABL", "RED")
+GEVO_ARTEN = ("ERH", "STO", "TOD", "PEX", "ABL", "RED", "TKU")
 #: Diese Arten tragen einen eigenständig zu vergleichenden Leistungs-
 #: beziehungsweise Statuswechselbetrag. Fehlt er, darf ein zusätzlich
 #: erkannter Lieferungsbefund die konkrete Prüflücke nicht verdecken.
@@ -678,7 +679,7 @@ def pruefe_vertrag(
                     f"gevo_abl_monat_{g.monate}", leistung,
                     g.betrag_erwartet,
                 ))
-        elif g.art == "RED":
+        elif g.art in ("RED", "TKU"):
             # Der herabgesetzte Vertrag wird seit Kern 3.1.0 FORTGEFÜHRT
             # (kern.beitragsreduktion.ReduzierterVertrag, Zweiteilung in
             # fortgeführten Anteil und fixierte beitragsfreie Summe). Die
@@ -707,7 +708,15 @@ def pruefe_vertrag(
                     "bereits herabgesetzten Vertrags ist nicht abgebildet"
                 )
                 continue
-            if scheiben and red_verfahren != TEILKUENDIGUNG:
+            # Welcher Vorgang: Ein geliefertes TKU ist die Teilkuendigung;
+            # ein geliefertes RED liest Annahme A2 (vor t das Verfahren der
+            # Quelle, nach t immer die Teilkuendigung — es gab keinen
+            # Beitrag). ``kern`` ist hier der Grundvertrag.
+            wirksam = (TEILKUENDIGUNG if g.art == "TKU"
+                       or alt_absetzung_ist_teilkuendigung(
+                           red_verfahren, g.monate // 12, kern.mp.t)
+                       else red_verfahren)
+            if scheiben and wirksam != TEILKUENDIGUNG:
                 befunde.append(
                     f"RED bei Monat {g.monate} nach dynamischer Erhöhung — "
                     "die anteilige Schichten-Teilung eines Vertrags mit "
@@ -732,7 +741,7 @@ def pruefe_vertrag(
                     "des Beitrags"
                 )
                 continue
-            elif red_verfahren == TEILKUENDIGUNG:
+            elif wirksam == TEILKUENDIGUNG:
                 # Quell-Semantik (Bedingungswerk Ziffer 6, Ausweitung
                 # 16/19): Der Anteil (1-f) der GRUNDVERSICHERUNG ist
                 # gekündigt und ausgezahlt; der Vertrag läuft
@@ -918,8 +927,16 @@ def pruefe_bestand(
     bestand_sha256: Optional[str] = None,
     system: Optional[Dict[str, str]] = None,
     red_anteile_datei: Optional[Dict[str, Any]] = None,
+    pflichtschicht: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Suite über den ganzen Bestand: Urteile + Zusammenfassung.
+
+    PFLICHTSCHICHT (Prüfer-Befund B1 zur Alt-Absetzung, 2026-10-01): die Verträge,
+    deren Anfangszustand die registrierte Auskunft trägt, mit dem, wodurch
+    sie gedeckt sind. Die Suite prüft den ganzen Bestand; geführt wird die
+    Menge (``pflichtschicht``, ohne Angabe leer), damit A-M4 sie gegen die
+    Übernahme und die aktuariellen Abnahmen halten kann; ein Vertrag der
+    Schicht ohne Urteil steht unter ``pflichtschicht_fehlt``.
 
     ``fehlgeschlagen`` zählt Verträge mit Toleranzverletzung oder
     Lieferungs-Befund; bestanden ist die Suite nur ohne jeden Fehlschlag
@@ -1069,7 +1086,12 @@ def pruefe_bestand(
         "vollstaendig_geprueft": not pruefluecken,
         "red_verfahren": red_verfahren,
         "vertraege": urteile,
+        "pflichtschicht": dict(pflichtschicht or {}),
     }
+    beurteilt = {str(u.get("police_id")) for u in urteile}
+    fehlt = sorted(p for p in ergebnis["pflichtschicht"] if p not in beurteilt)
+    if fehlt:
+        ergebnis["pflichtschicht_fehlt"] = fehlt
     if all(wert is not None for wert in scope_werte):
         ergebnis.update({
             "stichtag_1": stichtag_1,

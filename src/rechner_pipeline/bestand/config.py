@@ -721,7 +721,7 @@ class Annahme:
 #: stehen hier, weil der Parser sie von den Ereignisarten unterscheiden
 #: muss: Was weder Ereignisart noch bekannter Skalar ist, ist ein
 #: Schreibfehler und faellt.
-SKALARE_ANNAHMEN: Tuple[str, ...] = ("erh_prozent", "red_anteil")
+SKALARE_ANNAHMEN: Tuple[str, ...] = ("erh_prozent", "red_anteil", "tk_anteil")
 
 ANNAHME_FELDER: Tuple[Tuple[str, str], ...] = (
     ("tod", "Sterblichkeit des Versicherten (KLV: Todesfallleistung)"),
@@ -729,6 +729,8 @@ ANNAHME_FELDER: Tuple[Tuple[str, str], ...] = (
     ("beitragsfreistellung", "Beitragsfreistellung (keine Rechnungsgrundlage)"),
     ("erhoehung", "dynamische Erhoehung (keine Rechnungsgrundlage)"),
     ("herabsetzung", "Herabsetzung des Beitrags (keine Rechnungsgrundlage)"),
+    ("teilkuendigung", "Teilkuendigung eines Summenanteils mit Auszahlung "
+                       "(keine Rechnungsgrundlage)"),
     ("invalidisierung", "Invalidisierung (BU)"),
     ("reaktivierung", "Reaktivierung (BU)"),
     ("aktivensterblichkeit", "Sterblichkeit im Anwaerterstand (BU)"),
@@ -765,6 +767,10 @@ class Annahmen:
     beitragsfreistellung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     erhoehung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     herabsetzung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
+    #: Teilkuendigung (eigener Geschaeftsvorfall ``TKU``, Entscheid des
+    #: Maintainers 2026-10-01): Rate je Vertragsjahr vor dem Ablauf. Vorgabe
+    #: null — ohne Annahme findet sie nicht statt.
+    teilkuendigung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     invalidisierung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     reaktivierung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     aktivensterblichkeit: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
@@ -776,6 +782,10 @@ class Annahmen:
     #: Herabsetzung auf 0 waere eine Beitragsfreistellung und wird als
     #: solche gefuehrt.
     red_anteil: float = 0.0
+    #: Der FORTGEFUEHRTE Summenanteil einer Teilkuendigung (0.6 = 40 Prozent
+    #: der Grundversicherung gekuendigt). 0.0 heisst "nicht konfiguriert";
+    #: eine Teilkuendigung auf 0 waere ein Rueckkauf und wird als STO gefuehrt.
+    tk_anteil: float = 0.0
 
     def validate(self) -> List[str]:
         errors: List[str] = []
@@ -791,6 +801,18 @@ class Annahmen:
             errors.append(
                 "annahmen: red_anteil ausserhalb [0, 1) — 0 heisst nicht "
                 "konfiguriert, 1.0 waere keine Herabsetzung"
+            )
+        if not math.isfinite(self.tk_anteil):
+            errors.append("annahmen: tk_anteil ist nicht endlich")
+        elif not 0.0 <= self.tk_anteil < 1.0:
+            errors.append(
+                "annahmen: tk_anteil ausserhalb [0, 1) — 0 heisst nicht "
+                "konfiguriert, 1.0 waere keine Teilkuendigung"
+            )
+        if self.teilkuendigung.a > 0.0 and self.tk_anteil == 0.0:
+            errors.append(
+                "annahmen: teilkuendigung mit Rate > 0 verlangt tk_anteil > 0 "
+                "— ohne Hoehe waere die Rate ein Rueckkauf (STO)"
             )
         if self.herabsetzung.a > 0.0 and self.red_anteil == 0.0:
             errors.append(

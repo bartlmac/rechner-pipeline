@@ -1343,9 +1343,18 @@ def test_auftragsbau_weist_vorgeschichte_ohne_zustand_aus():
     lieferung, bestand, spez = _zustandslos_fixture()
     auftraege, _ausgelassen, zustandslos = baue_auftraege(
         lieferung, bestand, spez, auspraegungen_je_police={},
-        anfangszustaende={})
+        anfangszustaende={}, unbestimmt={"7000717"})
     assert zustandslos == ["7000717"]
     assert len(auftraege) == 1
+    # Fall I der Kalibrierung zu B1: OHNE Zustandswarnung ist dieselbe
+    # Police nicht "nicht ableitbar" — eine Teilkuendigung der
+    # Vorgeschichte ist bestimmt zustandslos (f x S). Vorher entschied eine
+    # Heuristik ueber den Historientyp, und der Beleg trug "erwartbar rot"
+    # neben einem gruenen Urteil.
+    _a, _b, bestimmt = baue_auftraege(
+        lieferung, bestand, spez, auspraegungen_je_police={},
+        anfangszustaende={})
+    assert bestimmt == []
 
 
 def test_auftragsbau_verwirft_plausibilitaet_ohne_zustand_ausgewiesen():
@@ -1362,7 +1371,7 @@ def test_auftragsbau_verwirft_plausibilitaet_ohne_zustand_ausgewiesen():
         lieferung, bestand, spez, auspraegungen_je_police={},
         anfangszustaende={},
         plausibilitaet={"7000717": {"kVx_MRV": GRUND, "BJB": GRUND}},
-        red_anteil_kandidaten=(0.50, 0.60, 0.75))
+        red_anteil_kandidaten=(0.50, 0.60, 0.75), unbestimmt={"7000717"})
     assert zustandslos == ["7000717"]
     assert auftraege[0].plausibilitaet == {}
     assert auftraege[0].reduktion_kandidaten == ()

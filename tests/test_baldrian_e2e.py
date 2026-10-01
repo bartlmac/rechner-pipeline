@@ -177,6 +177,10 @@ def gefahrener_fall(tmp_path_factory) -> Path:
             "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
             "--erhoehungssatz", ERHOEHUNGSSATZ,
             "--red-verfahren", RED_VERFAHREN,
+            # Dieselbe Ankerquelle wie die Suite (Pruefer-Befund B1: A-M2 und
+            # A-M3 tragen keine Uebernahme-Punkte; ohne sie ist der Zustand
+            # von 7000078 nicht ableitbar, und der Lauf verweigert).
+            "--anker-erwartungswerte", "baldrian_erwartungswerte_stichtag.json",
             "--plausibilitaet-beleg", PLAUSIBILITAETSBELEG,
             "--plausibilitaet-groesse", "RKW",
             "--plausibilitaet-vorfallart", "RED",

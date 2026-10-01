@@ -167,7 +167,16 @@ from rechner_pipeline.kern.rechenkern import (
 #: "verteilt nach dem geklemmten Baustein-RKW"). Die Summe ist unveraendert;
 #: die Werte je Schicht aendern sich nur bei verschiedenen Abzuegen der
 #: Bausteine. Vertragsweiter Abzug und prospektiv unveraendert.
-__version__ = "3.15.0"
+#: 3.16.0 = Beitragsherabsetzung und Teilkuendigung sind zwei
+#: Geschaeftsvorfaelle (Entscheid des Maintainers 2026-10-01, ADR-023,
+#: klv.md 7.1/7.2): Die Korrekturschicht kennt den Vorfall ``TKU`` (heilt,
+#: die Schicht geht in die Auszahlung); ``NACH_BEITRAGSENDE_DEFINIERT``
+#: entfaellt, weil die Teilkuendigung kein Verfahren der Herabsetzung mehr
+#: ist, das nach t "erlaubt" waere, sondern ein eigener Vorgang; die
+#: Verweigerung einer Herabsetzung nach t nennt den Ausweg Teilkuendigung.
+#: Keine Formel und kein gerechneter Wert aendert sich; alle
+#: Charakterisierungs-Referenzwerte des Kerns sind unveraendert.
+__version__ = "3.16.0"
 
 __all__ = [
     "ModelPoint",

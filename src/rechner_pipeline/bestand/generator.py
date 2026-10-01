@@ -46,6 +46,7 @@ from rechner_pipeline.bestand.stochastik import (
     transform,
 )
 from rechner_pipeline.models.bestand import STAMM_NAMES, STAMM_SPALTEN, stamm_dtypes
+from rechner_pipeline.bestand.zufallsstroeme import STROEME
 
 #: Fixed draw order of copula columns — part of the determinism contract.
 COPULA_ORDER = ("entry_age", "sex", "duration", "premium_duration", "sum_insured")
@@ -206,7 +207,7 @@ def _baue_frame(
 #: SeedSequence-Konstante der Neuzugangs-Stroeme ([seed, NEUZUGANG_STREAM,
 #: gen_index, kalenderjahr]) — getrennt von der Ereignis-Engine
 #: ([seed, 424242, police_id]) und dem Tagesneugeschaeft.
-NEUZUGANG_STREAM = 771177
+NEUZUGANG_STREAM = STROEME["neuzugang"]  # Register: bestand.zufallsstroeme
 
 #: police_id-Offset der Neuzugaenge innerhalb des Generations-Nummernkreises.
 #: 1..1_000_000 gehoerte dem Batch-Erzeuger; der ist weg (ADR-020), der

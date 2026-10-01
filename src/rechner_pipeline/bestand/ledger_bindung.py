@@ -63,7 +63,9 @@ from rechner_pipeline.kern.korrekturschicht import (
 from rechner_pipeline.models.bestand import (
     doppelte_buchungen,
     model_point_kwargs,
+    REDUKTION_EREIGNISSE,
     red_bindung_fehler,
+    reduktion_ereignis,
     red_sollbuchungen,
     red_vollstaendigkeit_fehler,
     unbelegte_ereignisse,
@@ -77,7 +79,7 @@ from rechner_pipeline.models.bestand import (
 TOLERANZ = 0.005
 
 #: Ereignisse, deren Betrag hier hergeleitet wird (KLV).
-HERGELEITET = ("ZUG", "STO", "PEX", "TOD", "ABL", "ERH", "RED")
+HERGELEITET = ("ZUG", "STO", "PEX", "TOD", "ABL", "ERH", "RED", "TKU")
 #: Betragsart des gebuchten Bruttojahresbeitrags. Er folgt aus dem Kern
 #: derselben Police (VS mal Bxt) — deshalb wird er hergeleitet wie jeder
 #: andere Betrag, nicht geglaubt. Ohne die Unterscheidung nach Art haette
@@ -194,7 +196,9 @@ class _Herleitung:
         jahr, anteil, verfahren = self.reduktion
         absorbiert = absorbierte_schicht(self.grund, jahr, schicht)
         rechnerisch = None
-        if verfahren == TEILKUENDIGUNG:
+        # Welcher Vorgang: die Teilkuendigung (TKU) zahlt aus, die
+        # Beitragsherabsetzung (RED) nicht (ADR-023).
+        if reduktion_ereignis(verfahren) == "TKU":
             rechnerisch = (1.0 - anteil) * vertrags_rkw(
                 self.grund, [], jahr,
                 stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]),
@@ -261,9 +265,14 @@ def pruefe_ledger_betraege(
     grundlagen = grundlagen_je_police(config, merkmale)
     tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
     haupt = stamm.set_index("police_id")
+    tk_generationen = {n for n, tw in tarifwerk_je_generation.items()
+                       if tw.get("red_verfahren") == TEILKUENDIGUNG}
     for feld, eintraege in sorted(unbelegte_ereignisse(
             stamm, ledger, config.annahmen,
             leistungsbezug=lambda pid, datum: zustand_vor(historie, pid, datum) == "BU",
+            auch_erzeugt=lambda pid: (
+                pid in haupt.index
+                and str(haupt.loc[pid, "tarif_generation"]) in tk_generationen),
     ).items()):
         errors.append(unbelegte_ereignisse_text(feld, eintraege))
     errors.extend(unzugeordnete_ereignisse(stamm, ledger))
@@ -279,22 +288,18 @@ def pruefe_ledger_betraege(
                 int(z["reduktion_jahr"]), float(z["anteil"]),
                 str(z["verfahren"]))
             reduktion_datum[int(z["police_id"])] = pd.Timestamp(z["reduktion_datum"])
-    # Verfahren und Anteil sind Eigenschaften des Systems, nicht der
-    # Tabelle: das Verfahren steht im Tarifwerk der Generation, der Anteil
-    # einer gerechneten Herabsetzung in den Annahmen (Angriffsrunde
-    # 2026-09-26: eine als prospektiv eingetragene Teilkuendigung liess
-    # Auszahlung und Kappung ohne Befund verschwinden).
-    red_anteil = float(getattr(config.annahmen, "red_anteil", 0.0) or 0.0)
-    # Die Rate, mit der die Engine zieht (Runde C RC05): ohne sie belegte ein
-    # stehengebliebener red_anteil jede Herabsetzung.
-    red_rate = float(config.annahmen.herabsetzung(0.0))
-    for pid, (_jahr, anteil, verfahren) in sorted(reduktion_je_police.items()):
+    # Vorgang, Verfahren und Anteil sind Eigenschaften des Systems, nicht
+    # der Tabelle: das Verfahren steht im Tarifwerk der Generation, Rate und
+    # Anteil in den Annahmen (Angriffsrunde 2026-09-26; Runde C RC05).
+    for pid, (r_jahr, anteil, verfahren) in sorted(reduktion_je_police.items()):
         if pid not in haupt.index:
             continue
         tw = tarifwerk_je_generation.get(str(haupt.loc[pid, "tarif_generation"])) or {}
-        soll_verfahren = tw.get("red_verfahren")
         errors.extend(red_bindung_fehler(
-            pid, anteil, verfahren, soll_verfahren, red_anteil, red_rate))
+            pid, r_jahr, anteil, verfahren,
+            beitragsdauer=int(haupt.loc[pid, "premium_duration"]),
+            generation_verfahren=tw.get("red_verfahren"),
+            annahmen=config.annahmen))
 
     scheiben_je_police: Dict[int, List[Tuple[int, float]]] = {}
     if scheiben is not None:
@@ -409,11 +414,11 @@ def pruefe_ledger_betraege(
                 # (T21-01): Leistungsbezug -> Rente endet; Anwaerter -> 0.
                 im_bezug = zustand_vor(historie, pid, z.status_date) == "BU"
                 erwartet = rente if im_bezug else 0.0
-            elif art == "RED":
-                # Eine BU kennt keine Herabsetzung — eine RED-Zeile darauf ist
-                # unbelegt, nicht "nicht hergeleitet" (vorher: still
-                # uebersprungen und trotzdem als hergeleitet gezaehlt).
-                unbelegt.append(f"police {pid} RED Jahr {jahr} {betrag_art} (Produkt bu)")
+            elif art in ("RED", "TKU"):
+                # Eine BU kennt weder Herabsetzung noch Teilkuendigung — eine
+                # solche Zeile ist unbelegt, nicht "nicht hergeleitet"
+                # (vorher: still uebersprungen und als hergeleitet gezaehlt).
+                unbelegt.append(f"police {pid} {art} Jahr {jahr} {betrag_art} (Produkt bu)")
                 continue
             else:
                 continue
@@ -472,8 +477,9 @@ def pruefe_ledger_betraege(
                              else jahr)
                     erwartet = v.beitragsfreie_summe(pex_j) + zuschlag_bei_pex(
                         schicht_jetzt, v.grund, pex_j)
-                elif art == "RED":
-                    # Die Buchungen einer Herabsetzung folgen aus der
+                elif art in ("RED", "TKU"):
+                    # Die Buchungen einer Herabsetzung bzw. Teilkuendigung
+                    # (ADR-023: zwei Vorgaenge, je eigener Code) folgen aus der
                     # registrierten Reduktion — Soll-Menge UND Betraege aus
                     # EINER Herleitung (red_buchungen); dieselbe Menge
                     # prueft unten die Vollstaendigkeit (T27-14). Eine
@@ -481,9 +487,10 @@ def pruefe_ledger_betraege(
                     # erzeugt, ist unbelegt — nicht "Betrag 0".
                     soll = v.red_buchungen(schicht_je_police.get(pid))
                     if (v.reduktion is None or jahr != v.reduktion[0]
+                            or art != reduktion_ereignis(v.reduktion[2])
                             or betrag_art not in soll):
                         unbelegt.append(
-                            f"police {pid} RED Jahr {jahr} {betrag_art}")
+                            f"police {pid} {art} Jahr {jahr} {betrag_art}")
                         continue
                     erwartet = soll[betrag_art]
                 elif art in ("TOD", "ABL"):
@@ -507,8 +514,9 @@ def pruefe_ledger_betraege(
     # Die Wiederholung einer Zeile meldet die Eindeutigkeitsregel von
     # validate_ledger (Runde F, Nachbesserung); hier zaehlt die erste Zeile
     # (ein Fehler, ein Befund).
-    red_zeilen = ledger[(ledger["ereignis"] == "RED") & ~doppelte_buchungen(ledger)]
-    for pid, (jahr, _anteil, _verfahren) in sorted(reduktion_je_police.items()):
+    red_zeilen = ledger[ledger["ereignis"].isin(REDUKTION_EREIGNISSE)
+                        & ~doppelte_buchungen(ledger)]
+    for pid, (jahr, _anteil, verfahren) in sorted(reduktion_je_police.items()):
         if pid not in haupt.index:
             errors.append(f"reduktionen police {pid}: nicht im Stamm")
             continue
@@ -520,13 +528,15 @@ def pruefe_ledger_betraege(
         v = _herleitung(pid, h)
         if v is None:
             continue
+        code = reduktion_ereignis(verfahren)
         eigene = red_zeilen[(red_zeilen["police_id"] == pid)
-                            & (red_zeilen["vertragsjahr"] == jahr)]
+                            & (red_zeilen["vertragsjahr"] == jahr)
+                            & (red_zeilen["ereignis"] == code)]
         # Der Wirkungstag der Buchung IST der Wirkungstag der Tabelle —
         # sonst bewerten zwei Sichten denselben Bestand verschieden (N16).
         fehlend.extend(red_vollstaendigkeit_fehler(
             pid, jahr, eigene, v.red_buchungen(schicht_je_police.get(pid)),
-            reduktion_datum[pid], fremde_arten=False))
+            reduktion_datum[pid], ereignis=code, fremde_arten=False))
     if fehlend:
         errors.append(
             f"ledger: {len(fehlend)} Buchung(en) registrierter Herabsetzungen "
@@ -538,7 +548,7 @@ def pruefe_ledger_betraege(
         )
     if unbelegt:
         errors.append(
-            f"ledger: {len(unbelegt)} RED-Buchung(en), die keine registrierte "
+            f"ledger: {len(unbelegt)} RED- oder TKU-Buchung(en), die keine registrierte "
             "Herabsetzung erzeugt — z. B. " + "; ".join(unbelegt[:3])
             + (" ..." if len(unbelegt) > 3 else "")
         )

@@ -290,8 +290,19 @@ Vertraege, Zugang ueber die Gesamtsumme) oder `grundvertrag` (nicht
 freigeschaltet, im Beleg `uebernahme.json` namentlich ausgewiesen —
 dann besteht die Fuehrungsprobe nicht, und A-M4 ist im Bestands-Scope
 unmoeglich). Eine Herabsetzung nach den PLV-Verfahren
-(prospektiv/mit_abzug) kann die Fuehrung nicht tragen und haelt an;
-die Teilkuendigung der Quelle fuehrt zustandslos weiter.
+(prospektiv/mit_abzug) VOR dem Beitragsende kann die Fuehrung nicht
+tragen und haelt an; die Teilkuendigung der Quelle fuehrt zustandslos
+weiter. Herabsetzung und Teilkuendigung sind zwei Geschaeftsvorfaelle
+(ADR-023, Tarifplan KLV 7.1/7.2; Entscheid des Maintainers 2026-10-01):
+Eine gelieferte Absetzung NACH dem Beitragsende (`t <= Jahr < n`) war in
+jeder Generation eine Teilkuendigung (Annahme A2): Der Vertrag laeuft
+zustandslos mit der gelieferten Summe weiter, ohne Anfangszustand und
+ohne Halt. Folgt eine solche Absetzung dynamischen Erhoehungen (Serie),
+braucht die Ableitung den fortgefuehrten Anteil als Auskunft (unten);
+ohne sie verweigert die Uebernahme und nennt `--red-anteile-datei`. Ein
+Vertrag ohne ableitbaren Anfangszustand haelt den Lauf an (kein stiller
+Grundvertrag); ein Vertrag, dessen Struktur die Auskunft traegt, ist
+Pflichtziehung von A-M1, A-M2, A-M3 und der Suite — A-M4 prueft das.
 
 **Auskunft der Quelle je Police: registrieren, dann `--red-anteile-datei`.**
 Der fortgefuehrte Beitragsanteil einer Alt-Herabsetzung, dessen

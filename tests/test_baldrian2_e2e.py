@@ -259,6 +259,10 @@ def gefahrener_fall(tmp_path_factory) -> Path:
             "--bestand", str(bestand / "bestand.parquet"),
             "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
             "--stoab-je-baustein",
+            # Dieselbe Ankerquelle wie Uebernahme und Suite: sonst kann A-M2
+            # (nur Verlaufspunkte) den Zustand von 7000586 nicht ableiten und
+            # verweigert (Pruefer-Befund B1).
+            "--anker-erwartungswerte", ANKER,
             "--schicht", str(schichten),
             "--repo-root", str(REPO_ROOT),
         ] + _lieferungs_flags()) == 0, f"Aktuarieller Test {abnahme}"
@@ -1046,7 +1050,7 @@ def test_die_fuehrungsprobe_rechnet_jede_herabsetzungsbuchung_nach(gefahrener_fa
     RED-Buchung an — die Auszahlung der Teilkuendigung, eine echte Zahlung
     an den Kunden, hatte keinen zweiten Rechenweg. Jetzt rechnet die
     Probe VS_herabsetzung, dDK_absorption, RKW_teilkuendigung und
-    Kappung nach. Mutationsprobe: RED aus GEPRUEFTE_BUCHUNGEN entfernen
+    Kappung nach. Mutationsprobe: TKU aus GEPRUEFTE_BUCHUNGEN entfernen
     -> rot."""
     import copy
     import datetime as _dt
@@ -1072,10 +1076,10 @@ def test_die_fuehrungsprobe_rechnet_jede_herabsetzungsbuchung_nach(gefahrener_fa
     red_basis = dict(basis, config=mit_red)
     gut = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **red_basis)
     assert gut["bestanden"], gut["befunde"][:3]
-    assert gut["buchungen_geprueft"]["RED"] >= len(erg.reduktionen)
+    assert gut["buchungen_geprueft"]["TKU"] >= len(erg.reduktionen)
     kaputt = copy.deepcopy(fort)
     led = kaputt["ledger"]
-    i = led.index[(led["ereignis"] == "RED") & (led["betrag_art"] == "RKW_teilkuendigung")][0]
+    i = led.index[(led["ereignis"] == "TKU") & (led["betrag_art"] == "RKW_teilkuendigung")][0]
     led.loc[i, "betrag"] += 1.0
     rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=kaputt, **red_basis)
     assert not rot["bestanden"] and any(b["art"] == "buchung" for b in rot["befunde"])

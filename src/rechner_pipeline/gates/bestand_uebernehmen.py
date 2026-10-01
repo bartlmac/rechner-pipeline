@@ -68,7 +68,6 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -1091,6 +1090,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "tarifwerk": tarifwerk,
         "erhoehungssatz": args.erhoehungssatz,
         "red_anteile_datei": None,
+        "gedeckt": {},
         "red_anteil_kandidaten": sorted(args.red_anteil_kandidaten),
         "anker_erwartungswerte": args.anker_quelle,
         "vorgeschichte": args.vorgeschichte,
@@ -1110,7 +1110,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             _lies_csv,
             anfangszustaende_je_police,
             auspraegungen_je_police,
+            deckungsbeleg,
             lies_auskuenfte,
+            verweigere_unbestimmte,
         )
 
         rohe_vorgeschichte = _lies_csv(fall, args.vorgeschichte, bindung)
@@ -1151,20 +1153,20 @@ def main(argv: Optional[List[str]] = None) -> int:
             red_anteile_je_datum=red_anteile_je_datum,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
             scheiben_mit_gamma1=args.scheiben_mit_gamma1)
+        # Pruefer-Befund B1 zur Alt-Absetzung: Ein Vertrag ohne ableitbaren
+        # Anfangszustand wird NICHT still als Grundvertrag mit der
+        # gelieferten Summe uebernommen (vorher: Warnung, Eintrag in
+        # ``ohne_anfangszustand``, Exit 0) — die Uebernahme verweigert und
+        # nennt den Ausweg. ``ohne_anfangszustand`` bleibt im Beleg und ist
+        # damit stets leer.
+        verweigere_unbestimmte(warnungen)
         scheiben, zahlen = materialisiere_anfangszustand(
             stamm, ledger, zustaende, generationsfelder,
             scheiben_mit_gamma1=args.scheiben_mit_gamma1)
         beleg.update(zahlen)
-        for w in warnungen:
-            # Wie in der Pruefstrecke: kein geratener Zustand, der Vertrag
-            # laeuft als Grundvertrag — und steht hier mit Namen und Grund.
-            treffer = re.match(r"Police (\S+?)[ :(]", w)
-            beleg["ohne_anfangszustand"].append({
-                "police_id": treffer.group(1) if treffer else None,
-                "grund": w,
-            })
-            print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
-                  file=sys.stderr)
+        # Wodurch die Policen gedeckt sind, deren Struktur die Auskunft
+        # traegt — die Pflichtschicht der Abnahmen (A-M4 haelt die Gleichheit).
+        beleg["gedeckt"] = deckungsbeleg(zustaende, beleg.get("red_anteile_datei"))
     elif mit_bausteinen:
         beleg["nicht_freigeschaltet"] = mit_bausteinen
         hinweise.append(

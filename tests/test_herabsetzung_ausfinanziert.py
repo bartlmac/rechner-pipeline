@@ -21,6 +21,15 @@ und das Datenmodell dort zulassen — kein Verfahren darf in der Engine
 vorankommen, ohne dass Kern und Datenmodell es tragen, und keins darf dort
 zugelassen sein, ohne dass die Engine es zieht.
 
+SEIT DEM ENTSCHEID VOM 2026-10-01 (ADR-023) sind Beitragsherabsetzung (RED)
+und Teilkuendigung (TKU) zwei Geschaeftsvorfaelle. Im ausfinanzierten Nachlauf
+gibt es keine Herabsetzung (kein Beitrag), wohl aber die Teilkuendigung — in
+JEDER Generation, mit eigener Rate ``annahmen.teilkuendigung`` und eigenem
+Strom ``TEILKUENDIGUNG_STREAM``. Die Welt dieses Moduls (Generation mit
+``teilkuendigung``) zieht ihre Nachlauf-Teilkuendigungen deshalb aus dieser
+Rate; die Herabsetzungsrate zieht nur noch vor t, und dort fuehrt diese
+Generation den Herabsetzungswunsch als Teilkuendigung aus (Annahme A1).
+
 Die Zusage, gegen die hier gemessen wird, ist unabhaengig aufgebaut (wie in
 test_t27_teilkuendigung_klasse): nach der Teilkuendigung ist der Vertrag die
 Grundversicherung mit Summe f x S als gewoehnlicher Rechenkern plus seine
@@ -41,14 +50,13 @@ import pytest
 from rechner_pipeline.bestand.auswertung import einzelwerte_am
 from rechner_pipeline.bestand import cli_fortschreibung
 from rechner_pipeline.bestand.config import config_aus_text
-from rechner_pipeline.bestand.ereignisse import HERABSETZUNG_STREAM, fortschreiben
+from rechner_pipeline.bestand.ereignisse import TEILKUENDIGUNG_STREAM, fortschreiben
 from rechner_pipeline.bestand.kennzahlen import bewegungskonto
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.bestand.ledger_bindung import pruefe_ledger_betraege
 from rechner_pipeline.kern import ModelPoint, Rechenkern
 from rechner_pipeline.kern.beitragsreduktion import (
     MIT_ABZUG,
-    NACH_BEITRAGSENDE_DEFINIERT,
     PROSPEKTIV,
     TEILKUENDIGUNG,
     VERFAHREN,
@@ -93,7 +101,7 @@ def _t(pid: int) -> int:
     return T_JE_POLICE[pid % len(T_JE_POLICE)]
 
 
-def _toml(verfahren: str, rate: float, *, still: bool = False) -> str:
+def _toml(verfahren: str, rate: float, *, still: bool = False, tk_rate: float = 0.0) -> str:
     """Die Config der Uebernahme-Welt mit Verfahren und Herabsetzungsrate.
 
     ``still`` legt alle anderen Ausscheideursachen und die Dynamik still:
@@ -105,8 +113,9 @@ def _toml(verfahren: str, rate: float, *, still: bool = False) -> str:
         anker, anker + f'red_verfahren = "{verfahren}"\nstoab_je_baustein = true\n', 1,
     ).replace(
         "[annahmen]\nerh_prozent = 0.05",
-        f"[annahmen]\nerh_prozent = 0.05\nred_anteil = {ANTEIL}",
-    ) + f"\n[annahmen.herabsetzung]\na = {rate}\nb = 0.0\n"
+        f"[annahmen]\nerh_prozent = 0.05\nred_anteil = {ANTEIL}\ntk_anteil = {ANTEIL}",
+    ) + (f"\n[annahmen.herabsetzung]\na = {rate}\nb = 0.0\n"
+         f"[annahmen.teilkuendigung]\na = {tk_rate}\nb = 0.0\n")
     if still:
         for alt, neu in (
             ("[annahmen.storno]\na = 0.02", "[annahmen.storno]\na = 0.0"),
@@ -120,14 +129,15 @@ def _toml(verfahren: str, rate: float, *, still: bool = False) -> str:
     return toml
 
 
-def _config(verfahren: str, rate: float = RATE_DER_WELT, *, still: bool = False):
-    config = config_aus_text(_toml(verfahren, rate, still=still))
+def _config(verfahren: str, rate: float = RATE_DER_WELT, *, still: bool = False,
+            tk_rate: float = 0.0):
+    config = config_aus_text(_toml(verfahren, rate, still=still, tk_rate=tk_rate))
     assert config.validate() == []
     return config
 
 
-def _welt_bauen(verfahren: str):
-    config = _config(verfahren)
+def _welt_bauen(verfahren: str, *, rate: float = RATE_DER_WELT, tk_rate: float = 0.0):
+    config = _config(verfahren, rate, tk_rate=tk_rate)
     stamm = _stamm([{"id": p, "beginn": "2015-01-01", "zugang": "2026-01-01",
                      "n": N, "t": _t(p)} for p in POLICEN])
     schichten, verankerung = _tabellen(POLICEN)
@@ -137,13 +147,16 @@ def _welt_bauen(verfahren: str):
 
 @pytest.fixture(scope="module")
 def welt():
-    """Teilkuendigung, Vertraege mit t < n — die Welt des Zaehltests."""
-    return _welt_bauen(TEILKUENDIGUNG)
+    """Teilkuendigung als eigener Vorgang (Rate ``teilkuendigung``), Vertraege
+    mit t < n — die Welt des Zaehltests. Die Herabsetzungsrate ist null: Was
+    hier gebucht wird, ist allein die Teilkuendigung."""
+    return _welt_bauen(TEILKUENDIGUNG, rate=0.0, tk_rate=RATE_DER_WELT)
 
 
 @pytest.fixture(scope="module")
 def welten():
-    """Dieselbe Welt, dieselbe Rate, je Verfahren — fuer die Ratsche."""
+    """Dieselbe Welt, dieselbe HERABSETZUNGSrate, je Verfahren, OHNE
+    Teilkuendigungsrate — die Welt des Standes vor dem Vorgang TKU."""
     return {v: _welt_bauen(v) for v in VERFAHREN}
 
 
@@ -156,7 +169,7 @@ def _nachlauf(stamm: pd.DataFrame, erg) -> pd.DataFrame:
 
 def _red_ab_t(stamm: pd.DataFrame, ledger: pd.DataFrame) -> pd.DataFrame:
     t = stamm.set_index("police_id")["premium_duration"]
-    red = ledger[ledger["ereignis"] == "RED"]
+    red = ledger[ledger["ereignis"].isin(["RED", "TKU"])]
     return red[red["vertragsjahr"].to_numpy() >= t.loc[red["police_id"]].to_numpy()]
 
 
@@ -173,19 +186,20 @@ def test_die_engine_zieht_die_teilkuendigung_im_ausfinanzierten_nachlauf(welt):
     Police).
 
     Mutationsprobe: die Bedingung in ``ereignisse._simuliere_vertrag`` zurueck auf
-    ``j + 1 < t`` -> rot."""
+    ``j + 1 < t`` -> rot (Teilkuendigungs-Zweig)."""
     config, stamm, schichten, verankerung, erg = welt
     assert (stamm["premium_duration"] < stamm["duration"]).all()
     nach_t = _nachlauf(stamm, erg)
     assert len(nach_t) > 0, "keine Reduktion im Nachlauf — der Fall bleibt ungezogen"
     led = erg.ledger
-    red = led[led["ereignis"] == "RED"]
+    red = led[led["ereignis"] == "TKU"]
+    assert not (led["ereignis"] == "RED").any()
     assert len(_red_ab_t(stamm, led)) >= 2 * len(nach_t)
     for z in nach_t.to_dict("records"):
         pid, jahr = int(z["police_id"]), int(z["reduktion_jahr"])
         eigene = red[(red["police_id"] == pid) & (red["vertragsjahr"] == jahr)]
         arten = set(eigene["betrag_art"])
-        assert {"VS_herabsetzung", "RKW_teilkuendigung"} <= arten, (pid, jahr, arten)
+        assert {"VS_teilkuendigung", "RKW_teilkuendigung"} <= arten, (pid, jahr, arten)
     assert len(erg.reduktionen) == red["police_id"].nunique()
     assert erg.reduktionen["police_id"].is_unique
 
@@ -213,7 +227,7 @@ def _erwartetes_reduktionsjahr(config, stamm: pd.DataFrame, ledger: pd.DataFrame
     """Das Reduktionsjahr einer Police und das u, das es ausloest — aus dem
     Strom SELBST gezogen, nicht aus der Engine.
 
-    Der Strom ist ``SeedSequence([seed, HERABSETZUNG_STREAM, police_id])``
+    Der Strom ist ``SeedSequence([seed, TEILKUENDIGUNG_STREAM, police_id])``
     (``ereignisse._simuliere_vertrag``); je simuliertes Vertragsjahr j + 1
     im Fenster ``ab_jahr + 1 <= j + 1 < n`` EIN Draw, und zwar solange der
     Vertrag lebt und nicht beitragsfrei ist: Im Jahr eines Todes, eines
@@ -234,7 +248,7 @@ def _erwartetes_reduktionsjahr(config, stamm: pd.DataFrame, ledger: pd.DataFrame
     ende = min([int(v) for v in eigene["vertragsjahr"]] + [n])
     fenster = range(ab_jahr + 1, n)
     rng = np.random.Generator(np.random.PCG64(
-        np.random.SeedSequence([config.seed, HERABSETZUNG_STREAM, pid])))
+        np.random.SeedSequence([config.seed, TEILKUENDIGUNG_STREAM, pid])))
     for jahr in fenster:
         u = rng.random()
         if jahr >= ende:
@@ -261,9 +275,9 @@ def test_die_nachlauf_ziehung_hat_dieselbe_rate_und_denselben_strom_wie_davor(we
     Mutationsproben: in ``_simuliere_vertrag`` die Rate im Nachlauf-Zweig
     halbieren (``annahmen.herabsetzung(0.0) * (0.5 if j + 1 >= t else 1.0)``)
     -> rot; im Nachlauf-Zweig einen anderen Strom nehmen (``rng.random()``
-    statt ``rng_red.random()`` fuer ``j + 1 >= t``) -> rot."""
+    statt ``rng_tk.random()`` fuer ``j + 1 >= t``) -> rot."""
     config, stamm, schichten, verankerung, erg = welt
-    assert config.annahmen.herabsetzung(0.0) == RATE_DER_WELT
+    assert config.annahmen.teilkuendigung(0.0) == RATE_DER_WELT
     t = stamm.set_index("police_id")["premium_duration"]
     gebucht = dict(zip(erg.reduktionen["police_id"], erg.reduktionen["reduktion_jahr"]))
     vor_t = nach_t = knapp = 0
@@ -288,7 +302,7 @@ def test_die_nachlauf_ziehung_hat_dieselbe_rate_und_denselben_strom_wie_davor(we
 def _still(beginne, *, t: int, n: int = N):
     # Rate knapp unter 1: die Config weist a >= 1 ab (sicheres Ereignis);
     # die Draws sind gesetzt, der Test bleibt deterministisch.
-    config = _config(TEILKUENDIGUNG, 0.999999, still=True)
+    config = _config(TEILKUENDIGUNG, 0.0, still=True, tk_rate=0.999999)
     pid = 920_000
     stamm = _stamm([{"id": pid + i, "beginn": b, "zugang": "2026-01-01", "n": n, "t": t}
                     for i, b in enumerate(beginne)])
@@ -317,7 +331,7 @@ def test_die_reduktion_liegt_im_ersten_nachlaufjahr_und_nie_im_ablaufjahr():
     assert pids[1] not in red
     assert red.get(pids[2]) == 24
     led = erg.ledger
-    assert not len(led[(led["police_id"] == pids[1]) & (led["ereignis"] == "RED")])
+    assert not len(led[(led["police_id"] == pids[1]) & (led["ereignis"].isin(["RED", "TKU"]))])
     assert len(led[(led["police_id"] == pids[1]) & (led["ereignis"] == "ABL")]) == 1
 
 
@@ -345,10 +359,10 @@ def test_summe_und_auszahlung_der_nachlauf_reduktion_folgen_der_unabhaengigen_zu
         # Erhoehungen laufen nur solange Beitraege laufen: im Nachlauf
         # kommt keine mehr hinzu.
         assert all(j < mp.t for j, _ in scheiben), (pid, scheiben)
-        eigene = led[(led["police_id"] == pid) & (led["ereignis"] == "RED")
+        eigene = led[(led["police_id"] == pid) & (led["ereignis"] == "TKU")
                      & (led["vertragsjahr"] == jahr)]
         arten = dict(zip(eigene["betrag_art"], eigene["betrag"]))
-        assert arten["VS_herabsetzung"] == pytest.approx(
+        assert arten["VS_teilkuendigung"] == pytest.approx(
             ANTEIL * mp.sum_insured + sum(vs for _, vs in scheiben), rel=1e-12), pid
         rechnerisch = (1 - ANTEIL) * vertrags_rkw(
             Rechenkern(mp), [], jahr, stoab_je_baustein=True
@@ -394,7 +408,7 @@ def test_p_b1_leitet_die_gezogene_nachlauf_reduktion_her(welt):
     assert _pb1(welt, erg.ledger) == []
     led = erg.ledger
     ab_t = _red_ab_t(stamm, led)
-    summe = ab_t.index[ab_t["betrag_art"] == "VS_herabsetzung"][0]
+    summe = ab_t.index[ab_t["betrag_art"] == "VS_teilkuendigung"][0]
     zahl = ab_t.index[ab_t["betrag_art"] == "RKW_teilkuendigung"][0]
     plus = led.copy()
     plus.loc[summe, "betrag"] += 1.0
@@ -471,6 +485,8 @@ def _kern_traegt_nach_t(verfahren: str) -> bool:
 
 
 def _datenmodell_laesst_nach_t_zu(verfahren: str) -> bool:
+    """Das Datenmodell nimmt eine Zeile mit genau DIESEM Verfahren im Jahr t
+    an (keine Umdeutung: das Verfahren der Zeile ist das gegebene)."""
     stamm = _stamm([{"id": 1, "beginn": "2015-01-01", "zugang": "2026-01-01", "n": N, "t": 15}])
     zeile = pd.DataFrame([{
         "police_id": 1, "reduktion_jahr": 15,
@@ -480,26 +496,29 @@ def _datenmodell_laesst_nach_t_zu(verfahren: str) -> bool:
 
 
 @pytest.mark.parametrize("verfahren", VERFAHREN)
-def test_die_engine_zieht_nach_t_genau_die_verfahren_die_kern_und_datenmodell_tragen(welten, verfahren):
-    """Eine Menge, drei Sichten, ``==``: Kern, Datenmodell und Engine sagen
-    je Verfahren dasselbe. Positivkontrolle: Die Welt zieht vor t fuer JEDES
-    Verfahren (dieselbe Rate) — ein Verfahren ohne Reduktion nach t fehlt also
-    nicht an der Rate, sondern an der Regel. Die Menge ist nicht leer und nicht
-    alles. Mutationsprobe: die Sperre der Engine fuer prospektiv/mit_abzug
-    entfernen -> der Kern verweigert im Lauf -> rot; den Kern fuer
-    prospektiv nach t oeffnen ohne die Engine -> rot."""
+def test_nach_t_tragen_kern_und_datenmodell_genau_die_teilkuendigung(welten, verfahren):
+    """Eine Menge, drei Sichten, ``==``: Nach dem Beitragsende tragen Kern und
+    Datenmodell nur den Vorgang Teilkuendigung (``verfahren=teilkuendigung``,
+    Ledger TKU) — die Beitragsherabsetzung verweigern beide benannt, mit dem
+    Ausweg Teilkuendigung (ADR-023). Und die Engine zieht die HERABSETZUNG
+    nach t in keiner Generation: Die Welten ohne Teilkuendigungsrate buchen ab
+    t weder RED noch TKU. Positivkontrolle: vor t zieht jede Welt (dieselbe
+    Rate). Mutationsprobe: die Herabsetzungs-Bedingung der Engine auf
+    ``j + 1 < n`` -> Abbruch im Kern bzw. RED/TKU ab t -> rot; die Wache des
+    Kerns fuer prospektiv nach t entfernen -> rot."""
     config, stamm, schichten, verankerung, erg = welten[verfahren]
     t = stamm.set_index("police_id")["premium_duration"]
     red = erg.reduktionen
     vor_t = (red["reduktion_jahr"].to_numpy() < t.loc[red["police_id"]].to_numpy()).sum()
     assert vor_t > 0, "Positivkontrolle: die Welt zieht vor t nicht"
-    engine = len(_nachlauf(stamm, erg)) > 0
-    assert engine == _kern_traegt_nach_t(verfahren) == _datenmodell_laesst_nach_t_zu(verfahren), verfahren
-    # Die Menge selbst: das Tupel, das die Engine liest, ist das, was der
-    # Kern tatsaechlich akzeptiert — und heute allein die Teilkuendigung.
-    kern_menge = {v for v in VERFAHREN if _kern_traegt_nach_t(v)}
-    assert kern_menge == set(NACH_BEITRAGSENDE_DEFINIERT)
-    assert kern_menge == {TEILKUENDIGUNG}
+    assert len(_nachlauf(stamm, erg)) == 0
+    assert _kern_traegt_nach_t(verfahren) == _datenmodell_laesst_nach_t_zu(verfahren) \
+        == (verfahren == TEILKUENDIGUNG)
+    if verfahren != TEILKUENDIGUNG:
+        with pytest.raises(BeitragsreduktionFehler, match="Teilkuendigung"):
+            from rechner_pipeline.kern import KLV_DEFAULT
+
+            reduziere(Rechenkern(KLV_DEFAULT), KLV_DEFAULT.t, ANTEIL, verfahren=verfahren)
 
 
 # --------------------------------------------------------------------------- #
@@ -520,8 +539,9 @@ def test_ein_lauf_des_zweiten_baldrian_falls_mit_nachlauf_reduktionen_besteht_p_
     ab = fall_welt["fall"] / "abgeleitet"
     text = (ab / "bestand-config.toml").read_text(encoding="utf-8")
     cfg = ab / "cfg-nachlauf.toml"
-    cfg.write_text(text + (f"\n[annahmen]\nred_anteil = {ANTEIL}\n"
-                           "[annahmen.herabsetzung]\na = 0.5\nb = 0.0\n"), encoding="utf-8")
+    cfg.write_text(text + (f"\n[annahmen]\nred_anteil = {ANTEIL}\ntk_anteil = {ANTEIL}\n"
+                           "[annahmen.herabsetzung]\na = 0.5\nb = 0.0\n"
+                           f"[annahmen.teilkuendigung]\na = 0.5\nb = 0.0\n"), encoding="utf-8")
     nach = ab / "bestand-nachlauf"
     assert cli_fortschreibung.main([
         "--config", str(cfg), "--bis", STICHTAG_2,
@@ -543,14 +563,16 @@ def test_ein_lauf_des_zweiten_baldrian_falls_mit_nachlauf_reduktionen_besteht_p_
 # --------------------------------------------------------------------------- #
 
 #: Fingerabdruecke der Welt dieses Moduls, gemessen auf dem Stand VOR dem
-#: Bau (25cca08). Ein Vergleich zweier Laeufe DIESES Standes saehe eine
-#: Verschiebung nicht — beide Welten stammten aus demselben Code. Erst der
-#: Bezug nach draussen macht den Test scharf. Ledger je Verfahren: bei
-#: ``prospektiv`` und ``mit_abzug`` ALLE Zeilen (die Engine zieht dort nach t
-#: nichts, also bitgleich), bei der Teilkuendigung die Zeilen VOR t (dahinter
-#: kommen die neuen Buchungen). Historie und Scheiben sind fuer alle drei
-#: identisch: Eine Herabsetzung aendert keinen Status, und Erhoehungen gibt es
-#: nur, solange Beitraege laufen.
+#: Bau (25cca08), unveraendert gueltig auf ca61419. Ein Vergleich zweier Laeufe
+#: DIESES Standes saehe eine Verschiebung nicht — erst der Bezug nach draussen
+#: macht den Test scharf. Seit ADR-023 (zwei Vorgaenge, Teilkuendigung mit
+#: eigener Rate, Vorgabe null) halten ``prospektiv`` und ``mit_abzug`` wieder
+#: ihr GANZES Ledger. Die Generation mit ``teilkuendigung`` bucht den
+#: Herabsetzungswunsch als TKU (Annahme A1) und zieht ihn nur noch vor t: Ihre
+#: Zeilen VOR t sind dieselben wie damals, nur mit dem Code TKU und der
+#: Betragsart VS_teilkuendigung statt RED/VS_herabsetzung — der Test benennt
+#: die Zeilen zurueck und vergleicht dann. Historie und Scheiben sind fuer alle
+#: drei identisch.
 VOR_DEM_NACHLAUF = {
     PROSPEKTIV: {
         "ledger": "6f88a541fb2862f6b95dd3cc057067609137aa9688940e8231fdf3f3f5683739",
@@ -571,16 +593,20 @@ HISTORIE_VOR_DEM_NACHLAUF = "7440ee258c5aff5433bf726d4b1bdd472f8ee464dc631a72899
 @pytest.mark.parametrize("verfahren", VERFAHREN)
 def test_die_ziehung_im_nachlauf_verschiebt_keinen_bestehenden_bestand(welten, verfahren):
     """Gemessen gegen den Stand davor: Historie und Scheiben sind bitgleich,
-    das Ledger bitgleich bis t (Teilkuendigung) bzw. ganz (PLV-Verfahren).
-    Mutationsprobe: die Nachlauf-Ziehung aus dem HAUPTstrom nehmen
-    (``rng.random()`` statt ``rng_red.random()`` im Nachlauf-Zweig) -> rot."""
+    das Ledger ganz (PLV-Verfahren) bzw. bis t mit zurueckbenannten Codes
+    (Generation mit Teilkuendigung, A1). Mutationsprobe: den Teilkuendigungs-
+    Draw aus dem HAUPTstrom nehmen (``rng.random()`` statt ``rng_tk.random()``)
+    -> rot (der Hauptstrom verschiebt sich, obwohl die Rate null ist)."""
     import hashlib
 
     config, stamm, schichten, verankerung, erg = welten[verfahren]
     led = erg.ledger
     if verfahren == TEILKUENDIGUNG:
         t = stamm.set_index("police_id")["premium_duration"]
-        led = led[led["vertragsjahr"].to_numpy() < t.loc[led["police_id"]].to_numpy()]
+        led = led[led["vertragsjahr"].to_numpy() < t.loc[led["police_id"]].to_numpy()].copy()
+        assert not (led["ereignis"] == "RED").any() and (led["ereignis"] == "TKU").any()
+        led["ereignis"] = led["ereignis"].replace({"TKU": "RED"})
+        led["betrag_art"] = led["betrag_art"].replace({"VS_teilkuendigung": "VS_herabsetzung"})
 
     def fingerabdruck(df):
         return hashlib.sha256(df.to_csv(index=False).encode("utf-8")).hexdigest()

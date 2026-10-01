@@ -72,8 +72,27 @@ from rechner_pipeline.models.bestand import (
 )
 from tests import test_t27_teilkuendigung_klasse as tk
 from tests.test_bestand_bu import BU_EXAMPLE
-from tests.test_t27_teilkuendigung_klasse import welt as klv_welt  # noqa: F401
 from tests.zugangsstrom import bestand_aus_zugangsstrom
+
+@pytest.fixture(scope="module")
+def klv_welt():
+    """Die KLV-Welt des Zaehltests: ein uebernommener Bestand mit Scheiben,
+    Korrekturschicht und Abzug je Baustein (Welt von test_t27_teilkuendigung_
+    klasse), Generation mit ``prospektiv`` — und BEIDE Vorgaenge mit eigener
+    Rate: Beitragsherabsetzung (``herabsetzung`` -> RED) und Teilkuendigung
+    (``teilkuendigung`` -> TKU; ADR-023). Seit es zwei Vorgaenge gibt, traegt
+    die Teilkuendigungs-Generation des alten Fixtures keine RED mehr (sie
+    fuehrt den Herabsetzungswunsch als Teilkuendigung aus, Annahme A1)."""
+    config = copy.deepcopy(tk._config("prospektiv"))
+    config.annahmen.teilkuendigung = Annahme(a=0.08, b=0.0)
+    config.annahmen.tk_anteil = tk.ANTEIL
+    assert config.validate() == []
+    stamm = tk._stamm([{"id": p, "beginn": "2015-01-01", "zugang": "2026-01-01"}
+                       for p in tk.POLICEN])
+    schichten, verankerung = tk._tabellen(tk.POLICEN)
+    erg = fortschreiben(stamm, config, tk.BIS, schichten=schichten, verankerung=verankerung)
+    return config, stamm, schichten, verankerung, erg
+
 
 NULL = Annahme(a=0.0, b=0.0)
 #: Die TOML-Vorgabe ``{ a = 0.0 }`` ergibt b = 1 — bei Annahmen ohne Tafel ist
@@ -409,7 +428,7 @@ def test_eine_zeile_am_oder_vor_dem_zugang_ist_nicht_sache_dieser_regel(klv_welt
 #: Paare, die die Engine in den Welten unten BUCHT. KLV: die Neuzugangswelt
 #: der Beispiel-Config (ohne RED: deren Herabsetzungsrate ist null) plus die
 #: Teilkuendigungswelt der Klasse; BU: die Neuzugangswelt der BU-Beispiel-Config.
-KLV_PAARE = {("klv", e) for e in ("ZUG", "ABL", "TOD", "STO", "PEX", "ERH", "RED")}
+KLV_PAARE = {("klv", e) for e in ("ZUG", "ABL", "TOD", "STO", "PEX", "ERH", "RED", "TKU")}
 BU_PAARE = {("bu", e) for e in ("ZUG", "ABL", "TOD", "INV", "REA")}
 
 

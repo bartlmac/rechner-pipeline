@@ -47,7 +47,10 @@ from rechner_pipeline.bestand.parquet_io import (
 )
 from rechner_pipeline.gates._common import Eingangsbindung
 from rechner_pipeline.gates._provenienz import systemstand
-from rechner_pipeline.models.bestand import model_point_kwargs
+from rechner_pipeline.models.bestand import (
+    alt_absetzung_ist_teilkuendigung,
+    model_point_kwargs,
+)
 from rechner_pipeline.kern.beitragsreduktion import (
     PROSPEKTIV,
     TEILKUENDIGUNG,
@@ -378,17 +381,26 @@ def _serienzustand(
     )
 
     arten = [a for a, _, _ in folge]
-    if "RED" in arten and red_verfahren != TEILKUENDIGUNG:
+    # Welcher Vorgang eine gelieferte Absetzung war (Annahme A2, klv.md
+    # 7.2): nach dem Beitragsende eine Teilkuendigung, gleich welches
+    # Verfahren die Quelle sonst fuehrt; davor sagt es das Verfahren.
+    geteilt = [
+        jahr for art, jahr, _ in folge
+        if art == "RED" and not alt_absetzung_ist_teilkuendigung(
+            red_verfahren, jahr, int(mp_felder["t"]))]
+    if geteilt:
         # Die Serien-Ableitung kennt nur die Teilkuendigung (die
         # Grundsumme wird mit f skaliert, die Scheiben bleiben). Unter
-        # prospektiv/mit Abzug ist der Vertrag nach der Herabsetzung ein
-        # geteilter — ihn mit Teilkuendigungs-Semantik zu rekonstruieren
-        # hiesse, die Sperre der Uebernahme zu umgehen (Angriffsrunde der
-        # Nacht: Deckungskapital bis -9.039 EUR). Benannt statt falsch.
+        # prospektiv/mit Abzug ist der Vertrag nach einer Herabsetzung VOR
+        # dem Beitragsende ein geteilter — ihn mit Teilkuendigungs-Semantik
+        # zu rekonstruieren hiesse, die Sperre der Uebernahme zu umgehen
+        # (Angriffsrunde der Nacht: Deckungskapital bis -9.039 EUR). Benannt
+        # statt falsch.
         raise MigrationszugangFehler(
-            f"Serie mit Herabsetzung unter Verfahren {red_verfahren!r}: die "
-            "Serien-Ableitung kennt nur die Teilkuendigung — ein geteilter "
-            "Vertrag laesst sich so nicht rekonstruieren")
+            f"Serie mit Herabsetzung unter Verfahren {red_verfahren!r} vor dem "
+            f"Beitragsende (Jahr {geteilt}): die Serien-Ableitung kennt nur "
+            "die Teilkuendigung — ein geteilter Vertrag laesst sich so nicht "
+            "rekonstruieren")
     if "PEX" in arten:
         if arten.count("PEX") > 1 or arten[-1] != "PEX":
             raise SystemExit(
@@ -449,7 +461,111 @@ def _serienzustand(
         # Ebenfalls Beleg: Herabsetzungsjahre, deren Anteil aus der
         # IST-Welt nicht identifizierbar und fuer sie unerheblich ist.
         zustand["absetzungsanteil_unbestimmt"] = serie.anteil_unbestimmt
+    if any(art == "RED" and anteil is not None for art, _, anteil in ereignisse):
+        # Die Struktur traegt ein Anteil aus der registrierten Auskunft —
+        # nicht die eigene Ableitung: Pflichtziehung der Abnahmen.
+        zustand["gedeckt_durch"] = GEDECKT_AUSKUNFT
     return zustand
+
+
+#: Kennung eines Anfangszustands, dessen Struktur die registrierte Auskunft
+#: der Quelle traegt (``--red-anteile-datei``), nicht die eigene Ableitung
+#: aus der Lieferung. Solche Policen sind PFLICHTZIEHUNG der aktuariellen
+#: Abnahmen und der Migrationssuite (Pruefer-Befund B1 zur Alt-Absetzung): Nach dem
+#: Beitragsende sind die Wertvergleiche gegen die Zerlegung blind — eine
+#: falsche Auskunft faellt an keinem Bewertungspunkt auf, nur an einer
+#: Police, die eine Abnahme tatsaechlich ansieht.
+GEDECKT_AUSKUNFT = "auskunft"
+
+
+def gedeckte_policen(zustaende: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
+    """Police -> wodurch ihr Anfangszustand gedeckt ist (nur die gedeckten)."""
+    return {p: str(z["gedeckt_durch"]) for p, z in sorted(zustaende.items())
+            if z.get("gedeckt_durch")}
+
+
+def deckungsbeleg(
+    zustaende: Dict[str, Dict[str, Any]], auskunft: Optional[Dict[str, Any]]
+) -> Dict[str, Dict[str, Any]]:
+    """Je gedeckter Police, WODURCH ihr Anfangszustand gedeckt ist: die
+    Auskunft mit Name, SHA-256 und dem Bezug dieser Police. Dieselbe Form in
+    Uebernahmebeleg, aktuariellem Test und Migrationssuite — A-M4 haelt die
+    Mengen gleich."""
+    aus: Dict[str, Dict[str, Any]] = {}
+    for police, durch in gedeckte_policen(zustaende).items():
+        eintrag: Dict[str, Any] = {"durch": durch}
+        if durch == GEDECKT_AUSKUNFT and auskunft:
+            eintrag.update(datei=auskunft.get("name"), sha256=auskunft.get("sha256"),
+                           bezug=(auskunft.get("bezug") or {}).get(police))
+        aus[police] = eintrag
+    return aus
+
+
+class AnfangszustandUnbestimmt(SystemExit):
+    """Ein Vertrag mit Vorgeschichte, dessen Anfangszustand nicht ableitbar ist."""
+
+
+def verweigere_unbestimmte(warnungen: List[str]) -> None:
+    """Pruefer-Befund B1 zur Alt-Absetzung, als Klasse: Ein Vertrag, dessen
+    Anfangszustand NICHT ableitbar ist, wird nicht still als zustandsloser
+    Vertrag mit der gelieferten Summe weitergefuehrt — vorher lief die
+    ganze Kette mit Exit 0, nur eine Warnung und ein Eintrag im Beleg sagten
+    es, und eine spaetere Teilkuendigung zahlte falsch aus. Jede Ursache,
+    aus der ``MigrationszugangFehler`` in der Ableitung entsteht, fuehrt hier
+    zur Verweigerung (Annahme des Auftrags; ADR-002-Nachtrag 2026-10-01).
+
+    Gedeckt ist ein solcher Vertrag nur durch das, was seine STRUKTUR
+    bestimmt: die registrierte Auskunft der Quelle je Ereignis
+    (``--red-anteile-datei``, mit ``BEZUG`` auch eine dokumentierte
+    Arbeits-Lesart des Aktuars). "Die Werte an den Bewertungspunkten
+    stimmen" ist keine Deckung — nach dem Beitragsende sind A-M1, A-M2 und
+    die Suite gegen die Zerlegung blind. Ein ganzer Fall ohne Anfangszustand
+    bleibt ``--anfangszustand grundvertrag`` (nicht freigeschaltet, im Beleg
+    benannt)."""
+    if not warnungen:
+        return
+    raise AnfangszustandUnbestimmt(
+        f"{len(warnungen)} Vertrag/Vertraege mit Vorgeschichte ohne ableitbaren "
+        "Anfangszustand — nicht still als Grundvertrag uebernommen: "
+        + " | ".join(warnungen[:5]) + (" ..." if len(warnungen) > 5 else "")
+        + ". Ausweg: den fortgefuehrten Anteil je Ereignis als registrierte "
+        "Auskunft der Quelle nennen (--red-anteile-datei, POLNR;GEVO;DATUM;"
+        "ANTEIL;BEZUG) oder den Fall mit --anfangszustand grundvertrag als nicht "
+        "freigeschaltet fuehren")
+
+
+def vorgeschichte_grenzfehler(
+    art: str, jahr: int, datum: "dt.date", stammzeile: Any
+) -> Optional[str]:
+    """Die Grenzen eines gelieferten Vorgangs der Vorgeschichte — fuer jeden
+    Vorgang (PEX, ERH, RED) und jede Generation dieselben; die
+    Jahrestags-Konvention prueft der Aufrufer davor.
+
+    * ``0 < Jahr``: am Versicherungsbeginn gibt es keinen Vorgang.
+    * ``Jahr < n``: am oder nach dem Ablauf gibt es den Vertrag nicht mehr.
+    * ``Datum <= Bestandszugang``: Die Vorgeschichte endet am Stichtag der
+      Uebernahme; was danach liegt, ist ein Geschaeftsvorfall des
+      Pruefzeitraums (Protokoll), kein Anfangszustand.
+
+    Rueckgabe: der Befundtext mit dem Ausweg, oder None."""
+    import pandas as pd
+
+    n = int(stammzeile["duration"])
+    if int(jahr) <= 0:
+        return (f"{art} der Vorgeschichte im Vertragsjahr {jahr} — am "
+                "Versicherungsbeginn gibt es keinen Vorgang; Lieferung klaeren")
+    if int(jahr) >= n:
+        return (f"{art} der Vorgeschichte im Vertragsjahr {jahr} liegt am oder nach "
+                f"dem Ablauf (n = {n}) — den Vertrag gibt es dort nicht mehr; "
+                "Lieferung klaeren")
+    zugang = stammzeile.get("bestandszugang") if hasattr(stammzeile, "get") else None
+    if zugang is not None and not pd.isna(zugang) \
+            and pd.Timestamp(datum) > pd.Timestamp(zugang):
+        return (f"{art} der Vorgeschichte am {datum} liegt nach dem Stichtag der "
+                f"Uebernahme {pd.Timestamp(zugang).date()} — ein Vorgang des "
+                "Pruefzeitraums gehoert ins Geschaeftsvorfall-Protokoll, nicht in "
+                "die Vorgeschichte; Lieferung klaeren")
+    return None
 
 
 def anfangszustaende_je_police(
@@ -539,6 +655,16 @@ def anfangszustaende_je_police(
                     f"{monate_e} liegt nicht auf dem Vertragsjahrestag — "
                     "Lieferung klaeren, nicht runden")
             folge.append((art_e, monate_e // 12, ereignis[s["datum"]]))
+        # Die Grenzen der Vorgeschichte, an EINER Stelle und VOR jeder
+        # Verzweigung nach Vorgang oder Verfahren (Pruefer-Befund B2,
+        # 2026-10-01: eine Alt-Herabsetzung nach dem Stichtag, am oder nach dem
+        # Ablauf wurde bei der Teilkuendigung ohne Meldung uebernommen, weil
+        # der Zweig ``continue`` vor jeder Grenzpruefung stand).
+        for art_e, jahr_e, datum_e in folge:
+            fehler_g = vorgeschichte_grenzfehler(
+                art_e, jahr_e, _parse(datum_e), stammzeilen[police])
+            if fehler_g:
+                raise SystemExit(f"Police {police}: {fehler_g}")
 
         # Dubletten-Wache: eine doppelt gelieferte Ereigniszeile wuerde
         # unten still als zusaetzliche Quell-Komponente zaehlen und der
@@ -584,7 +710,8 @@ def anfangszustaende_je_police(
         art = folge[0][0]
         jahr = folge[0][1]
 
-        if art == "RED" and red_verfahren == TEILKUENDIGUNG:
+        if art == "RED" and alt_absetzung_ist_teilkuendigung(
+                red_verfahren, jahr, int(mp_felder["t"])):
             # Unter der Teilkuendigungs-Semantik (Bedingungswerk
             # Ziffer 6, Ausweitung 16) fuehrt die Quelle nach der
             # Herabsetzung ZUSTANDSLOS mit der kleineren Grundsumme
@@ -592,6 +719,16 @@ def anfangszustaende_je_police(
             # gibt keinen geteilten Anfangszustand zu rekonstruieren;
             # die Teilungs-Rueckwege (leite_absetzung_ab,
             # Anker-Kalibrierung) sind Artefakte der PLV-Verfahren.
+            #
+            # Dasselbe gilt fuer eine Absetzung NACH dem Beitragsende in
+            # JEDER Generation (Entscheid des Maintainers 2026-10-01: der
+            # Zugang integriert sie; Annahme A2, klv.md 7.2): Sie
+            # war eine Teilkuendigung, der gelieferte
+            # Vertrag ist f x Ursprungssumme = ERLSUMME und wird als dieser
+            # zustandslose Vertrag gefuehrt. Der fortgefuehrte Anteil wird
+            # dafuer nicht gebraucht — der Rechenkern ist homogen in der
+            # Summe; die Ursprungssumme bestimmt eine registrierte Auskunft
+            # (``leite_ursprungssumme_ab``), wo sie gefragt ist.
             continue
 
         try:
@@ -651,6 +788,8 @@ def anfangszustaende_je_police(
                     "sum_insured": vs_alt,
                     "kalibriert_aus_anker": kalibriert,
                 }
+                if red_anteile.get(police) is not None:
+                    zustaende[police]["gedeckt_durch"] = GEDECKT_AUSKUNFT
         except MigrationszugangFehler as exc:
             warnungen.append(f"Police {police} ({art}, Jahr {jahr}): {exc}")
     return zustaende, warnungen
@@ -915,6 +1054,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     beitragsfrei_seit = None
     anfangszustaende = None
+    zustandswarnungen: List[str] = []
     # Der Belegblock der Auskunft DIESES Laufs (None ohne Auskunft), fuer
     # die Welt-Gleichheit mit dem Schichtbeleg (aktuartest_lauf._schichten).
     auskunft_beleg: Optional[Dict[str, Any]] = None
@@ -959,9 +1099,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             red_anteile_je_datum=red_anteile_je_datum,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
             scheiben_mit_gamma1=args.scheiben_mit_gamma1)
-        for w in zustandswarnungen:
-            print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
-                  file=sys.stderr)
 
     schichten: Optional[Dict[str, Any]] = None
     monate_ta_je_police: Optional[Dict[str, int]] = None
@@ -979,6 +1116,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         monate_ta_je_police = {
             str(z.police_id): int(z.monate_ta) for z in ver.itertuples()}
 
+    # Pruefer-Befund B1: ein Vertrag ohne ableitbaren Anfangszustand wird
+    # verweigert — NACH der Bindung des Schichtbelegs, damit ein Lauf mit
+    # fremder Auskunft deren eigenen Befund behaelt.
+    verweigere_unbestimmte(zustandswarnungen)
     auftraege = baue_auftraege(
         bestand,
         spez,
@@ -1012,6 +1153,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         bestand_sha256=bestand_gelesen.sha256,
         system=systemstand(Path(args.repo_root).resolve()),
         red_anteile_datei=auskunft_beleg,
+        # Pflichtschicht (Pruefer-Befund B1): die Policen, deren
+        # Anfangszustand die Auskunft traegt — A-M4 haelt die Menge gegen die
+        # der Uebernahme und der Abnahmen.
+        pflichtschicht=deckungsbeleg(anfangszustaende or {}, auskunft_beleg),
     )
     # Der Beleg nennt, worueber geurteilt wurde — nicht nur den Bestand.
     ergebnis["eingaben"] = bindung.als_beleg()

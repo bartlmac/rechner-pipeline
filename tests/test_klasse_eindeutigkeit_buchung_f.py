@@ -235,7 +235,7 @@ def test_die_probe_meldet_eine_verdoppelte_zeile_der_herabsetzung_einmal(welt):
     einfach = _urteil(welt, tab)
     assert einfach["bestanden"]
     led = tab["ledger"]
-    i = led.index[(led["ereignis"] == "RED") & (led["betrag_art"] == "RKW_teilkuendigung")][0]
+    i = led.index[(led["ereignis"] == "TKU") & (led["betrag_art"] == "RKW_teilkuendigung")][0]
     urteil = _urteil(welt, dict(tab, ledger=_verdoppelt(led, i)))
     assert len(_befunde(urteil, "doppelte_buchung")) == 1
     assert _befunde(urteil, "herabsetzung") == []
@@ -352,10 +352,10 @@ def test_die_vollstaendigkeitspruefung_der_herabsetzung_zaehlt_die_wiederholung_
     config, stamm, schichten, verankerung, erg = welt_tk
     led = erg.ledger
     assert _pb1(welt_tk, led) == []
-    i = led.index[(led["ereignis"] == "RED") & (led["betrag_art"] == "RKW_teilkuendigung")][0]
+    i = led.index[(led["ereignis"] == "TKU") & (led["betrag_art"] == "RKW_teilkuendigung")][0]
     doppelt = _verdoppelt(led, i)
     fehler = _pb1(welt_tk, doppelt)
     assert not [f for f in fehler if "registrierter Herabsetzungen" in f], fehler
     meldungen = validate_ledger(stamm, _voll(welt_tk, doppelt))
     assert len([m for m in meldungen if "mehrfach gebucht" in m]) == 1, meldungen
-    assert [m for m in meldungen if "mehrfach gebucht" in m][0].startswith("ledger: RED-Buchung")
+    assert [m for m in meldungen if "mehrfach gebucht" in m][0].startswith("ledger: TKU-Buchung")

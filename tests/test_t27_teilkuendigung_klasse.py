@@ -292,13 +292,13 @@ def test_p_b1_bestaetigt_den_vollstaendigen_lauf(welt):
     assert _pb1(welt, welt[4].ledger) == []
 
 
-@pytest.mark.parametrize("art", ["RKW_teilkuendigung", "dDK_absorption", "VS_herabsetzung"])
+@pytest.mark.parametrize("art", ["RKW_teilkuendigung", "dDK_absorption", "VS_teilkuendigung"])
 def test_p_b1_vermisst_jede_fehlende_zeile_einer_bekannten_reduktion(welt, art):
     """Alle Zeilen einer Betragsart entfernt, Tabelle unveraendert: Die
     Reduktion ist bekannt, ihre Buchung fehlt — das ist ein Fehler, keine
     leere Pruefliste. Mutationsprobe: die Soll-Menge nicht bilden -> gruen."""
     led = welt[4].ledger
-    ohne = led[~((led["ereignis"] == "RED") & (led["betrag_art"] == art))]
+    ohne = led[~((led["ereignis"] == "TKU") & (led["betrag_art"] == art))]
     assert len(ohne) < len(led)
     fehler = _pb1(welt, ohne)
     assert fehler, art
@@ -307,7 +307,7 @@ def test_p_b1_vermisst_jede_fehlende_zeile_einer_bekannten_reduktion(welt, art):
 
 def test_p_b1_vermisst_eine_einzelne_auszahlung(welt):
     led = welt[4].ledger
-    idx = led.index[(led["ereignis"] == "RED") & (led["betrag_art"] == "RKW_teilkuendigung")][:1]
+    idx = led.index[(led["ereignis"] == "TKU") & (led["betrag_art"] == "RKW_teilkuendigung")][:1]
     fehler = _pb1(welt, led.drop(idx))
     assert fehler and any("RKW_teilkuendigung" in f for f in fehler), fehler
 
@@ -350,9 +350,9 @@ def _journal(zeilen) -> pd.DataFrame:
 def test_die_teilkuendigung_zaehlt_als_eine_leistung_die_prospektive_nicht():
     tag = "2026-03-01"
     tk = _journal([
-        {"tag": tag, "pid": 1, "ereignis": "RED", "betrag": 60_000.0, "art": "VS_herabsetzung"},
-        {"tag": tag, "pid": 1, "ereignis": "RED", "betrag": 0.02, "art": "dDK_absorption"},
-        {"tag": tag, "pid": 1, "ereignis": "RED", "betrag": 7_751.14, "art": "RKW_teilkuendigung"},
+        {"tag": tag, "pid": 1, "ereignis": "TKU", "betrag": 60_000.0, "art": "VS_teilkuendigung"},
+        {"tag": tag, "pid": 1, "ereignis": "TKU", "betrag": 0.02, "art": "dDK_absorption"},
+        {"tag": tag, "pid": 1, "ereignis": "TKU", "betrag": 7_751.14, "art": "RKW_teilkuendigung"},
     ])
     plv = _journal([
         {"tag": tag, "pid": 2, "ereignis": "RED", "betrag": 60_000.0, "art": "VS_herabsetzung"},
@@ -481,7 +481,7 @@ def test_eine_negative_korrekturschicht_ist_eine_umbuchung_mit_vorzeichen(welt):
 
     config, stamm, schichten, verankerung, erg = welt
     led = erg.ledger.copy()
-    idx = led.index[(led["ereignis"] == "RED") & (led["betrag_art"] == "dDK_absorption")][:1]
+    idx = led.index[(led["ereignis"] == "TKU") & (led["betrag_art"] == "dDK_absorption")][:1]
     assert len(idx) == 1
     led.loc[idx, "betrag"] = -0.02
     fehler = validate_ledger(stamm, led, erg.historie, erg.scheiben)
@@ -560,7 +560,7 @@ def test_eine_negative_auszahlung_wird_auf_null_gekappt_und_ausgewiesen():
         rechnerisch = (1 - ANTEIL) * vertrags_rkw(
             Rechenkern(mp), [], jahr, stoab_je_baustein=True
         ) + schichtwert_bei(_parameter(rho=-0.03), MONATE_TA, mp, 12 * jahr)
-        eigene = led[(led["police_id"] == pid) & (led["ereignis"] == "RED")]
+        eigene = led[(led["police_id"] == pid) & (led["ereignis"] == "TKU")]
         arten = dict(zip(eigene["betrag_art"], eigene["betrag"]))
         assert arten["RKW_teilkuendigung"] == pytest.approx(max(0.0, rechnerisch), abs=1e-6)
         if rechnerisch < 0:

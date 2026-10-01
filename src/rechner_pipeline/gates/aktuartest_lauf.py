@@ -134,6 +134,7 @@ def baue_auftraege(
     stoab_je_baustein: bool = False,
     red_anteil_kandidaten: Tuple[float, ...] = (),
     summen_je_police: Optional[Dict[str, float]] = None,
+    unbestimmt: Any = (),
 ) -> Tuple[List[Vertragspruefung], List[str], List[str]]:
     """Aus Lieferung und Bestand die Pruefauftraege je Vertrag.
 
@@ -152,11 +153,13 @@ def baue_auftraege(
     ist, rechnet die Schicht ohnehin in kein Urteil. OHNE Ersetzung
     bleibt der harte Engine-Waechter (kein stilles Weglassen).
 
-    ``zustandslos`` sind Policen mit Vorgeschichte, aber ohne
-    ableitbaren Anfangszustand: eine AUSGEWIESENE Pruefluecke, kein
-    Abbruch (etabliertes Verhalten der ersten Lieferung — die Police
-    faellt sichtbar rot, statt dass ein geratener Zustand still
-    richtig aussieht). Ein Plausibilitaets-Antrag wird diesen Policen
+    ``zustandslos`` sind Policen, deren Anfangszustand NICHT ableitbar ist
+    (``unbestimmt``, aus den Zustandswarnungen — nicht aus einer Heuristik
+    ueber den Historientyp: Eine Teilkuendigung der Vorgeschichte ist
+    BESTIMMT zustandslos, f x S, und war hier faelschlich "nicht ableitbar,
+    erwartbar rot" bei gruenem Urteil, Fall I der Kalibrierung zum
+    Pruefer-Befund B1). Seit B1 verweigert der Lauf solche Policen vorher
+    (``verweigere_unbestimmte``); die Menge ist dann leer. Ein Plausibilitaets-Antrag wird diesen Policen
     NICHT gewaehrt, sondern ausgewiesen verworfen: Ihr Systemwert
     rechnet mangels Zustand die Stammwelt, ein Korridor darum urteilt
     nichts, und die Kandidaten-Regeln brauchen den
@@ -168,6 +171,7 @@ def baue_auftraege(
     auftraege: List[Vertragspruefung] = []
     schicht_ausgelassen: List[str] = []
     zustandslos: List[str] = []
+    unbestimmt = set(unbestimmt)
 
     for eintrag in lieferung["vertraege"]:
         police = str(eintrag["police_id"])
@@ -214,11 +218,7 @@ def baue_auftraege(
         historientyp = str(eintrag.get("historientyp", "unbekannt"))
         beitragsfrei = eintrag.get(
             "beitragsfrei_seit_jahr", zustand.get("beitragsfrei_seit_jahr"))
-        ohne_zustand = (
-            historientyp not in ("ohne_vorgeschichte", "unbekannt")
-            and not zustand.get("scheiben")
-            and zustand.get("reduktion") is None
-            and beitragsfrei is None)
+        ohne_zustand = police in unbestimmt
         if ohne_zustand:
             zustandslos.append(police)
         gewaehrt = dict((plausibilitaet or {}).get(police, {}))
@@ -646,6 +646,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "vor dem Stichtag (POLNR;GEVO;DATUM) — traegt die "
                         "Anfangszustaende (Alt-Scheiben, Alt-Absetzung) je "
                         "Police der Stichprobe")
+    p.add_argument("--anker-erwartungswerte", dest="anker_quelle",
+                   default=None, metavar="REGISTRIERTE_DATEI",
+                   help="REGISTRIERTE Erwartungswerte am Verankerungszeitpunkt "
+                        "— dieselbe Quelle, aus der Uebernahme, Verankerung und "
+                        "Migrationssuite den Zustand einer Absetzung "
+                        "kalibrieren, deren Beitragsgleichung entfaellt. Ohne "
+                        "sie dienen die Uebernahme-Punkte der hier geprueften "
+                        "Lieferung als Anker; eine Lieferung ohne solche Punkte "
+                        "(A-M2, A-M3) kann den Zustand dann nicht ableiten, und "
+                        "der Lauf verweigert (Pruefer-Befund B1)")
     p.add_argument("--red-anteile-datei", dest="red_anteile_datei",
                    default=None, metavar="REGISTRIERTE_DATEI",
                    help="REGISTRIERTE Auskunft der Quelle zu den "
@@ -779,6 +789,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             delimiter=";"))
 
     anfangszustaende = None
+    zustandswarnungen: List[str] = []
     # Der Belegblock der Auskunft DIESES Laufs (None ohne Auskunft): die
     # Schicht wird gegen ihn gehalten (Welt-Gleichheit, ``_schichten``).
     auskunft_beleg: Optional[Dict[str, Any]] = None
@@ -792,6 +803,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         from rechner_pipeline.gates.migrationssuite_lauf import (
             VORGABE,
             anfangszustaende_je_police,
+            verweigere_unbestimmte,
             lies_auskuenfte,
         )
 
@@ -808,7 +820,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         # Ankerwerte fuer den Rueckfallweg: der gelieferte Wert am
         # Verankerungszeitpunkt je Vertrag der Stichprobe.
         anker: Dict[str, Any] = {}
-        for eintrag in lieferung["vertraege"]:
+        anker_lieferung = lieferung
+        if args.anker_quelle is not None:
+            # Dieselbe registrierte Ankerquelle wie die uebrigen Kommandos —
+            # der Zustand einer Police ist in jeder Abnahme derselbe.
+            anker_lieferung = bindung.binde(
+                fall_mod.eingang_datei(fall, args.anker_quelle)).json()
+        for eintrag in anker_lieferung["vertraege"]:
             punkte = eintrag.get("punkte") or []
             erster = next(
                 (p for p in punkte if p.get("anlass") == "uebernahme"), None)
@@ -825,9 +843,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             erhoehungssatz=args.erhoehungssatz, anker=anker,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
             scheiben_mit_gamma1=args.scheiben_mit_gamma1)
-        for w in zustandswarnungen:
-            print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
-                  file=sys.stderr)
 
     # Ersetzter Wertvergleich: NUR aus einer registrierten Quelle. Ein
     # Kommandozeilen-Text waere fuer die Zeichnung nicht bindbar — die
@@ -872,6 +887,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     schichten = _schichten(fall, args.schicht, bindung=bindung,
                            repo_root=Path(args.repo_root).resolve(),
                            auskunft=auskunft_beleg)
+    # Pruefer-Befund B1: ein Vertrag ohne ableitbaren Anfangszustand wird
+    # verweigert — NACH der Bindung des Schichtbelegs, damit ein Lauf mit
+    # fremder Auskunft deren eigenen Befund behaelt.
+    from rechner_pipeline.gates.migrationssuite_lauf import verweigere_unbestimmte
+
+    verweigere_unbestimmte(zustandswarnungen)
     auftraege, schicht_ausgelassen, zustandslos = baue_auftraege(
         lieferung, bestand, spez, auspraegungen_je_police=auspraegungen,
         anfangszustaende=anfangszustaende, plausibilitaet=plausibilitaet,
@@ -914,17 +935,35 @@ def main(argv: Optional[List[str]] = None) -> int:
         # Ausgewiesene Auslassung gehoert in den Beleg, nicht nur nach
         # stderr — A-M1 liest das Ergebnis, nicht das Terminal.
         ergebnis["schicht_ausgelassen"] = sorted(schicht_ausgelassen)
-    if zustandslos:
-        ergebnis["anfangszustand_nicht_ableitbar"] = {
-            "policen": zustandslos,
-            "hinweis": (
-                "Vorgeschichte vorhanden, Anfangszustand nicht ableitbar "
-                "(siehe Zustandswarnungen des Laufs) — der Wertvergleich "
-                "dieser Policen rechnet die Stammwelt und faellt "
-                "erwartbar rot; Ursache beheben (z. B. Herabsetzungs-"
-                "Anteile je Ereignis nachliefern: POLNR;GEVO;DATUM;"
-                "ANTEIL), nicht Toleranzen weiten."),
-        }
+    # Pflichtschicht (Pruefer-Befund B1, Bauauflage): Jede Police, deren
+    # Anfangszustand nicht die eigene Ableitung, sondern die registrierte
+    # Auskunft traegt, ist PFLICHTZIEHUNG dieser Abnahme — nicht Kandidat des
+    # Zufalls. Der Beleg nennt je Police, wodurch sie gedeckt ist; fehlt eine
+    # in der Stichprobe, ist die Abnahme nicht bestanden (Mengenbefund). A-M4
+    # haelt die Menge gegen die der Uebernahme (``gates.abnahmebericht``).
+    # Das ersetzt das fruehere Feld "anfangszustand_nicht_ableitbar ...
+    # erwartbar rot", das bestimmte Zustaende falsch etikettierte (Fall I).
+    from rechner_pipeline.gates.migrationssuite_lauf import deckungsbeleg
+
+    pflicht = deckungsbeleg(anfangszustaende or {}, auskunft_beleg)
+    if args.abnahme == "A-M3":
+        # A-M3 prueft Geschaeftsvorfaelle: Pflicht sind die gedeckten
+        # Policen, zu denen die Lieferung einen Vorfall des Pruefzeitraums
+        # traegt — eine Police ohne Vorfall hat dort nichts zu pruefen.
+        mit_vorfall = {str(e["police_id"]) for e in lieferung["vertraege"]}
+        pflicht = {p: v for p, v in pflicht.items() if p in mit_vorfall}
+    ergebnis["pflichtschicht"] = pflicht
+    gezogen = {str(p) for p in stichprobe.police_ids}
+    fehlt = sorted(p for p in pflicht if p not in gezogen)
+    if fehlt:
+        ergebnis["pflichtschicht_fehlt"] = fehlt
+        ergebnis.setdefault("mengenbefunde", []).append(
+            f"Pflichtschicht nicht gezogen: {len(fehlt)} Police(n), deren "
+            f"Anfangszustand die Auskunft traegt, fehlen in der Stichprobe "
+            f"(z. B. {fehlt[:5]}) — sie sind Pflichtziehung, kein Kandidat des "
+            "Zufalls; Ausweg: die Stichprobe um diese Policen ergaenzen und "
+            "ihre Erwartungswerte liefern lassen")
+        ergebnis["test_bestanden"] = False
     if plaus_verweigert:
         # Eigenes Feld statt Unterpunkt der Zustandslos-Prueflueke:
         # Der Antrag entfaellt auch fuer Policen mit VOLLSTAENDIG

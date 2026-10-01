@@ -274,7 +274,7 @@ def test_die_probe_meldet_ein_nan_der_soll_buchung_einer_herabsetzung(welt, monk
     monkeypatch.setattr(_probe, "red_sollbuchungen",
                         lambda *a, **k: {art: NAN for art in echt(*a, **k)})
     urteil = _urteil_mit(welt, tab=tab)
-    red = tab["ledger"][tab["ledger"]["ereignis"] == "RED"]
+    red = tab["ledger"][tab["ledger"]["ereignis"] == "TKU"]
     assert len(red) >= 2
     assert len(_befunde(urteil, "buchung")) == len(red), [
         (b["art"], b["text"][:80]) for b in urteil["befunde"]]

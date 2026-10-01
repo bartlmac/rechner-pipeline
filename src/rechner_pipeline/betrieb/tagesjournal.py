@@ -74,10 +74,11 @@ from rechner_pipeline.models.bestand import (
     TAGESJOURNAL_SPALTEN,
     validate_tagesjournal as _validate_vertrag,
 )
+from rechner_pipeline.bestand.zufallsstroeme import STROEME
 
 #: SeedSequence-Konstante des Meldeverzugs — getrennt von Batch, jaehrlichem
 #: Neuzugang (771177), Ereignis-Engine (424242) und Tagesneugeschaeft (918273).
-MELDEVERZUG_STREAM = 552211
+MELDEVERZUG_STREAM = STROEME["meldeverzug"]  # Register: bestand.zufallsstroeme
 
 #: 95-Prozent-Quantil der Standardnormalverteilung (lognormal: p95 = median * exp(sigma * z95)).
 _Z95 = NormalDist().inv_cdf(0.95)

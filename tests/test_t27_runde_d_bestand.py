@@ -414,15 +414,18 @@ from rechner_pipeline.models.bestand import LEDGER_NAMES, LEDGER_SPALTEN  # noqa
 
 
 def _red_zeile_in(tab, pid: int, jahr: int, betrag: float) -> dict:
-    """Eine RED-Zeile VS_herabsetzung im Vertragsjahr ``jahr`` (Jahrestag),
-    gleiche Form wie die der Engine — nur der Ort ist der Fehler."""
+    """Eine Summenzeile der registrierten Herabsetzung bzw. Teilkuendigung
+    (RED/VS_herabsetzung oder TKU/VS_teilkuendigung, ADR-023) im Vertragsjahr
+    ``jahr`` (Jahrestag), gleiche Form wie die der Engine — nur der Ort ist
+    der Fehler."""
     le = tab["ledger"]
-    vorlage = le[(le.police_id == pid) & (le.ereignis == "RED")
-                 & (le.betrag_art == "VS_herabsetzung")].iloc[0]
+    vorlage = le[(le.police_id == pid) & le.ereignis.isin(["RED", "TKU"])
+                 & le.betrag_art.isin(["VS_herabsetzung", "VS_teilkuendigung"])].iloc[0]
     datum = pd.Timestamp(vorlage["status_date"]) + pd.DateOffset(years=jahr - int(vorlage["vertragsjahr"]))
     zeile = pd.DataFrame([{
-        "police_id": pid, "tarif_generation": vorlage["tarif_generation"], "ereignis": "RED",
-        "vertragsjahr": jahr, "status_date": datum, "betrag_art": "VS_herabsetzung",
+        "police_id": pid, "tarif_generation": vorlage["tarif_generation"],
+        "ereignis": vorlage["ereignis"],
+        "vertragsjahr": jahr, "status_date": datum, "betrag_art": vorlage["betrag_art"],
         "betrag": float(betrag), "betrag_herkunft": "gerechnet"}])[list(LEDGER_NAMES)].astype(
             dict(LEDGER_SPALTEN))
     ledger = pd.concat([le, zeile], ignore_index=True).sort_values(
@@ -448,13 +451,13 @@ def test_eine_red_zeile_ausserhalb_des_reduktionsjahres_ist_unbelegt(welt, fremd
     assert gut["bestanden"], gut["befunde"][:3]                       # Positivkontrolle
     if betrag is None:
         le = kontrolle["ledger"]
-        betrag = float(le[(le.police_id == POL) & (le.ereignis == "RED")
-                          & (le.betrag_art == "VS_herabsetzung")].iloc[0]["betrag"])
+        betrag = float(le[(le.police_id == POL) & (le.ereignis == "TKU")
+                          & (le.betrag_art == "VS_teilkuendigung")].iloc[0]["betrag"])
     urteil = _probe_urteil(welt, _red_zeile_in(kontrolle, POL, fremdjahr, betrag))
     assert not urteil["bestanden"]
     assert any(f"Vertragsjahr {fremdjahr}" in t and f"im Jahr {reg}" in t
                for t in _texte(urteil, "herabsetzung")), urteil["befunde"][:4]
-    assert urteil["buchungen_geprueft"]["RED"] == gut["buchungen_geprueft"]["RED"]
+    assert urteil["buchungen_geprueft"]["TKU"] == gut["buchungen_geprueft"]["TKU"]
 
 
 def test_p_b1_weist_dieselbe_fremdjahr_zeile_ab(welt):
@@ -500,11 +503,11 @@ def test_eine_red_zeile_ohne_registrierte_herabsetzung_wird_nicht_gezaehlt(welt)
     die FRUEHERE fiel in den Zweig des ungekuerzten Vertrags und zaehlte als
     geprueft. Mutationsprobe: die Weiche fuer fehlende Registrierung entfernen
     -> rot (TypeError beim Jahresvergleich)."""
-    grundlinie = _probe_urteil(welt, welt["tab"])["buchungen_geprueft"]["RED"]
+    grundlinie = _probe_urteil(welt, welt["tab"])["buchungen_geprueft"]["TKU"]
     tab = _mit_red(welt, POL, ZUGANGSJAHR + 2)
     tab = _red_zeile_in(dict(tab, horizont=_dt.date(2029, 1, 1)), POL, ZUGANGSJAHR + 1, 100_000.0)
     tab = dict(tab, reduktionen=welt["tab"]["reduktionen"])
     urteil = _probe_urteil(welt, tab)
     assert not urteil["bestanden"]
     assert any("ohne Zeile in reduktionen.parquet" in t for t in _texte(urteil, "herabsetzung"))
-    assert urteil["buchungen_geprueft"]["RED"] == grundlinie
+    assert urteil["buchungen_geprueft"]["TKU"] == grundlinie

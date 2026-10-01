@@ -136,7 +136,9 @@ def _urteil(red_welt, **ersetzt):
 
 def _red(fort, art):
     led = fort["ledger"]
-    return led.index[(led["ereignis"] == "RED") & (led["betrag_art"] == art)]
+    # Die Generation des Falls (TG2015) fuehrt den Herabsetzungswunsch als
+    # Teilkuendigung aus (Annahme A1, ADR-023): gebucht wird TKU.
+    return led.index[(led["ereignis"] == "TKU") & (led["betrag_art"] == art)]
 
 
 def test_eine_gestrichene_auszahlung_faellt(red_welt):
@@ -150,7 +152,7 @@ def test_eine_gestrichene_auszahlung_faellt(red_welt):
 def test_eine_doppelt_gebuchte_summe_faellt(red_welt):
     _ueb, fort, _b = red_welt[:3]
     led = fort["ledger"]
-    idx = _red(fort, "VS_herabsetzung")
+    idx = _red(fort, "VS_teilkuendigung")
     doppelt = pd.concat([led, led.loc[idx[:1]]], ignore_index=True).astype(led.dtypes.to_dict())
     assert not _urteil(red_welt, ledger=doppelt)["bestanden"]
 
@@ -158,7 +160,7 @@ def test_eine_doppelt_gebuchte_summe_faellt(red_welt):
 def test_ein_verschobener_wirkungstag_faellt(red_welt):
     _ueb, fort, _b = red_welt[:3]
     led = fort["ledger"].copy()
-    idx = _red(fort, "VS_herabsetzung")
+    idx = _red(fort, "VS_teilkuendigung")
     led.loc[idx[0], "status_date"] = pd.Timestamp(led.loc[idx[0], "status_date"]) + pd.DateOffset(months=1)
     assert not _urteil(red_welt, ledger=led)["bestanden"]
 

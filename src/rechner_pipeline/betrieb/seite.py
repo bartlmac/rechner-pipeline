@@ -116,7 +116,8 @@ PAKET_DATEI = "stand.json"
 
 EREIGNIS_TITEL = {
     "ZUG": "Zugang", "MIG": "Migrationszugang", "ERH": "Dynamische Erhöhung",
-    "RED": "Beitragsherabsetzung", "PEX": "Beitragsfreistellung",
+    "RED": "Beitragsherabsetzung", "TKU": "Teilkündigung",
+    "PEX": "Beitragsfreistellung",
     "INV": "Invalidisierung", "REA": "Reaktivierung", "STO": "Storno",
     "TOD": "Tod", "ABL": "Ablauf",
 }

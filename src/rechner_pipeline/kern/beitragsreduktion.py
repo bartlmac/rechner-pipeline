@@ -73,9 +73,19 @@ soll. (Die Teilkuendigung kappt die Auszahlung dagegen auf null, weil dort
 Geld fliesst und ein Kunde aus einer Migrationsdifferenz keine
 Nachzahlungsforderung bekommt, Entscheid 2026-09-26 — siehe die Engine.)
 
-**Nach dem Beitragsende** (Entscheid des Maintainers 2026-09-30) ist nur
-die Teilkuendigung definiert (``NACH_BEITRAGSENDE_DEFINIERT``); die beiden
-beitragssenkenden Verfahren behalten ihre Wache.
+**Zwei Geschaeftsvorfaelle** (Entscheid des Maintainers 2026-10-01,
+ADR-023; klv.md 7.1 und 7.2). Die BEITRAGSHERABSETZUNG (``RED``) senkt den
+Beitrag auf f und wandelt den freiwerdenden Teil in beitragsfreie Summe um
+(``prospektiv`` oder ``mit_abzug``); es fliesst kein Geld, und sie setzt
+einen laufenden Beitrag voraus (``0 < jahr < t``). Die TEILKUENDIGUNG
+(``TKU``) kuendigt einen Summenanteil (1-f) der Grundversicherung und zahlt
+dessen Rueckkaufswert nach Tarif aus; sie ist in jeder Generation
+beitragspflichtig wie ausfinanziert moeglich (``0 < jahr < n``). Hier
+rechnet ``verfahren=TEILKUENDIGUNG`` diesen Vorgang. Verworfen wurde EIN
+Vorgang mit Verfahrensschalter, der eine Herabsetzung nach t still als
+Teilkuendigung rechnet: Es sind zwei Vorgaenge mit verschiedener Wirkung,
+und das Ledger muss sagen, was geschah. Eine Herabsetzung nach t
+verweigert der Kern deshalb benannt, mit dem Ausweg Teilkuendigung.
 
 Knoten: klv
 """
@@ -105,8 +115,13 @@ from rechner_pipeline.kern.rechenkern import (
 #: im Modellpunkt.
 PROSPEKTIV = "prospektiv"
 MIT_ABZUG = "mit_abzug"
-#: Quell-Verfahren der Baldrian-Uebernahme (Bedingungswerk Ziffer 6,
-#: A-M3-Befund des zweiten Laufs): Der Anteil (1-f) der
+#: Die Teilkuendigung — seit dem Entscheid 2026-10-01 ein EIGENER
+#: Geschaeftsvorfall (``TKU``) jeder Generation; als ``red_verfahren`` einer
+#: Generation heisst der Wert: Diese Generation kennt keine Herabsetzung ohne
+#: Auszahlung, ein Herabsetzungswunsch wird als Teilkuendigung ausgefuehrt
+#: (Annahme A1, klv.md 7.2). Herkunft: Quell-Verfahren der
+#: Baldrian-Uebernahme (Bedingungswerk Ziffer 6, A-M3-Befund des zweiten
+#: Laufs): Der Anteil (1-f) der
 #: GRUNDVERSICHERUNG wird GEKUENDIGT und sein Rueckkaufswert
 #: ausgezahlt — kein beitragsfrei gestellter Teil bleibt zurueck, der
 #: Vertrag danach ist der zustandslose Vertrag mit f x S (die Quelle
@@ -114,18 +129,6 @@ MIT_ABZUG = "mit_abzug"
 #: den freiwerdenden Teil in eine beitragsfreie Summe um (Zweiteilung).
 TEILKUENDIGUNG = "teilkuendigung"
 VERFAHREN = (PROSPEKTIV, MIT_ABZUG, TEILKUENDIGUNG)
-#: Die Verfahren, die auch im ausfinanzierten Nachlauf (t <= Jahr < n, kein
-#: PEX) definiert sind — Entscheid des Maintainers 2026-09-30: ein
-#: ausfinanzierter Vertrag KANN herabgesetzt werden. Gemessen an
-#: ``reduziere``: Die Teilkuendigung kuendigt einen SUMMEN-Anteil und setzt
-#: keinen laufenden Beitrag voraus (Fund N6, Kern 3.4.0); ``prospektiv`` und
-#: ``mit_abzug`` wandeln den freiwerdenden BEITRAGSanteil (1-f) um, und nach
-#: t gibt es keinen Beitrag, den ein Anteil f fortfuehren koennte — der Kern
-#: verweigert sie dort, und der Tarifplan (klv.md 7.1) sagt nichts. Die
-#: Ereignis-Engine zieht nach t nur fuer diese Verfahren. Kein Zweitwissen:
-#: ``tests/test_herabsetzung_ausfinanziert.py`` haelt dieses Tupel (==) gegen
-#: das, was ``reduziere`` dort tatsaechlich akzeptiert.
-NACH_BEITRAGSENDE_DEFINIERT = (TEILKUENDIGUNG,)
 #: Was der PRODUKTIVE Pfad (``reduziere_geschichtet``, der eine Eingang
 #: der Fuehrung) tatsaechlich ausfuehrt. ``VERFAHREN`` sagt, welche Worte
 #: bekannt sind; dieses Tupel sagt, welche die Fuehrung rechnen kann. Ein
@@ -298,7 +301,11 @@ def _pruefe_eingaben(
     elif jahr >= mp.t:
         raise BeitragsreduktionFehler(
             f"Vertragsjahr {jahr}: die Beitragszahlungsdauer ist beendet "
-            f"(t={mp.t}) — es gibt keinen Beitrag zu reduzieren"
+            f"(t={mp.t}) — es gibt keinen Beitrag zu reduzieren. Eine "
+            "Beitragsherabsetzung setzt einen laufenden Beitrag voraus; "
+            "Ausweg: die Teilkuendigung (eigener Geschaeftsvorfall TKU, "
+            "verfahren='teilkuendigung'), die einen Summenanteil kuendigt "
+            "und auszahlt"
         )
 
 

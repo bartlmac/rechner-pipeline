@@ -152,6 +152,7 @@ from rechner_pipeline.betrieb.uebernahme import (
 )
 from rechner_pipeline.models.anker import jsonl_zeilen
 from rechner_pipeline.models.bestand import (
+    REDUKTION_EREIGNISSE,
     BASIS_STATUS,
     LEDGER_NAMES,
     MERKMALE_NAMES,
@@ -2251,7 +2252,8 @@ def _gebuchte_reduktionen(reduktionen, ledger):
     """
     if reduktionen is None or not len(reduktionen):
         return reduktionen
-    gebucht = set(ledger.loc[ledger["ereignis"] == "RED", "police_id"])
+    # RED und TKU: beide registriert die Tabelle (ADR-023).
+    gebucht = set(ledger.loc[ledger["ereignis"].isin(REDUKTION_EREIGNISSE), "police_id"])
     return reduktionen[
         reduktionen["police_id"].isin(gebucht)].reset_index(drop=True)
 

@@ -381,6 +381,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         from rechner_pipeline.gates.migrationssuite_lauf import (
             VORGABE,
             anfangszustaende_je_police,
+            verweigere_unbestimmte,
             auspraegungen_je_police,
             lies_auskuenfte,
         )
@@ -436,9 +437,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             erhoehungssatz=args.erhoehungssatz, anker=anker,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
             scheiben_mit_gamma1=args.scheiben_mit_gamma1)
-        for w in warnungen:
-            print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
-                  file=sys.stderr)
+        verweigere_unbestimmte(warnungen)
 
     try:
         beleg = baue_schichtbeleg(

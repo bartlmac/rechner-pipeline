@@ -80,7 +80,7 @@ def generationsnamen(df: pd.DataFrame) -> List[str]:
 #: (ZUG/ERH/RED sind GeVos ohne Statuswechsel, daher vorangestellt; die
 #: Herabsetzung steht neben der Erhoehung, weil beide dasselbe tun —
 #: sie aendern Summe und Beitrag, nicht den Zustand).
-EREIGNIS_REIHENFOLGE = ("ZUG", "MIG", "ERH", "RED", "PEX", "INV", "REA",
+EREIGNIS_REIHENFOLGE = ("ZUG", "MIG", "ERH", "RED", "TKU", "PEX", "INV", "REA",
                         "STO", "TOD", "ABL")
 
 #: Klartext je Ereignis-Code (Berichts-Beschriftung).
@@ -94,6 +94,7 @@ EREIGNIS_LABELS = {
     "MIG": "Migrationszugang",
     "ERH": "Dynamische Erhöhung",
     "RED": "Beitragsherabsetzung",
+    "TKU": "Teilkündigung",
     "PEX": "Beitragsfreistellung",
     "INV": "Invalidisierung",
     "REA": "Reaktivierung",
@@ -509,8 +510,12 @@ def bewegungskonto(
     # Summenbewegung; sie bleibt draußen.
     red_je_police: Dict[int, List] = {}
     if len(ledger):
-        _red = ledger[(ledger["ereignis"] == "RED")
-                      & (ledger["betrag_art"] == "VS_herabsetzung")]
+        # Beide Vorgaenge, die eine Summe absolut neu setzen: die
+        # Beitragsherabsetzung (RED) und die Teilkuendigung (TKU, ADR-023).
+        _red = ledger[((ledger["ereignis"] == "RED")
+                       & (ledger["betrag_art"] == "VS_herabsetzung"))
+                      | ((ledger["ereignis"] == "TKU")
+                         & (ledger["betrag_art"] == "VS_teilkuendigung"))]
         for r in _red.to_dict("records"):
             red_je_police.setdefault(int(r["police_id"]), []).append(
                 (pd.Timestamp(r["status_date"]), float(r["betrag"])))
@@ -620,6 +625,10 @@ def bewegungskonto(
         # Vertrag bleibt POL (ereignisse: "Kein Statuswechsel").
         red = periode[(periode["ereignis"] == "RED")
                       & (periode["betrag_art"] == "VS_herabsetzung")]
+        # Die Teilkuendigung: eigener Vorfall, eigene Position — sie senkt die
+        # Summe um den gekuendigten Anteil (und zahlt ihn aus).
+        tku = periode[(periode["ereignis"] == "TKU")
+                      & (periode["betrag_art"] == "VS_teilkuendigung")]
         sto = periode[periode["ereignis"] == "STO"]
         terminal = periode[periode["ereignis"].isin(("TOD", "ABL"))]
         war_bfr = terminal["police_id"].isin(pex_summen.index)
@@ -673,6 +682,16 @@ def bewegungskonto(
                         for p, d in zip(red["police_id"], red["status_date"])
                     )),
                 },
+                # Dieselbe Rechnung fuer die Teilkuendigung (ADR-023): Stueck 0,
+                # die Summe danach minus die Summe davor, mit Vorzeichen.
+                "veraenderung_teilkuendigung": {
+                    "stueck": 0,
+                    "summe": float(sum(
+                        red_betrag(p, pd.Timestamp(d))
+                        - vs_ges(p, pd.Timestamp(d), ohne_red_ab=d)
+                        for p, d in zip(tku["police_id"], tku["status_date"])
+                    )),
+                },
                 "abgang_storno": posten(sto, vs_liste(sto)),
                 "abgang_tod": posten(tod_bpfl, vs_liste(tod_bpfl)),
                 "abgang_ablauf": posten(abl_bpfl, vs_liste(abl_bpfl)),
@@ -710,7 +729,7 @@ def bewegungskonto(
             "bpfl": identitaet(
                 zeile["bpfl"],
                 ["zugang_neuzugang", "zugang_erhoehung",
-                 "veraenderung_herabsetzung"],
+                 "veraenderung_herabsetzung", "veraenderung_teilkuendigung"],
                 ["abgang_storno", "abgang_tod", "abgang_ablauf",
                  "umbuchung_beitragsfrei"],
             ),

@@ -79,6 +79,7 @@ from types import MappingProxyType
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from rechner_pipeline.kern import ModelPoint
+from rechner_pipeline.models.bestand import alt_absetzung_ist_teilkuendigung
 from rechner_pipeline.kern.beitragsreduktion import (
     PROSPEKTIV,
     TEILKUENDIGUNG,
@@ -225,7 +226,7 @@ STICHTAGS_ANLAESSE = (ANLASS_UEBERNAHME, ANLASS_FORTSCHREIBUNG)
 
 #: Die Geschaeftsvorfaelle des Bewegungsjournals (A-M3). Die Kennungen sind
 #: dieselben wie im Ledger der Bestandsfuehrung.
-GEVO_ARTEN = ("STO", "PEX", "ABL", "TOD", "INV", "REA", "ERH", "RED")
+GEVO_ARTEN = ("STO", "PEX", "ABL", "TOD", "INV", "REA", "ERH", "RED", "TKU")
 
 ALLE_ANLAESSE = STICHTAGS_ANLAESSE + (ANLASS_VERLAUF,) + GEVO_ARTEN
 
@@ -255,6 +256,10 @@ GEVO_WIRKUNG: Mapping[str, Optional[Tuple[str, str]]] = {
     "TOD": ("bestand", "beendet"),
     "PEX": ("beitragspflichtig", "beitragsfrei"),
     "RED": ("beitragspflichtig", "herabgesetzt"),
+    # Die Teilkuendigung (eigener Geschaeftsvorfall, ADR-023): ein eigener
+    # Pruefpunkt; der Nach-Zustand ist der Vertrag mit f x S (Grund), die
+    # Scheiben unveraendert.
+    "TKU": ("beitragspflichtig", "teilgekuendigt"),
     "ERH": ("bestand", "bestand"),
     "INV": None,
     "REA": None,
@@ -263,7 +268,8 @@ GEVO_WIRKUNG: Mapping[str, Optional[Tuple[str, str]]] = {
 #: Zustaende, die einen Parameter des Vorfalls brauchen — und welchen.
 #: Ohne ihn ist der Wert nicht bestimmt, und die Engine bricht ab, statt
 #: einen Anteil zu raten.
-ZUSTANDSPARAMETER: Mapping[str, str] = {"herabgesetzt": "anteil"}
+ZUSTANDSPARAMETER: Mapping[str, str] = {"herabgesetzt": "anteil",
+                                         "teilgekuendigt": "anteil"}
 
 
 class AktuartestFehler(ValueError):
@@ -750,7 +756,14 @@ def _deckungskapital(
         # "bestand" und "beitragspflichtig": der gefuehrte Wert des
         # geteilten Vertrags.
         return rv.monatsreserve(monate).vx_mrv
-    if zustand == "herabgesetzt":
+    if zustand in ("herabgesetzt", "teilgekuendigt"):
+        # Welcher Vorgang: ``teilgekuendigt`` ist die Teilkuendigung (TKU);
+        # ein geliefertes RED liest Annahme A2 (vor t das Verfahren der
+        # Quelle, nach t immer die Teilkuendigung).
+        jahr_v = monate // 12
+        verfahren_v = (TEILKUENDIGUNG if zustand == "teilgekuendigt"
+                       or alt_absetzung_ist_teilkuendigung(red_verfahren, jahr_v, mp.t)
+                       else red_verfahren)
         # Das Verfahren ist dokumentierte Fall-Eigenschaft (klv.md 7.1):
         # Die PLV-Verfahren teilen den Vertrag (prospektiv verlustfrei
         # bzw. mit Abzug), die TEILKUENDIGUNG der zweiten
@@ -770,7 +783,7 @@ def _deckungskapital(
         # der ganze Abschlusskostenrest, und selbst die verlustfreie
         # Herabsetzung meldete einen Verlust (Angriffsrunde der Nacht).
         teile = reduzierte_teile(
-            kern, list(scheiben), monate // 12, parameter["anteil"], red_verfahren,
+            kern, list(scheiben), jahr_v, parameter["anteil"], verfahren_v,
             stoab_je_baustein=v.stoab_je_baustein)
         return vertrags_monatsreserve_reduziert(
             teile, monate, stoab_je_baustein=False).vx_mrv

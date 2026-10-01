@@ -167,7 +167,13 @@ GATE = "A-M4.migrationscontrolling"
 #: und sie gegen ihre Eingaben nachrechnen lassen; Suite und Fuehrungsprobe
 #: muessen dieselbe Auskunft gelesen haben. Eine Suite eines Laufs vor dieser
 #: Aenderung (ohne das Feld) war vorher ein gueltiger Beleg.
-GATE_VERSION = "6.0.0"
+#: 7.0.0 (Pruefer-Befund B1 zur Alt-Absetzung, 2026-10-01): Die Policen, deren
+#: Anfangszustand die Auskunft traegt (Uebernahme, ueber die Fuehrungsprobe
+#: ``gedeckt``), sind die Pflichtschicht der Abnahmen — die Suite fuehrt
+#: dieselbe Menge (``pflichtschicht``), und jeder vorliegende Beleg des
+#: aktuariellen Tests (A-M1 bis A-M3) traegt sie ohne Fehlstelle. Vorher lag
+#: eine solche Police in keiner Stichprobe, und der Beleg war gueltig.
+GATE_VERSION = "7.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -1583,6 +1589,73 @@ def _fuehrungsprobe_nachgerechnet(probe: Dict[str, Any], fall: Path, repo_root: 
     return []
 
 
+#: Die Belege des aktuariellen Tests, deren Pflichtschicht A-M4 haelt.
+AKTUARTEST_BELEGE = ("aktuartest.json", "aktuartest-A-M2.json", "aktuartest-A-M3.json")
+
+
+def _pflichtschicht_fehler(probe: Dict[str, Any], suite: Dict[str, Any],
+                           fall: Path) -> List[str]:
+    """Pruefer-Befund B1, Bauauflage: Die Menge der Policen, deren
+    Anfangszustand die registrierte Auskunft traegt (Uebernahme, gefuehrt von
+    der Fuehrungsprobe als ``gedeckt``), ist ``==`` die Pflichtschicht der
+    Suite, und kein vorliegender Beleg des aktuariellen Tests hat eine
+    Fehlstelle in ihr (``pflichtschicht_fehlt``). A-M1/A-M2 tragen die ganze
+    Menge, A-M3 die gedeckten Policen mit einem Geschaeftsvorfall im
+    Pruefzeitraum. Ein Beleg ohne das Feld stammt aus der Zeit davor und
+    traegt die Aussage nicht."""
+    fehler: List[str] = []
+    gedeckt = probe.get("gedeckt")
+    if not isinstance(gedeckt, list):
+        return ["Fuehrungsprobe fuehrt 'gedeckt' nicht — die Pflichtschicht der "
+                "Abnahmen ist nicht ablesbar; die Probe neu fahren"]
+    gedeckt_m = sorted(str(p) for p in gedeckt)
+    suite_m = sorted(str(p) for p in (suite.get("pflichtschicht") or {}))
+    # Ohne gedeckte Policen gibt es keine Pflichtschicht: Ein Beleg, der das
+    # Feld (noch) nicht fuehrt, verschweigt dann nichts. Mit gedeckten
+    # Policen muss JEDER Beleg die Menge tragen.
+    if not gedeckt_m and not suite_m:
+        alle = [n for n in AKTUARTEST_BELEGE
+                if (Path(fall) / "abgeleitet" / "berichte" / n).is_file()]
+        mit_fehlstelle = []
+        for n in alle:
+            try:
+                b = json.loads((Path(fall) / "abgeleitet" / "berichte" / n)
+                               .read_text(encoding="utf-8"))
+            except ValueError:
+                continue
+            if b.get("pflichtschicht"):
+                mit_fehlstelle.append(f"{n}: Pflichtschicht {sorted(b['pflichtschicht'])[:5]} "
+                                      "vs. Uebernahme []")
+        return mit_fehlstelle
+    if "pflichtschicht" not in suite:
+        fehler.append("Suite fuehrt 'pflichtschicht' nicht — die Suite neu fahren")
+    elif suite.get("pflichtschicht_fehlt"):
+        fehler.append(f"Suite: Pflichtschicht ohne Urteil {suite['pflichtschicht_fehlt'][:5]}")
+    elif suite_m != gedeckt_m:
+        fehler.append(f"Pflichtschicht: Suite {suite_m[:5]} vs. Uebernahme {gedeckt_m[:5]}")
+    berichte = Path(fall) / "abgeleitet" / "berichte"
+    for name in AKTUARTEST_BELEGE:
+        pfad = berichte / name
+        if not pfad.is_file():
+            continue
+        try:
+            beleg = json.loads(pfad.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            fehler.append(f"{name}: nicht lesbar ({exc})")
+            continue
+        if "pflichtschicht" not in beleg:
+            fehler.append(f"{name} fuehrt 'pflichtschicht' nicht — den Test neu fahren")
+            continue
+        if beleg.get("pflichtschicht_fehlt"):
+            fehler.append(f"{name}: Pflichtschicht nicht gezogen "
+                          f"{beleg['pflichtschicht_fehlt'][:5]}")
+        if name != "aktuartest-A-M3.json" and \
+                sorted(str(p) for p in beleg["pflichtschicht"]) != gedeckt_m:
+            fehler.append(f"{name}: Pflichtschicht "
+                          f"{sorted(beleg['pflichtschicht'])[:5]} vs. Uebernahme {gedeckt_m[:5]}")
+    return fehler
+
+
 def _fuehrungsprobe_fehler(
     probe: Any,
     *,
@@ -1660,6 +1733,7 @@ def _fuehrungsprobe_fehler(
                       "dem Stichtag sind ungeprueft")
     if probe.get("system") != erwartetes_system:
         fehler.append("Fuehrungsprobe bindet nicht den aktuellen Systemstand")
+    fehler.extend(_pflichtschicht_fehler(probe, suite, fall))
     # Positive Zaehler und gefuehrte Felder (Review T25-01): Der Beleg
     # sagte bisher nur "bestanden: true". Ein von Hand geschriebenes JSON
     # mit fuenf beliebigen Dateien, passenden Hashes und den Flags kam

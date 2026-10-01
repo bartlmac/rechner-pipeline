@@ -47,6 +47,7 @@ from rechner_pipeline.bestand.schichten import schichten_je_police
 from rechner_pipeline.gates import bestand_validate, fuehrungsprobe
 from rechner_pipeline.gates.fuehrungsprobe import pruefe_fuehrung
 from rechner_pipeline.models.bestand import (
+    reduktion_ereignis,
     LEDGER_NAMES,
     LEDGER_SPALTEN,
     REDUKTIONEN_NAMES,
@@ -208,8 +209,13 @@ def welt(gefahrener_fall):  # noqa: F811
     # zieht: Eine Config ohne Herabsetzungsrate belegt keinen Anteil (RC05,
     # Runde C), und die von Hand eingelegten Herabsetzungen dieser Tests
     # sollen an der Probe und an P-B1 gemessen werden, nicht an der Rate.
-    text_red = text + (f"\n[annahmen]\nred_anteil = {ANTEIL}\n"
-                       "[annahmen.herabsetzung]\na = 1e-6\nb = 0.0\n")
+    # Seit es zwei Vorgaenge gibt (ADR-023), belegt die Teilkuendigung ihre
+    # eigene Rate: Die von Hand eingelegten Teilkuendigungen (auch nach dem
+    # Beitragsende) stehen unter ``teilkuendigung``, nicht unter dem
+    # Herabsetzungswunsch der Generation (Annahme A1 gilt nur vor t).
+    text_red = text + (f"\n[annahmen]\nred_anteil = {ANTEIL}\ntk_anteil = {ANTEIL}\n"
+                       "[annahmen.herabsetzung]\na = 1e-6\nb = 0.0\n"
+                       "[annahmen.teilkuendigung]\na = 1e-6\nb = 0.0\n")
     cfg_pfad = ab / "cfg-runde-c.toml"
     cfg_pfad.write_text(text_red, encoding="utf-8")
     config = config_aus_text(text_red)
@@ -256,7 +262,8 @@ def _mit_red(welt, pid: int, jahr: int, *, verfahren: str = "teilkuendigung",
     tab["reduktionen"] = (neu_red if alt is None else pd.concat([alt, neu_red], ignore_index=True)
                           ).sort_values("police_id", kind="stable").reset_index(drop=True)
     zeilen = pd.DataFrame([{
-        "police_id": pid, "tarif_generation": row["tarif_generation"], "ereignis": "RED",
+        "police_id": pid, "tarif_generation": row["tarif_generation"],
+        "ereignis": reduktion_ereignis(verfahren),
         "vertragsjahr": jahr, "status_date": datum, "betrag_art": art, "betrag": float(b),
         "betrag_herkunft": "gerechnet"} for art, b in soll.items()])[list(LEDGER_NAMES)].astype(
             dict(LEDGER_SPALTEN))
@@ -284,7 +291,7 @@ def test_die_positivkontrolle_eine_herabsetzung_im_lauf_besteht_die_probe(welt):
     nur der Ort macht sie in den folgenden Tests zum Fehler."""
     urteil = _urteil(welt, _mit_red(welt, POL, ZUGANGSJAHR + 1))
     assert urteil["bestanden"], urteil["befunde"][:3]
-    assert urteil["buchungen_geprueft"]["RED"] >= 2
+    assert urteil["buchungen_geprueft"]["TKU"] >= 2
 
 
 def test_die_probe_weist_die_herabsetzung_vor_dem_zugang_ab(welt):
@@ -320,7 +327,7 @@ def test_die_probe_rechnet_eine_verfaelschte_buchung_vor_dem_stichtag_nicht_nur_
     (nur P-B1 fiel). Jetzt faellt sie an der Vorgeschichte."""
     tab = _mit_red(welt, POL, ZUGANGSJAHR - 1)
     led = tab["ledger"].copy()
-    i = led.index[(led["ereignis"] == "RED") & (led["betrag_art"] == "VS_herabsetzung")][0]
+    i = led.index[(led["ereignis"] == "TKU") & (led["betrag_art"] == "VS_teilkuendigung")][0]
     led.loc[i, "betrag"] += 1.0
     assert not _urteil(welt, dict(tab, ledger=led))["bestanden"]
 
@@ -357,7 +364,7 @@ def test_der_horizont_wird_an_tabelle_und_buchung_getrennt_gehalten(welt):
                for t in _texte(urteil, "herabsetzung")), urteil["befunde"][:4]
     ohne_tabelle = dict(tab, reduktionen=welt["tab"]["reduktionen"])
     urteil = _urteil(welt, ohne_tabelle)
-    assert any(t.startswith("RED-Buchung nach dem belegten Horizont")
+    assert any(t.startswith("TKU-Buchung nach dem belegten Horizont")
                for t in _texte(urteil, "herabsetzung")), urteil["befunde"][:4]
 
 
@@ -455,8 +462,8 @@ def _verstuemmelt(tab: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Dieselbe Welt mit (a) um 1 EUR verschobener Summe und (b) gestrichener
     Auszahlung: Gegen ein hergeleitetes Soll waeren beide Befunde."""
     led = tab["ledger"]
-    summe = led.index[(led["ereignis"] == "RED") & (led["betrag_art"] == "VS_herabsetzung")]
-    zahl = led.index[(led["ereignis"] == "RED") & (led["betrag_art"] == "RKW_teilkuendigung")]
+    summe = led.index[(led["ereignis"] == "TKU") & (led["betrag_art"] == "VS_teilkuendigung")]
+    zahl = led.index[(led["ereignis"] == "TKU") & (led["betrag_art"] == "RKW_teilkuendigung")]
     assert len(summe) and len(zahl)
     plus = led.copy()
     plus.loc[summe[0], "betrag"] += 1.0
@@ -804,8 +811,9 @@ def test_die_teilkuendigung_im_beitragsfreien_nachlauf_ist_bewusst_zulaessig_und
         assert befunde, "verfaelschte Buchung unentdeckt"
         assert not any("beitragsfrei gestellten Vertrag" in b["text"] for b in befunde), befunde[:3]
 
-    # Gegenprobe der Grenze: dieselbe Stelle als Herabsetzung auf Beitragsbasis
-    # bleibt jenseits von t unzulaessig (nur die Teilkuendigung ist zugelassen).
+    # Gegenprobe der Grenze: dieselbe Stelle als Beitragsherabsetzung bleibt
+    # jenseits von t unzulaessig — sie setzt einen laufenden Beitrag voraus;
+    # nach t gibt es die Teilkuendigung (eigener Vorgang TKU, ADR-023).
     prospektiv = tab["reduktionen"].copy()
     prospektiv["verfahren"] = "prospektiv"
     assert any("Beitragszahlungsdauer" in f for f in validate_reduktionen(

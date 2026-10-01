@@ -147,7 +147,9 @@ from rechner_pipeline.models.bestand import (
     doppelte_buchungen,
     jahrestag_verstoesse,
     model_point_kwargs,
+    REDUKTION_EREIGNISSE,
     red_bindung_fehler,
+    reduktion_ereignis,
     red_sollbuchungen,
     red_vollstaendigkeit_fehler,
     reduktion_jahrestag,
@@ -169,8 +171,11 @@ from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
 #: Katalog positiver Zaehler statt nur Flags. 3 seit Pruefrunde T27,
 #: Befund 06: Der Beleg nennt seinen vollstaendigen Aufruf
 #: (``provenienz.aufruf``), damit der Konsument ihn nachrechnen kann,
-#: statt ihm zu glauben.
-SCHEMA_VERSION = 3
+#: statt ihm zu glauben. 4 seit dem Pruefer-Befund B1 zur Alt-Absetzung
+#: (2026-10-01): Der Beleg fuehrt ``gedeckt`` (die Policen, deren
+#: Anfangszustand die Auskunft traegt) und befundet jeden Vertrag ohne
+#: ableitbaren Anfangszustand, statt nur die Gleichheit der Listen zu pruefen.
+SCHEMA_VERSION = 4
 
 #: Die Optionen, deren Wert ein Pfad ist. Im Aufruf des Belegs stehen sie
 #: relativ zum Fall (wo sie darin liegen); der Konsument loest sie gegen
@@ -185,7 +190,7 @@ TOLERANZ = 0.005
 
 #: RED seit der Angriffsrunde der Nacht: Die Auszahlung der Teilkuendigung
 #: ist eine echte Zahlung an den Kunden und hatte keinen zweiten Rechenweg.
-GEPRUEFTE_BUCHUNGEN = ("STO", "PEX", "TOD", "ABL", "RED")
+GEPRUEFTE_BUCHUNGEN = ("STO", "PEX", "TOD", "ABL", "RED", "TKU")
 
 
 def _jahre(beginn: pd.Timestamp, datum: pd.Timestamp) -> int:
@@ -558,6 +563,24 @@ def pruefe_fuehrung(
         befund(None, "ausnahmen",
                "Vertraege ohne ableitbaren Anfangszustand: Pruefstrecke "
                f"{sorted(ohne_zustand)} vs. Uebernahmebeleg {sorted(ausgewiesen)}")
+    # Pruefer-Befund B1: Nicht die Gleichheit der Listen ist die Aussage,
+    # sondern dass sie LEER sind — ein Vertrag ohne ableitbaren
+    # Anfangszustand ist nicht freigeschaltet, auch wenn Uebernahme und
+    # Probe ihn uebereinstimmend so nennen.
+    if modus == MATERIALISIEREN and (ohne_zustand or ausgewiesen):
+        befund(None, "ausnahmen",
+               "Vertraege ohne ableitbaren Anfangszustand "
+               f"{sorted(ohne_zustand | ausgewiesen)[:5]} — nicht still als "
+               "Grundvertrag fuehrbar; Ausweg: Anteile je Ereignis als registrierte "
+               "Auskunft (--red-anteile-datei) nennen")
+    # Und die gedeckten Policen sind dieselben wie in der Uebernahme
+    # (Pflichtschicht, A-M4 haelt sie gegen die Abnahmen).
+    gedeckt_probe = sorted(p for p, z in zustaende.items() if z.get("gedeckt_durch"))
+    gedeckt_beleg = sorted(str(p) for p in (beleg.get("gedeckt") or {}))
+    if modus == MATERIALISIEREN and gedeckt_probe != gedeckt_beleg:
+        befund(None, "ausnahmen",
+               f"durch die Auskunft gedeckte Anfangszustaende: Pruefstrecke "
+               f"{gedeckt_probe[:5]} vs. Uebernahmebeleg {gedeckt_beleg[:5]}")
 
     geliefert = {str(z["police_id"]): float(z["sum_insured"]) for z in zeilen}
     haupt = stamm.set_index("police_id")
@@ -870,22 +893,23 @@ def pruefe_fuehrung(
         # Verfahren und Anteil gegen das System, dieselbe Regel wie P-B1
         # (Angriffsrunde nach T27: eine als prospektiv eingetragene
         # Teilkuendigung und ein falscher Anteil bestanden die Probe).
-        red_anteil = float(getattr(config.annahmen, "red_anteil", 0.0) or 0.0)
-        red_rate = float(config.annahmen.herabsetzung(0.0))
-        for pid, (_j, anteil, verfahren) in sorted(reduktion_je_police.items()):
+        for pid, (r_j, anteil, verfahren) in sorted(reduktion_je_police.items()):
             if pid in welten:
-                for text in red_bindung_fehler(pid, anteil, verfahren,
-                                               tarifwerk.get("red_verfahren"),
-                                               red_anteil, red_rate):
+                # Vorgang, Verfahren und Anteil: dieselbe Regel wie P-B1.
+                for text in red_bindung_fehler(
+                        pid, r_j, anteil, verfahren,
+                        beitragsdauer=int(haupt.loc[pid, "premium_duration"]),
+                        generation_verfahren=tarifwerk.get("red_verfahren"),
+                        annahmen=config.annahmen):
                     befund(pid, "herabsetzung", text)
         red_jahr = {
             int(z["police_id"]): int(z["vertragsjahr"])
-            for z in f_ledger[f_ledger["ereignis"] == "RED"].to_dict("records")
+            for z in f_ledger[f_ledger["ereignis"].isin(REDUKTION_EREIGNISSE)].to_dict("records")
         }
         ohne_tabelle = sorted(set(red_jahr) - set(reduktion_je_police))
         if ohne_tabelle:
             befund(None, "herabsetzung",
-                   f"{len(ohne_tabelle)} Police(n) mit RED-Buchung, aber ohne "
+                   f"{len(ohne_tabelle)} Police(n) mit RED- oder TKU-Buchung, aber ohne "
                    f"Zeile in reduktionen.parquet (z. B. {ohne_tabelle[:5]}) — "
                    "die Probe kann ihre Folgebuchungen nicht nachrechnen")
         # Die Herabsetzung liegt IM Lauf (RC02) und auf einem beitragspflichtigen
@@ -954,9 +978,9 @@ def pruefe_fuehrung(
                 ort = f"nicht nach dem Bestandszugang (am {datum_z.date()})"
                 grund = ("Vorgeschichte der abgebenden Gesellschaft, keine Buchung "
                          "dieses Laufs")
-            if art_z == "RED":
+            if art_z in REDUKTION_EREIGNISSE:
                 ausgeschlossen.add(pid)
-            befund(pid, "herabsetzung" if art_z == "RED" else "buchungsfenster",
+            befund(pid, "herabsetzung" if art_z in REDUKTION_EREIGNISSE else "buchungsfenster",
                    f"{art_z}-Buchung {ort} — {grund}")
         # Die Ausnahme-Ereignisse (ZUG, MIG, ABL) stehen an ihrem Zeitpunkt
         # (Runde E, Nachbesserung): dieselbe Regel wie in validate_ledger;
@@ -997,7 +1021,7 @@ def pruefe_fuehrung(
         # VOR der Paarregel (Nachbesserung): Eine Zeile am falschen Tag meldet
         # der Wirkungstag-Befund unten, die Paarregel nimmt den ganzen Vorfall aus.
         falscher_tag = jahrestag_verstoesse(im_lauf, stamm) & ~gemeldet \
-            & (im_lauf["ereignis"].to_numpy() != "RED")
+            & ~im_lauf["ereignis"].isin(REDUKTION_EREIGNISSE).to_numpy()
         # Die Paarbuchung (Runde F, Klasse): je Vorfall mit Beitragswirkung
         # genau eine Summenzeile und eine Beitragszeile — dieselbe Regel wie in
         # validate_ledger. Eine Zeile, die eine Regel oben beanstandet, nimmt
@@ -1046,7 +1070,9 @@ def pruefe_fuehrung(
         # Die Rate: Jede Buchung nach dem Zugang folgt aus einer Annahme der
         # Config, die sie erzeugen kann (Runde E, Klasse geschlossen).
         for feld, eintraege in sorted(unbelegte_ereignisse(
-                stamm, im_lauf, config.annahmen).items()):
+                stamm, im_lauf, config.annahmen,
+                auch_erzeugt=lambda _pid: (
+                    tarifwerk.get("red_verfahren") == TEILKUENDIGUNG)).items()):
             befund(None, "ratebindung", unbelegte_ereignisse_text(feld, eintraege),
                    feld=feld)
         # Und die Art gehoert dem Produkt ueberhaupt zu (Nachbesserung Runde E):
@@ -1079,7 +1105,7 @@ def pruefe_fuehrung(
             auszahlung = ((1.0 - red[1]) * vertrags_monatsreserve(
                 grund, [], 12 * jahr,
                 stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"])).rkw
-                + absorbiert) if red[2] == TEILKUENDIGUNG else None
+                + absorbiert) if reduktion_ereignis(red[2]) == "TKU" else None
             return red_sollbuchungen(
                 sum(v.reduktion.vs_neu for e, v in teile_red if e < jahr or e == 0),
                 absorbiert, auszahlung)
@@ -1088,16 +1114,19 @@ def pruefe_fuehrung(
         # einmal am Wirkungstag der Tabelle (Angriffsrunde nach T27: die
         # Probe pruefte nur die Zeilen, die da waren — 43 gestrichene
         # Auszahlungen bestanden sie; P-B1 hatte die Soll-Menge seit T27-14).
-        red_zeilen = f_ledger[(f_ledger["ereignis"] == "RED")
+        red_zeilen = f_ledger[f_ledger["ereignis"].isin(REDUKTION_EREIGNISSE)
                               & ~f_ledger.index.isin(list(doppelt_idx))]
         for pid, red in sorted(reduktion_je_police.items()):
             welt = welten.get(pid)
             if welt is None or pid in ausgeschlossen:
                 continue
+            code = reduktion_ereignis(red[2])
             eigene = red_zeilen[(red_zeilen["police_id"] == pid)
-                                & (red_zeilen["vertragsjahr"] == red[0])]
+                                & (red_zeilen["vertragsjahr"] == red[0])
+                                & (red_zeilen["ereignis"] == code)]
             for text in red_vollstaendigkeit_fehler(
-                    pid, red[0], eigene, red_soll(pid, welt, red[0], red), wirkungstag[pid]):
+                    pid, red[0], eigene, red_soll(pid, welt, red[0], red), wirkungstag[pid],
+                    ereignis=code):
                 befund(pid, "herabsetzung", text)
 
         for z in nach.to_dict("records"):
@@ -1108,8 +1137,8 @@ def pruefe_fuehrung(
             if pid in red_jahr and jahr >= red_jahr[pid] \
                     and pid not in reduktion_je_police:
                 continue                       # oben als Befund gemeldet
-            if art == "RED":
-                # Jede RED-Zeile gehoert zur registrierten Herabsetzung und
+            if art in REDUKTION_EREIGNISSE:
+                # Jede RED-/TKU-Zeile gehoert zur registrierten Herabsetzung und
                 # zu ihrem Reduktionsjahr (Runde D, Fund 3): Eine Zeile in
                 # einem anderen Jahr wurde gegen das Soll des BUCHUNGSjahres
                 # bzw. ungekuerzt gehalten und als geprueft gezaehlt, obwohl
@@ -1119,10 +1148,10 @@ def pruefe_fuehrung(
                 red_reg = reduktion_je_police.get(pid)
                 if red_reg is None:
                     continue
-                if jahr != red_reg[0]:
+                if jahr != red_reg[0] or art != reduktion_ereignis(red_reg[2]):
                     befund(pid, "herabsetzung",
-                           f"RED-Buchung im Vertragsjahr {jahr} ({z['betrag_art']}), "
-                           f"die registrierte Herabsetzung liegt im Jahr {red_reg[0]} — "
+                           f"{art}-Buchung im Vertragsjahr {jahr} ({z['betrag_art']}), "
+                           f"die registrierte {reduktion_ereignis(red_reg[2])} liegt im Jahr {red_reg[0]} — "
                            "keine Buchung, die die Tabelle erzeugt; sie wird nicht "
                            "nachgerechnet und nicht als geprueft gezaehlt")
                     continue
@@ -1147,7 +1176,7 @@ def pruefe_fuehrung(
                                       & (f_ledger["ereignis"] == "PEX")]
                     if len(eigene):
                         pex_f = int(eigene["vertragsjahr"].iloc[0])
-                if art == "RED":
+                if art in REDUKTION_EREIGNISSE:
                     # Die Buchungen der Herabsetzung selbst, auf dem Weg der
                     # Pruefstrecke nachgerechnet; eine Art ausserhalb der
                     # Soll-Menge meldet die Vollstaendigkeit oben.
@@ -1225,6 +1254,7 @@ def pruefe_fuehrung(
         "anfangszustand": modus,
         **zahlen,
         "ohne_anfangszustand": sorted(ohne_zustand),
+        "gedeckt": sorted(p for p, z in zustaende.items() if z.get("gedeckt_durch")),
         "schichten": len(schicht_je_police),
         "buchungen_geprueft": buchungen,
         "buchungen_abweichend": abweichungen,

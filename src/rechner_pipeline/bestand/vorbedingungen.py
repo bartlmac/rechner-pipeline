@@ -40,6 +40,7 @@ from rechner_pipeline.bestand.ledger_bindung import (
     pruefe_scheiben_tarifwerk,
 )
 from rechner_pipeline.models.bestand import (
+    REDUKTION_EREIGNISSE,
     LEDGER_NAMES,
     MERKMALE_NAMES,
     SCHEIBEN_NAMES,
@@ -456,14 +457,14 @@ def lies_und_pruefe_pb1(
         # herabgesetzten Vertrag ungekuerzt nach und meldet das richtige
         # Ledger als falsch — ein Bedienfehler, kein Befund (A27-02).
         try:
-            hat_herabsetzungen = bool((ledger["ereignis"] == "RED").any())
+            hat_herabsetzungen = bool(ledger["ereignis"].isin(REDUKTION_EREIGNISSE).any())
         except Exception as exc:  # noqa: BLE001 — malformed data blockiert
             errors.append({"code": "ledger", "message": str(exc)})
             hat_herabsetzungen = False
         if hat_herabsetzungen:
             usage_errors.append({
                 "code": "missing_arg",
-                "message": "Ledger enthaelt Herabsetzungen (RED) — "
+                "message": "Ledger enthaelt Herabsetzungen oder Teilkuendigungen (RED/TKU) — "
                 "--reduktionen ist erforderlich, sonst rechnet die Wache "
                 "jeden herabgesetzten Vertrag ungekuerzt nach",
             })
@@ -474,14 +475,14 @@ def lies_und_pruefe_pb1(
         # weg, Summe halbiert — alles PASSED). Wie ERH ohne --scheiben: ein
         # Bedienfehler.
         try:
-            red_ohne_config = bool((ledger["ereignis"] == "RED").any())
+            red_ohne_config = bool(ledger["ereignis"].isin(REDUKTION_EREIGNISSE).any())
         except Exception as exc:  # noqa: BLE001 — malformed data blockiert
             errors.append({"code": "ledger", "message": str(exc)})
             red_ohne_config = False
         if red_ohne_config:
             usage_errors.append({
                 "code": "missing_arg",
-                "message": "Ledger enthaelt Herabsetzungen (RED) — --config ist "
+                "message": "Ledger enthaelt Herabsetzungen oder Teilkuendigungen (RED/TKU) — --config ist "
                 "erforderlich, sonst wird keine ihrer Buchungen hergeleitet",
             })
     if ledger is not None and schichten is None:

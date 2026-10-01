@@ -161,3 +161,70 @@ der Senke (jeder Anteil, der in `anfangszustaende_je_police` oder
 `_serienzustand` geht, stammt aus `lies_auskuenfte`; jedes Modul mit einem
 solchen Aufruf kennt `--red-anteile-datei`; kein Argument unter `gates/`
 liefert je Police einen Anteil) und ein Zaehltest je Kommando.
+
+## Nachtrag 2026-10-01: Alt-Absetzung nach dem Beitragsende
+
+Entscheid des Maintainers: Der Migrationszugang integriert gelieferte
+Vertraege, die im ausfinanzierten Nachlauf (`t <= Jahr < n`) abgesetzt
+wurden, in jeder Generation. Beitragsherabsetzung und Teilkuendigung sind
+zwei Geschaeftsvorfaelle (ADR-023); eine gelieferte Absetzung nach t war eine
+Teilkuendigung, davor sagt es das Verfahren der Quelle (Annahme A2, Tarifplan
+KLV, Abschnitt 7.2; `models.bestand.alt_absetzung_ist_teilkuendigung`).
+Geliefert ist `ERLSUMME = f x Ursprungssumme`, eine Gleichung mit zwei
+Unbekannten, und nach t gibt es keine Beitragsgleichung.
+
+* Einzelfall: Der Vertrag ist der zustandslose Vertrag mit der gelieferten
+  Summe und wird ohne Anfangszustand uebernommen; der Anteil wirkt nicht auf
+  den Wert, eine Auskunft ist dafuer nicht noetig, und der Vertrag ist nicht
+  "gedeckt" (die Auskunft bestimmt an ihm nichts).
+* Serie (Erhoehungen vor t, Absetzung danach): Der Anteil verteilt die
+  gelieferte Summe auf Grund und Erhoehungen und kommt aus derselben
+  registrierten Auskunft wie oben (`--red-anteile-datei`); ohne sie
+  verweigert die Uebernahme und nennt diesen Ausweg.
+* `migrationszugang.leite_ursprungssumme_ab` bestimmt mit der Auskunft die
+  Ursprungssumme als `ERLSUMME / f`; `leite_absetzung_ab` und
+  `kalibriere_absetzung_aus_dk` verweigern unter der Teilkuendigung mit dem
+  Ausweg (`auskunft_meldung`).
+
+**Nicht ableitbar heisst verweigert, nicht zustandslos** (Pruefer-Befund B1).
+Bis dahin wurde ein Vertrag, dessen Anfangszustand die Ableitung nicht
+bestimmen konnte, mit einer Warnung und einem Eintrag `ohne_anfangszustand`
+als Grundvertrag mit der gelieferten Summe uebernommen, und die ganze Kette
+lief mit Exit 0. Jetzt verweigern Uebernahme, Verankerung, aktuarieller Test
+und Migrationssuite (`migrationssuite_lauf.verweigere_unbestimmte`; die
+Fuehrungsprobe befundet einen solchen Vertrag) und nennen je Police den
+Ausweg: den Anteil als registrierte Auskunft, oder den ganzen Fall mit
+`--anfangszustand grundvertrag` als nicht freigeschaltet. Jede Ursache, aus
+der die Ableitung einen `MigrationszugangFehler` meldet, fuehrt so zur
+Verweigerung.
+
+*Was ist Deckung?* Gedeckt ist ein Anfangszustand nur durch das, was seine
+**Struktur** bestimmt: die registrierte Auskunft der Quelle je Ereignis (mit
+`BEZUG` auch eine dokumentierte Arbeits-Lesart des Aktuars). "Die Werte an
+den Bewertungspunkten stimmen" ist keine Deckung: Nach dem Beitragsende sind
+A-M1, A-M2 und die Suite gegen die Zerlegung in Grund und Erhoehungen blind
+— jede Zerlegung mit derselben Summe erzeugt dieselben Werte bis auf die
+Centrundung, und eine spaetere Teilkuendigung zahlte trotzdem falsch aus.
+Ein gedeckter Vertrag ist deshalb **Pflichtziehung** von A-M1, A-M2, A-M3
+(mit Geschaeftsvorfall im Pruefzeitraum) und der Migrationssuite: Der
+Uebernahmebeleg nennt je Police, wodurch sie gedeckt ist (`gedeckt`: Datei,
+SHA-256, Bezug), die Belege fuehren dieselbe Menge (`pflichtschicht`,
+`pflichtschicht_fehlt`), die Fuehrungsprobe fuehrt sie (`gedeckt`,
+`SCHEMA_VERSION` 4), und der Abnahmebericht haelt sie gleich
+(`GATE_VERSION` 7.0.0).
+
+**Grenzen, benannt.** Die Grenzen eines gelieferten Vorgangs (`0 < Jahr <
+n`, Datum nicht nach dem Stichtag, Jahrestag) prueft eine Stelle vor jeder
+Verzweigung (`vorgeschichte_grenzfehler`, Pruefer-Befund B2). Eine
+registrierte Auskunft, die *falsch* ist, bestimmt eine falsche Zerlegung mit
+richtiger Summe; nach dem Beitragsende sieht das keine Wertpruefung. Die
+Verantwortung liegt bei dem, der die Auskunft registriert; eine
+Strukturpruefung, die es fangen koennte, braeuchte einen Wert, der von der
+Zerlegung abhaengt (etwa den Rueckkaufswert je Baustein der Quelle) — die
+Lieferung traegt keinen.
+
+Kein neuer Eingang: Die Auskunft ist die registrierte Datei des Nachtrags vom
+2026-09-30. Der Test `tests/test_alt_herabsetzung_nachlauf_e2e.py` faehrt
+einen solchen Vertrag durch die ganze Kette, je einmal fuer eine Generation
+mit `prospektiv`, `mit_abzug` und `teilkuendigung`, und die Angriffe des
+Pruefers als Verweigerungen.

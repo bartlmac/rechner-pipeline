@@ -94,6 +94,7 @@ _EREIGNIS_FARBEN = {
     "MIG": "#4c9be8",   # verwandt mit ZUG: beides ein Zugang in die Buecher
     "ERH": "#17becf",
     "RED": "#7f7f7f",
+    "TKU": "#c49c94",
     "PEX": "#9467bd",
     "INV": "#8c564b",
     "REA": "#bcbd22",
@@ -448,6 +449,7 @@ NACHWEISUNGEN: Tuple[Dict[str, Any], ...] = (
                 # Ohne diese Spalte ging die gezeigte Rechnung nicht auf,
                 # obwohl das Konto (und P-B1) sie fuehren.
                 ("veraenderung_herabsetzung", "± Herabsetzung"),
+                ("veraenderung_teilkuendigung", "± Teilkündigung"),
                 ("abgang_storno", "− Storno"),
                 ("abgang_tod", "− Tod"),
                 ("abgang_ablauf", "− Ablauf"),

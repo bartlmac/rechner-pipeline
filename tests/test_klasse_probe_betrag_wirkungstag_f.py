@@ -58,7 +58,8 @@ JAHRESTAG = pd.Timestamp("2027-01-01")
 #: Nach dem Zugang (2026-01-01), im Lauf, KEIN Jahrestag (Vertragsjahr 11).
 NEBEN_DEM_JAHRESTAG = pd.Timestamp("2026-03-01")
 NICHT_ENDLICH = (float("nan"), float("inf"), float("-inf"))
-ARTEN_OHNE_RED = [a for a in EREIGNIS_VALUES if a != "RED"]
+#: Ohne die beiden Vorgaenge, die die Reduktionstabelle bindet (RED, TKU).
+ARTEN_OHNE_RED = [a for a in EREIGNIS_VALUES if a not in ("RED", "TKU")]
 
 
 def _mit_zeile(welt, art: str, datum: pd.Timestamp, betrag: float, jahr=None):
@@ -133,7 +134,7 @@ def test_ein_nan_betrag_einer_vorhandenen_herabsetzung_besteht_die_probe_nicht(w
     tab = _mit_red(welt, POL, ZUGANGSJAHR + 1)
     assert _urteil(welt, tab)["bestanden"]
     led = tab["ledger"].copy()
-    i = led.index[(led["ereignis"] == "RED") & (led["betrag_art"] == "RKW_teilkuendigung")]
+    i = led.index[(led["ereignis"] == "TKU") & (led["betrag_art"] == "RKW_teilkuendigung")]
     assert len(i) == 1, "die Welt traegt keine Auszahlung der Teilkuendigung"
     led.loc[i, "betrag"] = np.nan
     urteil = _urteil(welt, dict(tab, ledger=led))
@@ -230,7 +231,7 @@ def test_die_probe_meldet_die_herabsetzung_mit_gleich_verschobenem_wirkungstag(w
     neu = jahrestag - pd.DateOffset(months=2)
     verschoben.loc[verschoben["police_id"] == POL, "reduktion_datum"] = neu
     led = tab["ledger"].copy()
-    led.loc[(led["police_id"] == POL) & (led["ereignis"] == "RED"), "status_date"] = neu
+    led.loc[(led["police_id"] == POL) & (led["ereignis"] == "TKU"), "status_date"] = neu
     urteil = _urteil(welt, dict(tab, reduktionen=verschoben, ledger=led))
     treffer = [b for b in urteil["befunde"] if "Jahrestag" in b["text"]]
     assert len(treffer) == 1 and treffer[0]["art"] == "herabsetzung", urteil["befunde"][:4]
