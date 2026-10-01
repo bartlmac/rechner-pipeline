@@ -46,6 +46,7 @@ from tests.zeichnung_fixture import (
     RECHENKERN,
     VA,
     annahme_args,
+    erklaerung_args,
     linie_anlegen,
     ordnung_schreiben,
 )
@@ -131,10 +132,13 @@ def _am4(fall: Path):
 def _haenge_an(linie: Path, ordnung: dict, datei: Path, **kw):
     datei.write_text(json.dumps(ordnung, sort_keys=True), encoding="utf-8")
     glieder, _ = ol.lade_linie_strukturell_zur_anzeige(linie)
+    # Die Uhr des Aufrufs statt eines festen Zeitpunkts (Pruefrunde H: die
+    # Zeitregel der Leser haelt frueher Gezeichnetes gegen ihn); je geminderter
+    # Rolle die Erklaerung ausdruecklich (Vorgabe des Tests: "gueltig").
     argv = ["ordnung", "--linie", str(linie), "--ordnung", str(datei),
             "--vorgaenger", kw.pop("vorgaenger", glieder[-1]["glied_sha256"] if glieder
                                    else "keiner"),
-            "--eingetragen-am", "2026-10-01T09:00:00+00:00"]
+            *erklaerung_args(glieder, datei, kw.pop("erklaerung", "gueltig"))]
     schluessel = kw.pop("schluessel", linie.parent / VORSTAND_SCHLUESSEL_DATEI)
     if schluessel is not None:
         argv += ["--vorstand-schluessel", str(schluessel)]

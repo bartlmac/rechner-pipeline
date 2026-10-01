@@ -83,6 +83,16 @@ python -m rechner_pipeline.gates.stand_belegen ordnung --linie ~/apps/plv/linie 
 # ansehen: ~/apps/plv/linie/abgeleitet/ordnung/linie.md
 ```
 
+Mindert ein spaeteres Glied eine Rolle (Entzug eines Gates, Schluessel- oder
+Klassenwechsel, Rolle entfaellt), ist je geminderter Rolle
+`--fruehere-zeichnungen <rolle>=gueltig|verfallen` Pflicht; es gibt keine
+Vorgabe. Erst die Folge in der Ausgabe lesen (`summary.fruehere_zeichnungen`,
+dieselben Zeilen in `linie.md`): `gueltig` laesst gelten, was vor dem Glied
+gezeichnet wurde (Rollenwechsel, Umbenennung); `verfallen` verlangt, jede
+fruehere Abnahme dieser Rolle neu zu zeichnen, beim Vorstand jeden
+Fallauftrag und alles, was darauf gruendet. Ein Glied wird nie frueher
+datiert als sein Vorgaenger.
+
 Faellt `stand_belegen` beim Schreiben aus (Code `ein_ausgabe`), denselben
 Aufruf wiederholen: Ein Rest von `linie.json` sperrt `linie` nicht, und
 `ordnung` zieht fuer das schon liegende Glied nur die Sicht nach

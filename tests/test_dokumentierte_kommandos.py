@@ -73,24 +73,7 @@ PRAEFIX = "python -m rechner_pipeline."
 #: (Dokument, Kommando woertlich, Leerraum normalisiert) -> Grund. Gehalten
 #: mit ``==``: Eine Ausnahme, deren Kommando es so nicht mehr gibt (auch:
 #: berichtigt), faellt auf und wird gestrichen.
-AUSNAHMEN: Dict[Tuple[str, str], str] = {
-    ("docs/architektur/adr-025-erstabnahme-des-zielsystems.md",
-     "python -m rechner_pipeline.betrieb.anfangsbestand binden --stand <daten> --linie linie "
-     "--freigabe-schluessel <betrieb-freigabe.key> --schluessel <betrieb.key> "
-     "--zeichnungsordnung <betriebsordnung> [--ordnungslinie]"):
-        "BEFUND, nicht behoben (Pruefrunde H, H14): der Parser kennt --ordnungslinie "
-        "nicht. Die Bedienfolge der ADR-025 bearbeitet in dieser Runde ein anderer "
-        "Umsetzer; gemeldet, beim Zusammenfuehren berichtigen und hier streichen.",
-    ("docs/architektur/adr-026-lebenslauf-eines-falls.md",
-     "python -m rechner_pipeline.gates.fall_belegen auftrag --fall <fall> --linie linie "
-     "--zeichnungsordnung <ordnung> --programmleitung-schluessel <programmleitung.key> "
-     "--programmleitung-klasse mensch|simulation [--mandat <rolle>=<mandat> je simulierter "
-     "Rolle] --auftrag \"<Auftrag>\""):
-        "BEFUND, nicht behoben (Pruefrunde H, H14): Prosa 'je simulierter Rolle' in der "
-        "Klammer, der Parser nimmt sie als Argumente. Die Bedienfolge der ADR-026 "
-        "bearbeitet in dieser Runde ein anderer Umsetzer; gemeldet, beim Zusammenfuehren "
-        "berichtigen (wie im Skill: '[--mandat <rolle>=<mandat> ...]') und hier streichen.",
-}
+AUSNAHMEN: Dict[Tuple[str, str], str] = {}
 
 
 @dataclass(frozen=True)

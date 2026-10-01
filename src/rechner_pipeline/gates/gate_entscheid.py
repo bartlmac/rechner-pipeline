@@ -104,6 +104,7 @@ from rechner_pipeline.gates._common import (
     ist_schreibrest,
     lies_gehasht,
     parse_gate_args,
+    raeume_zwillinge,
     run_command,
     schreibe_exklusiv,
     utc_now,
@@ -2601,6 +2602,11 @@ def main(argv: Optional[List[str]] = None):
     # Auftrag gegen den geltenden (ADR-026, Nachtrag Runde G, G14). Abnahmen
     # der LINIE (Verweis, Weg b) tragen keinen Auftrag und stehen nicht hier.
     fall_vorbedingungen: Dict[str, dict] = {}
+    # Wer den Bereich betritt, raeumt die Hardlink-Zwillinge eingehaengter
+    # Snapshots (Pruefrunde H, H16) — VOR der Sperre des Abbruchs: Nach einem
+    # Ausfall zwischen Einhaengen und Entfernen der Tempdatei des A-M5-Snapshots
+    # endet jeder weitere Aufruf dort, und der Rest laege sonst fuer immer.
+    raeume_zwillinge(entscheide_verzeichnis(fall))
     if not linie_modus:
         abgebrochen = abbruch_im_fall(fall)
         if abgebrochen is not None:
@@ -3542,7 +3548,12 @@ def main(argv: Optional[List[str]] = None):
         if args.gate in LEBENSLAUF_GATES and lebenslauf_inhalt is not None:
             sicht_belege["fallauftrag" if args.gate == AUFTRAG_GATE
                          else "fallabbruch"] = lebenslauf_inhalt
-        sicht_meldung = _sichten.sicht_fehler(args.gate, fall, pflichtbelege, sicht_belege)
+        # Die Bereiche DIESES Aufrufs (Pruefrunde H, H09): Gegen sie rechnet das
+        # Gate die Vergleichsgrundlage einer Sicht nach — im Fall Fall und die
+        # Linie des Gates, im Linienbereich die Linie.
+        sicht_meldung = _sichten.sicht_fehler(
+            args.gate, fall, pflichtbelege, sicht_belege,
+            vergleichsbereiche=[fall] if linie_modus else [fall, linie_pfad])
         if sicht_meldung is not None:
             return _sperre("sicht", f"Annahme verweigert: {sicht_meldung}")
 

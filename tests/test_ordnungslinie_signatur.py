@@ -57,8 +57,11 @@ def _faelsche_glied(linie: Path, neu: dict, *, zeichnender_fp: str | None = None
     spitze = _glieder_roh(linie)[-1]
     vorher = ol.ordnung_aus(spitze)
     roh = json.dumps(neu, sort_keys=True).encode("utf-8")
+    # Der Faelscher legt auch die Erklaerung je geminderter Rolle bei
+    # (Pruefrunde H): Gefangen werden soll er an der Signatur, nicht an der Form.
     glied = ol.baue_glied(roh, nummer=spitze["nummer"] + 1, vorgaenger=spitze["glied_sha256"],
-                          eingetragen_am=EINGETRAGEN, vorher=vorher)
+                          eingetragen_am=EINGETRAGEN, vorher=vorher,
+                          fruehere_zeichnungen=_gueltig(vorher, neu))
     glied.pop("glied_sha256")
     glied["zeichnung"] = {
         "gate": ol.ORDNUNGS_GATE, "rolle": ol.WURZELROLLE,
@@ -69,6 +72,11 @@ def _faelsche_glied(linie: Path, neu: dict, *, zeichnender_fp: str | None = None
     (linie / ol.VERZEICHNIS / ol.dateiname(glied)).write_text(
         json.dumps(glied, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return glied
+
+
+def _gueltig(vorher: dict, neu: dict) -> dict:
+    """Je geminderter Rolle die Erklaerung "gueltig" (Pruefrunde H)."""
+    return {r: "gueltig" for r in ol.geminderte_rollen(ol.aenderungen(vorher, neu))}
 
 
 def _angreifer(verzeichnis: Path) -> Path:
@@ -165,6 +173,7 @@ def test_ein_glied_das_den_vorstand_selbst_austauscht(tmp_path):
     glieder = _glieder_roh(linie)
     folge = ol.neues_glied(glieder, json.dumps(weiter, sort_keys=True).encode("utf-8"),
                            vorgaenger=gefaelscht["glied_sha256"], eingetragen_am=EINGETRAGEN,
+                           fruehere_zeichnungen=_gueltig(ordnung, weiter),
                            vorstand_schluessel=angreifer.read_bytes())
     (linie / ol.VERZEICHNIS / ol.dateiname(folge)).write_text(json.dumps(folge),
                                                               encoding="utf-8")
@@ -196,7 +205,7 @@ def test_ohne_den_schluessel_des_vorstands_gruendet_keine_linie_mit_zwei_glieder
         "schluessel_sha256": "ab" * 32, "schluesselklasse": "simulation", "gates": []}
     glied = ol.neues_glied(_glieder_roh(linie), json.dumps(ordnung, sort_keys=True).encode(),
                            vorgaenger=_glieder_roh(linie)[-1]["glied_sha256"],
-                           eingetragen_am=EINGETRAGEN,
+                           eingetragen_am=EINGETRAGEN, fruehere_zeichnungen={},
                            vorstand_schluessel=(tmp_path / VORSTAND_SCHLUESSEL_DATEI).read_bytes())
     (linie / ol.VERZEICHNIS / ol.dateiname(glied)).write_text(json.dumps(glied), encoding="utf-8")
     glieder, fehler = ol.lade_linie(linie, ring={})

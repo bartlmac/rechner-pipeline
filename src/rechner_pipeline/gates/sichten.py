@@ -77,6 +77,11 @@ class Sicht:
     #: Bereichs liegen muss, mit der Pruefung des Produzenten
     #: ``(bereich, pin) -> Befund oder None``; None = kein Archiv.
     archiv: Optional[Tuple[str, Callable[[Path, object], Optional[str]]]] = None
+    #: Pflichtbelegrolle, deren Vergleichsgrundlage (``vorher``) das Gate
+    #: selbst aus den Bereichen DIESES Aufrufs nachrechnet, mit der Pruefung
+    #: ``(bereiche, pin, beleg) -> Befund oder None`` (Pruefrunde H, H09);
+    #: None = die Sicht hat keine Grundlage ausserhalb des Belegs.
+    grundlage: Optional[Tuple[str, Callable[[Sequence[Path], object, Any], Optional[str]]]] = None
 
 
 def _kern(b: Mapping[str, Any]) -> str:
@@ -121,7 +126,8 @@ SICHTEN: Dict[str, Sicht] = {s.gate: s for s in (
           _ka.SICHT_RELATIV, _kern, "rechner_pipeline.gates.kernstand_belegen"),
     Sicht("A-O1", (("tbox_aenderung", _stand.TBOX_AENDERUNG_RELATIV),),
           _stand.TBOX_SICHT_RELATIV, _tbox, "rechner_pipeline.gates.stand_belegen tbox",
-          archiv=("tbox_aenderung", _stand.tbox_archiv_fehler)),
+          archiv=("tbox_aenderung", _stand.tbox_archiv_fehler),
+          grundlage=("tbox_aenderung", _stand.tbox_vorher_fehler)),
     Sicht("A-T1", (("tarifwerk_aenderung", _tw.AENDERUNG_RELATIV),),
           _tw.SICHT_RELATIV, _tarifwerk, "rechner_pipeline.gates.tarifwerk_belegen"),
     Sicht("A-B3", (("anfangsbestand", _ab.BELEG_RELATIV),),
@@ -139,9 +145,16 @@ def _kommando(eintrag: Sicht) -> str:
 
 
 def sicht_fehler(gate: str, bereich: Path, pflichtbelege: Mapping[str, Sequence[str]],
-                 gelesen: Mapping[str, Any]) -> Optional[str]:
+                 gelesen: Mapping[str, Any], *, vergleichsbereiche: Sequence[Path],
+                 ) -> Optional[str]:
     """Die Regel (None = die Sicht am festen Ort ist die aus den gepinnten
     Belegen erzeugte). Fuer Gates ohne Registereintrag: None.
+
+    ``vergleichsbereiche`` (Pflicht, ohne Vorgabe; Pruefrunde H, H09): die
+    Bereiche DIESES Aufrufs — im Fall Fall und Linie des Gates, im
+    Linienbereich die Linie. Gegen sie rechnet das Gate die Vergleichsgrundlage
+    einer Sicht nach (Register: ``grundlage``), statt sie dem Produzenten zu
+    glauben.
 
     ``gelesen``: je Pflichtbelegrolle der geparste Beleg aus der EINEN Lesung
     des Gates, deren SHA-256 der Pin ist (``pflichtbelege``). Die Regel liest
@@ -183,4 +196,11 @@ def sicht_fehler(gate: str, bereich: Path, pflichtbelege: Mapping[str, Sequence[
         if fehler is not None:
             return (f"{fehler} — ohne die Archivkopie des gepinnten Belegs zeigte die naechste "
                     f"Vorlage still 'Erstabnahme'. {ausweg}")
+    if eintrag.grundlage is not None:
+        rolle, pruefe_grundlage = eintrag.grundlage
+        befund = pruefe_grundlage(list(vergleichsbereiche),
+                                  (list(pflichtbelege.get(rolle) or []) or [None])[0],
+                                  geparst.get(rolle))
+        if befund is not None:
+            return befund
     return None

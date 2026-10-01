@@ -211,11 +211,14 @@ behauptet), einen injizierten Zeitpunkt, den Eintragsvermerk und die
 Zeichnung. Beispiel (gekuerzt):
 
 ```
-{"schema_version": 1, "art": "ordnungsglied", "nummer": 2,
+{"schema_version": 2, "art": "ordnungsglied", "nummer": 2,
  "vorgaenger": "<glied_sha256 von Glied 1>",
  "ordnung_sha256": "<sha256 der Ordnungsdatei>", "ordnung_text": "{...}",
  "aenderungen": [{"art": "gates_erweitert", "rolle": "mensch/architektur",
-                  "gates": ["A-K2"]}],
+                  "gates": ["A-K2"]},
+                 {"art": "gates_entzogen", "rolle": "mensch/aktuariat",
+                  "gates": ["A-T1"]}],
+ "fruehere_zeichnungen": {"mensch/aktuariat": "gueltig"},
  "eingetragen_am": "2026-10-01T09:00:00+00:00",
  "eintrag": {"art": "anhang", "vermerk": "gezeichnet von ... (A-Z1) ..."},
  "zeichnung": {"gate": "A-Z1", "rolle": "mensch/vorstand", "schluesselklasse": "mensch",
@@ -458,15 +461,20 @@ Laufs.
    zeichnen mit `--gate A-B3` und dem Schluessel von `mensch/betrieb`;
    binden `python -m rechner_pipeline.betrieb.anfangsbestand binden --stand
    <daten> --linie linie --freigabe-schluessel <betrieb-freigabe.key>
-   --schluessel <betrieb.key> --zeichnungsordnung <betriebsordnung>
-   [--ordnungslinie]`.
+   --schluessel <betrieb.key> --zeichnungsordnung <betriebsordnung>`.
 8. **Jeder Fall danach:** je unveraendertem Gegenstand `python -m
    rechner_pipeline.gates.stand_belegen verweisen --fall <fall> --gate
    A-K2|A-O1|A-T1 --linie linie --repo-root .`; jeden Entscheid des Falls
    mit `--linie linie` zeichnen.
 9. **Eine Ordnungsaenderung spaeter:** `... stand_belegen ordnung --linie
    linie --ordnung <neue ordnung> --vorgaenger <glied_sha256 der Spitze>
-   --vorstand-schluessel <vorstand.key>`; ansehen, was sich aendert:
+   --vorstand-schluessel <vorstand.key> [--fruehere-zeichnungen
+   <rolle>=gueltig|verfallen ...]` — die Erklaerung ist Pflicht je Rolle,
+   die das Glied mindert (Entzug eines Gates, Schluessel- oder
+   Klassenwechsel, Rolle entfaellt; Nachtrag Pruefrunde H); ohne sie nennt
+   die Verweigerung die Rollen. Vor der Wahl die Folge lesen: Ausgabe
+   (`summary.fruehere_zeichnungen`) und Sicht nennen je Rolle, was
+   `verfallen` neu zu zeichnen verlangt. Ansehen, was sich aendert:
    `linie/abgeleitet/ordnung/linie.md`. Nach einem Wechsel des
    Vorstandsschluessels werden der alte UND der neue genannt
    (`--vorstand-schluessel <alt.key> --vorstand-schluessel <neu.key>`, der
@@ -904,3 +912,207 @@ nennen, gilt als nie veroeffentlicht; ein Journal in der Vorbereitung
 verhindert das Entfernen dennoch. Zwei Schreiber des Betriebs raeumen ihre
 Reste nach einem Prozessende noch nicht (`seite._schreibe`,
 `zugangsprobe._schreibe_beleg`); die Ratsche fuehrt sie als offen.
+
+## Nachtrag 2026-10-01: Pruefrunde H — ein Glied, das ein Recht mindert, erklaert die frueheren Zeichnungen; das Gate rechnet die Grundlage der T-Box-Sicht; der Bytecode gehoert zum lebenden Stand; kein Zwilling bleibt liegen
+
+Befunde der blinden Pruefrunde H (Linsen "Abnahme-Beleg", "Lebenslauf-Beleg",
+"Betrieb-Ausfall"), bestaetigt vom Widerleger; gebaut nach den Entscheiden des
+Maintainers.
+
+**1. Die Erklaerung im Glied (H10, hoch; H06, mittel; eine Klasse).**
+"Gezeichnet wird nur unter der Spitze" (Abschnitt 7) hielt nur gegen die
+Linie, die der Aufruf bekam. Eine AELTERE KOPIE der Linie (Stand vor einem
+spaeter angehaengten Glied) bestand die Identitaetspruefung des Auftrags
+(ADR-026, Nachtrag b: Name plus genannte Abnahmen). Gemessen: Der Vorstand
+entzog mit Glied 2 einer Rolle den Schluessel; unter der Kopie zeichnete der
+entzogene Schluessel A-Q1, A-M1 und A-M4, und der Leser des Betriebs nahm die
+A-M4 unter der ECHTEN Linie an — er hielt die Rolle gegen das gepinnte Glied 1,
+und ein spaeterer Entzug wirkte nach Abschnitt 7 bewusst nicht zurueck.
+Ebenso mit einem Gate-Entzug bei unveraendertem Schluessel (H06): A-T1 unter
+der Kopie, A-M4 unter der echten Linie nahm an.
+
+*Regel.* Ein Glied, das ein Recht MINDERT, sagt gezeichnet, was mit den
+frueheren Zeichnungen geschieht. Minderung ist aus der gerechneten
+Aenderungsliste ableitbar (`models.ordnungslinie.MINDERUNGSARTEN`: Rolle
+entfaellt, Schluessel wechselt, Klasse wechselt, Gate entzogen; reine
+Erweiterungen `ERWEITERUNGSARTEN` sind keine; eine Ratsche haelt beide Mengen
+mit `==` gegen die Arten, die `aenderungen` erzeugen kann). Fuer JEDE
+geminderte Rolle traegt das Glied im gezeichneten Inhalt genau eine Aussage
+(`fruehere_zeichnungen: {rolle: "gueltig" | "verfallen"}`); fehlt eine oder
+steht eine fuer eine nicht geminderte Rolle, ist das Glied nicht anhaengbar
+(`neues_glied`) und beim Laden ein Fehler (`glied_fehler`) — keine Vorgabe,
+kein stilles "gueltig". Der Produzent nimmt sie als wiederholbares
+`--fruehere-zeichnungen <rolle>=gueltig|verfallen` und nennt in der
+Verweigerung die Rollen, die eine brauchen; Ausgabe
+(`summary.fruehere_zeichnungen`) und Sicht `linie.md` nennen je Rolle die
+FOLGE, woertlich, mit den Gates aus der Ordnung des Vorgaengerglieds.
+
+*Lesen* — an der einen Stelle, an der ein gruendender Leser die Rolle eines
+Snapshots unter dem gepinnten Glied aufloest
+(`models.ordnungslinie.damalige_ordnung` -> `abloesung_fehler`, gerufen nur aus
+`models.zeichnung.zeichnende_rolle_fehler`; dahinter Gate-Vorbedingungen, Weg
+a und b der Standabnahme, `fallauftrag_pruefen` und der eine Leser des
+Betriebs samt Registrierung, Zugangsprobe, Neuaufsetzen und Bindung): Die
+Zeichnung (Rolle R des Fingerabdrucks F unter dem gepinnten Glied, Gate G,
+Klasse K) gilt unter einer Ordnung, solange diese R mit F, G und K fuehrt. Das
+erste spaetere Glied der Linie DES LESERS, unter dem sie nicht mehr gilt,
+entscheidet mit seiner Erklaerung fuer R: `verfallen` — benannte
+Verweigerung, gleich wann gezeichnet wurde ("mit Glied j hat der Vorstand die
+frueheren Zeichnungen der Rolle R fuer verfallen erklaert ... neu
+zeichnen"); `gueltig` — die Zeichnung traegt, wenn ihr `entschieden_am` (im
+signierten Inhalt jedes P9-Snapshots, in jedem gelesenen Schema) VOR dem
+`eingetragen_am` dieses Glieds liegt, sonst Verweigerung ("unter einem
+abgeloesten Glied gezeichnet: Glied i wurde ... am ... durch Glied j
+abgeloest, gezeichnet am ...; gezeichnet wird nur unter der Spitze").
+Verglichen wird auf geparsten, zeitzonenbewussten Zeitpunkten; ein nicht
+lesbarer verweigert. Ein spaeteres Glied, das R nicht mindert, entwertet
+nichts. Die Fall-Rollen (Programmleitung) fuehrt die Linie nicht; fuer sie
+greift die Regel nicht.
+
+*Glieder und Abnahmen sind getrennt.* Die Erklaerung wirkt auf ABNAHMEN
+(P9-Snapshots, fuer den Vorstand also A-M6), nie auf die Glieder der Linie:
+Die Kette prueft `lade_linie` weiter Glied fuer Glied, Glied j mit dem
+Vorstandsschluessel, den Glied j-1 nennt (`zeichnung_fehler`);
+`abloesung_fehler` liest keine Glied-Zeichnung. Sonst machte "verfallen" auf
+dem Schluessel des Vorstands das Glied ungueltig, das ihn abloest, und der
+wichtigste Fall (der Wurzelschluessel ist nicht mehr vertrauenswuerdig) waere
+nicht ausdrueckbar. Besteht der Verdacht, dass schon FRUEHERE Glieder
+gefaelscht sind, ist nicht "verfallen" die Antwort, sondern eine neue Linie
+mit neuer Wurzel (Abschnitt 7): Das Feld kann keine Kette heilen, deren
+Glieder selbst in Frage stehen.
+
+*Zwei Beispiele, mit Preis.*
+* `gueltig`: Die Rolle wird umbenannt oder ihr Schluessel geordnet
+  gewechselt, der Halter ist derselbe (Rollenwechsel, neues Geraet). Was er
+  vorher gezeichnet hat, traegt weiter; was danach mit dem alten Schluessel
+  unter einer veralteten Kopie der Linie entsteht, faengt die Zeitregel.
+* `verfallen`: Dem Schluessel wird nicht mehr getraut (Kompromittierung,
+  ausgeschiedener Halter). Jede fruehere Abnahme dieser Rolle fuer die
+  betroffenen Gates traegt nichts mehr — auch eine rechtmaessige, auch die
+  Erstabnahmen im Linienbereich; sie sind unter der Spitze neu zu zeichnen
+  (der Leser nennt es als Ausweg). Beim Vorstand heisst "diese Rolle"
+  praktisch alles: Jede Annahme eines Falls gruendet auf A-M6, A-M6 zeichnet
+  der Vorstand — "verfallen" auf der Wurzel laesst jeden Fallauftrag fallen
+  und mit ihm jede Abnahme jedes Falls; die Abnahmelage des Zielsystems ist
+  neu zu beauftragen und neu zu zeichnen. Richtig und gewollt, aber teuer;
+  deshalb steht die Folge in Ausgabe und Sicht, bevor gewaehlt wird.
+
+*Gestalt und Uhr.* Glied Schema 2 (Feld `fruehere_zeichnungen`). Glieder nach
+Schema 1 werden nicht mehr gelesen: Ausserhalb der Tests gibt es noch keine,
+die Erstabnahme ist nicht gezeichnet. `eingetragen_am` ist ein Zeitpunkt mit
+Zeitzone und liegt nicht vor dem des Vorgaengers (`neues_glied`, monoton);
+ohne `--eingetragen-am` nimmt der Produzent die Uhr des Aufrufs.
+
+*Gemessen vor der Verschaerfung.* In der Suite haengen 253 Testwege 293
+Glieder an; 202 davon (229 Glieder, 25 Module) mindern — fast alle ueber
+`tests/zeichnung_fixture.linie_sicherstellen` (die Ordnung des Falls an die
+Linie der Suite: Betriebsrolle und Betriebsfreigabe entfallen, das Aktuariat
+wechselt Schluessel und Klasse, der Vorstand die Klasse). Die Helfer setzen
+die Erklaerung ausdruecklich auf "gueltig" (`erklaerung_args`), nicht ueber
+eine Vorgabe im Produktivcode. Feste, vergangene Eintragungszeiten der Helfer
+(`linie_sicherstellen`, `test_erstabnahme_linie._haenge_an`) machten genau
+einen bestehenden Testweg rot (Erstabnahme unter Glied 1, danach ein Entzug
+mit festem Zeitpunkt vor der Zeichnung); beide Helfer nehmen jetzt die Uhr.
+Das erste Glied der Testlinien bleibt fest datiert (deterministischer Hash).
+
+*Benannte Grenzen.* (i) Es gibt keine vertrauenswuerdige Zeit:
+`entschieden_am` schreibt der Prozess, der zeichnet. Wer im Fall `gueltig`
+mit dem alten Schluessel und zurueckgestellter Uhr zeichnet, ist von einer
+rechtmaessigen frueheren Zeichnung nicht zu unterscheiden — das ist dann die
+ausdrueckliche Entscheidung des Vorstands, dem Halter des alten Schluessels
+weiter zu trauen. Bei einem Schluessel, dem nicht mehr getraut wird, erklaert
+er `verfallen`, und dann hilft keine Uhr. Schliessen wuerde die Luecke erst
+ein Anker ausserhalb des Falls (Register der Linie, Zeitstempeldienst) —
+nicht gebaut. (ii) Das Gate unter der Kopie zeichnet weiter: Es sieht das
+Glied nicht, das es nicht bekommt. Gefangen wird beim LESEN durch jeden, der
+die echte Linie haelt (das naechste Gate mit ihr, der Betrieb). (iii) Die
+Erklaerung schuetzt gegen die VERWENDUNG eines entzogenen Schluessels. Sie
+schuetzt nicht gegen den Diebstahl des GELTENDEN Wurzelschluessels: Wer ihn
+haelt, haengt ein Glied an, erklaert fremde Rollen fuer verfallen und setzt
+eigene ein — wer die Wurzel hat, ist die Wurzel (dieselbe HMAC-Grenze wie im
+Nachtrag Pruefrunde G und in ADR-026). Das Feld sieht nach Schutz aus und
+darf diese Erwartung nicht wecken.
+
+*Verworfen:* **allein die Zeit** (die erste Fassung dieses Entscheids: jede
+Zeichnung unter einem gepinnten Glied, dem in der Linie des Lesers ein
+weiteres folgt, muss vor dessen Eintrag liegen) — `entschieden_am` schreibt
+der Prozess, der zeichnet; ein entzogener Schluessel mit zurueckgestellter Uhr
+bestand sie. Die Zeit bleibt Plausibilitaet neben der Erklaerung, nicht ihre
+Grundlage. **Eine Vorgabe "gueltig"** fuer fehlende Erklaerungen — eine
+Minderung, die niemand bedacht hat, faellt so als Verweigerung auf, nicht als
+stille Fortgeltung. **Die Spitzenregel beim Lesen ohne Ansehen der Rolle**
+(jede Zeichnung unter einem nicht mehr spitzen Glied verweigern) — entwertete
+jede Abnahme mit jedem Glied, wie der Gleichheitsvergleich in Abschnitt 7.
+
+**2. Die Grundlage der T-Box-Sicht rechnet das Gate (H09, niedrig).** Die
+Pflicht zu `--vorher-linie` (ADR-024, dritter Nachtrag) liess sich mit jedem
+leeren Linienbereich erfuellen: Beleg `vorher = None`, Sicht "Erstabnahme",
+das Gate zeichnete A-O1, A-M4 nahm an. *Regel.* Die Vergleichsgrundlage der
+Sicht ist die zuletzt angenommene T-Box in Fall und Linie DES GATES (im
+Linienbereich: der Linie). Das Gate rechnet sie beim Zeichnen von A-O1 selbst
+— dieselbe Funktion wie der Produzent (`stand_belegen._vorher_tbox`) — und
+haelt sie mit `==` gegen den Beleg; weicht sie ab, verweigert es mit Code
+`sicht` und dem Ausweg "Vorlage mit der Linie des Falls neu erzeugen". Eine
+Stelle: der Register-Eintrag `grundlage` von A-O1 in `gates.sichten`, gerufen
+aus `sicht_fehler`, das die Bereiche des Aufrufs als Pflichtargument ohne
+Vorgabe (`vergleichsbereiche`) bekommt. Idempotenz: Annahmen, die genau diesen
+Beleg pinnen, zaehlen nicht (`_zuletzt_angenommen(..., ohne_beleg=...)`) — ein
+erneuter Aufruf findet dieselbe Grundlage. A-M4 rechnet die Grundlage nicht
+erneut: Die Sicht ist beim Zeichnen geprueft, und eine spaetere Abnahme der
+Linie aenderte sonst die Grundlage einer laengst gezeichneten Vorlage.
+*Verworfen:* `--vorher-linie` im Produzenten gegen die Linie des Auftrags
+halten — der Produzent kennt den Aufruf des Gates nicht; die Regel gehoert
+dorthin, wo gezeichnet wird.
+
+**3. Der Bytecode gehoert zum lebenden Stand (H07, mittel).** Python laedt
+`__pycache__/<modul>.<tag>.pyc`, wenn deren Kopf (Zeitstempel und Groesse der
+Quelle, bzw. ihr Hash) passt; den Inhalt prueft es nicht. Jeder Stand-Hash
+liest die Quellen. Gemessen: Eine untergeschobene pyc fuer `kern/tafeln.py`
+verdoppelte die Sterbewahrscheinlichkeiten, `lebendes_repo` nahm an, A-M4
+meldete "keine Aenderung seit Abnahme". *Erst gemessen:* Auf CPython 3.11.2
+gilt `marshal.loads(pyc[16:]) == compile(quelle, pfad, "exec")` fuer alle 136
+Module des Pakets, in drei frisch importierenden Prozessen und einem vierten
+mit vorhandenen pyc; Kosten 0,24 s fuer alle 136 Vergleiche. *Regel* (Punkt 3
+des Nachtrags Pruefrunde G: "der Code, der rechnet"):
+`gates._provenienz.lebendes_repo` — die eine Stelle, durch die jedes
+`--repo-root` geht — verlangt (`bytecode_fehler`), dass jede pyc im
+AUSGEFUEHRTEN Paket, die der Interpreter laden wuerde (eigener Tag und Magic,
+Kopf passt zur Quelle), der Code ihrer Quelle ist; eine pyc mit unpassendem
+Kopf, fremdem Tag oder ohne Quelle unter `__pycache__` laedt Python nicht und
+ist kein Befund; Bytecode NEBEN den Quellen ohne gleichnamige Quelle
+(quellenlos importierbar) ist einer. Verweigerung benannt, Ausweg: die
+`__pycache__`-Verzeichnisse des Pakets loeschen. Je Prozess einmal je Datei
+gerechnet, gebunden an (Pfad, mtime_ns, Groesse) von pyc und Quelle; danach
+kostet ein Aufruf nur `stat` (gemessen 0,7 ms). *Grenze, benannt:* Gehalten
+wird der Bytecode des Pakets. Erweiterungsmodule, Import-Hooks,
+`sitecustomize` und der Interpreter selbst liegen ausserhalb; Betriebsregel
+bleibt das frisch gebaute Image ohne beschreibbares `__pycache__`
+(`deploy/plv/`). *Verworfen:* nur die Grenze benennen — der Vergleich ist auf
+diesem Interpreter stabil und billig.
+
+**4. Kein Hardlink-Zwilling bleibt liegen (H16, niedrig).**
+`schreibe_exklusiv` haengt per `os.link` ein und entfernt danach die
+Tempdatei; ein Prozessende dazwischen liess einen zweiten, beschreibbaren
+Namen derselben Bytes liegen. Die Zusage "der naechste Aufruf fuer dasselbe
+Ziel raeumt ihn weg" galt nur, wenn die Wiederholung das Ziel neu schreibt —
+an vier Stellen nicht (`linie.json` mit Exit 2, das Glied mit
+`bereits_vorhanden`, das T-Box-Archiv, der A-M5-Snapshot hinter der Sperre
+des Abbruchs). *Regel:* Wer einen Bereich betritt oder ein Ziel als "liegt
+schon" erkennt, raeumt die Zwillinge dort — EINE Stelle
+(`gates._common.raeume_zwillinge`: ein Punktname, der dasselbe Inode traegt
+wie sein eingehaengtes Ziel; zu jedem Zeitpunkt unschaedlich, denn ein
+Zwilling ist erst nach dem Einhaengen einer). Gerufen beim Eintritt in
+`linie`, `ordnung/`, das Archiv und `entscheide/` — im Gate VOR der Sperre
+des Abbruchs. `stand_belegen linie` liefert bei der Wiederholung nach einem
+Ausfall das Ergebnis des ungestoerten Laufs (`bereits_vorhanden`). Ratsche:
+die Schreibstellen von `schreibe_exklusiv` und die Raeumstellen, je mit `==`
+(`tests/test_schreibreste_zwillinge.py`). *Nicht gebaut, benannt:* Einen Rest
+OHNE eingehaengtes Ziel (Ausfall vor `os.link`) raeumt weiter nur der naechste
+Schreiber desselben Ziels; beim Glied traegt eine Wiederholung mit der Uhr
+einen anderen Namen, der Rest bleibt dann liegen (er ist kein Beleg, kein
+Leser nimmt ihn auf).
+
+**Versionen.** `stand_belegen` 5.0.0 (Major: `ordnung` ohne Erklaerung einer
+Minderung und mit einem frueheren `--eingetragen-am` war gruen), Glied der
+Ordnungslinie Schema 2. Die Gate-Version P9 bleibt 5.0.0 und das
+Snapshot-Schema 10: Die Gestalt des Snapshots aendert sich nicht.

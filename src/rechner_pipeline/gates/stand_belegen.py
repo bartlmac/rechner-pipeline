@@ -36,7 +36,8 @@ Run via::
 
     python -m rechner_pipeline.gates.stand_belegen linie --linie linie
     python -m rechner_pipeline.gates.stand_belegen ordnung --linie linie \\
-        --ordnung <ordnung.json> --vorgaenger keiner|<glied> [--vorstand-schluessel <datei>]
+        --ordnung <ordnung.json> --vorgaenger keiner|<glied> [--vorstand-schluessel <datei>] \\
+        [--fruehere-zeichnungen <rolle>=gueltig|verfallen ...]
     python -m rechner_pipeline.gates.stand_belegen verweisen --fall faelle/<fall> \\
         --gate A-K2|A-O1|A-T1 --linie linie --repo-root .
     python -m rechner_pipeline.gates.stand_belegen tbox \\
@@ -65,6 +66,7 @@ from rechner_pipeline.gates._common import (
     ein_ausgabe_benannt,
     ist_schreibrest,
     raeume_schreibreste,
+    raeume_zwillinge,
     run_command,
     schreibe_exklusiv,
     utc_now,
@@ -91,7 +93,14 @@ COMMAND = "stand_belegen"
 #: des Vorstands (G09; ``--vorstand-schluessel`` wiederholbar). ``tbox`` schreibt das Archiv zuerst und
 #: verweigert eine nicht belegbare fruehere Abnahme benannt (G24);
 #: ``ordnung`` zieht die Sicht eines liegenden Glieds nach (G26).
-GATE_VERSION = "4.0.0"
+#: 5.0.0 (2026-10-01, Pruefrunde H; Major: ein vorher gruener Aufruf wird
+#: rot): ``ordnung`` verlangt je geminderter Rolle ``--fruehere-zeichnungen
+#: <rolle>=gueltig|verfallen`` (Glied Schema 2) und ein ``--eingetragen-am``,
+#: das nicht vor dem der Spitze liegt; Ausgabe und Sicht nennen die Folge
+#: einer Erklaerung. ``linie`` liefert bei der Wiederholung nach einem
+#: Ausfall das Ergebnis des ungestoerten Laufs; ``linie``, ``ordnung`` und
+#: ``tbox`` raeumen die Hardlink-Zwillinge ihrer Belege (H16).
+GATE_VERSION = "5.0.0"
 
 #: Fester Ort des T-Box-Aenderungsbelegs (wie bisher von A-O1 gelesen).
 TBOX_AENDERUNG_RELATIV = "abgeleitet/tbox/aenderung.json"
@@ -348,11 +357,16 @@ def tbox_archiv_fehler(bereich: Path, pin: object) -> Optional[str]:
     return None
 
 
-def _zuletzt_angenommen(bereich: Path) -> Optional[dict]:
+def _zuletzt_angenommen(bereich: Path, *, ohne_beleg: Optional[str] = None) -> Optional[dict]:
     """Die zuletzt gezeichnete A-O1-ANNAHME des Bereichs (None = es gibt
     keine). Jeder Snapshot pinnt alle frueheren als Vorgaenger: Die juengste
     Annahme ist die mit den meisten. Eine Ablehnung als Spitze aendert nichts
-    daran, welches Vokabular zuletzt abgenommen ist."""
+    daran, welches Vokabular zuletzt abgenommen ist.
+
+    ``ohne_beleg``: Annahmen, die genau diesen T-Box-Beleg pinnen, zaehlen
+    nicht (Pruefrunde H, H09) — die Vergleichsgrundlage eines Belegs ist die
+    Abnahme VOR ihm; liegt seine eigene Annahme schon in der Kette (erneuter
+    Aufruf), bleibt die Grundlage dieselbe."""
     from rechner_pipeline.models.snapshot_kette import pruefe_snapshot_graph
 
     kette, fehler = _lade_kette(bereich, "A-O1")
@@ -362,11 +376,45 @@ def _zuletzt_angenommen(bereich: Path) -> Optional[dict]:
         raise StandFehler(
             f"die A-O1-Kette in {bereich} ist nicht lesbar ({fehler[0]}) — welches Vokabular "
             "zuletzt abgenommen ist, laesst sich nicht bestimmen")
-    annahmen = [s for s in kette.values() if s.get("entscheid") == "angenommen"]
+    annahmen = [s for s in kette.values() if s.get("entscheid") == "angenommen"
+                and (ohne_beleg is None or ((s.get("pflichtbelege") or {}).get(
+                    "tbox_aenderung") or [None])[0] != ohne_beleg)]
     return max(annahmen, key=lambda s: len(s.get("vorgaenger") or [])) if annahmen else None
 
 
-def _vorher_tbox(bereiche: List[Path]) -> Optional[Dict[str, Any]]:
+def tbox_vorher_fehler(bereiche: List[Path], pin: object, beleg: object) -> Optional[str]:
+    """Ist ``vorher`` des T-Box-Belegs (Pin ``pin``) die zuletzt angenommene
+    T-Box in den Bereichen DES GATES? (None = ja.)
+
+    Pruefrunde H (H09): Der Produzent bestimmte ``vorher`` aus Fall und
+    ``--vorher-linie``, das Gate bekommt seine Linie ueber ``--linie``; beide
+    Eingaben waren getrennt, und mit einem leeren Linienbereich wurde eine
+    belegte fruehere Abnahme still zur "Erstabnahme". Das Gate rechnet
+    ``vorher`` deshalb beim Zeichnen von A-O1 selbst — dieselbe Funktion wie
+    der Produzent (:func:`_vorher_tbox`), ohne die Annahmen dieses Belegs —
+    und haelt es mit ``==`` gegen den Beleg. Fall: Fall und Linie des Gates;
+    Linienbereich: die Linie."""
+    vorher = beleg.get("vorher") if isinstance(beleg, dict) else None
+    try:
+        soll = _vorher_tbox(list(bereiche), ohne_beleg=str(pin) if pin else None)
+    except StandFehler as exc:
+        return f"die Vergleichsgrundlage der Sicht ist nicht bestimmbar: {exc}"
+    if soll == vorher:
+        return None
+    nennt = (f"A-O1-Snapshot {str(vorher.get('snapshot_sha256'))[:16]}" if isinstance(vorher, dict)
+             else "keine fruehere Abnahme (Erstabnahme)")
+    ist = (f"A-O1-Snapshot {str(soll.get('snapshot_sha256'))[:16]}" if soll is not None
+           else "keine fruehere Abnahme (Erstabnahme)")
+    return (f"die Vergleichsgrundlage der Sicht ist nicht die zuletzt angenommene T-Box in Fall "
+            f"und Linie dieses Aufrufs: der Beleg nennt {nennt}, in {[str(b) for b in bereiche]} "
+            f"ist es {ist} — eine fruehere Abnahme wird nie still zur Erstabnahme. Ausweg: die "
+            "Vorlage mit der Linie des Falls neu erzeugen (python -m "
+            "rechner_pipeline.gates.stand_belegen tbox --fall <fall> --vorher-linie <die Linie, "
+            "die dieses Gate bekommt> ...), ansehen, dann zeichnen")
+
+
+def _vorher_tbox(bereiche: List[Path], *, ohne_beleg: Optional[str] = None
+                 ) -> Optional[Dict[str, Any]]:
     """Das zuletzt abgenommene Vokabular: der Beleg, den die juengste
     A-O1-Annahme pinnt, aus dem Archiv ihres Bereichs.
 
@@ -377,7 +425,7 @@ def _vorher_tbox(bereiche: List[Path]) -> Optional[Dict[str, Any]]:
     die Sicht behauptete "Erstabnahme", obwohl die Linie die T-Box schon
     abgenommen hatte."""
     for bereich in bereiche:
-        annahme = _zuletzt_angenommen(bereich)
+        annahme = _zuletzt_angenommen(bereich, ohne_beleg=ohne_beleg)
         if annahme is None:
             continue
         pin = ((annahme.get("pflichtbelege") or {}).get("tbox_aenderung") or [None])[0]
@@ -541,9 +589,11 @@ def ordnung_sicht(alt: Optional[dict], neu: dict) -> List[str]:
 
 
 def rendere_ordnungslinie(glieder: List[Dict[str, Any]]) -> str:
-    """Die Sicht der ganzen Ordnungslinie — je Glied, was es aendert."""
+    """Die Sicht der ganzen Ordnungslinie — je Glied, was es aendert, und je
+    geminderter Rolle die Erklaerung des Vorstands mit ihrer Folge."""
     z = ["# Versionslinie der Zeichnungsordnung", ""]
     alt: Optional[dict] = None
+    vorher: Optional[Dict[str, Any]] = None
     for g in glieder:
         neu = ol.ordnung_aus(g)
         z += [f"## Glied {g['nummer']} — `{g['glied_sha256'][:16]}`", "",
@@ -553,8 +603,28 @@ def rendere_ordnungslinie(glieder: List[Dict[str, Any]]) -> str:
             z += [f"Gezeichnet: {g['zeichnung']['rolle']} ({g['zeichnung']['gate']}), Schluessel "
                   f"`{g['zeichnung']['schluessel_sha256'][:16]}`.", ""]
         z += ordnung_sicht(alt, neu) + [""]
-        alt = neu
+        folgen = ol.folge_der_erklaerung(g, vorher)
+        if folgen:
+            z += ["Fruehere Zeichnungen der geminderten Rollen (Erklaerung des Vorstands):", ""]
+            z += [f"- {rolle}: {text}" for rolle, text in folgen.items()] + [""]
+        alt, vorher = neu, g
     return "\n".join(z)
+
+
+def _erklaerungen(werte: Optional[List[str]]) -> Tuple[Dict[str, str], List[str]]:
+    """``--fruehere-zeichnungen <rolle>=gueltig|verfallen`` (wiederholbar)."""
+    aus: Dict[str, str] = {}
+    fehler: List[str] = []
+    for wert in werte or []:
+        rolle, gleich, erklaerung = str(wert).partition("=")
+        if not gleich or not rolle or erklaerung not in ol.ERKLAERUNGEN:
+            fehler.append(f"--fruehere-zeichnungen {wert!r}: erwartet <rolle>="
+                          f"{'|'.join(ol.ERKLAERUNGEN)}")
+        elif rolle in aus:
+            fehler.append(f"--fruehere-zeichnungen nennt {rolle} zweimal — je Rolle eine Aussage")
+        else:
+            aus[rolle] = erklaerung
+    return aus, fehler
 
 
 @ein_ausgabe_benannt(command=COMMAND, gate_version=GATE_VERSION)
@@ -577,7 +647,16 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
                         "wiederholbar: nach einem Schluesselwechsel auch die frueheren, mit "
                         "denen die Glieder der Linie gezeichnet sind — der zuletzt genannte "
                         "zeichnet")
-    o.add_argument("--eingetragen-am", dest="eingetragen_am", default=None)
+    o.add_argument("--eingetragen-am", dest="eingetragen_am", default=None,
+                   help="Zeitpunkt mit Zeitzone; ohne Angabe die Uhr des Aufrufs. Nie vor dem "
+                        "der Spitze")
+    o.add_argument("--fruehere-zeichnungen", dest="fruehere_zeichnungen", action="append",
+                   default=None, metavar="ROLLE=gueltig|verfallen",
+                   help="Pflicht je Rolle, die das Glied MINDERT (Rolle entfaellt, Schluessel- "
+                        "oder Klassenwechsel, Gate entzogen): was mit ihren frueheren "
+                        "Zeichnungen geschieht — gueltig (tragen weiter, wenn vor diesem Glied "
+                        "gezeichnet) oder verfallen (tragen nichts mehr, neu zu zeichnen); "
+                        "wiederholbar, keine Vorgabe")
     v = unter.add_parser("verweisen", help="Verweis auf die geltende Abnahme der Linie")
     v.add_argument("--fall", required=True)
     v.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", required=True)
@@ -606,6 +685,23 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
 
     if args.aktion == "linie":
         linie = Path(args.linie)
+        daten = _json_bytes(sa.linie_kennung(linie.resolve().name))
+        # Ein Ausfall NACH dem Einhaengen von linie.json (Pruefrunde H, H16):
+        # Der Hardlink-Zwilling wird geraeumt, und liegt danach genau die
+        # Kennzeichnung, die dieser Aufruf schriebe, ist das das Ergebnis des
+        # ungestoerten Laufs — nicht "schon ein Linienbereich".
+        if linie.is_dir():
+            raeume_zwillinge(linie)
+            inhalt = [p.name for p in linie.iterdir()
+                      if not (ist_schreibrest(p.name) and p.name.startswith(f".{sa.LINIE_MARKER}."))]
+            marker = linie / sa.LINIE_MARKER
+            if inhalt == [sa.LINIE_MARKER] and marker.is_file() and not marker.is_symlink() \
+                    and marker.read_bytes() == daten:
+                return build_result(
+                    command=COMMAND, gate_version=GATE_VERSION, exit_code=Exit.OK,
+                    paths={"linie": str(linie)},
+                    summary={"linie": linie.resolve().name, "bereits_vorhanden": True},
+                    output_hashes={sa.LINIE_MARKER: hashlib.sha256(daten).hexdigest()})
         if sa.bereich_art(linie) is not None:
             return _fehler(Exit.USAGE, f"{linie} ist schon ein Fall- oder Linienbereich")
         # Ein Schreibrest von linie.json ist kein Inhalt (gates._common.
@@ -618,7 +714,6 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
                 for p in linie.iterdir()):
             return _fehler(Exit.USAGE, f"{linie} ist nicht leer — ein Linienbereich entsteht leer")
         linie.mkdir(parents=True, exist_ok=True)
-        daten = _json_bytes(sa.linie_kennung(linie.resolve().name))
         schreibe_exklusiv(linie / sa.LINIE_MARKER, daten)
         return build_result(command=COMMAND, gate_version=GATE_VERSION, exit_code=Exit.OK,
                             paths={"linie": str(linie)}, summary={"linie": linie.resolve().name},
@@ -633,6 +728,13 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
         if not ausserhalb_von(quelle_pfad, linie):
             return _fehler(Exit.USAGE, "die Ordnung liegt innerhalb der Linie — sie wird extern "
                                        "verwahrt; die Linie traegt ihre Kopie im Glied")
+        erklaerung, ef = _erklaerungen(args.fruehere_zeichnungen)
+        if ef:
+            return _fehler(Exit.USAGE, "; ".join(ef))
+        # Wer den Bereich der Glieder betritt, raeumt die Hardlink-Zwillinge
+        # eingehaengter Glieder (H16) — auch der Pfad "liegt schon" unten, der
+        # nichts schreibt, und jedes spaetere Anhaengen.
+        raeume_zwillinge(linie / ol.VERZEICHNIS)
         schluessel = None
         # Der Ring des Vorstands (Pruefrunde G, G09): Wer anhaengt, gruendet auf
         # der Linie — er liest sie mit dem Ring; jeder Schluessel, den die Linie
@@ -663,6 +765,14 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
             # G, G26): Fiel nach dem Glied die Sicht aus, zieht die
             # Wiederholung sie nach, statt mit "Vorgaenger ist nicht die
             # Spitze" zu enden — ohne zweites Glied und ohne neue Zeichnung.
+            # Derselbe Aufruf heisst auch: dieselbe Erklaerung (Pruefrunde H).
+            if erklaerung != oben.get("fruehere_zeichnungen"):
+                return _fehler(Exit.FILE_CONTRACT, (
+                    f"das Glied {oben['nummer']} liegt schon mit der Erklaerung "
+                    f"{oben.get('fruehere_zeichnungen')}, dieser Aufruf nennt {erklaerung} — ein "
+                    "Glied wird nie umgeschrieben. Ausweg: die Erklaerung des liegenden Glieds "
+                    "nennen; soll sie sich aendern, ist das ein neues Glied mit einer neuen "
+                    "Ordnung"))
             _ersetze(sicht_ziel, rendere_ordnungslinie(glieder).encode("utf-8"))
             return build_result(
                 command=COMMAND, gate=ol.ORDNUNGS_GATE, gate_version=GATE_VERSION,
@@ -674,11 +784,14 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
                          "bereits_vorhanden": True,
                          "aenderung": ordnung_sicht(
                              ol.ordnung_aus(glieder[-2]) if len(glieder) > 1 else None,
-                             ol.ordnung_aus(oben))})
+                             ol.ordnung_aus(oben)),
+                         "fruehere_zeichnungen": ol.folge_der_erklaerung(
+                             oben, glieder[-2] if len(glieder) > 1 else None)})
         try:
             glied = ol.neues_glied(
                 glieder, ordnung_roh, vorgaenger=vorgaenger,
                 eingetragen_am=args.eingetragen_am or utc_now(),
+                fruehere_zeichnungen=erklaerung,
                 vorstand_schluessel=schluessel)
         except ol.OrdnungslinieFehler as exc:
             return _fehler(Exit.FILE_CONTRACT, str(exc))
@@ -696,7 +809,12 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
                      "gezeichnet": glied["zeichnung"] is not None,
                      "bereits_vorhanden": False,
                      "aenderung": ordnung_sicht(
-                         ol.ordnung_aus(glieder[-1]) if glieder else None, ol.ordnung_aus(glied))},
+                         ol.ordnung_aus(glieder[-1]) if glieder else None, ol.ordnung_aus(glied)),
+                     # Je geminderter Rolle die Folge der Erklaerung, woertlich
+                     # (Pruefrunde H): bei "verfallen" die neu zu zeichnenden
+                     # Gates aus der Ordnung des Vorgaengers.
+                     "fruehere_zeichnungen": ol.folge_der_erklaerung(
+                         glied, glieder[-1] if glieder else None)},
             output_hashes={str(ziel): hashlib.sha256(daten).hexdigest()})
 
     fall = Path(args.fall or getattr(args, "linie", None) or "")
@@ -751,6 +869,9 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     # Namen passt, wird nicht stillschweigend stehen gelassen.
     archiv = fall / TBOX_ARCHIV_RELATIV / f"{sha}.json"
     archiv.parent.mkdir(parents=True, exist_ok=True)
+    # Der Pfad "liegt schon" schreibt nicht: Den Hardlink-Zwilling eines nach
+    # dem Einhaengen ausgefallenen Laufs raeumt der Eintritt ins Archiv (H16).
+    raeume_zwillinge(archiv.parent)
     if archiv.exists() or archiv.is_symlink():
         archiv_fehler = tbox_archiv_fehler(fall, sha)
         if archiv_fehler is not None:

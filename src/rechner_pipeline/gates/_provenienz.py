@@ -28,7 +28,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 O3_BELEG_SCHEMA_VERSION = 1
 O3_BELEG_GATE = "P-K1.generations-golden-master"
@@ -318,6 +318,18 @@ def lebendes_repo(wert: object) -> Path:
             f"{repo} traegt kein Paket unter {'/'.join(PAKET_IM_REPO)} — der lebende Stand "
             "ist der des Codes, der rechnet (Pruefrunde G). Ausweg: --repo-root auf den Baum "
             f"des ausgefuehrten Pakets ({_ausgefuehrtes_paket().parents[1]})")
+    # Der Code, der rechnet, ist der Bytecode, den Python laedt (Pruefrunde H,
+    # H07): Jede pyc im ausgefuehrten Paket, die der Interpreter verwenden
+    # wuerde, muss der Code ihrer Quelle sein.
+    bytecode = bytecode_fehler(_ausgefuehrtes_paket())
+    if bytecode:
+        raise argparse.ArgumentTypeError(
+            "der ausgefuehrte Code ist nicht der gehashte: " + "; ".join(bytecode[:3])
+            + (f" (und {len(bytecode) - 3} weitere)" if len(bytecode) > 3 else "")
+            + " — Python fuehrt eine Bytecode-Datei aus, deren Kopf zur Quelle passt, deren "
+            "Code aber ein anderer ist; jeder Stand-Hash liest die Quellen (Pruefrunde H). "
+            f"Ausweg: die __pycache__-Verzeichnisse des Pakets ({_ausgefuehrtes_paket()}) "
+            "loeschen und den Aufruf wiederholen")
     soll, ist = _quellcode_sha256(), paket_sha256(paket)
     if soll != ist:
         raise argparse.ArgumentTypeError(
@@ -329,6 +341,116 @@ def lebendes_repo(wert: object) -> Path:
             f"({_ausgefuehrtes_paket().parents[1]}), oder PYTHONPATH bzw. die Installation "
             f"auf {paket.parent}")
     return repo
+
+
+#: Je Bytecode-Datei das Urteil, gebunden an (Pfad, mtime_ns, Groesse) der
+#: pyc UND ihrer Quelle — je Prozess einmal gerechnet (Pruefrunde H, H07;
+#: gemessen 0,24 s fuer 136 Module beim ersten Aufruf, danach nur ``stat``).
+_BYTECODE_URTEIL: Dict[Tuple[Any, ...], Optional[str]] = {}
+
+
+def _stat_schluessel(pfad: Path) -> Optional[Tuple[int, int]]:
+    try:
+        st = pfad.stat()
+    except OSError:
+        return None
+    return st.st_mtime_ns, st.st_size
+
+
+def _pyc_urteil(pyc: Path, quelle: Path, optimiert: int) -> Optional[str]:
+    """Ob ``pyc`` der Code von ``quelle`` ist (None = ja, oder der Interpreter
+    wuerde sie nicht laden)."""
+    import importlib.util
+    import marshal
+
+    try:
+        roh = pyc.read_bytes()
+        quelltext = quelle.read_bytes()
+        st = quelle.stat()
+    except OSError as exc:
+        return f"{pyc}: nicht lesbar ({exc})"
+    if len(roh) < 16 or roh[:4] != importlib.util.MAGIC_NUMBER:
+        return None  # nicht fuer diesen Interpreter: er laedt sie nicht, er schreibt sie neu
+    flags = int.from_bytes(roh[4:8], "little")
+    if flags & 0b1:
+        # Hash-basiert: geladen, wenn ungeprueft (Bit 2 aus) oder der Hash der
+        # Quelle passt.
+        if flags & 0b10 and roh[8:16] != importlib.util.source_hash(quelltext):
+            return None
+    elif (int.from_bytes(roh[8:12], "little") != (int(st.st_mtime) & 0xFFFFFFFF)
+          or int.from_bytes(roh[12:16], "little") != (st.st_size & 0xFFFFFFFF)):
+        return None  # Kopf passt nicht zur Quelle: Python verwirft sie
+    try:
+        code = marshal.loads(roh[16:])
+    except (ValueError, EOFError, TypeError) as exc:
+        return f"{pyc}: Kopf passt zur Quelle, der Inhalt ist kein Code ({exc})"
+    try:
+        soll = compile(quelltext, str(quelle), "exec", dont_inherit=True, optimize=optimiert)
+    except SyntaxError as exc:
+        return f"{quelle}: nicht uebersetzbar ({exc})"
+    if code != soll:
+        return (f"{pyc.relative_to(pyc.parents[2]) if len(pyc.parents) > 2 else pyc}: Kopf passt "
+                f"zu {quelle.name}, der Code ist ein anderer")
+    return None
+
+
+def bytecode_fehler(paket: Path) -> List[str]:
+    """Jede Bytecode-Datei im Paketbaum, die der Interpreter laden wuerde, ist
+    der Code ihrer Quelle — sonst je Datei ein Befund (Pruefrunde H, H07).
+
+    Befund: Python laedt ``__pycache__/<modul>.<tag>.pyc``, wenn deren Kopf
+    (Zeitstempel und Groesse, bzw. der Quell-Hash) zur Quelle passt; den
+    Inhalt prueft es nicht. Jeder Stand-Hash des Systems liest die Quellen.
+    Eine untergeschobene pyc mit passendem Kopf aenderte die Rechnung, und
+    A-M4 meldete "keine Aenderung seit Abnahme".
+
+    Gemessen vor dem Bau (CPython 3.11.2, alle 136 Module, dreimal frisch
+    importiert): ``marshal.loads(pyc[16:]) == compile(quelle, pfad, "exec")``
+    galt fuer jedes Modul. Behandelt werden:
+
+    * pyc dieses Interpreters (``sys.implementation.cache_tag``, Magic) mit
+      passendem Kopf: Code-Gleichheit, sonst Befund;
+    * pyc mit unpassendem Kopf oder fremdem Magic: kein Befund — der
+      Interpreter verwirft sie (er laedt sie nicht);
+    * pyc unter ``__pycache__`` eines ANDEREN Interpreters (fremder Tag) oder
+      ohne Quelle: kein Befund — aus ``__pycache__`` laedt Python nur zu einer
+      vorhandenen Quelle und nur den eigenen Tag;
+    * eine pyc NEBEN den Quellen (``<modul>.pyc`` ausserhalb von
+      ``__pycache__``) ohne gleichnamige Quelle: Befund — Python importiert
+      sie als quellenloses Modul, und kein Hash sieht sie.
+
+    Je Prozess einmal je Datei gerechnet, gebunden an (Pfad, mtime_ns,
+    Groesse) von pyc und Quelle.
+    """
+    import sys
+
+    paket = Path(paket)
+    tag = sys.implementation.cache_tag
+    befunde: List[str] = []
+    for pyc in sorted(paket.rglob("*.pyc")):
+        if pyc.parent.name != "__pycache__":
+            if not pyc.with_suffix(".py").exists():
+                befunde.append(f"{pyc.relative_to(paket)}: Bytecode ohne Quelle neben den "
+                               "Quellen — Python importiert ihn, kein Hash sieht ihn")
+            continue
+        teile = pyc.name.split(".")
+        # <modul>.<tag>.pyc oder <modul>.<tag>.opt-<n>.pyc
+        if len(teile) not in (3, 4) or teile[1] != tag:
+            continue
+        optimiert = 0
+        if len(teile) == 4:
+            if not teile[2].startswith("opt-") or not teile[2][4:].isdigit():
+                continue
+            optimiert = int(teile[2][4:])
+        quelle = pyc.parent.parent / f"{teile[0]}.py"
+        schluessel = (str(pyc), _stat_schluessel(pyc), _stat_schluessel(quelle), optimiert)
+        if schluessel[2] is None:
+            continue
+        if schluessel not in _BYTECODE_URTEIL:
+            _BYTECODE_URTEIL[schluessel] = _pyc_urteil(pyc, quelle, optimiert)
+        if _BYTECODE_URTEIL[schluessel] is not None:
+            befunde.append(_BYTECODE_URTEIL[schluessel])
+    return befunde
 
 
 def paket_sha256(paket: Path) -> str:

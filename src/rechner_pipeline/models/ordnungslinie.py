@@ -119,12 +119,16 @@ ROLLEN_DES_ABGEBENDEN_HAUSES = ("mensch/quell-aktuar",)
 ROLLEN_DES_FALLS = ("mensch/programmleitung",)
 ZEICHNUNG_FELDER = frozenset({"gate", "rolle", "schluesselklasse", "schluessel_sha256",
                               "verfahren", "signatur"})
-GLIED_SCHEMA_VERSION = 1
+#: 2 (2026-10-01, Pruefrunde H, H06/H10): das Feld ``fruehere_zeichnungen`` —
+#: die gezeichnete Erklaerung des Vorstands je GEMINDERTER Rolle. Glieder nach
+#: Schema 1 werden nicht mehr gelesen: Ausserhalb der Tests gibt es noch keine
+#: (die Erstabnahme ist nicht gezeichnet, ADR-025 Bedienfolge).
+GLIED_SCHEMA_VERSION = 2
 GLIED_ART = "ordnungsglied"
 GLIED_FELDER = frozenset({
     "schema_version", "art", "nummer", "vorgaenger", "ordnung_sha256",
-    "ordnung_text", "aenderungen", "eingetragen_am", "eintrag", "zeichnung",
-    "glied_sha256",
+    "ordnung_text", "aenderungen", "fruehere_zeichnungen", "eingetragen_am", "eintrag",
+    "zeichnung", "glied_sha256",
 })
 #: Die Arten einer Aenderung zwischen zwei Staenden der Ordnung — GERECHNET
 #: aus beiden Staenden, nie vom Bediener behauptet (ADR-025). Eine stille
@@ -132,6 +136,18 @@ GLIED_FELDER = frozenset({
 #: von ``neue_rolle`` unterscheidbar.
 AENDERUNGSARTEN = ("neue_rolle", "rolle_entfallen", "gates_erweitert", "gates_entzogen",
                    "schluessel_gewechselt", "klasse_geaendert")
+#: Welche Aenderungen ein Recht MINDERN (Pruefrunde H, H06/H10) — und welche
+#: nur erweitern. Die beiden Mengen teilen :data:`AENDERUNGSARTEN` ohne Rest;
+#: eine neue Aenderungsart erzwingt die Entscheidung, wohin sie gehoert
+#: (Ratsche mit ``==`` in tests/test_ordnungslinie_erklaerung.py).
+MINDERUNGSARTEN = ("rolle_entfallen", "gates_entzogen", "schluessel_gewechselt",
+                   "klasse_geaendert")
+ERWEITERUNGSARTEN = ("neue_rolle", "gates_erweitert")
+#: Was der Vorstand je geminderter Rolle ueber ihre FRUEHEREN Zeichnungen
+#: erklaert (genau eine der zwei Aussagen, keine Vorgabe): ``gueltig`` — sie
+#: tragen weiter, wenn sie vor der Abloesung entstanden (Zeitregel als
+#: Plausibilitaet); ``verfallen`` — sie tragen nichts mehr, gleich wann.
+ERKLAERUNGEN = ("gueltig", "verfallen")
 #: Was das erste Glied woertlich ueber sich sagt.
 WURZEL_VERMERK = (
     "unsigniert: das erste Glied ist die Vertrauenswurzel der Linie; ein Recht, "
@@ -251,6 +267,94 @@ def aenderungen(alt: Optional[dict], neu: dict) -> List[Dict[str, Any]]:
     return liste
 
 
+def geminderte_rollen(aenderungsliste: object) -> List[str]:
+    """Die Rollen, deren Recht eine Aenderungsliste mindert (sortiert)."""
+    if not isinstance(aenderungsliste, list):
+        return []
+    return sorted({e["rolle"] for e in aenderungsliste
+                   if isinstance(e, dict) and e.get("art") in MINDERUNGSARTEN})
+
+
+def erklaerung_fehler(fruehere: object, aenderungsliste: object) -> List[str]:
+    """Ob ``fruehere`` (das Feld ``fruehere_zeichnungen``) fuer GENAU die
+    geminderten Rollen je eine der Aussagen :data:`ERKLAERUNGEN` traegt.
+    Keine Vorgabe: Fehlt eine Rolle, ist das ein Fehler, kein stilles
+    ``gueltig``; eine Erklaerung fuer eine nicht geminderte Rolle ebenso."""
+    soll = geminderte_rollen(aenderungsliste)
+    if not isinstance(fruehere, dict):
+        return ["fruehere_zeichnungen muss ein Objekt {rolle: gueltig|verfallen} sein"]
+    fehler: List[str] = []
+    fehlt = [r for r in soll if r not in fruehere]
+    fremd = sorted(r for r in fruehere if r not in soll)
+    if fehlt:
+        fehler.append(
+            f"das Glied mindert {fehlt}, erklaert aber nicht, was mit ihren frueheren "
+            f"Zeichnungen geschieht — je geminderter Rolle genau eine Aussage {list(ERKLAERUNGEN)}")
+    if fremd:
+        fehler.append(f"fruehere_zeichnungen nennt {fremd}, die das Glied nicht mindert — erklaert "
+                      "wird nur, was gemindert wird")
+    falsch = sorted(r for r, w in fruehere.items() if r in soll and w not in ERKLAERUNGEN)
+    if falsch:
+        fehler.append(f"fruehere_zeichnungen fuer {falsch}: erlaubt sind nur {list(ERKLAERUNGEN)}")
+    return fehler
+
+
+def betroffene_gates(rolle: str, alt: dict, neu: dict) -> List[str]:
+    """Welche Gates der Rolle eine Minderung von ``alt`` nach ``neu`` trifft:
+    entfaellt die Rolle oder wechseln Schluessel oder Klasse, jedes Gate, das
+    ``alt`` ihr gibt; sonst die entzogenen. Aus der Ordnung des Vorgaengers,
+    nicht aus einer abgetippten Liste."""
+    ea = (alt.get("rollen") or {}).get(rolle) or {}
+    en = (neu.get("rollen") or {}).get(rolle)
+    gates_alt = sorted(ea.get("gates") or [])
+    if en is None or en.get("schluessel_sha256") != ea.get("schluessel_sha256") \
+            or en.get("schluesselklasse") != ea.get("schluesselklasse"):
+        return gates_alt
+    return sorted(set(gates_alt) - set(en.get("gates") or []))
+
+
+def folge_der_erklaerung(glied: Dict[str, Any], vorher: Optional[Dict[str, Any]]
+                         ) -> Dict[str, str]:
+    """Je geminderter Rolle des Glieds die Folge seiner Erklaerung, woertlich
+    (fuer die Ausgabe des Produzenten und die Sicht ``linie.md``): Was
+    ``verfallen`` kostet, muss lesbar sein, bevor gewaehlt wird."""
+    if vorher is None:
+        return {}
+    alt, neu = ordnung_aus(vorher), ordnung_aus(glied)
+    folgen: Dict[str, str] = {}
+    for rolle, erklaerung in sorted((glied.get("fruehere_zeichnungen") or {}).items()):
+        gates = [g for g in betroffene_gates(rolle, alt, neu) if g != ORDNUNGS_GATE]
+        if erklaerung == "gueltig":
+            folgen[rolle] = (
+                f"gueltig: Abnahmen {gates} dieser Rolle, gezeichnet VOR diesem Glied, tragen "
+                "weiter; eine danach unter einem frueheren Glied gezeichnete traegt nicht "
+                "(Zeitregel)")
+            continue
+        text = (f"verfallen: jede fruehere Abnahme {gates} dieser Rolle traegt nichts mehr, "
+                "gleich wann sie gezeichnet wurde — neu zu zeichnen unter der Spitze, auch "
+                "die Erstabnahmen im Linienbereich")
+        if rolle == WURZELROLLE:
+            text += (". Fuer die Wurzel heisst das: jeder Fallauftrag (A-M6) und alles, was "
+                     "darauf gruendet — jede Annahme jedes Falls; die Glieder der Linie "
+                     "bleiben gueltig")
+        folgen[rolle] = text
+    return folgen
+
+
+def _zeitpunkt(wert: object) -> Optional[Any]:
+    """Ein ISO-Zeitpunkt MIT Zeitzone als ``datetime`` (None = nicht lesbar).
+    Verglichen wird auf geparsten Zeitpunkten, nie auf Zeichenketten."""
+    from datetime import datetime
+
+    if not isinstance(wert, str):
+        return None
+    try:
+        zeit = datetime.fromisoformat(wert)
+    except ValueError:
+        return None
+    return zeit if zeit.tzinfo is not None and zeit.utcoffset() is not None else None
+
+
 def aenderung_text(eintrag: Dict[str, Any]) -> str:
     """Eine Aenderung in Unternehmenssprache (fuer die Sicht)."""
     art, rolle = eintrag["art"], eintrag["rolle"]
@@ -353,9 +457,14 @@ def zeichnung_fehler(glied: Dict[str, Any], vorher: Dict[str, Any],
 def baue_glied(
     ordnung_roh: bytes, *, nummer: int, vorgaenger: Optional[str], eingetragen_am: str,
     vorstand: Optional[Tuple[bytes, str]] = None, vorher: Optional[dict] = None,
+    fruehere_zeichnungen: Optional[Mapping[str, str]] = None,
 ) -> Dict[str, Any]:
     """Ein Glied aus den Bytes einer Ordnungsdatei (ohne es zu schreiben).
-    ``vorher``: die Ordnung der Spitze davor (None beim ersten Glied)."""
+    ``vorher``: die Ordnung der Spitze davor (None beim ersten Glied).
+    ``fruehere_zeichnungen``: die Erklaerung je geminderter Rolle; geprueft
+    wird sie in :func:`neues_glied` und beim Laden (:func:`glied_fehler`) —
+    ein Glied mit Minderung ohne Erklaerung baut dieser Bauer, aber niemand
+    haengt es an oder liest es."""
     text = ordnung_roh.decode("utf-8")
     glied: Dict[str, Any] = {
         "schema_version": GLIED_SCHEMA_VERSION,
@@ -365,6 +474,7 @@ def baue_glied(
         "ordnung_sha256": hashlib.sha256(ordnung_roh).hexdigest(),
         "ordnung_text": text,
         "aenderungen": aenderungen(vorher, json.loads(text)),
+        "fruehere_zeichnungen": dict(fruehere_zeichnungen or {}),
         "eingetragen_am": eingetragen_am,
         "eintrag": {"art": "wurzel" if vorgaenger is None else "anhang",
                     "vermerk": WURZEL_VERMERK if vorgaenger is None else ANHANG_VERMERK},
@@ -399,6 +509,10 @@ def glied_fehler(glied: object) -> List[str]:
         fehler += ordnung_inhalt_fehler(text)[1]
     if not (isinstance(glied.get("eingetragen_am"), str) and glied["eingetragen_am"].strip()):
         fehler.append("eingetragen_am fehlt")
+    # Die Erklaerung je geminderter Rolle (Pruefrunde H): ueber die
+    # GESPEICHERTE Aenderungsliste; dass sie die gerechnete ist, haelt die
+    # Kette (_lade). Fehlt sie, ist das Glied kein Glied.
+    fehler += erklaerung_fehler(glied.get("fruehere_zeichnungen"), glied.get("aenderungen"))
     erwartet = "wurzel" if glied.get("vorgaenger") is None else "anhang"
     if erwartet == "wurzel" and glied.get("zeichnung") is not None:
         fehler.append("das erste Glied ist unsigniert (zeichnung None) — es ist die Wurzel")
@@ -510,7 +624,8 @@ def ordnung_aus(glied: Dict[str, Any]) -> dict:
 
 def neues_glied(
     glieder: List[Dict[str, Any]], ordnung_roh: bytes, *, vorgaenger: Optional[str],
-    eingetragen_am: str, vorstand_schluessel: Optional[bytes] = None,
+    eingetragen_am: str, fruehere_zeichnungen: Mapping[str, str],
+    vorstand_schluessel: Optional[bytes] = None,
 ) -> Dict[str, Any]:
     """Das naechste Glied — oder :class:`OrdnungslinieFehler` mit Ausweg.
 
@@ -518,6 +633,12 @@ def neues_glied(
     gesehen hat; ``None`` fuer das erste Glied): Ein Eintrag, der auf einem
     anderen Stand der Linie gedacht war als dem, der liegt, wird nicht
     angehaengt.
+
+    ``fruehere_zeichnungen`` (Pflicht, ohne Vorgabe; Pruefrunde H): je Rolle,
+    die das Glied MINDERT (:data:`MINDERUNGSARTEN`), genau eine Aussage
+    :data:`ERKLAERUNGEN` — gezeichnet mit dem Glied. ``eingetragen_am`` ist ein
+    Zeitpunkt mit Zeitzone und liegt nicht vor dem des Vorgaengers (monoton):
+    Die Zeitregel der Leser vergleicht Zeichnungen gegen ihn.
     """
     oben = spitze(glieder)
     if vorgaenger != (oben["glied_sha256"] if oben else None):
@@ -541,6 +662,32 @@ def neues_glied(
                 "Stand wird einmal eingetragen")
     if not (isinstance(eingetragen_am, str) and eingetragen_am.strip()):
         raise OrdnungslinieFehler("eingetragen_am fehlt")
+    zeit = _zeitpunkt(eingetragen_am)
+    if zeit is None:
+        raise OrdnungslinieFehler(
+            f"eingetragen_am {eingetragen_am!r} ist kein Zeitpunkt mit Zeitzone (ISO-8601) — "
+            "die Leser halten Zeichnungen gegen ihn")
+    if oben is not None:
+        zeit_oben = _zeitpunkt(oben.get("eingetragen_am"))
+        if zeit_oben is None or zeit < zeit_oben:
+            raise OrdnungslinieFehler(
+                f"eingetragen_am {eingetragen_am} liegt vor dem der Spitze (Glied "
+                f"{oben['nummer']}, {oben.get('eingetragen_am')}) oder jener ist nicht lesbar — "
+                "ein Glied wird nicht frueher datiert als sein Vorgaenger: Die Leser halten "
+                "jede Zeichnung gegen den Zeitpunkt, zu dem ihr Glied abgeloest wurde. Ausweg: "
+                "--eingetragen-am weglassen (die Uhr des Aufrufs) oder einen spaeteren nennen")
+    aliste = aenderungen(ordnung_aus(oben) if oben is not None else None, json.loads(text))
+    erwartet = geminderte_rollen(aliste)
+    efehler = erklaerung_fehler(dict(fruehere_zeichnungen) if isinstance(
+        fruehere_zeichnungen, Mapping) else fruehere_zeichnungen, aliste)
+    if efehler:
+        raise OrdnungslinieFehler(
+            "; ".join(efehler) + f" — dieses Glied mindert {erwartet or 'keine Rolle'}. Ausweg: "
+            "je geminderter Rolle --fruehere-zeichnungen <rolle>=gueltig (ihre frueheren "
+            "Zeichnungen tragen weiter, etwa bei einer Umbenennung oder einem geordneten "
+            "Wechsel, der Halter ist derselbe) oder <rolle>=verfallen (sie tragen nichts mehr, "
+            "etwa bei einem Schluessel, dem nicht mehr getraut wird; neu zu zeichnen) "
+            "(ADR-025, Nachtrag Pruefrunde H)")
     vorstand: Optional[Tuple[bytes, str]] = None
     if oben is not None:
         alt = ordnung_aus(oben)
@@ -556,11 +703,12 @@ def neues_glied(
                       str(alt["rollen"][WURZELROLLE]["schluesselklasse"]))
     return baue_glied(ordnung_roh, nummer=len(glieder) + 1, vorgaenger=vorgaenger,
                       eingetragen_am=eingetragen_am, vorstand=vorstand,
-                      vorher=ordnung_aus(oben) if oben is not None else None)
+                      vorher=ordnung_aus(oben) if oben is not None else None,
+                      fruehere_zeichnungen=dict(fruehere_zeichnungen))
 
 
 def damalige_ordnung(
-    snapshot: object, glieder: List[Dict[str, Any]],
+    snapshot: object, glieder: List[Dict[str, Any]], *, gate: str,
 ) -> Tuple[Optional[dict], Optional[str]]:
     """Die Ordnung, unter der ``snapshot`` gezeichnet wurde — aus der Linie.
 
@@ -568,6 +716,13 @@ def damalige_ordnung(
     das GLIED, das die Zeichnung pinnt (``zeichnung.ordnungsglied_sha256``),
     nicht nur ueber den Hash der Ordnungsdatei: Ein ausgetauschtes Glied
     aendert jeden Glied-Hash danach und faellt hier auf.
+
+    Danach (Pruefrunde H, H06/H10) die spaeteren Glieder der Linie DES
+    LESERS: :func:`abloesung_fehler`. Die Stelle, durch die jeder gruendende
+    Leser die Rolle eines Abnahme-Snapshots aufloest
+    (``models.zeichnung.zeichnende_rolle_fehler``) — die Glieder der Linie
+    selbst gehen nicht hier durch, sie prueft :func:`lade_linie` Glied fuer
+    Glied gegen den Vorstand des Vorgaengers.
     """
     daten = snapshot if isinstance(snapshot, dict) else {}
     z = daten.get("zeichnung") if isinstance(daten.get("zeichnung"), dict) else {}
@@ -589,4 +744,96 @@ def damalige_ordnung(
             f"das gepinnte Glied {glied['nummer']} traegt die Ordnung "
             f"{glied['ordnung_sha256'][:16]}, der Snapshot nennt "
             f"{str(z.get('ordnung_sha256'))[:16]} — Glied und Ordnung gehoeren nicht zusammen")
+    meldung = abloesung_fehler(daten, glieder, glied, gate=gate)
+    if meldung is not None:
+        return None, meldung
     return ordnung_aus(glied), None
+
+
+def abloesung_fehler(
+    snapshot: Dict[str, Any], glieder: List[Dict[str, Any]], glied: Dict[str, Any], *, gate: str,
+) -> Optional[str]:
+    """Traegt eine Abnahme noch, deren gepinntes Glied ``glied`` in der Linie
+    des Lesers (``glieder``) inzwischen abgeloest ist? (None = ja.)
+
+    Pruefrunde H (H06/H10): Eine AELTERE KOPIE der Linie (vor einem spaeter
+    angehaengten Glied) liess einen entzogenen Schluessel unter ihrer alten
+    Spitze zeichnen, und der Leser mit der echten Linie nahm die Zeichnung an,
+    weil er die Rolle gegen das gepinnte Glied hielt. Die Grundlage ist die
+    gezeichnete ERKLAERUNG des Vorstands im abloesenden Glied, die Zeit nur
+    eine Plausibilitaet daneben:
+
+    Die Zeichnung (Rolle R des Fingerabdrucks F unter dem gepinnten Glied,
+    Gate G, Klasse K) GILT unter einer Ordnung, solange diese R mit F, G und K
+    fuehrt. Das erste spaetere Glied j, unter dem sie nicht mehr gilt, mindert
+    R (Entzug von G, Schluesselwechsel, Klassenwechsel, R entfaellt) und
+    erklaert, was mit den frueheren Zeichnungen von R geschieht:
+
+    * ``verfallen`` — verweigert, gleich wann gezeichnet wurde (eine
+      zurueckgestellte Uhr hilft nicht);
+    * ``gueltig`` — die Zeichnung traegt, wenn sie VOR dem ``eingetragen_am``
+      von Glied j entstand (``entschieden_am`` im signierten Inhalt);
+      sonst verweigert: gezeichnet wird nur unter der Spitze. Ein nicht
+      lesbarer Zeitpunkt verweigert.
+
+    Wird die Zeichnung von keinem spaeteren Glied getroffen, gilt sie (ein
+    spaeteres Glied, das R nicht mindert, entwertet nichts). Ein
+    Fingerabdruck, den das gepinnte Glied keiner Rolle gibt, ist Sache der
+    Rollenregel danach (``zeichnende_rolle_fehler``), ebenso die Fall-Rollen
+    (ihr Recht kommt aus dem Fallauftrag, die Linie fuehrt sie nicht).
+    """
+    i = next((k for k, g in enumerate(glieder) if g is glied
+              or g.get("glied_sha256") == glied.get("glied_sha256")), None)
+    if i is None or i == len(glieder) - 1:
+        return None
+    fp = str(((snapshot.get("freigabe") or {}) if isinstance(snapshot.get("freigabe"), dict)
+              else {}).get("schluessel_sha256") or "")
+    damals = ordnung_aus(glied)
+    rolle = next((n for n, e in (damals.get("rollen") or {}).items()
+                  if isinstance(e, dict) and e.get("schluessel_sha256") == fp), None)
+    if rolle is None:
+        return None
+    klasse = damals["rollen"][rolle].get("schluesselklasse")
+
+    def gilt(ordnung: dict) -> bool:
+        e = (ordnung.get("rollen") or {}).get(rolle)
+        return (isinstance(e, dict) and e.get("schluessel_sha256") == fp
+                and gate in (e.get("gates") or []) and e.get("schluesselklasse") == klasse)
+
+    vorher_gilt = gilt(damals)
+    for j in range(i + 1, len(glieder)):
+        spaeter = glieder[j]
+        jetzt_gilt = gilt(ordnung_aus(spaeter))
+        if vorher_gilt and not jetzt_gilt:
+            erklaerung = (spaeter.get("fruehere_zeichnungen") or {}).get(rolle)
+            ausweg = (f"Ausweg: {gate} unter der Spitze der Linie (Glied {glieder[-1]['nummer']}) "
+                      "mit einem Schluessel neu zeichnen, dem sie das Gate gibt (ADR-025, "
+                      "Nachtrag Pruefrunde H)")
+            if erklaerung != "gueltig":
+                return (
+                    f"die Zeichnung pinnt Glied {glied['nummer']}; mit Glied {spaeter['nummer']} "
+                    f"(eingetragen am {spaeter.get('eingetragen_am')}) hat der Vorstand die "
+                    f"frueheren Zeichnungen der Rolle {rolle} fuer "
+                    + ("verfallen erklaert" if erklaerung == "verfallen"
+                       else f"nichts Lesbares erklaert ({erklaerung!r})")
+                    + f" — diese {gate}-Abnahme traegt nichts mehr, gleich wann sie gezeichnet "
+                    f"wurde. {ausweg}")
+            entschieden = _zeitpunkt(snapshot.get("entschieden_am"))
+            abgeloest = _zeitpunkt(spaeter.get("eingetragen_am"))
+            if entschieden is None or abgeloest is None:
+                return (
+                    f"die Zeichnung pinnt Glied {glied['nummer']}, das Glied "
+                    f"{spaeter['nummer']} fuer die Rolle {rolle} abgeloest hat; ob sie vor der "
+                    "Abloesung entstand, ist nicht entscheidbar (entschieden_am "
+                    f"{snapshot.get('entschieden_am')!r}, eingetragen_am "
+                    f"{spaeter.get('eingetragen_am')!r} — kein Zeitpunkt mit Zeitzone). {ausweg}")
+            if not entschieden < abgeloest:
+                return (
+                    f"unter einem abgeloesten Glied gezeichnet: Glied {glied['nummer']} wurde fuer "
+                    f"die Rolle {rolle} am {spaeter.get('eingetragen_am')} durch Glied "
+                    f"{spaeter['nummer']} abgeloest, gezeichnet am "
+                    f"{snapshot.get('entschieden_am')}; gezeichnet wird nur unter der Spitze. "
+                    f"Glied {spaeter['nummer']} erklaert die frueheren Zeichnungen der Rolle fuer "
+                    f"gueltig — das traegt Zeichnungen VOR der Abloesung. {ausweg}")
+        vorher_gilt = jetzt_gilt
+    return None

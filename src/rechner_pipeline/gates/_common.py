@@ -212,6 +212,44 @@ def raeume_schreibreste(ziel: Path) -> None:
             rest.unlink()
 
 
+def raeume_zwillinge(verzeichnis: Path) -> List[str]:
+    """Die Hardlink-Zwillinge eingehaengter Belege in ``verzeichnis`` entfernen
+    — der benannte Einstieg fuer jeden Aufruf, der einen Bereich BETRITT oder
+    ein Ziel als "liegt schon" erkennt, ohne es neu zu schreiben.
+
+    Pruefrunde H (H16): :func:`schreibe_exklusiv` haengt per ``os.link`` ein
+    und entfernt danach die Tempdatei. Ein Prozessende genau dazwischen laesst
+    unter ``.<ziel>.<zufall>.tmp`` einen zweiten, beschreibbaren Namen
+    derselben Bytes liegen. Die Zusage "der naechste Aufruf fuer dasselbe Ziel
+    raeumt ihn weg" galt nur, wenn die Wiederholung das Ziel neu schreibt; an
+    vier Stellen tut sie das nicht (``linie.json``, ein Glied der
+    Ordnungslinie, das T-Box-Archiv, der Snapshot des Fallabbruchs — danach
+    ist im Fall nichts mehr zeichenbar). Diese Stelle raeumt deshalb, was
+    sicher ein Rest ist: einen Punktnamen (:func:`ist_schreibrest`), der
+    DASSELBE Inode traegt wie sein eingehaengtes Ziel. Das ist zu jedem
+    Zeitpunkt unschaedlich, auch neben einem laufenden Schreiber: Ein Zwilling
+    ist erst nach dem Einhaengen einer, und dann ist der Beleg vollstaendig
+    veroeffentlicht. Reste OHNE eingehaengtes Ziel (Ausfall vor ``os.link``)
+    raeumt weiter der naechste Schreiber desselben Ziels
+    (:func:`raeume_schreibreste`). Rueckgabe: die Namen der entfernten Reste.
+    """
+    entfernt: List[str] = []
+    verzeichnis = Path(verzeichnis)
+    if not verzeichnis.is_dir():
+        return entfernt
+    for rest in sorted(verzeichnis.iterdir()):
+        name = rest.name
+        if not ist_schreibrest(name) or name.count(".") < 3:
+            continue
+        ziel = verzeichnis / name[1:].rsplit(".", 2)[0]
+        with contextlib.suppress(OSError):
+            if not rest.is_symlink() and ziel.is_file() and not ziel.is_symlink() \
+                    and os.path.samefile(rest, ziel):
+                rest.unlink()
+                entfernt.append(name)
+    return entfernt
+
+
 def schreibe_exklusiv(ziel: Path, daten: bytes) -> None:
     """``daten`` genau einmal unter ``ziel`` veroeffentlichen — ganz oder gar nicht.
 

@@ -366,6 +366,10 @@ ERLAUBTE_WIEDERHOLBARE_TEXTE = {
     # Schluesseldateien des Vorstands (Pruefrunde G, G09): nach einem
     # Schluesselwechsel der alte UND der neue — je Glied, nie je Police.
     ("stand_belegen", "--vorstand-schluessel"),
+    # <rolle>=gueltig|verfallen je geminderter Rolle eines Glieds (Pruefrunde
+    # H): Werte aus einer Zweiermenge, geprueft gegen die Rollen der Ordnung —
+    # je Glied, nie je Police.
+    ("stand_belegen", "--fruehere-zeichnungen"),
 }
 
 

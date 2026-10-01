@@ -594,7 +594,10 @@ def zeichnende_rolle_fehler(
             "die Ordnung eintragen: Bedienfolge ADR-025)")
     from rechner_pipeline.models.ordnungslinie import damalige_ordnung
 
-    ordnung, meldung = damalige_ordnung(daten, linie)
+    # Die eine Stelle, an der ein gruendender Leser das gepinnte Glied
+    # lokalisiert — samt der Abloesung durch spaetere Glieder SEINER Linie
+    # (Erklaerung des Vorstands, Zeitregel; Pruefrunde H, H06/H10).
+    ordnung, meldung = damalige_ordnung(daten, linie, gate=gate)
     if meldung is not None:
         return None, meldung
     if gate in FALLROLLEN_GATES:

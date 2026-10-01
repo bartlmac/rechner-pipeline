@@ -259,8 +259,13 @@ def linie_sicherstellen(fall: Path, ordnung: Path) -> Path:
     sha = hashlib.sha256(Path(ordnung).read_bytes()).hexdigest()
     if glieder and glieder[-1]["ordnung_sha256"] == sha:
         return linie
+    # Ohne --eingetragen-am: die Uhr des Aufrufs (Pruefrunde H). Ein fester
+    # Zeitpunkt in der Vergangenheit datierte das Glied VOR Zeichnungen, die
+    # schon unter seinem Vorgaenger liegen, und die Zeitregel der Leser
+    # verweigerte sie. Die Erklaerung je geminderter Rolle setzt der Helfer
+    # ausdruecklich auf "gueltig": Die Suite braucht frueher Gezeichnetes weiter.
     argv = ["ordnung", "--linie", str(linie), "--ordnung", str(ordnung),
-            "--eingetragen-am", f"2026-10-01T08:{len(glieder):02d}:00+00:00"]
+            *erklaerung_args(glieder, Path(ordnung), "gueltig")]
     if glieder:
         argv += ["--vorgaenger", glieder[-1]["glied_sha256"],
                  "--vorstand-schluessel", str(fall.parent / VORSTAND_SCHLUESSEL_DATEI)]
@@ -269,6 +274,19 @@ def linie_sicherstellen(fall: Path, ordnung: Path) -> Path:
     ergebnis = stand_belegen.main(argv)
     assert ergebnis.exit_code == 0, ergebnis.errors
     return linie
+
+
+def erklaerung_args(glieder: List[dict], ordnung: Path, erklaerung: str) -> List[str]:
+    """``--fruehere-zeichnungen <rolle>=<erklaerung>`` fuer jede Rolle, die das
+    Anhaengen von ``ordnung`` an die Spitze von ``glieder`` MINDERT (Pruefrunde
+    H). Ausdruecklich je Aufruf gesetzt — der Produktivcode kennt keine
+    Vorgabe."""
+    from rechner_pipeline.models import ordnungslinie as ol
+
+    vorher = ol.ordnung_aus(glieder[-1]) if glieder else None
+    neu = json.loads(Path(ordnung).read_text(encoding="utf-8"))
+    return [teil for rolle in ol.geminderte_rollen(ol.aenderungen(vorher, neu))
+            for teil in ("--fruehere-zeichnungen", f"{rolle}={erklaerung}")]
 
 
 def _auftrag_gilt(fall: Path) -> bool:

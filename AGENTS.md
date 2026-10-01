@@ -250,7 +250,17 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   (ADR-025, addendum 2026-10-01): every decision names `--linie`, signing
   happens only under the tip of the signing-order version line, and every
   reader that relies on an acceptance holds it against the order it was
-  signed under — without a line nothing is signed and nothing relied on
+  signed under, and against every later link of ITS line that reduces the
+  signing role: such a link carries the board's signed declaration per
+  reduced role (`stand_belegen ordnung --fruehere-zeichnungen
+  <role>=gueltig|verfallen`, mandatory, no default) — `verfallen` voids
+  earlier signatures of that role whenever they were made (for the board:
+  every case mandate A-M6 and everything resting on it), `gueltig` keeps
+  those signed before the link. Every `--repo-root` must be the tree of
+  the package that is executing, and is refused if a bytecode file the
+  interpreter would load under that package is not the code of its source
+  (remedy: delete the package's `__pycache__`). Without a line nothing is
+  signed and nothing relied on
   (the nightly run, which relies on no snapshot, excepted)
   (`models.ordnungslinie`; its root role is the board, `mensch/vorstand`,
   which signs order changes A-Z1 and case mandates A-M6, never a

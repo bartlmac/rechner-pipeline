@@ -259,8 +259,11 @@ erlauben. Sie sieht die Bereiche, die sie bekommt (Fall und Linie), keine
 fremden Faelle. Seit Pruefrunde G (G13) haelt auch A-M4 sie in der
 Standabnahme gegen Fall UND die Linie, die A-M4 bekommt (ADR-025, Nachtrag
 Pruefrunde G): Wer A-O1 unter einer Kopie der Linie ohne Entscheide
-zeichnete, kam vorher bis zur Annahme der Migration. Die Vergleichsgrundlage der Sicht (`vorher`) liefert der
-Produzent; das Gate prueft an ihr nur die innere Stimmigkeit.
+zeichnete, kam vorher bis zur Annahme der Migration. Die
+Vergleichsgrundlage der Sicht (`vorher`) rechnet das Gate seit Pruefrunde H
+beim Zeichnen von A-O1 aus Fall und Linie des Aufrufs nach und haelt sie mit
+`==` gegen den Beleg (ADR-025, Nachtrag Pruefrunde H); vorher lieferte sie
+der Produzent, und das Gate pruefte nur ihre innere Stimmigkeit.
 
 ## Nachtrag 2026-10-01 (vierter): Pruefrunde G — Feststellung statt Luecke, Scope, Belege an der Spez
 

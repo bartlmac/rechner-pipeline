@@ -274,7 +274,8 @@ Bedienfolge Schritt 9); die Programmleitung hat einen eigenen Schluessel
    --linie linie --zeichnungsordnung <ordnung>
    --programmleitung-schluessel <programmleitung.key>
    --programmleitung-klasse mensch|simulation
-   [--mandat <rolle>=<mandat> je simulierter Rolle] --auftrag "<Auftrag>"`.
+   [--mandat <rolle>=<mandat> ...] --auftrag "<Auftrag>"` (ein `--mandat`
+   je simulierter Rolle).
 2. **Ansehen:** `<fall>/abgeleitet/auftrag/fallauftrag.md`.
 3. **Zeichnen** (der Vorstand): `python -m rechner_pipeline.gates.gate_entscheid
    --fall <fall> --linie linie --gate A-M6 --entscheid angenommen
@@ -399,6 +400,11 @@ Standabnahme.
 **Grenze, benannt.** Nennt der Auftrag keine Abnahme der Linie (eine Linie
 ohne Erstabnahme), bleibt allein der Name; eine Kopie mit demselben Namen
 und denselben Gliedern ist dann nicht von der Linie zu unterscheiden. Die
+Grenze reicht weiter (Pruefrunde H): Auch eine Kopie, der ein seither
+angehaengtes Glied fehlt, besteht die Pruefung — was unter ihr gezeichnet
+wird, faengt seitdem der naechste Leser mit der echten Linie (Nachtrag
+Pruefrunde H, f); eine vollstaendige aeltere Kopie der Abnahme-Ketten bleibt
+ununterscheidbar (g). Die
 Signatur der genannten Abnahme haelt hier niemand nach (sie liegt in der
 Linie und wird gelesen, wo sie traegt: im Verweis, Weg b). Dass A-M4 die
 Vokabular-Regel gegen seine eigene Linie selbst haelt, ist Teil 1 desselben
@@ -501,3 +507,61 @@ fuehrt, oder ein Register der Linie) waere die Antwort; er ist nicht gebaut.
   abgelehnte A-M5 sind darin nicht zu unterscheiden. Und beide liegen in der
   aufraeumbaren Zone `abgeleitet/`.
 * Kein spaeterer Snapshot nennt den Abbruch — nach ihm ist nichts zeichenbar.
+
+*Nachgetragen (Pruefrunde H, H16):* Ein Ausfall zwischen dem Einhaengen des
+A-M5-Snapshots und dem Entfernen seiner Tempdatei liess dessen
+Hardlink-Zwilling in `entscheide/` liegen, und jeder weitere Aufruf endete an
+der Sperre, bevor er raeumte. Das Gate raeumt die Zwillinge jetzt beim
+Eintritt in `entscheide/`, VOR der Sperre (ADR-025, Nachtrag Pruefrunde H,
+Punkt 4). Die Grenze dieses Abschnitts aendert das nicht.
+
+## Nachtrag 2026-10-01: Pruefrunde H — die Linie des Lesers, die Kaskade des Auftrags, die Grenze der Kopie
+
+### f) Eine aeltere Kopie der Linie traegt keine Zeichnung mehr, die die echte Linie nicht traegt (H10, H06)
+
+**Befund.** Die Identitaet der Linie (Nachtrag b) ist Name plus genannte
+Abnahmen. Eine Kopie der Linie, angelegt NACH dem Auftrag und VOR einem
+neuen Glied, erfuellt beides und hat das abloesende Glied nicht. Gemessen:
+Der Vorstand entzog mit Glied 2 dem Aktuariat den Schluessel; unter der
+Kopie zeichnete der entzogene Schluessel A-Q1, A-M1 und A-M4, und der Leser
+des Betriebs nahm die A-M4 unter der echten Linie an. Die Grenze in Nachtrag b
+("Auftrag ohne Abnahmen; Kopie mit denselben Gliedern") reichte weiter als
+beschrieben: Hier nennt der Auftrag Abnahmen, und der Kopie fehlt ein Glied.
+
+**Regel** (gebaut in ADR-025, Nachtrag Pruefrunde H, Punkt 1): Jeder
+gruendende Leser haelt eine Zeichnung gegen die spaeteren Glieder SEINER
+Linie; ein Glied, das die zeichnende Rolle mindert, traegt die gezeichnete
+Erklaerung des Vorstands — `verfallen` verweigert, `gueltig` traegt
+Zeichnungen vor der Abloesung. Damit faellt eine unter der Kopie gezeichnete
+Annahme beim naechsten Leser mit der echten Linie: beim Gate des naechsten
+Schritts (A-M4, A-B2) und beim Betrieb (Registrierung, Zugangsprobe,
+Neuaufsetzen, Bindung). Das Gate, das UNTER der Kopie zeichnet, sieht das
+Glied nicht und zeichnet weiter; das ist die Naht, an der gefangen wird.
+
+**Die Kaskade des Auftrags.** Jede Annahme eines Falls gruendet auf A-M6
+(Abschnitt 3), A-M6 zeichnet der Vorstand. Erklaert ein Glied die frueheren
+Zeichnungen des Vorstands fuer `verfallen` (sein Schluessel ist nicht mehr
+vertrauenswuerdig), traegt keine A-M6 dieses Schluessels mehr — und keine
+Annahme eines Falls, der unter ihr beauftragt ist: `fallauftrag_pruefen`
+verweigert mit Code `fallauftrag`. Jeder laufende Fall ist neu zu beauftragen
+und neu zu zeichnen. Mit `gueltig` (Umbenennung, geordneter Wechsel, derselbe
+Halter) tragen die Auftraege weiter.
+
+### g) Grenze, benannt: die Kopie als ganze Linie (H11, vom Widerleger nicht bestaetigt)
+
+Die Identitaet der Linie ist Name plus genannte Abnahmen. Eine VOLLSTAENDIGE
+aeltere Kopie der Abnahme-Ketten ist ohne aeusseren Anker nicht von der Linie
+zu unterscheiden. Gemessen vom Pruefer: Nach einer Ablehnung von A-T1 in der
+echten Linie verwies ein Fall unter einer vorher gezogenen Kopie (Weg b) auf
+die dort noch geltende A-T1-Annahme; A-M4 nahm unter der Kopie an, und der
+Leser des Betriebs sah es nicht — er rechnet die Standabnahmen der A-M4 nicht
+nach. Die Regel aus f) faengt das nicht: Sie haelt die Glieder der
+Ordnungslinie, keine Abnahme-Ketten; eine Ablehnung ist kein Glied. Billig an
+derselben Stelle ginge es nicht: Der Leser muesste je Verweis die Kette der
+echten Linie lesen und entscheiden, ob die verwiesene Abnahme VOR dem
+`entschieden_am` der lesenden A-M4 abgeloest wurde — ein zweiter Leser im
+Betrieb, gegen dessen Zeitvergleich dieselbe Grenze gilt (keine
+vertrauenswuerdige Zeit). **Nicht gebaut.** Schliessen wuerde es ein Anker
+ausserhalb des Falls (ein Register der Linie, das jede Abnahme und Ablehnung
+fortlaufend fuehrt, oder ein Zeitstempeldienst) — derselbe Anker, den
+Abschnitt e fuer den entfernten Abbruch nennt.

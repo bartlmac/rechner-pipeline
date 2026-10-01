@@ -636,7 +636,10 @@ gilt genau einer von zwei Wegen:
    Werkzeug noch nicht erstellt"; gib sie genau so weiter, nie als
    bestanden). T-Box: Der Architektur-Agent legt vor mit
    `python -m rechner_pipeline.gates.stand_belegen tbox --fall faelle/<fall> --repo-root . --artefakt <vermerk> --begruendung "<text>" --vorher-linie linie`
-   (Sicht `abgeleitet/tbox/aenderung.md`: Vokabular-Diff), das Aktuariat
+   (Sicht `abgeleitet/tbox/aenderung.md`: Vokabular-Diff; `--vorher-linie`
+   ist die Linie, die das Gate bekommt: Das Gate rechnet die
+   Vergleichsgrundlage selbst nach und verweigert sonst mit Code `sicht`),
+   das Aktuariat
    legt `abgeleitet/tbox/stellungnahme.json` daneben. Tarifwerk: Der
    Aktuariats-Agent legt vor mit
    `python -m rechner_pipeline.gates.tarifwerk_belegen --fall faelle/<fall> --repo-root . --von <zuletzt abgenommener Stand> --begruendung "<text>"`
