@@ -89,6 +89,11 @@ DURCHREICHER = {
      "dir=pfad.parent, prefix=f'.{pfad.name}.', suffix='.tmp'"): "Ziel ist Parameter",
     ("rechner_pipeline.betrieb.seite._schreibe", "neue_datei",
      "ziel.parent, ziel.name"): "Ziel ist Parameter",
+    # Pruefrunde H, H17: der Schreiber des Anfangsbestands nimmt das Primitiv
+    # des Betriebs und raeumt die Reste seines Ziels selbst
+    # (tageslauf.raeume_schreibreste_von); sein Ziel liegt im Linienbereich.
+    ("rechner_pipeline.betrieb.anfangsbestand._schreibe", "neue_datei",
+     "ziel.parent, ziel.name"): "Ziel ist Parameter",
     # Die Gate-Belege (gates._common, ueber models.schemas erreicht): Das
     # Ledger-Verzeichnis kommt vom Aufrufer; ein Aufruf aus betrieb oder
     # bestand mit einem Ziel in der Ablage waere eine neue Stelle.
@@ -125,8 +130,9 @@ AUSSERHALB = {
     ("rechner_pipeline.betrieb.uebernahme.eingang_anlegen", "write_portfolio",
      "uebersetzung, arbeit / POLICENNUMMERN_DATEI"): _STAGING,
     # Der Beleg des Anfangsbestands und seine Sicht liegen im LINIENBEREICH
-    # (ADR-025), nicht in der Ablage: Kein Lauf der Ablage raeumt dort, und
-    # ``belegen`` ersetzt beide atomar. ``main`` reicht die Linie durch.
+    # (ADR-025), nicht in der Ablage: Kein Lauf der Ablage raeumt dort;
+    # ``_schreibe`` raeumt die Reste seines Ziels vor dem Schreiben selbst
+    # (Pruefrunde H, H17). ``main`` reicht die Linie durch.
     ("rechner_pipeline.betrieb.anfangsbestand.belegen", "_schreibe",
      "Path(linie) / ab.BELEG_RELATIV, roh"): "Ziel im Linienbereich",
     ("rechner_pipeline.betrieb.anfangsbestand.belegen", "_schreibe",

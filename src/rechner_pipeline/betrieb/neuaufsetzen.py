@@ -33,6 +33,14 @@ Was die Routine tut, in dieser Reihenfolge — und was sie NICHT tut:
    Tausch: Die neue Ablage ist fertig, sobald ihre Provenienzdatei liegt —
    sie wird als Letztes geschrieben und nennt das Archiv. Eine leere Wurzel
    wird neben einem Aufbau nie angelegt.
+   Endet der Prozess FRUEHER — nach dem Anlegen der Vorbereitung, vor der
+   ersten Umbenennung —, steht die alte Ablage an ihrem Ort und daneben eine
+   nie veroeffentlichte Vorbereitung (Pruefrunde H, H18). Sie ist nie still:
+   Jeder Aufruf, der die Ablage betritt, erkennt sie in ``lauf_sperre`` und
+   haelt benannt an; der naechste Aufruf dieser Routine raeumt sie ab, bevor
+   er neu aufbaut. Was veroeffentlicht gewesen sein koennte (die Provenienz
+   nennt ein Archiv, das es gibt, oder ein Journal liegt darin), bleibt
+   liegen und wird genannt.
    Die Registrierung verlangt die Zugangsabnahme A-B2 (ADR-022) — fuer
    die NEUE Ablage: Ihr gefuehrter Stand ist der einer leeren Ablage mit
    dieser Config, also laeuft die Zugangsprobe auf einer leeren Ablage,
@@ -63,7 +71,8 @@ from rechner_pipeline.bestand.config import config_aus_text, load_config
 from rechner_pipeline.bestand.manifest import sha256_bytes
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.betrieb.tageslauf import (
-    Ablage, TageslaufError, aufschaltung_fehler, betriebszeichner, lauf_sperre,
+    Ablage, TageslaufError, VorbereitungLiegtError, aufschaltung_fehler, betriebszeichner,
+    lauf_sperre,
 )
 from rechner_pipeline.betrieb.uebernahme import (
     UEBERNAHME_DIR, UebernahmeError, eingang_anlegen, lies_uebernahme,
@@ -164,7 +173,15 @@ def neu_aufsetzen(
     # Lauf sie, wird nichts bewegt. Die Sperrdatei bleibt bestehen; gehalten
     # wird sie per flock, und genau das prueft lauf_sperre.
     try:
-        with lauf_sperre(alt):
+        # Eine liegengebliebene, nie veroeffentlichte Vorbereitung eines
+        # frueheren, abgebrochenen Aufrufs raeumt die Sperre ab, BEVOR etwas
+        # Neues entsteht (Pruefrunde H, H18): Ein Prozessende zwischen dem
+        # Anlegen der Vorbereitung und der ersten Umbenennung liess sie
+        # ungenannt liegen. Was veroeffentlicht gewesen sein koennte, bleibt
+        # liegen und wird genannt (VorbereitungLiegtError).
+        with lauf_sperre(alt, vorbereitung_abraeumen=True) as geraeumt:
+            for satz in geraeumt:
+                print(f"neuaufsetzen: {satz}", file=sys.stderr)
             return _neu_aufsetzen_unter_sperre(
                 stand, fall, stichtag, alt, config=config, archiv=archiv, jetzt=jetzt,
                 schluesselring=schluesselring, betriebsschluessel=betriebsschluessel,
@@ -172,6 +189,8 @@ def neu_aufsetzen(
                 aufschalten=aufschalten, zugangsabnahme_sha256=zugangsabnahme_sha256,
                 linie=linie,
             )
+    except VorbereitungLiegtError as exc:
+        raise NeuaufsetzenError(str(exc)) from exc
     except TageslaufError as exc:
         raise NeuaufsetzenError(
             f"Sperre: {exc} — Timer anhalten, laufenden Prozess enden lassen, dann "

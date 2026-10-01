@@ -387,7 +387,18 @@ die aus dem Beleg erzeugte ist (ADR-025, Nachtrag "Beleg und Sicht"); nach
 einem Ausfall beim Belegen (Code `sicht` beim Zeichnen) `belegen`
 wiederholen und erneut ansehen.
 `binden` haelt den Stand des A-B3-Snapshots per Gleichheit gegen den der
-Ablage — liegt zwischen Belegen und Binden ein Lauf, verweigert es. Der
+Ablage — liegt zwischen Belegen und Binden ein Lauf, verweigert es. Danach
+baut es den Beleg auf den Bytes der Ablage neu, mit denselben Funktionen wie
+`belegen` (Bestandswache P-B1, Kennzahlen, Vorgaengerin), und haelt jedes
+Feld gegen den gezeichneten Beleg am festen Ort: Weicht das Urteil der Wache
+oder eine Kennzahl ab, oder liegt dort nicht genau der Beleg, den der
+Snapshot pinnt, verweigert es mit Exit 2, nennt die Felder und bindet nichts
+(Ausweg: `belegen` neu fahren, A-B3 auf dem neuen Beleg zeichnen, binden).
+Das Gate sieht die Ablage nicht; erst hier ist "gruen" nachgerechnet. Eine
+Bindung nach Schema 2 (vor dieser Nachrechnung) haelt den Tageslauf an und
+wird mit denselben drei Schritten neu gebunden. Schreibreste eines
+abgebrochenen `belegen` (`.beleg.json.<zufall>.tmp`) raeumt der naechste
+Aufruf. Der
 Linienbereich ist der Ort der Erstabnahme des Zielsystems (ADR-025); `binden`
 liest A-B3 gegen das Glied, unter dem es gezeichnet wurde, und verweigert,
 wenn die Ordnungsdatei des Betriebs der Rolle `betrieb/tageslauf` einen
@@ -411,6 +422,29 @@ Archivieren der alten Ablage), ist nichts bewegt: Sie raeumt ihre eigene
 Vorbereitung `daten.neu-<Zeit>` ab, sagt das in der Meldung (Exit 2; wo das
 Abraeumen nicht gelingt, nennt sie den Rest), und derselbe Aufruf liefert
 danach das Ergebnis des ungestoerten Laufs.
+
+Endet der Prozess an dieser Stelle hart (Stromausfall, `kill -9`: nach dem
+Anlegen der Vorbereitung, vor der ersten Umbenennung), kann sie nichts mehr
+abraeumen: `daten` steht unveraendert, daneben liegt `daten.neu-<Zeit>`. Das
+ist nie still. Jeder Aufruf, der die Ablage betritt (Tageslauf,
+Registrierung, Zugangsprobe, Anfangsbestand, Export), haelt dann mit Exit 2
+an und nennt die Vorbereitung — auch der Timer: Ob die Ablage ersetzt
+werden soll, entscheidet der Betrieb, nicht der naechste Lauf; verpasste
+Tage holt der Tageslauf danach nach. Ausweg: dieselbe Routine erneut
+fahren; sie entfernt ihre nie veroeffentlichte Vorbereitung (und sagt das),
+bevor sie neu aufbaut, auch mit festem `--archiv`. Ist das Neuaufsetzen
+nicht mehr gewollt, die genannte Vorbereitung von Hand entfernen. Grenze:
+Im Container sieht der Tageslauf nur `daten`, nicht dessen Geschwister; der
+Timer haelt dort also NICHT an. Den Rest nennt dann der naechste Aufruf auf
+dem Host (Anfangsbestand, Registrierung, Zugangsprobe, Export,
+Neuaufsetzen) — nach einem Abbruch der Routine deshalb vor dem Timer
+`ls ~/apps/plv` ansehen.
+"Nie veroeffentlicht" steht fest, wenn ihre Provenienz fehlt, nicht lesbar
+ist oder ein Archiv nennt, das es nicht gibt, und kein Journal in ihr
+liegt. Nennt sie ein Archiv, das es gibt, liegt ein Journal darin oder
+traegt sie einen anderen Namen als `daten.neu-<JJJJMMTTTHHMMSSZ>`, entfernt
+niemand etwas: Alle Aufrufe halten an, auch die Routine, und die Meldung
+verlangt, von Hand zu klaeren, welche Ablage gilt.
 
 Endet die Routine zwischen ihren zwei Umbenennungen (Stromausfall,
 Abbruch), fehlt `daten` kurz. Der Container legt es dann NICHT leer an

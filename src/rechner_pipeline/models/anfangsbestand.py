@@ -26,7 +26,9 @@ Betriebsschluessel: Der Tageslauf kennt die Linie nicht und haelt keinen
 Freigabeschluessel; die Bindung schreibt ``betrieb.anfangsbestand binden``,
 nachdem es den A-B3-Snapshot (Kette, Signatur, Rollenregel) gelesen und
 seinen ``stand`` per ``==`` gegen den lebenden Anfangsbestand der Ablage
-gehalten hat.
+gehalten und den Beleg auf den Bytes der Ablage neu gebaut hat — das Urteil
+der Wache und die Kennzahlen eingeschlossen (Pruefrunde H, H08: das Gate
+sieht die Ablage nicht und glaubt sie; :data:`BELEG_BEIM_BINDEN_NACHGERECHNET`).
 
 **Was der Betrieb damit verlangt.** Der Aufbaulauf (erster Lauf einer
 Ablage ohne gruene Zeile) laeuft ohne Abnahme — er erzeugt erst, was
@@ -60,7 +62,13 @@ ART = "anfangsbestand"
 #: 2 (2026-10-01): der Anker des Betriebsschluessels — ``betriebsschluessel_sha256``
 #: (der Fingerabdruck, den die Spitze der Ordnungslinie der Betriebsrolle gibt)
 #: und ``ordnungsglied_sha256`` (das Glied, unter dem aufgeloest wurde).
-BINDUNG_SCHEMA_VERSION = 2
+#: 3 (Pruefrunde H, H08): gleiche Gestalt, staerkere Aussage — die Bindung
+#: entsteht nur, wenn ``binden`` den Beleg auf den Bytes der Ablage neu gebaut
+#: hat und JEDES Feld (Urteil der Wache P-B1, Kennzahlen, ...) das des
+#: gezeichneten ist (:data:`BELEG_BEIM_BINDEN_NACHGERECHNET`). Eine Bindung
+#: nach Schema 2 kann einen Beleg mit geschoentem Urteil binden und wird neu
+#: gebunden.
+BINDUNG_SCHEMA_VERSION = 3
 BINDUNG_ART = "anfangsbestand_abnahme"
 
 BELEG_FELDER = frozenset({
@@ -72,6 +80,21 @@ BINDUNG_FELDER = frozenset({
     "kennzahlen", "freigabe_rolle", "betriebsschluessel_sha256", "ordnungsglied_sha256",
     "zeichnung",
 })
+#: Was ``betrieb.anfangsbestand binden`` am gezeichneten Beleg NACHRECHNET
+#: (Pruefrunde H, H08): Es baut den Beleg auf den Bytes der Ablage mit
+#: denselben Funktionen wie ``belegen`` neu und haelt jedes dieser Felder per
+#: ``==`` gegen den gezeichneten. Das Gate sieht die Ablage nicht (es prueft
+#: Form, gruenes Urteil, innere Ableitungen); ohne diese Nachrechnung glaubte
+#: niemand ausser dem Beleg selbst das Urteil der Wache und die Kennzahlen.
+#: Jedes Feld von :data:`BELEG_FELDER` steht hier oder in
+#: :data:`BELEG_BEIM_BINDEN_GEGLAUBT` (mit Grund) — die Ratsche
+#: (tests/test_anfangsbestand_neuaufsetzen_runde_h.py) haelt das mit ==.
+BELEG_BEIM_BINDEN_NACHGERECHNET = frozenset({
+    "schema_version", "art", "ablage", "ablage_stand", "tabellen", "config_sha256",
+    "code", "pb1", "eingaenge", "kennzahlen", "vorher", "abweichung",
+})
+#: Felder, die ``binden`` glaubt, je mit Grund — heute keines.
+BELEG_BEIM_BINDEN_GEGLAUBT: Dict[str, str] = {}
 #: Die Kennzahlen zur Ansicht (Anzahl, Summen) — Zahlen, kein Urteil.
 KENNZAHLEN = ("vertraege", "in_kraft", "versicherungssumme", "bu_rente", "jahresbeitrag")
 #: Die Felder des abgenommenen Stands (Snapshot-Feld ``stand``).
@@ -124,7 +147,9 @@ def beleg_fehler(beleg: object) -> List[str]:
     """Was am Beleg nicht stimmt (leer = in Ordnung) — ohne die Ablage.
 
     Das Gate prueft damit Form, Urteil und innere Ableitungen; gegen die
-    Ablage haelt den Stand der Betrieb (``betrieb.anfangsbestand binden``).
+    Ablage haelt den Beleg der Betrieb (``betrieb.anfangsbestand binden``):
+    Er baut ihn dort neu und haelt jedes Feld per ``==`` (Pruefrunde H, H08,
+    :func:`nachrechnung_abweichungen`) — erst dort ist "gruen" nachgerechnet.
     """
     if not isinstance(beleg, dict):
         return ["kein JSON-Objekt"]
@@ -162,6 +187,17 @@ def beleg_fehler(beleg: object) -> List[str]:
     elif beleg.get("abweichung") != abweichung(beleg.get("vorher"), kz):
         fehler.append("abweichung ist nicht aus vorher und kennzahlen abgeleitet")
     return fehler
+
+
+def nachrechnung_abweichungen(gezeichnet: Mapping[str, Any],
+                              frisch: Mapping[str, Any]) -> List[str]:
+    """Die Felder aus :data:`BELEG_BEIM_BINDEN_NACHGERECHNET`, in denen der
+    gezeichnete Beleg vom auf der Ablage neu gebauten abweicht (leer = er ist
+    es). Verglichen wird in der Gestalt, in der der Beleg geschrieben wird
+    (JSON), damit Zahl und Zeichenkette dieselbe Lesung haben."""
+    normal = json.loads(json.dumps(dict(frisch), ensure_ascii=False, sort_keys=True))
+    return sorted(feld for feld in BELEG_BEIM_BINDEN_NACHGERECHNET
+                  if gezeichnet.get(feld) != normal.get(feld))
 
 
 def bindung_inhalt(*, linie: str, snapshot: Mapping[str, Any], beleg_sha256: str,

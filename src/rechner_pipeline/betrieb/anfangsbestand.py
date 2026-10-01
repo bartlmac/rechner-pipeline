@@ -23,8 +23,11 @@ aufgesetzten Ablage)::
 * ``binden`` liest den A-B3-Snapshot (geltende Spitze, Signatur,
   Rollenregel — ueber den einen Leser ``uebernahme.lies_abnahme_snapshot``),
   haelt seinen ``stand`` per ``==`` gegen den lebenden Anfangsbestand der
-  Ablage und schreibt die Bindung ``anfangsbestand.json`` in die Ablage,
-  gezeichnet mit dem Betriebsschluessel.
+  Ablage, baut den Beleg auf den Bytes der Ablage neu (Wache P-B1 und
+  Kennzahlen mit denselben Funktionen wie ``belegen``) und haelt jedes Feld
+  gegen den gezeichneten (Pruefrunde H, H08); erst dann schreibt es die
+  Bindung ``anfangsbestand.json`` in die Ablage, gezeichnet mit dem
+  Betriebsschluessel.
 * :func:`anfangsbestand_fehler` — die Pruefung des Tageslaufs: Nach dem
   Aufbaulauf laeuft kein Tag ohne gezeichnete Bindung an eine gruene Zeile
   dieser Ablage.
@@ -78,8 +81,9 @@ def _gruene_zeilen(ablage: tl.Ablage) -> List[tuple]:
 
 
 def _teile(ablage: tl.Ablage) -> Dict[str, Any]:
-    """Was den Stand ausmacht — ohne P-B1 und Kennzahlen (billig, fuer
-    ``binden`` und den Vergleich)."""
+    """Was den Stand ausmacht — ohne P-B1 und Kennzahlen (billig, fuer den
+    ersten Vergleich in ``binden``; Urteil und Kennzahlen rechnet ``binden``
+    danach ueber :func:`baue_beleg` nach, Pruefrunde H, H08)."""
     ablage_stand = tl.ablage_stand(ablage)
     if not ablage_stand.get("letzte_gruene_zeile_sha256"):
         raise AnfangsbestandFehler(
@@ -249,11 +253,24 @@ rendere_sicht = ab.rendere_sicht
 
 
 def _schreibe(ziel: Path, daten: bytes) -> None:
+    """Vollstaendig daneben, dann in einem Zug an ``ziel`` — und vorher die
+    Schreibreste desselben Ziels raeumen (Pruefrunde H, H17).
+
+    Ein Prozessende zwischen Tempdatei und Einhaengen liess
+    ``.<ziel>.<zufall>.tmp`` fuer immer neben Beleg und Sicht liegen; der
+    Produzent von A-B3 war der einzige Produzent einer Sicht ohne Raeumen.
+    Erkennung und Raeumen sind die des Betriebs
+    (``tageslauf.raeume_schreibreste_von``), die Tempdatei das Primitiv des
+    Betriebs (``neue_datei``). Aufgerufen wird nur unter der Lauf-Sperre der
+    Ablage (``belegen``): Ein zweites ``belegen`` derselben Ablage schreibt
+    nicht gleichzeitig."""
     import os
-    import secrets
+
+    from rechner_pipeline.bestand.parquet_io import neue_datei
 
     ziel.parent.mkdir(parents=True, exist_ok=True)
-    tmp = ziel.parent / f".{ziel.name}.{secrets.token_hex(8)}.tmp"
+    tl.raeume_schreibreste_von(ziel.parent, ziel.name)
+    tmp = neue_datei(ziel.parent, ziel.name)
     try:
         tmp.write_bytes(daten)
         os.replace(tmp, ziel)
@@ -276,17 +293,24 @@ def belegen(stand: Path, linie: Path, zeichner: Zeichner, *,
     """Beleg und Sicht in den Linienbereich legen; Rueckgabe: der Beleg."""
     _linie_pruefen(Path(linie))
     ablage = tl.Ablage(Path(stand))
-    beleg = baue_beleg(ablage, zeichner, sperre_gehalten=sperre_gehalten)
-    fehler = ab.beleg_fehler(beleg)
-    if fehler:
-        raise AnfangsbestandFehler("der Anfangsbestand ist nicht abnehmbar: " + "; ".join(fehler[:3]))
-    roh = (json.dumps(beleg, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    # Die Sicht aus genau den Bytes des Belegs, wie das Gate sie beim Zeichnen
-    # neu erzeugt (gates.sichten): Faellt eine der beiden Schreibstellen aus,
-    # gehoeren Beleg und Sicht nicht zusammen, und A-B3 wird nicht gezeichnet.
-    sicht = ab.rendere_sicht(json.loads(roh)).encode("utf-8")
-    _schreibe(Path(linie) / ab.BELEG_RELATIV, roh)
-    _schreibe(Path(linie) / ab.SICHT_RELATIV, sicht)
+    # Gebaut UND geschrieben unter der Lauf-Sperre (Pruefrunde H, H17): Das
+    # Raeumen der Schreibreste vor dem Schreiben trifft dann nie die
+    # Tempdatei eines gleichzeitigen ``belegen`` derselben Ablage.
+    with _gesperrt(ablage, sperre_gehalten):
+        beleg = baue_beleg(ablage, zeichner, sperre_gehalten=True)
+        fehler = ab.beleg_fehler(beleg)
+        if fehler:
+            raise AnfangsbestandFehler(
+                "der Anfangsbestand ist nicht abnehmbar: " + "; ".join(fehler[:3]))
+        roh = (json.dumps(beleg, ensure_ascii=False, indent=2, sort_keys=True)
+               + "\n").encode("utf-8")
+        # Die Sicht aus genau den Bytes des Belegs, wie das Gate sie beim
+        # Zeichnen neu erzeugt (gates.sichten): Faellt eine der beiden
+        # Schreibstellen aus, gehoeren Beleg und Sicht nicht zusammen, und
+        # A-B3 wird nicht gezeichnet.
+        sicht = ab.rendere_sicht(json.loads(roh)).encode("utf-8")
+        _schreibe(Path(linie) / ab.BELEG_RELATIV, roh)
+        _schreibe(Path(linie) / ab.SICHT_RELATIV, sicht)
     return beleg
 
 
@@ -301,6 +325,36 @@ def _ab3_aus_ledger(linie: Path) -> Optional[str]:
         return None
     sha = summary.get("snapshot_sha256")
     return sha if isinstance(sha, str) else None
+
+
+def _gezeichneter_beleg(pfad: Path, beleg_sha: object, snap_name: str) -> Dict[str, Any]:
+    """Der Beleg, den der A-B3-Snapshot pinnt — am festen Ort, mit genau dem
+    Hash, oder :class:`AnfangsbestandFehler` (Pruefrunde H, H08).
+
+    Was nicht neben dem Snapshot liegt, kann niemand nachrechnen. Vorher
+    band ``binden`` dann mit leeren Kennzahlen."""
+    ausweg = ("Ausweg: belegen neu fahren, A-B3 auf dem neuen Beleg zeichnen, dann binden")
+    if not (pfad.is_file() and not pfad.is_symlink()):
+        raise AnfangsbestandFehler(
+            f"{pfad}: der gezeichnete Beleg ({snap_name}) liegt nicht am festen Ort — "
+            f"ohne ihn ist nichts nachzurechnen. {ausweg}")
+    roh = pfad.read_bytes()
+    if hashlib.sha256(roh).hexdigest() != beleg_sha:
+        raise AnfangsbestandFehler(
+            f"{pfad}: nicht der gezeichnete Beleg (Hash {hashlib.sha256(roh).hexdigest()[:16]}, "
+            f"{snap_name} pinnt {str(beleg_sha)[:16]}) — er wurde nach dem Zeichnen ersetzt. "
+            f"{ausweg}")
+    try:
+        beleg = json.loads(roh.decode("utf-8"))
+    except ValueError as exc:
+        raise AnfangsbestandFehler(f"{pfad}: der gezeichnete Beleg ist nicht lesbar ({exc})") \
+            from exc
+    fehler = ab.beleg_fehler(beleg)
+    if fehler:
+        raise AnfangsbestandFehler(
+            f"{pfad}: der gezeichnete Beleg verletzt den Vertrag: {'; '.join(fehler[:3])}. "
+            f"{ausweg}")
+    return beleg
 
 
 def betriebsschluessel_der_linie(zeichner: Zeichner, ordnungslinie: list) -> str:
@@ -369,10 +423,29 @@ def binden(
         # des Schluessels (ADR-022, Nachtrag 2026-10-01).
         rolle = str(snap.get("rolle"))
         beleg_sha = (snap.get("pflichtbelege") or {}).get("anfangsbestand", [None])[0]
-        beleg_pfad = linie / ab.BELEG_RELATIV
-        kennzahlen = {}
-        if beleg_pfad.is_file() and _datei_sha(beleg_pfad) == beleg_sha:
-            kennzahlen = json.loads(beleg_pfad.read_text(encoding="utf-8")).get("kennzahlen") or {}
+        gezeichnet = _gezeichneter_beleg(linie / ab.BELEG_RELATIV, beleg_sha, snap_name)
+        # Pruefrunde H (H08): Das Gate sieht die Ablage nicht und glaubt
+        # Urteil und Kennzahlen des Belegs; hier, wo Ablage UND gezeichneter
+        # Beleg vorliegen, wird der Beleg auf den Bytes der Ablage NEU gebaut
+        # — mit denselben Funktionen wie ``belegen`` (Wache P-B1, Kennzahlen,
+        # Vorgaenger), keine zweite Rechnung — und jedes Feld gegen den
+        # gezeichneten gehalten (``models.anfangsbestand``:
+        # BELEG_BEIM_BINDEN_NACHGERECHNET). Vorher band ``binden`` einen
+        # Beleg mit geschoentem Urteil: gezeichnet, gebunden, die Wache auf
+        # dem gebundenen Stand rot.
+        frisch = baue_beleg(ablage, zeichner, sperre_gehalten=True)
+        abweichend = ab.nachrechnung_abweichungen(gezeichnet, frisch)
+        if abweichend:
+            urteil = (frisch.get("pb1") or {}).get("urteil")
+            raise AnfangsbestandFehler(
+                f"{snap_name}: der gezeichnete Beleg ist nicht der, den die Ablage JETZT "
+                f"ergibt — neu gerechnet weichen ab: {abweichend} (Bestandswache P-B1 auf "
+                f"diesen Bytes: {urteil}; Kennzahlen jetzt {frisch.get('kennzahlen')}). "
+                "Gebunden wird nur ein Anfangsbestand, dessen Urteil und Kennzahlen beim "
+                "Binden nachgerechnet sind. Ausweg: belegen neu fahren (ist die Wache rot, "
+                "wird nichts abgenommen: erst den Stand klaeren), A-B3 auf dem neuen Beleg "
+                "zeichnen, dann binden")
+        kennzahlen = dict(frisch["kennzahlen"])
         satz = ab.bindung_inhalt(linie=name, snapshot=snap, beleg_sha256=str(beleg_sha),
                                  kennzahlen=kennzahlen, freigabe_rolle=rolle,
                                  betriebsschluessel_sha256=betriebsschluessel,
@@ -415,8 +488,9 @@ def anfangsbestand_fehler(ablage: tl.Ablage, zeichner: Zeichner) -> Optional[str
             or bindung.get("schema_version") != ab.BINDUNG_SCHEMA_VERSION:
         return (f"{pfad}: keine Bindung nach dem Vertrag (Schema "
                 f"{ab.BINDUNG_SCHEMA_VERSION}, {sorted(ab.BINDUNG_FELDER)}) — eine Bindung nach "
-                "Schema 1 traegt den Schluessel der Ablage nicht und wird neu gebunden. "
-                f"{ausweg}")
+                "Schema 1 traegt den Schluessel der Ablage nicht, eine nach Schema 2 ist ohne "
+                "Nachrechnung von Urteil und Kennzahlen entstanden (Pruefrunde H); beide "
+                f"werden neu gebunden. {ausweg}")
     # Der Anker (Entscheid 2026-10-01): Der Schluessel, mit dem dieser Lauf
     # zeichnet, muss der sein, den die Linie beim Binden der Betriebsrolle gab.
     # Eine ausgetauschte Ordnungsdatei tauscht die Rolle, nicht diese Zahl.

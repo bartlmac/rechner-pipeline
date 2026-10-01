@@ -824,3 +824,83 @@ prueft.
 `fuehrungsprobe`), antworten auf einen Ein-/Ausgabefehler weiterhin ueber
 `run_command` mit Exit 50 und Traceback; sie legen keinen Beleg vor, den
 ein Mensch ueber eine Sicht zeichnet.
+
+## Nachtrag 2026-10-01: Pruefrunde H — der Anfangsbestand wird beim Binden nachgerechnet, eine liegengebliebene Vorbereitung ist nie still
+
+**Befund** (blinde Pruefrunde H). (H08) Beim Anfangsbestand rechnete niemand
+das Urteil der Bestandswache P-B1 und die Kennzahlen des Belegs nach: Das
+Gate sieht die Ablage nicht und glaubt den Beleg, `binden` hielt nur die
+Stand-Felder. Ein Beleg mit geschoentem Urteil (Stand mit doppelter Police,
+Wache rot) wurde von `mensch/betrieb` gezeichnet und gebunden; die Bindung
+trug 16 Vertraege bei 17 Bestandszeilen. Fehlte der gezeichnete Beleg am
+festen Ort, band `binden` mit leeren Kennzahlen. (H17) `belegen` raeumte
+seine Schreibreste nie; jedes Prozessende liess `.beleg.json.<zufall>.tmp`
+dauerhaft im Linienbereich. (H18) Ein Prozessende des Neuaufsetzens zwischen
+dem Anlegen der Vorbereitung und der ersten Umbenennung liess
+`<daten>.neu-<zeit>` mit Config, gezeichnetem Eingang und Provenienz liegen;
+Tageslauf und wiederholtes Neuaufsetzen endeten mit Exit 0, ohne sie zu
+nennen, und mit festem `--archiv` sah sie nach einem zweiten Lauf "fertig"
+aus.
+
+**Entscheid.**
+
+1. **Nachgerechnet wird, wo Ablage und gezeichneter Beleg zusammen
+   vorliegen: in `binden`.** Es liest den Beleg, den der A-B3-Snapshot pinnt
+   (fester Ort, genau dieser Hash, Vertrag des Belegs), baut den Beleg auf
+   den Bytes der Ablage mit denselben Funktionen wie `belegen` neu (Wache
+   P-B1, Kennzahlen, Vorgaengerin) und haelt jedes Feld per `==` dagegen.
+   Weicht ein Feld ab, wird nicht gebunden (Exit 2, Felder genannt, Ausweg:
+   belegen, A-B3 auf dem neuen Beleg zeichnen, binden). Die Einteilung steht
+   im Vertrag: `models.anfangsbestand.BELEG_BEIM_BINDEN_NACHGERECHNET` (heute
+   alle zwoelf Felder) und `BELEG_BEIM_BINDEN_GEGLAUBT` (heute leer, je Feld
+   mit Grund); eine Ratsche haelt die Vereinigung mit `==` gegen
+   `BELEG_FELDER`, ein neues Feld erzwingt eine Entscheidung.
+   `BINDUNG_SCHEMA_VERSION` 3: gleiche Gestalt, staerkere Aussage; eine
+   Bindung nach Schema 2 haelt den Tageslauf an und wird neu gebunden. Die
+   benannte Annahme in Abschnitt 5 ("`binden` rechnet den Stand gegen die
+   Ablage nach") lautet damit: `binden` rechnet den ganzen Beleg gegen die
+   Ablage nach.
+2. **Schreibreste.** `belegen` baut und schreibt unter der Lauf-Sperre der
+   Ablage und raeumt vor jedem Schreiben die Reste desselben Ziels mit der
+   einen Erkennung des Betriebs (`tageslauf.raeume_schreibreste_von`,
+   dieselbe Funktion, mit der der Lauf die Ziele der Ablage raeumt). Eine
+   Ratsche haelt die Menge der Tempdatei-Schreiber unter `betrieb/` mit ihrem
+   Raeumer.
+3. **Die Vorbereitung des Neuaufsetzens.** Jeder Aufruf, der die Ablage
+   betritt, geht durch `tageslauf.lauf_sperre`; dort, unter der Sperre (ein
+   laufendes Neuaufsetzen haelt sie, solange es baut), wird eine Vorbereitung
+   `<daten>.neu-*` neben der Ablage erkannt. "Nie veroeffentlicht" steht
+   fest, wenn der Name genau der des Neuaufsetzens ist, es ein echtes
+   Verzeichnis ohne Journal ist und seine Provenienz fehlt, nicht lesbar ist
+   oder ein Archiv nennt, das es nicht gibt (die Provenienz wird als Letztes
+   vor der ersten Umbenennung geschrieben und nennt das Archiv, in das diese
+   Umbenennung die alte Ablage legt). Jeder Aufruf haelt dann benannt an,
+   auch der Tageslauf; nur das Neuaufsetzen raeumt seine eigene, nie
+   veroeffentlichte Vorbereitung ab und nennt sie, bevor es neu aufbaut, also
+   auch bevor ein festes Archiv entsteht. Was veroeffentlicht gewesen sein
+   koennte (existierendes Archiv, Journal, fremder Name), bleibt liegen; alle
+   Aufrufe halten an und verlangen die Klaerung von Hand. Der Tageslauf haelt
+   an, statt nur zu melden: Die Vorbereitung ist eine unvollendete Absicht
+   des Betriebs, die nur er aufloesen kann; ein Exit 0 mit einer Zeile im Log
+   ist im Timer-Betrieb still; verpasste Tage holt der naechste Lauf nach.
+
+*Verworfen:* (i) **das Gate rechnet nach** — es sieht die Ablage nicht und
+darf `betrieb` nicht importieren; die Ablage in den Linienbereich zu holen
+hiesse, Bytes zu zeichnen, die der Betrieb nicht fuehrt. (ii) **nur Urteil
+und Kennzahlen vergleichen** — ein drittes Feld (Eingaenge, Vorgaengerin)
+waere wieder geglaubt; die Einteilung je Feld macht jedes Glauben zu einer
+benannten Entscheidung. (iii) **der Tageslauf meldet die Vorbereitung nur**
+(Exit 0) — still im Timer-Betrieb. (iv) **jeder Aufruf raeumt die
+Vorbereitung ab** — der Tageslauf wuerde eine Absicht des Betriebs
+verwerfen, die er nicht kennt. (v) **eine eigene Raeumfunktion fuer den
+Linienbereich** — eine dritte Fassung derselben Erkennung.
+
+*Grenzen, benannt:* Im Container sieht der Tageslauf nur `daten`, nicht
+dessen Geschwister; der Timer haelt dort nicht an, den Rest nennt der
+naechste Aufruf auf dem Host. Die Nachrechnung in `binden` faehrt die Wache
+ein zweites Mal (Laufzeit wie `belegen`). Eine Provenienz, die nach dem
+Abbruch von Hand verfaelscht wurde, um ein nicht existierendes Archiv zu
+nennen, gilt als nie veroeffentlicht; ein Journal in der Vorbereitung
+verhindert das Entfernen dennoch. Zwei Schreiber des Betriebs raeumen ihre
+Reste nach einem Prozessende noch nicht (`seite._schreibe`,
+`zugangsprobe._schreibe_beleg`); die Ratsche fuehrt sie als offen.

@@ -352,7 +352,7 @@ def test_die_bindung_traegt_den_unter_der_linie_aufgeloesten_schluessel(gebunden
     from tests.freigabe_testschluessel import BETRIEBSKEY, suitelinie_glied
 
     bindung = json.loads((gebunden.wurzel / ab.BINDUNG_DATEI).read_text(encoding="utf-8"))
-    assert bindung["schema_version"] == ab.BINDUNG_SCHEMA_VERSION == 2
+    assert bindung["schema_version"] == ab.BINDUNG_SCHEMA_VERSION == 3
     assert bindung["betriebsschluessel_sha256"] == hashlib.sha256(BETRIEBSKEY).hexdigest()
     assert bindung["ordnungsglied_sha256"] == suitelinie_glied()["glied_sha256"]
 

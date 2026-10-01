@@ -98,6 +98,7 @@ import functools
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 
@@ -2228,11 +2229,23 @@ def _raeume_schreibreste(ablage: Ablage) -> None:
         # Wurzel selbst darf einer sein (Einhaengepunkt des Betriebs).
         if not verzeichnis.is_dir() or (relativ != "." and verzeichnis.is_symlink()):
             continue
-        for rest in verzeichnis.glob(f".{muster}.*.tmp"):
-            if rest.is_dir() and not rest.is_symlink():
-                continue
-            rest.unlink(missing_ok=True)
+        raeume_schreibreste_von(verzeichnis, muster)
     _raeume_uebernahme_staging(ablage)
+
+
+def raeume_schreibreste_von(verzeichnis: Path, muster: str) -> None:
+    """Die Schreibreste ``.<muster>.<zufall>.tmp`` eines Ziels in
+    ``verzeichnis`` entfernen — nur Dateien und Links, nie Verzeichnisse.
+
+    Die eine Erkennung und das eine Raeumen des Betriebs (Pruefrunde H,
+    H17): der Lauf fuer die Ziele der Ablage (:func:`_raeume_schreibreste`),
+    ``anfangsbestand.belegen`` fuer Beleg und Sicht im Linienbereich, je
+    vor dem Schreiben desselben Ziels. Vorher raeumte ``belegen`` nie, und
+    jedes Prozessende liess einen Rest neben dem Beleg."""
+    for rest in Path(verzeichnis).glob(f".{muster}.*.tmp"):
+        if rest.is_dir() and not rest.is_symlink():
+            continue
+        rest.unlink(missing_ok=True)
 
 
 def _raeume_uebernahme_staging(ablage: Ablage) -> None:
@@ -2276,13 +2289,144 @@ def _raeume_uebernahme_staging(ablage: Ablage) -> None:
                 f"dann {arbeit} von Hand entfernen und den Lauf erneut starten") from exc
 
 
+class VorbereitungLiegtError(TageslaufError):
+    """Neben der Ablage liegt die Vorbereitung eines abgebrochenen
+    Neuaufsetzens (Pruefrunde H, H18) — benannt, mit Ausweg."""
+
+
+#: Der Name, den ``neuaufsetzen`` seiner Vorbereitung gibt: ``<wurzel>.neu-<zeit>``.
+_VORBEREITUNG_ZEIT = re.compile(r"^\d{8}T\d{6}Z$")
+
+
+def _nie_veroeffentlicht(wurzel: Path, rest: Path) -> Optional[str]:
+    """Warum ``rest`` sicher die eigene, NIE veroeffentlichte Vorbereitung
+    eines Neuaufsetzens ist — oder None, wenn das nicht feststeht.
+
+    Fest steht es, wenn alles zugleich gilt: der Name ist genau der, den
+    das Neuaufsetzen vergibt (``<wurzel>.neu-<JJJJMMTTTHHMMSSZ>``); es ist
+    ein echtes Verzeichnis; es traegt kein Journal (es war nie eine
+    gefuehrte Ablage); und seine Provenienz fehlt, ist nicht lesbar oder
+    nennt ein Archiv, das es nicht gibt. Die Provenienz wird als Letztes vor
+    der ersten Umbenennung geschrieben und nennt das Archiv, in das diese
+    Umbenennung die alte Ablage legt; gibt es dieses Archiv nicht, wurde die
+    alte Ablage fuer diese Vorbereitung nie bewegt, und die Vorbereitung
+    wurde nie an die Stelle der Ablage gesetzt (das geschieht erst mit der
+    zweiten Umbenennung, und die nimmt ihr den Namen). Nennt sie ein
+    Archiv, das es gibt, war die erste Umbenennung vielleicht geschehen —
+    dann entscheidet kein Name."""
+    from rechner_pipeline.betrieb.neuaufsetzen import PROVENIENZ_DATEI
+
+    praefix = f"{wurzel.name}.neu-"
+    if not (rest.name.startswith(praefix)
+            and _VORBEREITUNG_ZEIT.match(rest.name[len(praefix):])):
+        return None
+    if rest.is_symlink() or not rest.is_dir():
+        return None
+    journal = rest / JOURNAL_DIR
+    if journal.exists() or journal.is_symlink():
+        return None
+    prov = rest / PROVENIENZ_DATEI
+    if not prov.exists() and not prov.is_symlink():
+        return "ohne Provenienz (vor ihrem Schreiben abgebrochen)"
+    try:
+        angabe = json.loads(prov.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "Provenienz nicht lesbar (beim Schreiben abgebrochen)"
+    archiv = angabe.get("archiv") if isinstance(angabe, dict) else None
+    if not isinstance(archiv, str) or not archiv:
+        return None
+    if Path(archiv).exists() or Path(archiv).is_symlink():
+        return None
+    return f"die Provenienz nennt das Archiv {archiv}, es gibt es nicht"
+
+
+def _liegengebliebene_vorbereitungen(wurzel: Path, *, abraeumen: bool) -> List[str]:
+    """Vorbereitungen des Neuaufsetzens neben der Ablage erkennen und
+    entscheiden (Pruefrunde H, H18) — unter der Sperre, die Wurzel steht.
+
+    Ein Prozessende des Neuaufsetzens zwischen dem Anlegen der Vorbereitung
+    und der ersten Umbenennung liess ``<wurzel>.neu-<zeit>`` mit Config,
+    gezeichnetem Eingang und Provenienz liegen; kein Aufruf nannte sie, und
+    mit festem ``--archiv`` sah sie nach einem zweiten Lauf "fertig" aus.
+
+    Entschieden wird benannt, nie still:
+
+    * ``abraeumen`` (nur das Neuaufsetzen selbst): Steht fest, dass jede
+      Vorbereitung nie veroeffentlicht war (:func:`_nie_veroeffentlicht`),
+      werden alle entfernt (ueber ``entferne_verzeichnis``) und genannt —
+      bevor der neue Aufbau beginnt, also bevor ein festes Archiv entsteht.
+    * sonst, und fuer jede Vorbereitung, bei der es nicht feststeht:
+      :class:`VorbereitungLiegtError` mit den Namen und dem Ausweg; es wird
+      nichts entfernt.
+
+    Der Tageslauf haelt deshalb an, statt nur zu melden: Er fuehrt zwar die
+    aktive Ablage, und die Vorbereitung war nie veroeffentlicht — aber sie
+    ist eine unvollendete Absicht des Betriebs (die Ablage zu ersetzen), die
+    nur er aufloesen kann, und ein Exit 0 mit einer Zeile im Log ist im
+    Timer-Betrieb still. Verpasste Tage holt der naechste Lauf nach; das
+    Anhalten kostet Zeit, keine Daten. Rueckgabe: die Saetze der entfernten.
+    """
+    reste = sorted(p for p in wurzel.parent.glob(f"{wurzel.name}.neu-*")
+                   if p.is_dir() or p.is_symlink())
+    if not reste:
+        return []
+    gruende = {rest: _nie_veroeffentlicht(wurzel, rest) for rest in reste}
+    unklar = [rest for rest, grund in gruende.items() if grund is None]
+    if unklar or not abraeumen:
+        nie = [rest for rest in reste if rest not in unklar]
+        teile = []
+        if nie:
+            teile.append(
+                "nie veroeffentlicht: " + ", ".join(f"{r.name} ({gruende[r]})" for r in nie)
+                + " — Ausweg: das Neuaufsetzen erneut fahren (python -m "
+                "rechner_pipeline.betrieb.neuaufsetzen ...; es raeumt seine nie "
+                "veroeffentlichte Vorbereitung ab und setzt neu auf); ist das Neuaufsetzen "
+                "nicht mehr gewollt, die genannte Vorbereitung von Hand entfernen")
+        if unklar:
+            teile.append(
+                "nicht bestimmbar, ob veroeffentlicht (Provenienz nennt ein Archiv, das es "
+                "gibt, ein Journal liegt darin, oder ein Name, den das Neuaufsetzen nicht "
+                "vergibt): " + ", ".join(r.name for r in unklar)
+                + " — nichts wird entfernt; Ausweg: von Hand klaeren, welche Ablage gilt, "
+                "und die andere beiseitelegen")
+        raise VorbereitungLiegtError(
+            f"{wurzel}: daneben liegt die Vorbereitung eines abgebrochenen Neuaufsetzens — "
+            + "; ".join(teile)
+            + ". Bis dahin laeuft kein Aufruf auf dieser Ablage (verpasste Tage holt der "
+            "Tageslauf nach)")
+    geraeumt = []
+    for rest in reste:
+        try:
+            entferne_verzeichnis(
+                rest, innerhalb=wurzel.parent, name_ok=lambda n, r=rest: n == r.name,
+                ohne_marker=JOURNAL_DIR,
+                grund="nie veroeffentlichte Vorbereitung eines abgebrochenen Neuaufsetzens")
+        except (LoeschFehler, OSError) as exc:
+            raise VorbereitungLiegtError(
+                f"{rest}: die nie veroeffentlichte Vorbereitung eines abgebrochenen "
+                f"Neuaufsetzens ist nicht entfernt ({exc}) — Ausweg: von Hand entfernen, dann "
+                "erneut aufrufen") from exc
+        geraeumt.append(f"Vorbereitung {rest.name} eines abgebrochenen Neuaufsetzens "
+                        f"entfernt ({gruende[rest]}; nie veroeffentlicht)")
+    return geraeumt
+
+
 @contextlib.contextmanager
-def lauf_sperre(ablage: Ablage):
+def lauf_sperre(ablage: Ablage, *, vorbereitung_abraeumen: bool = False):
     """Exklusive Prozess-Sperre der Laufzeitumgebung (nicht blockierend).
 
     Zwei gleichzeitige Laeufe (Timer und Hand, zwei Timer nach einer
     Haengepartie) teilten sich stand.neu, Journal und Protokoll (Review
     T22-03). Der zweite bricht jetzt sofort ab, mit Meldung.
+
+    Die Stelle, durch die jeder Aufruf geht, der die Ablage betritt
+    (Tageslauf, Registrierung, Zugangsprobe, Anfangsbestand, Seite und
+    Export, Neuaufsetzen). Darum erkennt sie hier, unter der Sperre, eine
+    liegengebliebene Vorbereitung des Neuaufsetzens
+    (:func:`_liegengebliebene_vorbereitungen`, Pruefrunde H, H18): Jeder
+    haelt benannt an; nur das Neuaufsetzen (``vorbereitung_abraeumen``)
+    raeumt seine eigene, nie veroeffentlichte ab. Liefert die Saetze der
+    entfernten Vorbereitungen.
     """
     if not ablage.wurzel.exists() and not ablage.wurzel.is_symlink():
         _vollende_unterbrochenes_neuaufsetzen(ablage.wurzel)
@@ -2298,7 +2442,10 @@ def lauf_sperre(ablage: Ablage):
                     f"{ablage.sperre.name} — zwei Laeufe auf derselben Ablage "
                     "gibt es nicht; den laufenden Prozess enden lassen"
                 ) from exc
-        yield
+        # Erst UNTER der Sperre: Ein laufendes Neuaufsetzen haelt sie, solange
+        # es seine Vorbereitung baut — was jetzt daneben liegt, baut niemand.
+        yield _liegengebliebene_vorbereitungen(ablage.wurzel.absolute(),
+                                               abraeumen=vorbereitung_abraeumen)
     finally:
         datei.close()
 
