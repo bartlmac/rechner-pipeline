@@ -128,7 +128,10 @@ def _zustands_dk_prosp(
 
     grund_mp = ModelPoint(**mp_kwargs)
     kern = Rechenkern(grund_mp)
-    if reduktion is not None or vorgaenge:
+    if reduktion is not None or vorgaenge or (pex is not None and scheiben):
+        # Beitragsfrei uebernommen MIT Bausteinen (Pruefrunde J, J04): jeder
+        # Baustein mit seiner eigenen beitragsfreien Summe — die Folge des
+        # Kerns; der Zweig ``pex`` unten kennt nur den Grundbaustein.
         # Ein GETEILTER Vertrag (Herabsetzung der Vorgeschichte, einzeln oder
         # in einer Folge): die Vorgangsfolge des Kerns, dieselbe wie in den
         # Pruefstrecken und der Fuehrung. Vorher rechnete dieser Zweig EINE

@@ -94,7 +94,10 @@ from rechner_pipeline.spez.tarifregeln import (
 )
 # Die eine Stelle, an der die Kommandos der Bestandsstrecke ihre Regeln
 # beziehen: Scope des Falls und Spez (Pruefrunde G).
-from rechner_pipeline.gates.migrationssuite_lauf import tarifregeln_des_falls
+from rechner_pipeline.gates.migrationssuite_lauf import (
+    tarifregeln_des_falls,
+    vorgeschichte_jahrestag_fehler,
+)
 from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
 from rechner_pipeline.models.bestand import (
     GENERATION_FIELDS,
@@ -377,6 +380,12 @@ def _vorgeschichte(fall: Path, name: Optional[str]) -> Dict[str, List[Tuple[str,
     return aus
 
 
+#: Die Vorgaenge der Vorgeschichte, die am Vertragsjahrestag wirken und deren
+#: Jahr der Zustand traegt (dieselben, aus denen die Pruefstrecke den
+#: Anfangszustand ableitet).
+VORGESCHICHTE_VORGAENGE = ("PEX", "ERH", "RED")
+
+
 def baue(
     zeilen: List[Dict[str, Any]],
     *,
@@ -431,6 +440,16 @@ def baue(
             # Beginn — also Jahre, bevor es die Uebernahme gab.
             "bestandszugang": pd.Timestamp(stichtag),
         })
+        # Jeder Vorgang der Vorgeschichte liegt auf dem Vertragsjahrestag — in
+        # JEDEM Modus, an der Stelle, an der der Produzent die Vorgeschichte
+        # liest (Pruefrunde J, J06: ohne --anfangszustand wurde das Jahr einer
+        # unterjaehrigen Freistellung still abgerundet).
+        for art_v, datum_v in vorgeschichte.get(police, []):
+            if art_v not in VORGESCHICHTE_VORGAENGE:
+                continue
+            fehler_v = vorgeschichte_jahrestag_fehler(art_v, beginn, datum_v)
+            if fehler_v:
+                raise SystemExit(f"Police {police}: {fehler_v}")
         # Die Statuswechsel der Vorgeschichte, fortlaufend ab id 2. ERH
         # und RED erzeugen keine Zeile: Sie aendern Summe und Beitrag,
         # nicht den Zustand.
@@ -657,6 +676,7 @@ def pex_zuschlag_nachtragen(
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
     scheiben_mit_gamma1: bool = False,
     summen: Optional[Dict[str, float]] = None,
+    tarifwerk: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Die Korrekturschicht in die PEX-Buchung nachtragen. Mutiert ``ledger``.
 
@@ -759,6 +779,10 @@ def pex_zuschlag_nachtragen(
         formfunktion=formfunktion, fenster=fenster,
         anfangszustaende=anfangszustaende,
         scheiben_mit_gamma1=scheiben_mit_gamma1, summen=summen,
+        # Ein beitragsfrei uebernommener Vertrag MIT Bausteinen (Pruefrunde J,
+        # J04) rechnet die Verankerung ueber die Folge des Kerns; die braucht
+        # Verfahren, Abzug und Umfang — dieselben wie verankerung_belegen.
+        tarifwerk=tarifwerk,
     )
     if beleg["befunde"]:
         erster = beleg["befunde"][0]
@@ -1201,6 +1225,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         anfangszustaende=zustaende,
         scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
         summen=summen,
+        tarifwerk={"red_verfahren": regeln.quell_red_verfahren,
+                   "stoab_je_baustein": regeln.stoab_je_baustein,
+                   "tku_umfang": regeln.tku_umfang},
     )
     if beleg["pex_zuschlaege"]:
         summe = sum(e["zuschlag"] for e in beleg["pex_zuschlaege"])

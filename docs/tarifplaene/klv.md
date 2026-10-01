@@ -703,9 +703,37 @@ Absetzungen, verschränkt mit Erhöhungen und einer Beitragsfreistellung,
 leitet der Zugang so ab:
 
 * mit Beitragsfreistellung: über die beitragsfreie Gesamtsumme
-  (Ein-Punkt-Inversion) — auch mit Teilkündigungen danach und
-  Herabsetzungen davor, denn jede erreichbare Größe ist homogen in der
-  beitragsfreien Gesamtsumme;
+  (Ein-Punkt-Inversion) — aber **nur unter einem Tarifwerk ohne Regel je
+  Baustein** (Stornoabzug vertragsweit, Teilkündigung aller Bausteine). Dort
+  ist jede erreichbare Größe homogen in der beitragsfreien Gesamtsumme:
+  Bausteine desselben Ablauftermins tragen nach der Freistellung je Einheit
+  beitragsfreier Summe dieselbe Reserve, und Abzug wie Teilkündigung greifen
+  am Vertrag. Unter einem Tarifwerk mit **Stornoabzug je Baustein** oder
+  **Teilkündigung nur der Grundversicherung** gilt das nicht (Prüfrunde J,
+  J04): Mindest- und Höchstbetrag fallen je Baustein an (B4), und die
+  Teilkündigung kürzt nur die beitragsfreie Summe des Grundbausteins. Die
+  Zusammenfassung rechnete dort den Rückkauf je zusammengefasster Scheibe um
+  den Mindestabzug zu hoch und zahlte bei einer Teilkündigung zu viel aus,
+  während Deckungskapital und beitragsfreie Gesamtsumme — und damit P-B1,
+  Abschluss, Führungsprobe und Abnahmen — stimmten. Der Zugang schreibt dann
+  die **Bausteine**: Die relative Struktur gibt der belegte Dynamiksatz
+  (Erhöhung = Satz mal Gesamtsumme davor), die Höhe die gelieferte
+  beitragsfreie Summe über die Umwandlungsfaktoren je Baustein (Scheiben
+  centgerundet, Grundsumme exakt, Vorwärtsprobe auf den halben Cent). Eine
+  Teilkündigung vor der ersten Erhöhung skaliert die ganze Kette und braucht
+  keinen Anteil (das Jahr steht als unbestimmter Anteil im Zustand); eine
+  Teilkündigung der Grundversicherung nach einer Erhöhung braucht ihren
+  Anteil als registrierte Auskunft. Ohne belegten Satz, mit echter
+  Herabsetzung vor oder Teilkündigung nach der Freistellung **verweigert**
+  der Zugang benannt, statt zusammenzufassen (eine Teilkündigung nach der
+  Freistellung unter einem solchen Tarifwerk ist nicht gebaut). Verworfen:
+  (a) immer zusammenfassen und die Abweichung als Grenze führen — der Wert
+  eines Vertrags hinge an einer Darstellung, die kein Leser bemerkt; (b) in
+  diesem Fall immer verweigern — der Fixture-Schnitt des zweiten Laufs trägt
+  sechs solche Verträge, deren Bausteine der Satz belegt; (c) die Bausteine
+  auch beim eigenen Tarifwerk schreiben — dort ist die Zusammenfassung
+  wertgleich (Positivkontrolle `tests/test_runde_j_bestand.py`), und die
+  Umstellung bewegte Darstellung und Rundung ohne fachlichen Grund;
 * Teilkündigungen nur der Grundversicherung: geschlossen aus dem belegten
   Dynamiksatz (jede Folge ist linear in der Ursprungssumme);
 * sonst — eine echte Herabsetzung (B5) oder Teilkündigungen über alle

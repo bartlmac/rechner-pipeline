@@ -1089,12 +1089,18 @@ def render_html(
     # seine aeltesten Vertraege Jahre frueher geschlossen wurden. Der
     # Zusatz nennt nur, DASS uebernommen wurde -- die Daten stehen bereits
     # in der Zeile.
-    erster_zugang = df["bestandszugang"].dt.date.min()
-    zeitraum = (
-        f"{erster_zugang.isoformat()} bis "
-        f"{df['insurance_end'].dt.date.max().isoformat()}"
-    )
-    if df["insurance_start"].dt.date.min() < erster_zugang:
+    # Ein Bestand ohne Vertrag (der leere Lauf aus dem Nichts, ADR-020) hat
+    # keinen Zeitraum; er wird benannt, nicht aus NaN formatiert (Pruefrunde J,
+    # J05: der Bericht verweigerte den leeren Lauf).
+    if not len(df):
+        zeitraum = "kein Vertrag im Bestand"
+    else:
+        erster_zugang = df["bestandszugang"].dt.date.min()
+        zeitraum = (
+            f"{erster_zugang.isoformat()} bis "
+            f"{df['insurance_end'].dt.date.max().isoformat()}"
+        )
+    if len(df) and df["insurance_start"].dt.date.min() < erster_zugang:
         zeitraum += " (übernommenes Geschäft)"
     quelle = (
         f"<li>Prüfsumme der Quelle (SHA-256, gekürzt): <code>{quelle_hash[:16]}</code></li>"

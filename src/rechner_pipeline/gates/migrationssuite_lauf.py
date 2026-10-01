@@ -296,6 +296,25 @@ def _monate(von: dt.date, bis: dt.date) -> int:
         1 if bis.day < von.day else 0)
 
 
+def vorgeschichte_jahrestag_fehler(art: str, beginn: dt.date, datum: dt.date) -> Optional[str]:
+    """Die Jahrestags-Konvention eines gelieferten Vorgangs der Vorgeschichte —
+    die EINE Stelle (Pruefrunde J, J06) fuer die Uebernahme in JEDEM Modus
+    (``gates.bestand_uebernehmen.baue``) und die Pruefstrecke
+    (:func:`anfangszustaende_je_police`, :func:`beitragsfrei_seit_jahr_je_police`).
+
+    Ein Vorgang wirkt am Vertragsjahrestag (Tarifplan KLV 7.3; die
+    Ereignis-Engine bucht jeden Vorgang dort). Eine Beitragsfreistellung
+    zwischen zwei Jahrestagen pruefte vorher nur der Modus ``materialisieren``;
+    ohne Erhoehung oder Herabsetzung in der Lieferung rundete die Uebernahme
+    das Jahr still ab, und P-B1, Fortschreibung und Abschluss rechneten mit
+    dem abgerundeten Jahr. Rueckgabe: der Befund mit Ausweg, oder None."""
+    monate = _monate(beginn, datum)
+    if monate % 12:
+        return (f"{art} der Vorgeschichte bei Monat {monate} liegt nicht auf dem "
+                "Vertragsjahrestag — Lieferung klaeren, nicht runden")
+    return None
+
+
 def _zelle(spez, auspraegungen: Dict[str, str]):
     gesucht = {k: str(v).strip().lower() for k, v in auspraegungen.items() if v}
     treffer = [z for z in spez.zellen if z.auspraegungen == gesucht]
@@ -365,11 +384,9 @@ def beitragsfrei_seit_jahr_je_police(
             # Mengenpruefung der Suite meldet Bestandsluecken selbst.
             continue
         monate = _monate(beginn, _parse(zeile[s["datum"]]))
-        if monate % 12:
-            raise SystemExit(
-                f"Police {police}: PEX der Vorgeschichte bei Monat {monate} "
-                "liegt nicht auf dem Vertragsjahrestag — Beitragsfreistellung "
-                "wirkt am Jahrestag (Lieferung klaeren, nicht runden)")
+        fehler_j = vorgeschichte_jahrestag_fehler("PEX", beginn, _parse(zeile[s["datum"]]))
+        if fehler_j:
+            raise SystemExit(f"Police {police}: {fehler_j}")
         if police in aus:
             raise SystemExit(
                 f"Police {police}: zwei PEX in der Vorgeschichte — eine "
@@ -415,8 +432,10 @@ def _serienzustand(
         bestimme_serie_mit_kandidaten,
         leite_pex_ursprungssumme_ab,
         leite_serie_aus_satz_ab,
+        leite_pex_serie_mit_bausteinen_ab,
         leite_serie_ueber_folge_ab,
         serie_braucht_folge,
+        tarifwerk_homogen_in_bfr_summe,
     )
 
     arten = [a for a, _, _ in folge]
@@ -434,6 +453,45 @@ def _serienzustand(
                 f"Vorgeschichte etwas anderes als Teilkuendigungen ({arten}) — "
                 "die Quelle stellt danach nichts mehr um; Lieferung klaeren")
         pex_jahr = folge[pex_pos][1]
+        if "ERH" in arten and not tarifwerk_homogen_in_bfr_summe(
+                stoab_je_baustein=stoab_je_baustein, red_verfahren=red_verfahren,
+                tku_umfang=tku_umfang):
+            # Pruefrunde J, J04: Greift eine Regel des Tarifwerks je Baustein
+            # (Stornoabzug je Baustein, Teilkuendigung nur der
+            # Grundversicherung), ist kein Wert homogen in der beitragsfreien
+            # Gesamtsumme — die Zusammenfassung zu einem Baustein rechnete den
+            # Rueckkauf ohne die Mindestabzuege der Scheiben und kuerzte bei
+            # einer Teilkuendigung die ganze Summe. Die Uebernahme schreibt
+            # die Bausteine, oder sie verweigert benannt.
+            if any(a == "RED" for a in nach_pex):
+                raise MigrationszugangFehler(
+                    "Teilkuendigung nach der Freistellung in einer Erhoehungsserie "
+                    "unter einem Tarifwerk mit Regeln je Baustein: die Bausteine "
+                    "sind daraus nicht bestimmt (nicht gebaut) — Lieferung klaeren")
+            ereignisse_vor = []
+            for art, jahr, datum in folge[:pex_pos]:
+                anteil = None
+                if art == "RED":
+                    anteil = red_anteile_je_datum.get(police, {}).get(
+                        datum, red_anteile.get(police))
+                ereignisse_vor.append((art, jahr, anteil))
+            serie_b = leite_pex_serie_mit_bausteinen_ab(
+                mp_felder, ereignisse=ereignisse_vor, pex_jahr=pex_jahr,
+                vs_bfr=erlsumme, satz=erhoehungssatz, red_verfahren=red_verfahren,
+                tku_umfang=tku_umfang, stoab_je_baustein=stoab_je_baustein,
+                scheiben_mit_gamma1=scheiben_mit_gamma1)
+            zustand_b: Dict[str, Any] = {
+                "beitragsfrei_seit_jahr": pex_jahr,
+                "sum_insured": serie_b.grundsumme,
+                "scheiben": serie_b.scheiben,
+                "quell_komponenten": 1 + len(serie_b.scheiben),
+            }
+            if serie_b.absetzungen:
+                zustand_b["alt_absetzungen"] = serie_b.absetzungen
+                zustand_b["gedeckt_durch"] = GEDECKT_AUSKUNFT
+            if serie_b.anteil_unbestimmt:
+                zustand_b["absetzungsanteil_unbestimmt"] = serie_b.anteil_unbestimmt
+            return zustand_b
         # Ein-Punkt-Inversion auch mit Teilkuendigungen nach der
         # Freistellung und Herabsetzungen davor: Jeder Vorgang nach PEX
         # kuerzt beitragsfreie Summen, und Bausteine desselben Ablauftermins
@@ -444,9 +502,10 @@ def _serienzustand(
             "sum_insured": leite_pex_ursprungssumme_ab(
                 mp_felder, pex_jahr=pex_jahr, vs_bfr=erlsumme),
             # Die Ein-Punkt-Inversion kollabiert die Bausteine der
-            # Quelle. Wert-aequivalent ist das, weil nach terminalem
-            # PEX jede erreichbare Pruefgroesse homogen in der
-            # beitragsfreien GESAMTSUMME ist — NICHT weil die
+            # Quelle. Wert-aequivalent ist das NUR unter einem Tarifwerk
+            # ohne Regel je Baustein (oben gefragt, Pruefrunde J, J04):
+            # dort ist nach terminalem PEX jede erreichbare Pruefgroesse
+            # homogen in der beitragsfreien GESAMTSUMME — NICHT weil die
             # Umwandlungsfaktoren der Bausteine gleich waeren (sie
             # sind es nicht; sum_insured ist hier eine
             # Aequivalenzgroesse, keine historische Bausteinsumme).
@@ -719,11 +778,10 @@ def anfangszustaende_je_police(
                 ereignisse[police], key=lambda e: _parse(e[s["datum"]])):
             art_e = ereignis[s["gevo"]]
             monate_e = _monate(beginn, _parse(ereignis[s["datum"]]))
-            if monate_e % 12:
-                raise SystemExit(
-                    f"Police {police}: {art_e} der Vorgeschichte bei Monat "
-                    f"{monate_e} liegt nicht auf dem Vertragsjahrestag — "
-                    "Lieferung klaeren, nicht runden")
+            fehler_j = vorgeschichte_jahrestag_fehler(
+                art_e, beginn, _parse(ereignis[s["datum"]]))
+            if fehler_j:
+                raise SystemExit(f"Police {police}: {fehler_j}")
             folge.append((art_e, monate_e // 12, ereignis[s["datum"]]))
         # Die Grenzen der Vorgeschichte, an EINER Stelle und VOR jeder
         # Verzweigung nach Vorgang oder Verfahren (Pruefer-Befund B2,

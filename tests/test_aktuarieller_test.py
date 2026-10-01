@@ -323,12 +323,13 @@ def test_ergebnis_ist_deterministisch():
 def test_scheiben_und_beitragsfreiheit_zusammen_sind_hart_undefiniert():
     """Review-Fix: die Kombination rechnete still den aktiven Track —
     jetzt lehnt die Engine sie ab, statt falsche Werte zu liefern."""
-    with pytest.raises(AktuartestFehler, match="Beitragsfreistellung"):
-        pruefe_verankerung(_auftrag(
-            erwartet={"kVx_MRV": 1.0},
-            scheiben=((3, 10_000.0),),
-            beitragsfrei_seit_jahr=5,
-        ))
+    # Pruefrunde J, J04: Scheiben UND Beitragsfreiheit sind definiert — der
+    # Auftrag laeuft ueber die Vorgangsfolge (jeder Baustein mit seiner
+    # beitragsfreien Summe), nicht ueber den aktiven Track.
+    from rechner_pipeline.qa.aktuarieller_test import _mit_folge
+
+    assert _mit_folge(_auftrag(erwartet={"kVx_MRV": 1.0}, scheiben=((3, 10_000.0),),
+                               beitragsfrei_seit_jahr=5))
     with pytest.raises(AktuartestFehler, match="kein Vertragsjahr"):
         pruefe_verankerung(_auftrag(
             erwartet={"kVx_MRV": 1.0}, beitragsfrei_seit_jahr=0,

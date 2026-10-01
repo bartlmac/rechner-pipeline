@@ -752,18 +752,25 @@ ARTEN = {"VS_herabsetzung", "VS_teilkuendigung", "dDK_absorption",
 #: (``VORGANGSJAHR_OBERGRENZE``, die eine Stelle der Jahresgrenzen aller
 #: Vorgangsarten; ``tests/test_runde_g_vorgaenge.py`` haelt sie mit ``==``
 #: gegen ``vorgangsfolge.RANG``); keine Verzweigung nach RED/TKU.
+#:
+#: Pruefrunde J (J04, J06): migrationszugang +1 Verzweigung (die Bausteine
+#: einer beitragsfrei gelieferten Serie: ein Vorgang vor der Freistellung ist
+#: ERH oder RED), migrationssuite_lauf +2 Verzweigungen (Teilkuendigung nach
+#: der Freistellung unter einem Tarifwerk mit Regel je Baustein; Anteil je
+#: RED der Serie), bestand_uebernehmen +1 Aufzaehlung
+#: (``VORGESCHICHTE_VORGAENGE``, die Vorgaenge mit Jahrestags-Konvention).
 INVENTAR = {
     "bestand/cli_fortschreibung.py": (0, 0, 1),
     "bestand/ereignisse.py": (0, 2, 5),
     "bestand/kennzahlen.py": (4, 4, 4),
     "bestand/ledger_bindung.py": (7, 1, 0),
-    "bestand/migrationszugang.py": (1, 5, 0),
+    "bestand/migrationszugang.py": (1, 6, 0),
     "bestand/report.py": (1, 0, 0),
     "bestand/vorbedingungen.py": (1, 0, 1),
     "betrieb/seite.py": (1, 0, 0),
-    "gates/bestand_uebernehmen.py": (4, 0, 0),
+    "gates/bestand_uebernehmen.py": (5, 0, 0),
     "gates/fuehrungsprobe.py": (1, 0, 0),
-    "gates/migrationssuite_lauf.py": (1, 7, 0),
+    "gates/migrationssuite_lauf.py": (1, 9, 0),
     "kern/beitragsreduktion.py": (1, 0, 0),
     "kern/korrekturschicht.py": (1, 0, 0),
     "models/bestand.py": (12, 2, 14),
@@ -850,7 +857,9 @@ def test_jede_vollstaendige_aufzaehlung_kennt_jeden_code():
 #: Folge — ``test_eine_serie...``), migrationssuite_lauf 1 (Einzelfall der
 #: Uebernahme — die e2e-Kette), models/bestand 1 (``zielverfahren`` selbst),
 #: qa/migrationssuite 1 (``test_migrationssuite_rechnet...``),
-#: qa/aktuarieller_test 1 (``test_a_m3...``).
+#: qa/aktuarieller_test 1 (``test_a_m3...``); Pruefrunde J (J04):
+#: migrationszugang +1 (Bausteine einer beitragsfrei gelieferten Serie —
+#: ``test_runde_j_bestand::test_j04_nicht_belegbare_struktur...[echte_herabsetzung]``).
 #: ``reduktion_ereignis`` (Code aus dem Verfahren): nachgemessen mit der
 #: Vorgangsfolge — die Leser fragen den Code je Zeile der Folge, nicht mehr je
 #: Police; migrationszugang 1 (Serie ueber die Folge), tageslauf 1 (Schnitt
@@ -862,7 +871,7 @@ AUFRUFSTELLEN = {
         "models/bestand.py": 1,
     },
     "zielverfahren": {
-        "bestand/migrationszugang.py": 2,
+        "bestand/migrationszugang.py": 3,
         "qa/migrationssuite.py": 1,
         "qa/aktuarieller_test.py": 1,
     },

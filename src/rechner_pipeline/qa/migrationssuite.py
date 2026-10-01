@@ -404,6 +404,11 @@ def _mit_vorgangsfolge(v: VertragsPruefung) -> bool:
     Zustands, B3 — Entscheid des Maintainers 2026-10-01)."""
     if v.reduktion is not None or v.vorgaenge:
         return True
+    if v.scheiben and v.beitragsfrei_seit_jahr is not None:
+        # Beitragsfrei uebernommen MIT Bausteinen (Pruefrunde J, J04): jeder
+        # Baustein mit seiner eigenen beitragsfreien Summe, Abzug und
+        # Teilkuendigung nach der Regel des Tarifwerks — die Folge des Kerns.
+        return True
     if any(g.art in VORGANG_ARTEN for g in v.gevos):
         return True
     pex_ab = ([12 * v.beitragsfrei_seit_jahr] if v.beitragsfrei_seit_jahr is not None

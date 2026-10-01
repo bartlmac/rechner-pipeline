@@ -130,6 +130,7 @@ def vorgangsjahr_fehler(
     Kapitalversicherung kennt diese Vorgaenge; die Form der Zeilen pruefen
     die Vertraege in ``models.bestand``.
     """
+    import numpy as _np
     import pandas as pd
 
     from rechner_pipeline.bestand.fuehrung import months_between
@@ -160,7 +161,12 @@ def vorgangsjahr_fehler(
         # Die Umbuchung eines beitragsfrei uebernommenen Vertrags steht am
         # Zugangstag und traegt das Vertragsjahr des Zugangs; das Jahr der
         # Freistellung steht in der Historie und wird dort geprueft.
-        bekannt = ledger[[int(p) in vertraege for p in ledger["police_id"]]]
+        # Die Maske ist ein boolesches FELD, keine Liste (Pruefrunde J, J05): Eine
+        # leere Liste waehlt in pandas SPALTEN — ein Ledger ohne Zeile (der leere
+        # Lauf aus dem Nichts, ADR-020) verlor so seine Spalten und P-B1 meldete
+        # "'police_id'". Ein Ledger ohne Zeile traegt keinen Vorgang.
+        bekannt = ledger[_np.fromiter((int(p) in vertraege for p in ledger["police_id"]),
+                                      dtype=bool, count=len(ledger))]
         vorgang = ~zugangsbuchungen(bekannt, portfolio) if len(bekannt) else []
         for pid, ereignis, jahr, ist_vorgang in zip(
                 bekannt["police_id"], bekannt["ereignis"], bekannt["vertragsjahr"], vorgang):

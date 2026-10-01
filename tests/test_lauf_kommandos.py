@@ -157,7 +157,7 @@ def test_pex_der_vorgeschichte_wird_zum_vertragsjahr():
 def test_pex_abseits_des_jahrestags_faellt_hart():
     vorgeschichte = [{"POLNR": "7000001", "GEVO": "PEX",
                       "DATUM": "01.07.2023"}]
-    with pytest.raises(SystemExit, match="Jahrestag"):
+    with pytest.raises(SystemExit, match="Vertragsjahrestag"):
         beitragsfrei_seit_jahr_je_police(
             vorgeschichte, _bestand(7000001), spalten=SPALTEN)
 

@@ -759,10 +759,14 @@ def leite_pex_ursprungssumme_ab(
     AEQUIVALENZGROESSE, nicht die historische Bausteinsumme: Die
     Umwandlungsfaktoren der Bausteine sind verschieden (versetzte
     Zillmer-Fenster), die historische Zerlegung ist aus der
-    Ein-Punkt-Inversion nicht rekonstruierbar. Tragfaehig ist sie
-    trotzdem, weil nach terminalem PEX jede erreichbare Folgegroesse
-    nur an der beitragsfreien Gesamtsumme haengt, die die Inversion
-    exakt reproduziert.
+    Ein-Punkt-Inversion nicht rekonstruierbar. Tragfaehig ist sie nur
+    unter einem Tarifwerk ohne Regel je Baustein
+    (:func:`tarifwerk_homogen_in_bfr_summe`): Dort haengt nach terminalem
+    PEX jede erreichbare Folgegroesse nur an der beitragsfreien
+    Gesamtsumme, die die Inversion exakt reproduziert. Mit Stornoabzug je
+    Baustein oder Teilkuendigung nur der Grundversicherung gilt das nicht;
+    die Serie laeuft dann ueber :func:`leite_pex_serie_mit_bausteinen_ab`
+    (Pruefrunde J, J04).
     """
     einheit = ModelPoint(**{**dict(modellpunkt_felder), "sum_insured": 1.0})
     # Die EINE Regel des Kerns (Tarifplan KLV 7.3, Pruefrunde G, G02): eine
@@ -1239,7 +1243,9 @@ def leite_serie_aus_satz_ab(
     fortgefuehrte Bruchteil f der Grundsumme, nachgelieferte Auskunft).
     Eine Beitragsfreistellung gehoert NICHT hierher — sie ist terminal
     und laeuft ueber die Gesamtsummen-Inversion
-    (:func:`leite_pex_ursprungssumme_ab`). Die Zerlegung ist fuer den
+    (:func:`leite_pex_ursprungssumme_ab`) bzw. — unter einem Tarifwerk mit
+    Regel je Baustein — ueber :func:`leite_pex_serie_mit_bausteinen_ab`
+    (Pruefrunde J, J04). Ohne solche Regel ist die Zerlegung fuer den
     Wert unerheblich, weil nach terminalem PEX jede erreichbare
     Folgegroesse homogen in der beitragsfreien GESAMTSUMME ist:
     Bausteine desselben Ablauftermins tragen am selben Bewertungstag
@@ -1367,6 +1373,153 @@ def serie_braucht_folge(
             or umfang != UMFANG_GRUND)
         for art, jahr, _ in ereignisse)
     return mit_folge, umfang
+
+
+def tarifwerk_homogen_in_bfr_summe(
+    *, stoab_je_baustein: bool, red_verfahren: str, tku_umfang: Optional[str],
+) -> bool:
+    """Ob jede Groesse nach einer terminalen Beitragsfreistellung nur an der
+    beitragsfreien GESAMTsumme haengt (Pruefrunde J, J04).
+
+    Das gilt nur, wenn keine Regel des Tarifwerks je Baustein greift:
+    Stornoabzug vertragsweit (Mindest- und Hoechstbetrag am Vertrag) und
+    Teilkuendigung ueber alle Bausteine (sie skaliert jeden gleich). Ein
+    Stornoabzug je Baustein (Mindestabzug je Baustein) oder eine
+    Teilkuendigung nur der Grundversicherung macht die Werte von der
+    Zerlegung abhaengig. Das Deckungskapital, die beitragsfreien Faktoren
+    und gamma1 der Scheiben sind keine solchen Regeln: Bausteine desselben
+    Ablauftermins tragen nach der Freistellung je Einheit beitragsfreier
+    Summe denselben Reservesatz, gamma1 wirkt nur bis zur Freistellung und
+    steckt in den Umwandlungsfaktoren, die die Ableitung je Baustein rechnet."""
+    umfang = tku_umfang_fuer(red_verfahren, tku_umfang)
+    return not stoab_je_baustein and umfang != UMFANG_GRUND
+
+
+def leite_pex_serie_mit_bausteinen_ab(
+    modellpunkt_felder: Mapping[str, Any],
+    *,
+    ereignisse: Sequence[Tuple[str, int, Optional[float]]],
+    pex_jahr: int,
+    vs_bfr: float,
+    satz: Optional[float],
+    red_verfahren: str,
+    tku_umfang: Optional[str],
+    stoab_je_baustein: bool,
+    scheiben_mit_gamma1: bool,
+) -> AbgeleiteteSerie:
+    """Die BAUSTEINE einer beitragsfrei gelieferten Erhoehungsserie
+    (Pruefrunde J, J04): Grundsumme und Scheiben (Ursprungssummen), deren
+    beitragsfreie Summen nach dem Kern zusammen die gelieferte
+    beitragsfreie Summe ``vs_bfr`` ergeben.
+
+    ``ereignisse`` ist die Folge VOR der Freistellung ``(art, jahr,
+    anteil)``. Die relative Struktur bestimmt der belegte Dynamiksatz (jede
+    Erhoehung = Satz x Gesamtsumme davor, wie :func:`leite_serie_aus_satz_ab`);
+    eine Teilkuendigung, die alle Bausteine trifft oder vor der ersten
+    Erhoehung liegt, skaliert die ganze Kette und braucht keinen Anteil
+    (sie steht in ``anteil_unbestimmt``); eine Teilkuendigung NUR der
+    Grundversicherung nach einer Erhoehung braucht ihren Anteil als
+    registrierte Auskunft. Die Hoehe bestimmt die beitragsfreie Summe ueber
+    die Vorgangsfolge des Kerns (linear in der Grundsumme), mit
+    Vorwaertsprobe nach Centrundung der Scheiben.
+
+    Verweigert (``MigrationszugangFehler``), statt still zusammenzufassen:
+    kein belegter Dynamiksatz, eine echte Herabsetzung (geteilter Vertrag),
+    eine Teilkuendigung der Grundversicherung nach einer Erhoehung ohne
+    Anteil, eine reissende Vorwaertsprobe."""
+    from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
+    from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe
+    from rechner_pipeline.kern.vorgangsfolge import Vorgangsfolge
+    from rechner_pipeline.models.bestand import zielverfahren
+
+    if satz is None:
+        raise MigrationszugangFehler(
+            "beitragsfrei gelieferte Erhoehungsserie unter einem Tarifwerk mit "
+            "Regeln je Baustein (Stornoabzug je Baustein oder Teilkuendigung nur "
+            "der Grundversicherung): die Bausteine sind ohne belegten Dynamiksatz "
+            "nicht bestimmt, und eine Zusammenfassung zu einem Baustein rechnete "
+            "Rueckkauf und Teilkuendigung falsch. Ausweg: den Dynamiksatz der "
+            "Quelle in der A-Box belegen (P-Q3, Spez neu erzeugen)")
+    if not 0.0 < satz < 1.0:
+        raise MigrationszugangFehler(f"Erhoehungssatz {satz!r} liegt nicht in (0, 1)")
+    if vs_bfr <= 0.0:
+        raise MigrationszugangFehler(f"gelieferte beitragsfreie Summe {vs_bfr!r} unplausibel")
+    tku_umfang = tku_umfang_fuer(red_verfahren, tku_umfang)
+    kern_felder = {k: v for k, v in dict(modellpunkt_felder).items() if not k.startswith("_")}
+    t_vertrag = int(kern_felder["t"])
+    grund_einheit = 1.0
+    scheiben_einheiten: List[Tuple[int, float]] = []
+    absetzungen: List[Tuple[int, float]] = []
+    unbestimmt: List[int] = []
+    for art, jahr, anteil in ereignisse:
+        if art == "ERH":
+            scheiben_einheiten.append(
+                (int(jahr), satz * (grund_einheit + sum(e for _, e in scheiben_einheiten))))
+            continue
+        if art != "RED":
+            raise MigrationszugangFehler(f"Ereignisart {art!r} vor der Freistellung unerwartet")
+        verfahren = zielverfahren(red_verfahren, int(jahr), t_vertrag, beitragsfrei_ab=None)
+        if verfahren != TEILKUENDIGUNG:
+            raise MigrationszugangFehler(
+                f"echte Herabsetzung im Jahr {jahr} vor der Freistellung: der Vertrag "
+                "ist geteilt, die Bausteine einer beitragsfrei gelieferten Serie sind "
+                "dann nicht bestimmt — Lieferung klaeren")
+        if str(tku_umfang) != UMFANG_GRUND or not scheiben_einheiten:
+            unbestimmt.append(int(jahr))
+            continue
+        if anteil is None or not 0.0 < anteil < 1.0:
+            raise MigrationszugangFehler(
+                f"Teilkuendigung der Grundversicherung im Jahr {jahr} nach einer "
+                f"Erhoehung ohne gueltigen Anteil ({anteil!r}): die Bausteine der "
+                "beitragsfrei gelieferten Serie sind ohne ihn nicht bestimmt — je "
+                "Ereignis als registrierte Auskunft nachliefern lassen "
+                "(--red-anteile-datei, POLNR;GEVO;DATUM;ANTEIL[;BEZUG])")
+        grund_einheit *= float(anteil)
+        absetzungen.append((int(jahr), float(anteil)))
+
+    def bfr_summe(grund: float, scheiben: Sequence[Tuple[int, float]]) -> float:
+        grund_mp = ModelPoint(**{**kern_felder, "sum_insured": float(grund)})
+        kerne = [(int(j), Rechenkern(erhoehungs_scheibe(
+            grund_mp, int(j), float(s), gamma1_uebernehmen=scheiben_mit_gamma1)))
+            for j, s in scheiben]
+        folge = Vorgangsfolge(Rechenkern(grund_mp), kerne, [], pex_jahr=int(pex_jahr),
+                              stoab_je_baustein=stoab_je_baustein, tku_umfang=str(tku_umfang))
+        monat = 12 * int(pex_jahr)
+        return float(folge.stand_am(monat).werte(monat)["vs_bfr"])
+
+    try:
+        einheit = bfr_summe(grund_einheit, scheiben_einheiten)
+    except (BeitragsreduktionFehler, ValueError) as exc:
+        raise MigrationszugangFehler(f"Bausteine nicht rechenbar: {exc}") from exc
+    if einheit <= 0.0:
+        raise MigrationszugangFehler(
+            f"beitragsfreie Summe je Einheit {einheit!r} — eine Umkehrung ist nicht definiert")
+    skala = vs_bfr / einheit
+    # Die Scheiben centgerundet (so bucht die Quelle); die Grundsumme dann
+    # EXAKT aus der gelieferten beitragsfreien Summe (linear in ihr: die
+    # Scheiben haengen nur ueber Alter und Dauern am Grundbaustein). So
+    # reproduziert der Kern die Lieferung auf den Cent — dieselbe Bedingung,
+    # die die Umbuchung des Zugangs an die Zusammenfassung stellte.
+    scheiben = tuple((j, round(skala * e, 2)) for j, e in scheiben_einheiten)
+    try:
+        je_grund = bfr_summe(1.0, ())
+        nur_scheiben = bfr_summe(1.0, scheiben) - je_grund
+    except (BeitragsreduktionFehler, ValueError) as exc:
+        raise MigrationszugangFehler(f"Bausteine nicht rechenbar: {exc}") from exc
+    grund = (vs_bfr - nur_scheiben) / je_grund
+    if grund <= 0.0:
+        raise MigrationszugangFehler(
+            f"rekonstruierte Grundsumme {grund!r} unplausibel — Satz oder Anteile klaeren")
+    glatt = float(round(grund))
+    if glatt > 0 and abs(bfr_summe(glatt, scheiben) - vs_bfr) <= 0.005:
+        grund = glatt
+    probe = bfr_summe(grund, scheiben)
+    if abs(probe - vs_bfr) > 0.005:
+        raise MigrationszugangFehler(
+            f"Vorwaertsprobe reisst: die Bausteine fuehren beitragsfrei {probe:.2f}, "
+            f"geliefert sind {vs_bfr:.2f} — Satz oder Anteile klaeren, nicht glaetten")
+    return AbgeleiteteSerie(grundsumme=grund, scheiben=scheiben,
+                            absetzungen=tuple(absetzungen), anteil_unbestimmt=tuple(unbestimmt))
 
 
 @dataclass(frozen=True)

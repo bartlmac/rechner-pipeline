@@ -1172,13 +1172,17 @@ def test_erh_auf_alt_reduktion_traegt_die_scheibe_neben_der_teilung():
     assert urteil["bestanden"], urteil["befunde"]
 
 
-def test_mehrere_anfangszustaende_ohne_vorgang_fallen_hart():
-    """Ohne Vorgang bleibt die Exklusivitaet (beitragsfrei UND Scheiben ist
-    der Ein-Punkt-Weg, kein Baustein-Zustand)."""
-    with pytest.raises(ValueError, match="mehrere Anfangszustaende"):
-        pruefe_vertrag(_pruefung_mit(
-            scheiben=((5, 4000.0),), beitragsfrei_seit_jahr=7,
-        ), red_verfahren="prospektiv")
+def test_beitragsfrei_mit_scheiben_laeuft_ueber_die_folge():
+    """Pruefrunde J, J04: Beitragsfrei UND Scheiben ist seit der Bausteinfuehrung
+    der beitragsfrei gelieferten Serie ein gueltiger Anfangszustand (Tarifwerk
+    mit Regel je Baustein) — er laeuft ueber die Vorgangsfolge, statt
+    verweigert zu werden. Vorher: "mehrere Anfangszustaende"."""
+    from rechner_pipeline.qa.migrationssuite import _mit_vorgangsfolge
+
+    v = _pruefung_mit(scheiben=((5, 4000.0),), beitragsfrei_seit_jahr=7)
+    assert _mit_vorgangsfolge(v)
+    assert not _mit_vorgangsfolge(_pruefung_mit(scheiben=((5, 4000.0),)))
+    pruefe_vertrag(v, red_verfahren="prospektiv")
 
 
 def test_alt_reduktion_nach_der_freistellung_ist_eine_teilkuendigung():

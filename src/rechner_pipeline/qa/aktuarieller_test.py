@@ -510,7 +510,12 @@ def _pruefe_punkt(v: Vertragspruefung, p: Pruefpunkt, mp: ModelPoint) -> None:
                 "eine Rumpfjahr-Konvention voraus, die noch nicht "
                 "entschieden ist"
             )
-    if v.scheiben and set(p.erwartet) - {"kVx_MRV", "RKW", "BJB", "dDK"}:
+    # Ein beitragsfrei uebernommener Vertrag MIT Bausteinen (Pruefrunde J,
+    # J04) rechnet ueber die Vorgangsfolge; dort ist auch VS_bfr je Baustein
+    # definiert (die Summe der beitragsfreien Summen der Bausteine).
+    erlaubt = {"kVx_MRV", "RKW", "BJB", "dDK"} | (
+        {"VS_bfr"} if v.beitragsfrei_seit_jahr is not None else set())
+    if v.scheiben and set(p.erwartet) - erlaubt:
         raise AktuartestFehler(
             f"police {v.police_id}: mit Erhoehungsscheiben rechnet die "
             "Engine nur kVx_MRV, RKW, BJB und dDK vertragsweit — andere "
@@ -538,13 +543,6 @@ def _pruefe_auftrag(v: Vertragspruefung) -> ModelPoint:
         raise AktuartestFehler(
             f"police {v.police_id}: kein Pruefpunkt — ein Vertrag ohne "
             "Vergleichszeitpunkt ist kein Testauftrag"
-        )
-    if v.scheiben and v.beitragsfrei_seit_jahr is not None:
-        raise AktuartestFehler(
-            f"police {v.police_id}: Erhoehungsscheiben UND "
-            "Beitragsfreistellung zusammen rechnet die Engine nicht — der "
-            "beitragsfreie Scheibenpfad ist nicht definiert statt still "
-            "der aktive Track"
         )
     if v.beitragsfrei_seit_jahr is not None and v.beitragsfrei_seit_jahr <= 0:
         raise AktuartestFehler(
@@ -837,6 +835,11 @@ def _mit_folge(v: Vertragspruefung) -> bool:
     Pruefpunkt, oder mit einem Rueckkaufswert im beitragsfreien Zustand (B3).
     Ohne das bleibt der Weg unten unveraendert."""
     if v.reduktion is not None or v.vorgaenge:
+        return True
+    if v.scheiben and v.beitragsfrei_seit_jahr is not None:
+        # Beitragsfrei uebernommen MIT Bausteinen (Pruefrunde J, J04): Die
+        # Vorgangsfolge fuehrt jeden Baustein ab der Freistellung mit seiner
+        # eigenen beitragsfreien Summe — der Weg ohne Folge kennt das nicht.
         return True
     if any(q.anlass in VORGANG_ANLAESSE for q in v.punkte):
         return True

@@ -39,7 +39,7 @@ flowchart TD
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
     spez["spez<br/>6 Module"]
-    bestand -- 32 --> kern
+    bestand -- 33 --> kern
     bestand -- 18 --> models
     bestand -- 1 --> qa
     betrieb -- 30 --> bestand
