@@ -37,8 +37,10 @@ from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.bestand.ledger_bindung import (
     HERGELEITET,
     pruefe_ledger_betraege,
+    pruefe_reduktionen_tarifwerk,
     pruefe_scheiben_tarifwerk,
 )
+from rechner_pipeline.kern.vorgangsfolge import ERH, PEX, RED, TKU
 from rechner_pipeline.models.bestand import (
     REDUKTION_EREIGNISSE,
     LEDGER_NAMES,
@@ -71,6 +73,108 @@ PB1_ROLLEN = frozenset(ROLLEN_DATEIEN) | {"config"}
 #: die gates-Schicht sie nicht abtippen und nicht selbst in die
 #: Vorzeige greifen muss (ADR-017, TOOL_NACH_VORZEIGE_ERLAUBT).
 PB1_ROLLEN_DATEIEN = ROLLEN_DATEIEN
+
+#: Je Vorgangsart der Folge (``kern.vorgangsfolge.RANG``) die Tabellen, die
+#: ihr Vertragsjahr tragen (Pruefrunde H, H02/H04). Jeder dieser Wege geht
+#: durch :func:`vorgangsjahr_fehler` und damit durch die Jahresgrenzen des
+#: Kerns; ein Test haelt die Menge Art mal Weg mit ``==`` gegen das Verhalten.
+VORGANGSJAHR_WEGE: Dict[str, Tuple[str, ...]] = {
+    PEX: ("historie", "ledger"),
+    RED: ("reduktionen", "ledger"),
+    TKU: ("reduktionen", "ledger"),
+    ERH: ("scheiben", "ledger"),
+}
+
+
+class _Dauern:
+    """Versicherungs- und Beitragsdauer eines Vertrags — alles, was die
+    Jahresgrenzen des Kerns vom Modellpunkt lesen (``n``, ``t``). P-B1 prueft
+    die Grenzen auch ohne Config, also ohne Rechnungsgrundlagen; liest der
+    Kern dort einmal mehr, faellt das hier laut auf (AttributeError), nicht
+    still."""
+
+    __slots__ = ("n", "t")
+
+    def __init__(self, n: int, t: int) -> None:
+        self.n, self.t = int(n), int(t)
+
+
+def vorgangsjahr_fehler(
+    portfolio: Any,
+    *,
+    historie: Any = None,
+    ledger: Any = None,
+    reduktionen: Any = None,
+    scheiben: Any = None,
+) -> List[str]:
+    """Die Jahresgrenzen der Vorgaenge auf JEDEM Tabellenweg — die Regel des
+    Kerns (``kern.beitragsreduktion.pruefe_vorgangsjahr``), nicht nachgebaut.
+
+    Pruefrunde H, H02/H04: Eine Beitragsfreistellung am oder nach dem
+    Beitragsende (a >= t) nahmen P-B1, Abschluss, Bericht und Bewertung an;
+    nur der Kern verweigerte sie, und nur, wenn der Vertrag ueber die
+    Vorgangsfolge lief — also nur mit registrierter Herabsetzung oder
+    Teilkuendigung. Die Folge prueft ihre Vorgaenge erst, wenn sie gebaut
+    wird; ein Vertrag ohne Folge lief an der Regel vorbei. Jetzt fragt die
+    Engine, durch die jeder Leser der Tabellen muss, den Kern fuer jede Zeile
+    jeder Art auf jedem Weg (:data:`VORGANGSJAHR_WEGE`), unabhaengig davon, ob
+    der Vertrag weitere Vorgaenge hat und ob eine Config vorliegt.
+
+    Das Vertragsjahr einer Zeile: Historie aus ``status_date`` (vollendete
+    Monate seit Versicherungsbeginn durch 12, wie die Bewertung das PEX-Jahr
+    liest), Ledger ``vertragsjahr``, Reduktionstabelle ``reduktion_jahr``
+    (die Art sagt das Verfahren), Scheiben ``erhoehung_jahr``. Nur die
+    Kapitalversicherung kennt diese Vorgaenge; die Form der Zeilen pruefen
+    die Vertraege in ``models.bestand``.
+    """
+    import pandas as pd
+
+    from rechner_pipeline.bestand.fuehrung import months_between
+    from rechner_pipeline.kern.beitragsreduktion import (
+        BeitragsreduktionFehler,
+        pruefe_vorgangsjahr,
+    )
+    from rechner_pipeline.models.bestand import reduktion_ereignis
+
+    vertraege: Dict[int, Tuple[_Dauern, Any]] = {}
+    for pid, produkt, n, t, beginn in zip(
+            portfolio["police_id"], portfolio["produkt"], portfolio["duration"],
+            portfolio["premium_duration"], portfolio["insurance_start"]):
+        if str(produkt) == "klv":
+            vertraege[int(pid)] = (_Dauern(n, t), pd.Timestamp(beginn).date())
+
+    zeilen: List[Tuple[str, int, str, int]] = []   # (weg, police, art, jahr)
+    if historie is not None:
+        for pid, code, datum in zip(historie["police_id"], historie["status_code"],
+                                    historie["status_date"]):
+            pid = int(pid)
+            if str(code) in VORGANGSJAHR_WEGE and pid in vertraege:
+                jahr = months_between(vertraege[pid][1], pd.Timestamp(datum).date()) // 12
+                zeilen.append(("historie", pid, str(code), jahr))
+    if ledger is not None:
+        for pid, ereignis, jahr in zip(ledger["police_id"], ledger["ereignis"],
+                                       ledger["vertragsjahr"]):
+            if str(ereignis) in VORGANGSJAHR_WEGE:
+                zeilen.append(("ledger", int(pid), str(ereignis), int(jahr)))
+    if reduktionen is not None:
+        for pid, jahr, verfahren in zip(reduktionen["police_id"],
+                                        reduktionen["reduktion_jahr"],
+                                        reduktionen["verfahren"]):
+            zeilen.append(("reduktionen", int(pid), reduktion_ereignis(str(verfahren)),
+                           int(jahr)))
+    if scheiben is not None:
+        for pid, jahr in zip(scheiben["police_id"], scheiben["erhoehung_jahr"]):
+            zeilen.append(("scheiben", int(pid), ERH, int(jahr)))
+
+    fehler: List[str] = []
+    for weg, pid, art, jahr in zeilen:
+        if pid not in vertraege or weg not in VORGANGSJAHR_WEGE[art]:
+            continue
+        try:
+            pruefe_vorgangsjahr(vertraege[pid][0], jahr, art)
+        except BeitragsreduktionFehler as exc:
+            fehler.append(f"vorgangsjahr {weg}: police {pid}: {art} — {exc}")
+    return fehler
 
 
 
@@ -437,6 +541,18 @@ def lies_und_pruefe_pb1(
         except Exception as exc:  # noqa: BLE001 — malformed data blockiert
             errors.append({"code": "ledger", "message": str(exc)})
 
+    if portfolio is not None and not any(e["code"] == "portfolio" for e in errors):
+        # Die Jahresgrenzen der Vorgaenge auf jedem Tabellenweg, delegiert an
+        # den Kern (Pruefrunde H, H02/H04) — ohne Config pruefbar, weil sie
+        # nur die Dauern des Stamms braucht.
+        try:
+            for meldung in vorgangsjahr_fehler(
+                    portfolio, historie=historie, ledger=ledger,
+                    reduktionen=reduktionen, scheiben=scheiben):
+                errors.append({"code": "vorgangsjahr", "message": meldung})
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "vorgangsjahr", "message": str(exc)})
+
     if ledger is not None and scheiben is None:
         try:
             hat_erhoehungen = bool((ledger["ereignis"] == "ERH").any())
@@ -468,7 +584,7 @@ def lies_und_pruefe_pb1(
                 "--reduktionen ist erforderlich, sonst rechnet die Wache "
                 "jeden herabgesetzten Vertrag ungekuerzt nach",
             })
-    if ledger is not None and "config" not in eingaben:
+    if "config" not in eingaben:
         # Ohne Config werden die Betraege nicht hergeleitet — ein Ledger mit
         # Herabsetzungen ist dann nicht pruefbar, und PASSED waere eine
         # Behauptung (Angriffsrunde der Nacht: Auszahlung x10, Auszahlung
@@ -482,11 +598,17 @@ def lies_und_pruefe_pb1(
         # dieselben Bytes, die beide mit Config verweigern. Die
         # Vollstaendigkeit (jeder registrierte Vorgang hat seine Buchungen)
         # prueft nur die Herleitung, und die braucht die Config.
-        try:
-            red_ohne_config = bool(ledger["ereignis"].isin(REDUKTION_EREIGNISSE).any())
-        except Exception as exc:  # noqa: BLE001 - malformed data blockiert
-            errors.append({"code": "ledger", "message": str(exc)})
-            red_ohne_config = False
+        #
+        # Und auch OHNE Ledger (Pruefrunde H, H03/H05): Die Wache stand unter
+        # "ledger is not None"; eine Reduktionstabelle allein ging ohne Config
+        # gruen durch P-B1, obwohl Verfahren und Anteil jeder Zeile eine
+        # Aussage ueber Tarifwerk und Annahmen sind, die nur die Config prueft.
+        red_ohne_config = False
+        if ledger is not None:
+            try:
+                red_ohne_config = bool(ledger["ereignis"].isin(REDUKTION_EREIGNISSE).any())
+            except Exception as exc:  # noqa: BLE001 - malformed data blockiert
+                errors.append({"code": "ledger", "message": str(exc)})
         registriert = reduktionen is not None and len(reduktionen) > 0
         if red_ohne_config or registriert:
             traeger = []
@@ -614,6 +736,22 @@ def lies_und_pruefe_pb1(
                             set(HERGELEITET) | {"INV", "REA"}).sum())
                 except Exception as exc:  # noqa: BLE001 — malformed data blockiert
                     errors.append({"code": "ledger", "message": str(exc)})
+            # Ohne Ledger (Pruefrunde H, H03/H05): Die Tabelle registrierter
+            # Vorgaenge wird trotzdem gegen Tarifwerk und Annahmen gehalten —
+            # ueber DIESELBE Funktion wie auf dem Ledger-Weg (dort ruft sie
+            # pruefe_ledger_betraege). Was ohne Ledger ungeprueft bleibt, sind
+            # die Buchungen selbst (Betraege, Vollstaendigkeit); die Summary
+            # nennt ihre Zahl, statt "all_passed" darueber zu stellen.
+            if ledger is None and reduktionen is not None and len(reduktionen) > 0:
+                geprueft["reduktionen_buchungen_ungeprueft"] = int(len(reduktionen))
+                if not any(e["code"] in ("reduktionen", "portfolio", "config")
+                           for e in errors):
+                    try:
+                        for meldung in pruefe_reduktionen_tarifwerk(
+                                portfolio, reduktionen, config):
+                            errors.append({"code": "reduktionen", "message": meldung})
+                    except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+                        errors.append({"code": "reduktionen", "message": str(exc)})
     if manifest is not None:
         geprueft["manifest_gebunden"] = len(
             [r for r in eingaben if r in tabellen])

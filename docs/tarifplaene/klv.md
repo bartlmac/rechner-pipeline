@@ -182,6 +182,49 @@ Jahrestags auswies: Sie lag unterjährig um bis zu 11/12 des
 Jahreszuwachses unter der Reserve, und sie war nie eine fachliche
 Entscheidung, sondern ein Erbe der jährlichen Fortschreibung.
 
+**Rückkaufswert des beitragsfreien Vertrags im Ausweis** (*Prüfrunde H,
+Fund H01; Kern 3.19.0*). In der Führungskonvention (`monatsgenau`) weist der
+Monatsabschluss — und mit ihm der Führungswert der Migrationsabnahme und die
+Zugangsprobe — für **jeden** beitragsfreien Vertrag den Rückkaufswert des
+beitragsfreien Vertrags aus (Entscheid B3, 7.2): seine Rückstellung abzüglich
+des Stornoabzugs nach derselben Tarifregel, angewandt auf die beitragsfreie
+Summe und ihre Rückstellung, je Vertrag oder je Baustein nach dem Tarifwerk,
+null in der flexiblen Phase, nie negativ. Die Bewertung liest ihn am Zustand
+des Kerns (`Vertragsstand.werte`) — auch für den beitragsfrei gestellten
+Vertrag ohne Herabsetzung und Teilkündigung, der dazu als Folge aus seinen
+Scheiben und der Freistellung gerechnet wird; dieselbe Rechnung liefert
+Deckungskapital, Korrekturschicht und beitragsfreie Summe. Bis dahin stand er
+im Ausweis mit 0,00, während Teilkündigung, Prüfstrecke und Kern für
+denselben Vertragsstand den Wert nach B3 rechneten (gemessen in der Welt der
+Prüfer: 212 beitragsfreie Verträge, Soll-Summe 984.513,66 EUR am Stichtag
+2020-11-01).
+
+Was je Konvention gilt:
+
+* `monatsgenau` (Führungskonvention, seit Kern 3.19.0): Rückkaufswert nach B3
+  wie oben.
+* `jahreszeile` (ältere, festgeschriebene Abschlüsse): der Rückkaufswert eines
+  beitragsfreien Vertrags ist 0,00 — so wurden diese Abschlüsse geschrieben,
+  und so rechnen sie deckungsgleich nach (gemessen an der gepinnten Datei
+  `tests/fixtures/abschluss_vor_umstellung`: zwei beitragsfreie Verträge,
+  beide 0,00).
+* Ein Abschluss der Konvention `monatsgenau`, der unter Kern 3.18.0 oder
+  früher geschrieben wurde, führt den Rückkaufswert beitragsfreier Verträge
+  mit 0,00. Die Nachrechnung (`pruefe_abschluss`) meldet den Kernsprung als
+  eigene Zeile und die Abweichung je Vertrag; der Abschluss bleibt stehen
+  (ADR-011). Gemessen: Das Repository trägt keinen solchen Abschluss (die
+  einzige gepinnte Datei steht in der Jahreszeile), und `main` kennt die
+  Konvention `monatsgenau` nicht — es gibt ihn nur aus Läufen des Zweigs, auf
+  dem die Konvention eingeführt wurde.
+
+Verworfen: (a) die Jahreszeile mitzuziehen — jeder ältere Abschluss würde
+nachträglich zum Befund, obwohl er nach seiner Regel richtig ist; (b) den
+Wert in der Bewertung mit einer zweiten Formel neben dem Kern zu rechnen —
+zwei Leser desselben Vertragsstands mit zwei Rechenwegen waren genau der
+Befund; (c) eine dritte Konvention für "monatsgenau mit B3" — die Konvention
+beschreibt die Mischung am Stichtag, und den Stand, unter dem ein Abschluss
+entstand, benennt bereits seine Kernversion.
+
 # 7 Geschäftsvorfälle (GeVo-Katalog)
 
 Buchungskonvention und die Einordnung der
@@ -737,6 +780,25 @@ Baldrian-Ketten). Verworfen: die Grenzen je Leser zu prüfen — die Leser
 delegieren sie an den Kern, und eine Wache an einem von zwei Eingängen ist
 keine.
 
+*Prüfrunde H, Fund H02/H04:* Die eine Stelle erreichte nur, wer den Vertrag
+über die Folge rechnete — also nur ein Vertrag mit registrierter Herabsetzung
+oder Teilkündigung. Eine Beitragsfreistellung am oder nach dem Beitragsende,
+über Historie und Ledger eingetragen, nahmen P-B1, Monatsabschluss,
+Bestandsbericht, Führungsprobe und die Vorlage zu A-M4 an; der Vertrag stand
+als beitragsfrei gestellt im Abschluss. Jetzt fragt die Prüfengine, durch die
+jeder Leser der Bestandstabellen geht (P-B1, Abschluss, Bericht, Tageslauf,
+Übernahme, Abnahmebericht), den Kern für **jede** Zeile jeder Art auf jedem
+Tabellenweg, der ihr Vertragsjahr trägt — Beitragsfreistellung in Historie und
+Ledger, Herabsetzung und Teilkündigung in Reduktionstabelle und Ledger,
+Erhöhung in Scheibentabelle und Ledger —, auch ohne Config und ohne weiteren
+Vorgang; die Bewertung prüft das Jahr der Beitragsfreistellung an derselben
+Stelle, auch wenn sie ohne P-B1 gerufen wird. Gemessen erzeugt kein
+Produzent eine solche Zeile (Engine, Übernahme, die Baldrian-Ketten).
+Verworfen: die Grenze in den Datenverträgen ein weiteres Mal nachzubauen —
+dort stehen für Herabsetzung, Teilkündigung und Erhöhung schon eigene
+Abschriften als Formprüfung; eine vierte wäre eine weitere Stelle, die aus dem
+Tritt geraten kann.
+
 *Entscheid 2026-10-01:* Eine Beitragsfreistellung gibt es nur, solange
 Beiträge laufen ($0 < a < t$; GeVo-Katalog der T-Box) — dieselbe Regel wie
 für die Herabsetzung, die nur Beiträge betrifft und nur Sinn ergibt, solange
@@ -805,7 +867,9 @@ Tarifgeneration ist eine Parametrierung, keine Formeländerung:
 * Tafelbereich: Alter ab der Tafel-Erschöpfung (erstes Alter nach
   $q_x \ge 1$, z. B. DAV 1994 T ab Alter 101) sind fail-fast; kein
   Alter über 123.
-* Kein Storno beitragsfreier Verträge (keine RKW-Regel definiert).
+* Die Ereignis-Engine zieht keinen Storno beitragsfreier Verträge
+  (Erfahrungsannahme); die Rückkaufswertregel des beitragsfreien Vertrags
+  ist die von 7.2 (B3), ausgewiesen nach Abschnitt 6.
 
 # 10 Abgrenzung: Bewertung und Fortschreibung
 

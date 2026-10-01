@@ -188,8 +188,25 @@ def test_monatsgenau_ist_die_mischung_der_jahreszeile_an_beiden_jahrestagen(typ)
         unten = _zeile(t, 12 * a, KONVENTION_JAHRESZEILE)
         assert neu is not None and unten is not None, (typ, monate)
         if rest == 0:
-            for g in GROESSEN + ("rueckkaufswert",):
-                assert neu[g] == unten[g], (typ, monate, g)
+            # Der Rueckkaufswert des beitragsfreien Vertrags ist eine Regel der
+            # Konvention, nicht der Mischung (Pruefrunde H, H01; Tarifplan KLV
+            # 6): die Jahreszeile fuehrt ihn mit 0,00 wie geschrieben, die
+            # Fuehrungskonvention mit dem Wert des Kerns (B3,
+            # tests/test_runde_h_bestand.py).
+            # Der beitragsfreie Vertrag rechnet in der Fuehrungskonvention ueber
+            # den Zustand des Kerns (Vertragsstand), die Jahreszeile ueber
+            # absorbierter_wert: am Jahrestag derselbe Wert, fuer die
+            # ueberfuehrte Schicht aber bis aufs letzte Bit (gemessen 7e-12
+            # EUR auf 42.143 EUR), nicht bitgleich.
+            beitragsfrei = neu["status"] == "PEX"
+            for g in GROESSEN + (() if beitragsfrei else ("rueckkaufswert",)):
+                if beitragsfrei:
+                    assert neu[g] == pytest.approx(unten[g], rel=1e-14, abs=1e-12), (typ, monate, g)
+                else:
+                    assert neu[g] == unten[g], (typ, monate, g)
+            if beitragsfrei:
+                assert unten["rueckkaufswert"] == 0.0, (typ, monate)
+                assert neu["rueckkaufswert"] > 0.0, (typ, monate)
             continue
         welt_oben = t if a + 1 < 25 else _ueber_den_ablauf(t)
         if VORGANG.get(typ) == 12 * (a + 1):

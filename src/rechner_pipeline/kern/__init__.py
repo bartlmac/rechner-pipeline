@@ -224,7 +224,21 @@ from rechner_pipeline.kern.vorgangsfolge import (
 #: benannt verweigert, statt still gerechnet. Kein Vertrag ohne Vorgang ist beruehrt: Sein Profil
 #: ist leer bzw. ueberall 1.0; alle Charakterisierungs-Referenzwerte des Kerns
 #: sind unveraendert.
-__version__ = "3.18.0"
+#: 3.19.0 = Pruefrunde H, H01 (Tarifplan KLV 6 und 7.2, Entscheid B3): Der
+#: Rueckkaufswert JEDES beitragsfreien Vertrags ist der des Zustands
+#: (``Vertragsstand.werte``: Rueckstellung minus Stornoabzug nach derselben
+#: Tarifregel, je Vertrag oder je Baustein) — nicht mehr nur am
+#: Ereignis-Anschluss (Teilkuendigung, Rueckkauf nach PEX). Die Fuehrung liest
+#: ihn fuer den beitragsfrei gestellten Vertrag ohne Herabsetzung und
+#: Teilkuendigung ueber die Folge aus Scheiben und Freistellung; bis 3.18.0
+#: wies sie ihn in der Konvention ``monatsgenau`` mit 0,00 aus. Keine Formel
+#: und kein Wert des Kerns aendert sich; die Spalten RKW und VS_bfr der
+#: Verlaufszeile und alle Charakterisierungs-Referenzwerte sind unveraendert.
+#: Die Hebung benennt den Stand, unter dem ein Abschluss der Konvention
+#: ``monatsgenau`` den Rueckkaufswert beitragsfreier Vertraege mit 0,00 fuehrt
+#: (``pruefe_abschluss`` meldet den Versionssprung als eigene Zeile); die
+#: Konvention ``jahreszeile`` fuehrt ihn weiter mit 0,00.
+__version__ = "3.19.0"
 
 __all__ = [
     "ModelPoint",

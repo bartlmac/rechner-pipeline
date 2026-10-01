@@ -109,10 +109,22 @@ def _dk(police: int, tag: dt.date) -> float:
 
 
 def _rkw(police: int, tag: dt.date) -> float:
-    """Rueckkaufswert aus der Monatsreserve (beitragsfrei: keiner)."""
+    """Rueckkaufswert aus der Monatsreserve; beitragsfrei der Rueckkaufswert
+    des beitragsfreien Vertrags (Tarifplan KLV 7.2, Entscheid B3; Pruefrunde H,
+    H01 — bis dahin hielt die Probe hier 0 gegen 0 und war fuer ihn blind):
+    die beitragsfreie Monatsreserve minus Stornoabzug auf die beitragsfreie
+    Summe, der Abzug von Hand (Satz mal Summe minus Reserve, Mindest- und
+    Hoechstbetrag, null in der flexiblen Phase)."""
     beginn, pex = VERTRAEGE[police]
-    return 0.0 if pex is not None else float(
-        _kern(beginn).monatsreserve(_monate(beginn, tag)).rkw)
+    kern, monate = _kern(beginn), _monate(beginn, tag)
+    if pex is None:
+        return float(kern.monatsreserve(monate).rkw)
+    mp, a = kern.mp, monate // 12
+    dk = float(kern.monatsreserve_beitragsfrei(pex, monate))
+    flex = mp.x + a >= mp.min_alter_flex and a >= mp.n - mp.min_rlz_flex
+    stoab = 0.0 if (a > mp.n or flex) else min(
+        mp.stoab_max, max(mp.stoab_min, mp.stoab_satz * (kern.beitragsfreie_summe(pex) - dk)))
+    return max(0.0, dk - stoab)
 
 
 def _jb(police: int) -> float:

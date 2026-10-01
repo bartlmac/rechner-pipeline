@@ -868,6 +868,9 @@ AUFRUFSTELLEN = {
         "bestand/ereignisse.py": 1,
         "bestand/ledger_bindung.py": 2,
         "bestand/migrationszugang.py": 1,
+        # Pruefrunde H, H02: die Jahresgrenzen je Tabellenweg (die Art einer
+        # Zeile der Reduktionstabelle sagt das Verfahren).
+        "bestand/vorbedingungen.py": 1,
         "betrieb/tageslauf.py": 1,
         "gates/fuehrungsprobe.py": 2,
         "models/bestand.py": 2,

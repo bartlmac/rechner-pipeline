@@ -44,8 +44,13 @@ jede Erhoehungsscheibe sind je ein Baustein. Ein Baustein traegt
 Ein Vertrag mit EINER Herabsetzung oder EINER Teilkuendigung rechnet hier
 bitgleich wie zuvor ueber ``ReduzierterVertrag`` (Test
 ``tests/test_vorgangsfolge.py``): dieselben Ausdruecke in derselben
-Reihenfolge. Ein Vertrag ohne Vorgang wird gar nicht ueber diese Klasse
-gerechnet; seine Werte entstehen unveraendert im Kern.
+Reihenfolge. Ein beitragspflichtiger Vertrag ohne Vorgang wird gar nicht
+ueber diese Klasse gerechnet; seine Werte entstehen unveraendert im Kern. Ein
+beitragsfrei gestellter Vertrag ohne Herabsetzung und Teilkuendigung ist die
+Folge aus seinen Scheiben und der Freistellung (Kern 3.19.0, Pruefrunde H,
+H01): Die Bewertung liest Reserve und Rueckkaufswert des beitragsfreien
+Vertrags hier, statt sie daneben zu rechnen — dieselben Ausdruecke wie
+``monatsreserve_beitragsfrei`` fuer die Reserve, der Rueckkaufswert nach B3.
 
 **Regeln der Verkettung** (Tarifplan KLV 7.3, Annahmen B2 bis B4):
 

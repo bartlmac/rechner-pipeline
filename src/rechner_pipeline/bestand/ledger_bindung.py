@@ -251,6 +251,45 @@ def zustand_vor(
     return str(juengste["status_code"])
 
 
+def pruefe_reduktionen_tarifwerk(
+    stamm: pd.DataFrame,
+    reduktionen: Optional[pd.DataFrame],
+    config: BestandConfig,
+) -> List[str]:
+    """Jede Zeile der Reduktionstabelle gegen Tarifwerk und Annahmen der
+    Config — die EINE Stelle, durch die Ledger-Weg und Tabellen-Weg von P-B1
+    gehen (``models.bestand.red_bindung_fehler``: Vorgang, Verfahren der
+    Generation, Rate und Anteil der Annahmen).
+
+    Pruefrunde H, H03/H05: Die Bindung lief nur innerhalb von
+    :func:`pruefe_ledger_betraege`, also nur mit Ledger. Eine
+    Reduktionstabelle ohne Ledger ging mit Config gruen durch P-B1, auch wenn
+    Verfahren und Anteil dem Tarifwerk und den Annahmen widersprachen. Die
+    Buchungen selbst (Betraege, Vollstaendigkeit) prueft nur die Herleitung
+    mit Ledger; das bleibt ohne Ledger offen und steht in der Summary.
+    """
+    errors: List[str] = []
+    if reduktionen is None or len(reduktionen) == 0:
+        return errors
+    tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
+    haupt = stamm.set_index("police_id")
+    je_police: Dict[int, List[Tuple[int, float, str]]] = {}
+    for z in reduktionen.to_dict("records"):
+        je_police.setdefault(int(z["police_id"]), []).append((
+            int(z["reduktion_jahr"]), float(z["anteil"]), str(z["verfahren"])))
+    for pid, vorgaenge in sorted(je_police.items()):
+        if pid not in haupt.index:
+            continue
+        tw = tarifwerk_je_generation.get(str(haupt.loc[pid, "tarif_generation"])) or {}
+        for r_jahr, anteil, verfahren in vorgaenge:
+            errors.extend(red_bindung_fehler(
+                pid, r_jahr, anteil, verfahren,
+                beitragsdauer=int(haupt.loc[pid, "premium_duration"]),
+                generation_verfahren=tw.get("red_verfahren"),
+                annahmen=config.annahmen))
+    return errors
+
+
 def pruefe_ledger_betraege(
     stamm: pd.DataFrame,
     ledger: pd.DataFrame,
@@ -299,18 +338,9 @@ def pruefe_ledger_betraege(
                 int(z["reduktion_jahr"]), float(z["anteil"]), str(z["verfahren"]),
                 pd.Timestamp(z["reduktion_datum"])))
     # Vorgang, Verfahren und Anteil sind Eigenschaften des Systems, nicht
-    # der Tabelle: das Verfahren steht im Tarifwerk der Generation, Rate und
-    # Anteil in den Annahmen (Angriffsrunde 2026-09-26; Runde C RC05).
-    for pid, vorgaenge in sorted(vorgaenge_je_police.items()):
-        if pid not in haupt.index:
-            continue
-        tw = tarifwerk_je_generation.get(str(haupt.loc[pid, "tarif_generation"])) or {}
-        for r_jahr, anteil, verfahren, _tag in vorgaenge:
-            errors.extend(red_bindung_fehler(
-                pid, r_jahr, anteil, verfahren,
-                beitragsdauer=int(haupt.loc[pid, "premium_duration"]),
-                generation_verfahren=tw.get("red_verfahren"),
-                annahmen=config.annahmen))
+    # der Tabelle (Angriffsrunde 2026-09-26; Runde C RC05) — dieselbe
+    # Funktion wie der Weg ohne Ledger in P-B1 (Pruefrunde H, H03).
+    errors.extend(pruefe_reduktionen_tarifwerk(stamm, reduktionen, config))
 
     scheiben_je_police: Dict[int, List[Tuple[int, float]]] = {}
     if scheiben is not None:

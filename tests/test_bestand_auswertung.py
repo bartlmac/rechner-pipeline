@@ -126,7 +126,16 @@ def test_vertragswerte_pex_nutzen_beitragsfreie_reserve(config):
     assert werte["deckungskapital"] == pytest.approx(kern.beitragsfreie_summe(4) * _mische(
         kern.verlaufszeile(10).vx_bfr, kern.verlaufszeile(11).vx_bfr, 125), rel=1e-12)
     assert werte["vs_bfr"] == kern.beitragsfreie_summe(4)
-    assert werte["rueckkaufswert"] == 0.0
+    # Rueckkaufswert beitragsfrei (Pruefrunde H, H01; Tarifplan KLV 7.2, B3):
+    # Rueckstellung minus Stornoabzug auf die beitragsfreie Summe, von Hand;
+    # die Jahreszeile fuehrt ihn wie geschrieben mit 0,00 (Tarifplan KLV 6).
+    mp = kern.mp
+    dk, summe = werte["deckungskapital"], werte["vs_bfr"]
+    stoab = min(mp.stoab_max, max(mp.stoab_min, mp.stoab_satz * (summe - dk)))
+    assert werte["rueckkaufswert"] == pytest.approx(max(0.0, dk - stoab), rel=1e-12)
+    assert 0.0 < werte["rueckkaufswert"] < dk
+    assert vertragswerte(kern, months_exp=125, pex_jahr=4,
+                         monatsgenau=False)["rueckkaufswert"] == 0.0
 
 
 def test_auswertungs_verlauf_ohne_historie_summiert_kernwerte(config):
@@ -252,7 +261,11 @@ def test_auswertung_pex_versatz_der_scheiben(config):
     kaputt.loc[0, "entry_age"] = 48
     kaputt.loc[0, "duration"] = 17
     kaputt.loc[0, "premium_duration"] = 12
-    with pytest.raises(ValueError, match="nicht vor der Beitragsfreistellung"):
+    # Seit Pruefrunde H (H01) rechnet der beitragsfreie Vertrag ueber den
+    # Zustand des Kerns; dort verweigert die Folge die Scheibe des PEX-Jahres
+    # (Erhoehung am Tag der Freistellung, nach ihr geordnet).
+    with pytest.raises(ValueError, match="nicht vor der Beitragsfreistellung"
+                       "|nach der Beitragsfreistellung"):
         auswertungs_verlauf(stamm, historie, config, [stichtag], scheiben=kaputt)
 
 
