@@ -46,7 +46,7 @@ flowchart TD
     betrieb -- 2 --> kern
     betrieb -- 32 --> models
     gates -- 14 --> bestand
-    gates -- 11 --> fall
+    gates -- 12 --> fall
     gates -- 10 --> kern
     gates -- 48 --> models
     gates -- 13 --> ontologie
@@ -96,7 +96,7 @@ flowchart TD
     system_entscheid -- 3 --> bu
     system_entscheid -- 12 --> klv
     system_entscheid -- 11 --> system_assurance
-    system_entscheid -- 1 --> system_fall
+    system_entscheid -- 2 --> system_fall
 ```
 
 ## 3 Der Zielrechenkern von innen

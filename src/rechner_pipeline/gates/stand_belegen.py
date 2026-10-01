@@ -37,7 +37,7 @@ Run via::
     python -m rechner_pipeline.gates.stand_belegen linie --linie linie
     python -m rechner_pipeline.gates.stand_belegen ordnung --linie linie \\
         --ordnung <ordnung.json> --vorgaenger keiner|<glied> [--vorstand-schluessel <datei>] \\
-        [--fruehere-zeichnungen <rolle>=gueltig|verfallen ...]
+        [--fruehere-zeichnungen <rolle>=gueltig|verfallen ...] [--vorschau]
     python -m rechner_pipeline.gates.stand_belegen verweisen --fall faelle/<fall> \\
         --gate A-K2|A-O1|A-T1 --linie linie --repo-root .
     python -m rechner_pipeline.gates.stand_belegen tbox \\
@@ -54,8 +54,9 @@ import hashlib
 import json
 import os
 import secrets
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline.gates import kernstand_belegen as _kern
@@ -100,7 +101,14 @@ COMMAND = "stand_belegen"
 #: einer Erklaerung. ``linie`` liefert bei der Wiederholung nach einem
 #: Ausfall das Ergebnis des ungestoerten Laufs; ``linie``, ``ordnung`` und
 #: ``tbox`` raeumen die Hardlink-Zwillinge ihrer Belege (H16).
-GATE_VERSION = "5.0.0"
+#: 6.0.0 (2026-10-01, Pruefrunde I; Major: ein vorher gruener Aufruf wird
+#: rot): ``ordnung`` verweigert ein ``--eingetragen-am`` nach der Uhr des
+#: Aufrufs (I04); liest Spitze, prueft Vorgaenger und haengt an unter EINER
+#: Sperre (``sperre_der_ordnung``), ein Glied heisst ``<nummer>.json`` (I18);
+#: ``--vorschau`` rechnet die Folge jeder Erklaerung, ohne zu schreiben
+#: (I03); die Folge kommt aus derselben Bestimmung wie die Wirkung beim
+#: Lesen (``ordnungslinie.getroffene_abnahmen``, I01/I02/I05).
+GATE_VERSION = "6.0.0"
 
 #: Fester Ort des T-Box-Aenderungsbelegs (wie bisher von A-O1 gelesen).
 TBOX_AENDERUNG_RELATIV = "abgeleitet/tbox/aenderung.json"
@@ -593,8 +601,7 @@ def rendere_ordnungslinie(glieder: List[Dict[str, Any]]) -> str:
     geminderter Rolle die Erklaerung des Vorstands mit ihrer Folge."""
     z = ["# Versionslinie der Zeichnungsordnung", ""]
     alt: Optional[dict] = None
-    vorher: Optional[Dict[str, Any]] = None
-    for g in glieder:
+    for j, g in enumerate(glieder):
         neu = ol.ordnung_aus(g)
         z += [f"## Glied {g['nummer']} — `{g['glied_sha256'][:16]}`", "",
               f"Ordnung `{g['ordnung_sha256'][:16]}`, eingetragen am {g['eingetragen_am']}.  ",
@@ -603,12 +610,112 @@ def rendere_ordnungslinie(glieder: List[Dict[str, Any]]) -> str:
             z += [f"Gezeichnet: {g['zeichnung']['rolle']} ({g['zeichnung']['gate']}), Schluessel "
                   f"`{g['zeichnung']['schluessel_sha256'][:16]}`.", ""]
         z += ordnung_sicht(alt, neu) + [""]
-        folgen = ol.folge_der_erklaerung(g, vorher)
+        folgen = ol.folge_der_erklaerung(glieder, j)
         if folgen:
             z += ["Fruehere Zeichnungen der geminderten Rollen (Erklaerung des Vorstands):", ""]
             z += [f"- {rolle}: {text}" for rolle, text in folgen.items()] + [""]
-        alt, vorher = neu, g
+        alt = neu
     return "\n".join(z)
+
+
+#: Die Sperre der Ordnungslinie (Pruefrunde I, I18): Lesen der Spitze, Pruefen
+#: des Vorgaengers und Anhaengen geschehen unter EINER Sperre; neben
+#: ``ordnung/`` im Linienbereich, kein Glied und kein Beleg.
+ORDNUNG_SPERRE = ".ordnung.sperre"
+
+
+@contextmanager
+def sperre_der_ordnung(linie: Path) -> Iterator[None]:
+    """Die Sperre, unter der ``stand_belegen ordnung`` die Spitze liest, den
+    Vorgaenger prueft und anhaengt — von zwei gleichzeitigen Eintraegen auf
+    derselben Spitze sieht der zweite die neue Spitze und wird benannt
+    verweigert ("der genannte Vorgaenger ... ist nicht die Spitze").
+
+    Dasselbe Sperrmittel wie der Eingang eines Falls
+    (``fall._sperre_datei``: ``flock`` auf einem stabilen Deskriptor,
+    blockierend; die Sperrdatei bleibt liegen, die Sperre ist ein Kernel-Lock
+    auf ihrem Inode, kein Sentinel) — keine zweite Bauform. Zusaetzlich traegt
+    jedes Glied seine Nummer als Dateinamen (``ordnungslinie.dateiname``):
+    Auch ein Weg ohne diese Sperre legt kein zweites Glied derselben Nummer ab.
+    """
+    from rechner_pipeline.fall import _entsperre_datei, _sperre_datei
+
+    pfad = Path(linie) / ORDNUNG_SPERRE
+    if pfad.is_symlink():
+        raise OSError(f"die Sperre der Ordnungslinie ist ein Symlink ({pfad})")
+    fd = os.open(pfad, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        if os.fstat(fd).st_size == 0:
+            os.write(fd, b"0")
+        _sperre_datei(fd)
+        try:
+            yield
+        finally:
+            _entsperre_datei(fd)
+    finally:
+        os.close(fd)
+
+
+def _ordnung_vorschau(linie: Path, ordnung_roh: bytes, *, vorgaenger: Optional[str],
+                      eingetragen_am: str, uhr: str, erklaerung: Dict[str, str]) -> ToolboxResult:
+    """``ordnung --vorschau`` (Pruefrunde I, I03/I15/I19): die Folge VOR der Wahl.
+
+    Rechnet fuer die genannte Ordnung und den genannten Vorgaenger dieselben
+    Pruefungen wie das Anhaengen (``ordnungslinie.pruefe_anhang``), die
+    Aenderungen, die geminderten Rollen, die noch fehlenden Erklaerungen und
+    je Rolle die Folge — fuer die genannte Erklaerung, sonst fuer BEIDE —, aus
+    derselben Funktion, die der echte Aufruf ausgibt
+    (``ordnungslinie.folge_der_erklaerung`` auf dem noch nicht gezeichneten
+    Glied). Schreibt nichts: kein Glied, keine Sicht, keine Tempdatei, keine
+    Sperrdatei; zeichnet nichts und braucht keinen Schluessel. Die Linie liest
+    sie strukturell — sie zeigt, sie gruendet nichts; der echte Aufruf liest
+    mit dem Ring des Vorstands und verweigert eine verletzte Linie.
+    """
+    def fehler(text: str) -> ToolboxResult:
+        return build_result(command=COMMAND, gate_version=GATE_VERSION,
+                            exit_code=Exit.FILE_CONTRACT,
+                            errors=[{"code": "stand", "message": text}])
+
+    glieder, lf = ol.lade_linie_strukturell_zur_anzeige(linie)
+    if lf:
+        return fehler("die Linie ist verletzt: " + "; ".join(lf[:3]))
+    try:
+        aliste = ol.pruefe_anhang(glieder, ordnung_roh, vorgaenger=vorgaenger,
+                                  eingetragen_am=eingetragen_am, uhr=uhr)
+    except ol.OrdnungslinieFehler as exc:
+        return fehler(str(exc))
+    geminderte = ol.geminderte_rollen(aliste)
+    fremd = sorted(r for r in erklaerung if r not in geminderte)
+    if fremd:
+        return fehler(f"fruehere_zeichnungen nennt {fremd}, die das Glied nicht mindert — "
+                      "erklaert wird nur, was gemindert wird")
+    vorher = ol.ordnung_aus(glieder[-1]) if glieder else None
+
+    def folge_bei(wahl: str) -> Dict[str, str]:
+        werte = {r: erklaerung.get(r, wahl) for r in geminderte}
+        kuenftig = ol.baue_glied(ordnung_roh, nummer=len(glieder) + 1, vorgaenger=vorgaenger,
+                                 eingetragen_am=eingetragen_am, vorher=vorher,
+                                 fruehere_zeichnungen=werte)
+        return ol.folge_der_erklaerung([*glieder, kuenftig], len(glieder))
+
+    folgen: Dict[str, Dict[str, str]] = {r: {} for r in geminderte}
+    for wahl in ol.ERKLAERUNGEN:
+        je_rolle = folge_bei(wahl)
+        for r in geminderte:
+            if erklaerung.get(r, wahl) == wahl:
+                folgen[r][wahl] = je_rolle[r]
+    fehlt = [r for r in geminderte if r not in erklaerung]
+    summary: Dict[str, Any] = {
+        "vorschau": True, "geschrieben": False, "nummer": len(glieder) + 1,
+        "aenderung": ordnung_sicht(vorher, json.loads(ordnung_roh.decode("utf-8"))),
+        "geminderte_rollen": geminderte, "erklaerung_fehlt": fehlt, "folgen": folgen,
+        "linie_gelesen": "strukturell, ohne die Signaturen der Glieder — eine Vorschau "
+                         "gruendet nichts; das Anhaengen liest mit dem Ring des Vorstands"}
+    if not fehlt:
+        # Genau das, was der echte Aufruf mit dieser Erklaerung ausgibt.
+        summary["fruehere_zeichnungen"] = folge_bei(ol.ERKLAERUNGEN[0])
+    return build_result(command=COMMAND, gate=ol.ORDNUNGS_GATE, gate_version=GATE_VERSION,
+                        exit_code=Exit.OK, summary=summary)
 
 
 def _erklaerungen(werte: Optional[List[str]]) -> Tuple[Dict[str, str], List[str]]:
@@ -657,6 +764,11 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
                         "Zeichnungen geschieht — gueltig (tragen weiter, wenn vor diesem Glied "
                         "gezeichnet) oder verfallen (tragen nichts mehr, neu zu zeichnen); "
                         "wiederholbar, keine Vorgabe")
+    o.add_argument("--vorschau", action="store_true",
+                   help="nur rechnen, nichts schreiben und nichts zeichnen: Aenderungen, "
+                        "geminderte Rollen, noetige Erklaerungen und je Rolle die Folge von "
+                        "gueltig UND verfallen (bzw. der genannten Erklaerung) — vor der Wahl "
+                        "lesen; braucht keinen Schluessel")
     v = unter.add_parser("verweisen", help="Verweis auf die geltende Abnahme der Linie")
     v.add_argument("--fall", required=True)
     v.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", required=True)
@@ -731,6 +843,18 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
         erklaerung, ef = _erklaerungen(args.fruehere_zeichnungen)
         if ef:
             return _fehler(Exit.USAGE, "; ".join(ef))
+        # Die Uhr des Aufrufs, EINMAL gelesen (Naht der Tests: ``utc_now``):
+        # Vorgabe von eingetragen_am und dessen Obergrenze (Pruefrunde I, I04).
+        uhr = utc_now()
+        vorgaenger = None if args.vorgaenger == "keiner" else args.vorgaenger
+        try:
+            ordnung_roh = quelle_pfad.read_bytes()
+        except OSError as exc:
+            return _fehler(Exit.FILE_CONTRACT, str(exc))
+        if args.vorschau:
+            return _ordnung_vorschau(linie, ordnung_roh, vorgaenger=vorgaenger,
+                                     eingetragen_am=args.eingetragen_am or uhr, uhr=uhr,
+                                     erklaerung=erklaerung)
         # Wer den Bereich der Glieder betritt, raeumt die Hardlink-Zwillinge
         # eingehaengter Glieder (H16) — auch der Pfad "liegt schon" unten, der
         # nichts schreibt, und jedes spaetere Anhaengen.
@@ -749,58 +873,66 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
             if rf or aktiv is None:
                 return _fehler(Exit.USAGE, "; ".join(rf) or "Schluessel des Vorstands nicht geladen")
             schluessel = ring[aktiv]
-        glieder, lf = ol.lade_linie(linie, ring=ring)
-        if lf:
-            return _fehler(Exit.FILE_CONTRACT, "die Linie ist verletzt: " + "; ".join(lf[:3]))
-        vorgaenger = None if args.vorgaenger == "keiner" else args.vorgaenger
-        try:
-            ordnung_roh = quelle_pfad.read_bytes()
-        except OSError as exc:
-            return _fehler(Exit.FILE_CONTRACT, str(exc))
         sicht_ziel = linie / "abgeleitet" / "ordnung" / "linie.md"
-        oben = glieder[-1] if glieder else None
-        if oben is not None and oben["vorgaenger"] == vorgaenger \
-                and oben["ordnung_sha256"] == hashlib.sha256(ordnung_roh).hexdigest():
-            # Derselbe Aufruf fuer das Glied, das schon die Spitze ist (Runde
-            # G, G26): Fiel nach dem Glied die Sicht aus, zieht die
-            # Wiederholung sie nach, statt mit "Vorgaenger ist nicht die
-            # Spitze" zu enden — ohne zweites Glied und ohne neue Zeichnung.
-            # Derselbe Aufruf heisst auch: dieselbe Erklaerung (Pruefrunde H).
-            if erklaerung != oben.get("fruehere_zeichnungen"):
+        # Lesen der Spitze, Pruefen des Vorgaengers und Anhaengen unter EINER
+        # Sperre (Pruefrunde I, I18): Zwei gleichzeitige Eintraege auf derselben
+        # Spitze legten zwei Glieder derselben Nummer ab, beide mit Exit 0.
+        with sperre_der_ordnung(linie):
+            glieder, lf = ol.lade_linie(linie, ring=ring)
+            if lf:
+                return _fehler(Exit.FILE_CONTRACT, "die Linie ist verletzt: " + "; ".join(lf[:3]))
+            oben = glieder[-1] if glieder else None
+            if oben is not None and oben["vorgaenger"] == vorgaenger \
+                    and oben["ordnung_sha256"] == hashlib.sha256(ordnung_roh).hexdigest():
+                # Derselbe Aufruf fuer das Glied, das schon die Spitze ist (Runde
+                # G, G26): Fiel nach dem Glied die Sicht aus, zieht die
+                # Wiederholung sie nach, statt mit "Vorgaenger ist nicht die
+                # Spitze" zu enden — ohne zweites Glied und ohne neue Zeichnung.
+                # Derselbe Aufruf heisst auch: dieselbe Erklaerung (Pruefrunde H).
+                if erklaerung != oben.get("fruehere_zeichnungen"):
+                    return _fehler(Exit.FILE_CONTRACT, (
+                        f"das Glied {oben['nummer']} liegt schon mit der Erklaerung "
+                        f"{oben.get('fruehere_zeichnungen')}, dieser Aufruf nennt {erklaerung} — "
+                        "ein Glied wird nie umgeschrieben. Ausweg: die Erklaerung des liegenden "
+                        "Glieds nennen; soll sie sich aendern, ist das ein neues Glied mit einer "
+                        "neuen Ordnung"))
+                _ersetze(sicht_ziel, rendere_ordnungslinie(glieder).encode("utf-8"))
+                return build_result(
+                    command=COMMAND, gate=ol.ORDNUNGS_GATE, gate_version=GATE_VERSION,
+                    exit_code=Exit.OK,
+                    paths={"glied": str(linie / ol.VERZEICHNIS / ol.dateiname(oben))},
+                    summary={"nummer": oben["nummer"], "glied_sha256": oben["glied_sha256"],
+                             "ordnung_sha256": oben["ordnung_sha256"],
+                             "gezeichnet": oben["zeichnung"] is not None,
+                             "bereits_vorhanden": True,
+                             "aenderung": ordnung_sicht(
+                                 ol.ordnung_aus(glieder[-2]) if len(glieder) > 1 else None,
+                                 ol.ordnung_aus(oben)),
+                             "fruehere_zeichnungen": ol.folge_der_erklaerung(
+                                 glieder, len(glieder) - 1)})
+            try:
+                glied = ol.neues_glied(
+                    glieder, ordnung_roh, vorgaenger=vorgaenger,
+                    eingetragen_am=args.eingetragen_am or uhr, uhr=uhr,
+                    fruehere_zeichnungen=erklaerung,
+                    vorstand_schluessel=schluessel)
+            except ol.OrdnungslinieFehler as exc:
+                return _fehler(Exit.FILE_CONTRACT, str(exc))
+            ziel = linie / ol.VERZEICHNIS / ol.dateiname(glied)
+            ziel.parent.mkdir(parents=True, exist_ok=True)
+            daten = _json_bytes(glied)
+            try:
+                schreibe_exklusiv(ziel, daten)
+            except FileExistsError:
+                # Nur ein Weg OHNE diese Sperre kommt hierher: Die Nummer ist
+                # schon vergeben. Kein zweites Glied derselben Nummer.
                 return _fehler(Exit.FILE_CONTRACT, (
-                    f"das Glied {oben['nummer']} liegt schon mit der Erklaerung "
-                    f"{oben.get('fruehere_zeichnungen')}, dieser Aufruf nennt {erklaerung} — ein "
-                    "Glied wird nie umgeschrieben. Ausweg: die Erklaerung des liegenden Glieds "
-                    "nennen; soll sie sich aendern, ist das ein neues Glied mit einer neuen "
-                    "Ordnung"))
-            _ersetze(sicht_ziel, rendere_ordnungslinie(glieder).encode("utf-8"))
-            return build_result(
-                command=COMMAND, gate=ol.ORDNUNGS_GATE, gate_version=GATE_VERSION,
-                exit_code=Exit.OK,
-                paths={"glied": str(linie / ol.VERZEICHNIS / ol.dateiname(oben))},
-                summary={"nummer": oben["nummer"], "glied_sha256": oben["glied_sha256"],
-                         "ordnung_sha256": oben["ordnung_sha256"],
-                         "gezeichnet": oben["zeichnung"] is not None,
-                         "bereits_vorhanden": True,
-                         "aenderung": ordnung_sicht(
-                             ol.ordnung_aus(glieder[-2]) if len(glieder) > 1 else None,
-                             ol.ordnung_aus(oben)),
-                         "fruehere_zeichnungen": ol.folge_der_erklaerung(
-                             oben, glieder[-2] if len(glieder) > 1 else None)})
-        try:
-            glied = ol.neues_glied(
-                glieder, ordnung_roh, vorgaenger=vorgaenger,
-                eingetragen_am=args.eingetragen_am or utc_now(),
-                fruehere_zeichnungen=erklaerung,
-                vorstand_schluessel=schluessel)
-        except ol.OrdnungslinieFehler as exc:
-            return _fehler(Exit.FILE_CONTRACT, str(exc))
-        ziel = linie / ol.VERZEICHNIS / ol.dateiname(glied)
-        ziel.parent.mkdir(parents=True, exist_ok=True)
-        daten = _json_bytes(glied)
-        schreibe_exklusiv(ziel, daten)
-        neu, _ = ol.lade_linie(linie, ring=ring)
-        _ersetze(sicht_ziel, rendere_ordnungslinie(neu).encode("utf-8"))
+                    f"Glied {glied['nummer']} liegt schon ({ziel.name}) — ein gleichzeitiger "
+                    "Eintrag ausserhalb der Sperre war schneller; dieses Glied ist nicht "
+                    "angehaengt. Ausweg: die Linie ansehen und, wenn noetig, an die neue Spitze "
+                    "anhaengen (ADR-025, Nachtrag Pruefrunde I)"))
+            neu, _ = ol.lade_linie(linie, ring=ring)
+            _ersetze(sicht_ziel, rendere_ordnungslinie(neu).encode("utf-8"))
         return build_result(
             command=COMMAND, gate=ol.ORDNUNGS_GATE, gate_version=GATE_VERSION, exit_code=Exit.OK,
             paths={"glied": str(ziel)},
@@ -810,11 +942,11 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
                      "bereits_vorhanden": False,
                      "aenderung": ordnung_sicht(
                          ol.ordnung_aus(glieder[-1]) if glieder else None, ol.ordnung_aus(glied)),
-                     # Je geminderter Rolle die Folge der Erklaerung, woertlich
-                     # (Pruefrunde H): bei "verfallen" die neu zu zeichnenden
-                     # Gates aus der Ordnung des Vorgaengers.
+                     # Je geminderter Rolle die Folge der Erklaerung, woertlich —
+                     # aus derselben Bestimmung wie die Wirkung beim Lesen
+                     # (Pruefrunde I; ``ordnungslinie.getroffene_abnahmen``).
                      "fruehere_zeichnungen": ol.folge_der_erklaerung(
-                         glied, glieder[-1] if glieder else None)},
+                         [*glieder, glied], len(glieder))},
             output_hashes={str(ziel): hashlib.sha256(daten).hexdigest()})
 
     fall = Path(args.fall or getattr(args, "linie", None) or "")

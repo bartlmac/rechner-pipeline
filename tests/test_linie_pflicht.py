@@ -242,6 +242,10 @@ GRUENDENDE_LINIENLESER = Counter({
 #: nichts und gruendet nichts, die Linie steht nur in ihrer Ausgabe.
 ANZEIGENDE_LINIENLESER = Counter({
     ("gates/gate_entscheid.py", "main", "anzeige"): 1,
+    # Die Vorschau eines Glieds (Pruefrunde I, I03): Sie rechnet die Folge
+    # einer Erklaerung, schreibt und zeichnet nichts und braucht keinen
+    # Schluessel; das Anhaengen danach liest mit dem Ring.
+    ("gates/stand_belegen.py", "_ordnung_vorschau", "anzeige"): 1,
 })
 
 

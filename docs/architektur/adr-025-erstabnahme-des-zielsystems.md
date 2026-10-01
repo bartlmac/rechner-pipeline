@@ -200,8 +200,9 @@ aendert sich oefter, als gezeichnet wird, jede Erweiterung entwertete alle
 Belege.
 
 **Die Linie** liegt im Linienbereich unter `ordnung/`, je Glied eine Datei
-`<nummer>-<glied_sha256>.json`, angehaengt, nie umgeschrieben (exklusiv
-geschrieben), hash-verkettet. Ein Glied traegt Nummer, Vorgaenger (Hash des
+`<nummer>.json` (bis Pruefrunde I `<nummer>-<glied_sha256>.json`; Nachtrag
+Pruefrunde I, Punkt 4), angehaengt, nie umgeschrieben (exklusiv geschrieben,
+unter einer Sperre), hash-verkettet. Ein Glied traegt Nummer, Vorgaenger (Hash des
 Glieds davor), den SHA-256 der Ordnungsdatei und ihren INHALT Byte fuer
 Byte (Rollen mit Klasse, Fingerabdruck und Gates — keine Geheimnisse),
 die aus beiden Staenden GERECHNETE Aenderungsliste (`neue_rolle`,
@@ -466,15 +467,21 @@ Laufs.
    rechner_pipeline.gates.stand_belegen verweisen --fall <fall> --gate
    A-K2|A-O1|A-T1 --linie linie --repo-root .`; jeden Entscheid des Falls
    mit `--linie linie` zeichnen.
-9. **Eine Ordnungsaenderung spaeter:** `... stand_belegen ordnung --linie
-   linie --ordnung <neue ordnung> --vorgaenger <glied_sha256 der Spitze>
-   --vorstand-schluessel <vorstand.key> [--fruehere-zeichnungen
-   <rolle>=gueltig|verfallen ...]` — die Erklaerung ist Pflicht je Rolle,
-   die das Glied mindert (Entzug eines Gates, Schluessel- oder
-   Klassenwechsel, Rolle entfaellt; Nachtrag Pruefrunde H); ohne sie nennt
-   die Verweigerung die Rollen. Vor der Wahl die Folge lesen: Ausgabe
-   (`summary.fruehere_zeichnungen`) und Sicht nennen je Rolle, was
-   `verfallen` neu zu zeichnen verlangt. Ansehen, was sich aendert:
+9. **Eine Ordnungsaenderung spaeter — erst die Vorschau, dann anhaengen**
+   (Nachtrag Pruefrunde I, Punkt 2). Vorschau: `python -m
+   rechner_pipeline.gates.stand_belegen ordnung --linie linie --ordnung
+   <neue_ordnung> --vorgaenger <spitze> --vorschau` — sie nennt die
+   Aenderungen, die geminderten Rollen (Entzug eines Gates, Schluessel- oder
+   Klassenwechsel, Rolle entfaellt; Nachtrag Pruefrunde H) und je Rolle die
+   Folge von `gueltig` UND `verfallen` (`summary.folgen`); sie schreibt
+   nichts, zeichnet nichts und braucht keinen Schluessel. Dann anhaengen:
+   `python -m rechner_pipeline.gates.stand_belegen ordnung --linie linie
+   --ordnung <neue_ordnung> --vorgaenger <spitze> --vorstand-schluessel
+   <vorstand.key> [--fruehere-zeichnungen <rolle>=gueltig|verfallen ...]` —
+   die Erklaerung ist Pflicht je geminderter Rolle; ohne sie nennt die
+   Verweigerung die Rollen und die Vorschau als Weg. Ausgabe
+   (`summary.fruehere_zeichnungen`) und Sicht nennen danach dieselbe Folge
+   wie die Vorschau. Ansehen, was sich aendert:
    `linie/abgeleitet/ordnung/linie.md`. Nach einem Wechsel des
    Vorstandsschluessels werden der alte UND der neue genannt
    (`--vorstand-schluessel <alt.key> --vorstand-schluessel <neu.key>`, der
@@ -956,7 +963,9 @@ Betriebs samt Registrierung, Zugangsprobe, Neuaufsetzen und Bindung): Die
 Zeichnung (Rolle R des Fingerabdrucks F unter dem gepinnten Glied, Gate G,
 Klasse K) gilt unter einer Ordnung, solange diese R mit F, G und K fuehrt. Das
 erste spaetere Glied der Linie DES LESERS, unter dem sie nicht mehr gilt,
-entscheidet mit seiner Erklaerung fuer R: `verfallen` — benannte
+entscheidet mit seiner Erklaerung fuer R (ersetzt durch den Nachtrag
+Pruefrunde I, Punkt 1: verfolgt wird die Linie der Rolle ueber jedes spaetere
+Glied, nicht nur das erste): `verfallen` — benannte
 Verweigerung, gleich wann gezeichnet wurde ("mit Glied j hat der Vorstand die
 frueheren Zeichnungen der Rolle R fuer verfallen erklaert ... neu
 zeichnen"); `gueltig` — die Zeichnung traegt, wenn ihr `entschieden_am` (im
@@ -1116,3 +1125,193 @@ Leser nimmt ihn auf).
 Minderung und mit einem frueheren `--eingetragen-am` war gruen), Glied der
 Ordnungslinie Schema 2. Die Gate-Version P9 bleibt 5.0.0 und das
 Snapshot-Schema 10: Die Gestalt des Snapshots aendert sich nicht.
+
+## Nachtrag 2026-10-01: Pruefrunde I — "verfallen" trifft die Linie der Rolle; die Folge vor der Wahl; die Uhr des Aufrufs; eine Sperre
+
+Befunde der blinden Pruefrunde I (Linsen "Linie-Lebenslauf", "Lebenslauf-Beleg",
+"Tarifregeln-Vertrag", "Betrieb-Ausfall"), bestaetigt vom Widerleger; gebaut
+nach den Entscheiden des Maintainers.
+
+**1. Die Erklaerung trifft die LINIE einer Rolle (I01 und I05, hoch; I02,
+mittel; eine Klasse).** Die Wirkung von `verfallen` hing am ROLLENNAMEN des
+gepinnten Glieds und an genau EINEM Uebergang: `abloesung_fehler` bestimmte die
+Rolle einmal und beendete die Verfolgung beim ersten Glied, unter dem die
+Zeichnung nicht mehr galt. Gemessen: (1) Glied 2 benennt eine Rolle um
+(derselbe Schluessel, `gueltig`), Glied 3 wechselt ihren Schluessel mit
+`verfallen` — die Zeichnungen des alten Schluessels trugen weiter, auch eine,
+die unter einer aelteren Kopie der Linie mit zurueckgestellter Uhr entstand;
+(2) der Vorstandsschluessel wandert mit `gueltig` zu einer anderen Rolle und
+wird dort fuer `verfallen` erklaert — ein mit ihm gezeichneter Fallauftrag trug
+weiter; (3) Vorstand v1 -> v2 `gueltig`, v2 -> v3 `verfallen` — der Produzent
+nannte "jeder Fallauftrag ... traegt nichts mehr", der v1-Fallauftrag trug
+weiter. Wurde ein Schluessel einmal mit `gueltig` abgeloest, liess sich eine
+spaeter entdeckte Kompromittierung nicht mehr ausdruecken, und die Folge, die
+der Produzent nannte, war nicht die Wirkung.
+
+*Regel* (`models.ordnungslinie.treffer_der_erklaerungen`, die EINE
+Bestimmung). Verfolgt wird eine Abnahme vom gepinnten Glied an ueber JEDES
+spaetere Glied der Linie des Lesers, und mit ihr die Linie der zeichnenden
+Rolle als zwei Mengen: Namen (beginnt mit dem Rollennamen der Zeichnung) und
+Schluessel (beginnt mit ihrem Fingerabdruck). An jedem Glied traegt eine Rolle,
+deren Name zur Linie gehoert, ihren Schluessel bei, und eine Rolle, die einen
+Schluessel der Linie haelt, ihren Namen (`linie_fortschreiben`: Kontinuitaet
+ueber den Namen ODER den Schluessel; die Mengen wachsen nur). (a) Erklaert ein
+Glied `verfallen` fuer eine geminderte Rolle, deren Name im Glied davor zur
+Linie gehoert, ist die Abnahme entwertet — gleich wann und mit welchem
+Schluessel der Linie sie gezeichnet wurde und gleich, ob ein frueheres Glied
+`gueltig` erklaert hat. Trifft die Minderung den Schluessel (Rolle entfaellt,
+Schluessel- oder Klassenwechsel; `entzieht_das_vertrauen`), faellt jede
+Abnahme der Linie, gleich fuer welches Gate — auch eine, die der Schluessel
+unter einem frueheren Namen fuer ein Gate zeichnete, das die geminderte Rolle
+nie hatte (der gewanderte Vorstandsschluessel); entzieht sie nur Gates, nur
+die Abnahmen dieser Gates. (b) `gueltig` an dem Glied, mit dem der Schluessel
+der Abnahme ihr Gate unter keinem Namen der Linie mehr traegt, verlangt wie
+bisher, dass sie vor dessen Eintrag gezeichnet wurde. Eine Umbenennung
+(derselbe Schluessel, dieselben Gates unter neuem Namen) laesst die Abnahme
+also gelten, ohne Zeitregel. (c) Die Verfolgung endet nicht beim ersten
+Treffer. Die Kette der Glieder bleibt unberuehrt: Die Erklaerung wirkt auf
+Abnahmen, `lade_linie` prueft die Glieder wie bisher.
+
+*Folge gleich Wirkung.* Die Folge, die Ausgabe, Vorschau und Sicht nennen
+(`folge_der_erklaerung`), kommt aus `getroffene_abnahmen`; die zaehlt jede
+Stelle auf, an der vor dem Glied eine Abnahme gezeichnet sein kann (jedes
+fruehere Glied, jede Rolle, jedes ihrer Gates ausser `A-Z1`), und fragt
+dieselbe Funktion wie der Leser. Die Folge nennt je Rolle die getroffenen
+Gates und die Glieder, Namen und Schluessel der Linie, unter denen sie
+gezeichnet sein koennen; liegt `A-M6` darunter, die Kaskade des Fallauftrags.
+Eine statische Ratsche (`==`) haelt, dass nur `abloesung_fehler` und
+`getroffene_abnahmen` die Bestimmung rufen und wer das Feld
+`fruehere_zeichnungen` ueberhaupt liest; ein Eigenschaftstest haelt fuer
+zufaellige Linien aus drei bis sechs Gliedern die Wirkung jeder Abnahme gegen
+eine im Test formulierte Fassung der Regel und die genannten Gates gegen die
+getroffenen (`tests/test_ordnungslinie_rollenlinie.py`).
+
+*Verworfen:* **Wirkung je Schluessel** (`verfallen` trifft nur Zeichnungen des
+Schluessels, den dieses Glied abloest) — dann waere ein einmal mit `gueltig`
+abgeloester Schluessel nie mehr entwertbar, und genau das war der Fund.
+**Wirkung je Rollenname** (der Stand vorher) — eine Umbenennung oder eine
+Wanderung des Schluessels entzog ihn jeder spaeteren Erklaerung. **Nur die
+Folge umformulieren** (sie nennt die tatsaechliche, schmale Wirkung) — sie waere
+dann wahr, der Vorstand koennte die Kompromittierung aber weiter nicht
+ausdruecken.
+
+*Entscheid mit Preis: Ueberentwertung.* Die Linie einer Rolle umfasst alle
+ihre frueheren Namen und Schluessel. Ein spaeteres `verfallen` trifft deshalb
+auch Abnahmen eines frueheren, vertrauenswuerdigen Halters derselben Rolle
+(Vorstand v1 -> v2 `gueltig`, v2 -> v3 `verfallen`: auch die Fallauftraege von
+v1 fallen). Das ist die sichere Richtung und der Text "jede fruehere Abnahme
+dieser Rolle". Die Folge nennt es vor der Wahl.
+
+**2. Die Folge vor der Wahl: die Vorschau (I03, I15, I19; mittel; derselbe
+Fund aus drei Linsen).** Die Folge einer Erklaerung stand erst in der Ausgabe
+des Aufrufs, der das Glied gezeichnet und unwiderruflich angehaengt hatte;
+"vor der Wahl die Folge lesen" war nicht ausfuehrbar. *Regel.* `stand_belegen
+ordnung --vorschau` prueft dieselben Vorbedingungen wie das Anhaengen
+(`ordnungslinie.pruefe_anhang`: Vorgaenger ist die Spitze, die Ordnung darf in
+die Linie, Zeitpunkt), nennt Aenderungen, geminderte Rollen, die noch
+fehlenden Erklaerungen und je Rolle die Folge von `gueltig` UND `verfallen`
+(fuer eine genannte Erklaerung nur diese), aus `folge_der_erklaerung` auf dem
+noch nicht gezeichneten Glied — also dieselbe Folge wie danach das Anhaengen
+(`==`, Test). Sie schreibt nichts (kein Glied, keine Sicht, keine Tempdatei,
+keine Sperrdatei; der Linienbereich ist danach byte-gleich), zeichnet nichts
+und braucht keinen Schluessel. Das Anhaengen ohne Erklaerung nennt in seiner
+Verweigerung die Vorschau als Weg (Bedienfolge, Schritt 9). *Grenze, benannt:*
+Die Vorschau liest die Linie strukturell, ohne die Signaturen der Glieder
+(`lade_linie_strukturell_zur_anzeige`; sie gruendet nichts, Ratsche
+`tests/test_linie_pflicht.py`); auf einer gefaelschten Linie zeigte sie eine
+falsche Folge, das Anhaengen danach liest mit dem Ring und verweigert.
+*Verworfen:* **ein Probelauf, der das Glied in eine Kopie schreibt** — eine
+Schreibstelle mehr, deren Ausfall benannt sein muesste, fuer eine Rechnung, die
+nichts schreiben muss; **die Folge nur in die Verweigerung schreiben** — die
+Verweigerung kommt nur, wenn eine Erklaerung fehlt; wer sie schon nennt, saehe
+die Folge wieder erst danach.
+
+**3. Ein Glied wird nicht spaeter datiert als die Uhr des Aufrufs (I04,
+niedrig).** `--eingetragen-am` in der Zukunft wurde angenommen; die Zeitregel
+liess dann Zeichnungen des abgeloesten Schluessels gelten, die nach dem
+tatsaechlichen Anhaengen entstanden, und jedes naechste Glied war mit der Uhr
+nicht mehr anhaengbar. *Regel* (`pruefe_anhang`, Parameter `uhr` ohne
+Vorgabe): `eingetragen_am` liegt zwischen dem Eintrag der Spitze und der Uhr
+des Aufrufs, beide eingeschlossen. Die Uhr liest der Produzent einmal ueber die
+Naht des Moduls (`stand_belegen.utc_now`); ohne `--eingetragen-am` ist sie der
+Zeitpunkt. *Keine Toleranz:* Wer anhaengt, ist der Prozess, dessen Uhr gilt —
+ein Spielraum ueber sie hinaus waere das Fenster des Fundes, nur kleiner.
+*Gemessen vor der Verschaerfung:* Die Testwege, die Glieder mit festen
+Zeitpunkten ueber den Produzenten anhaengen (fuenf Stellen, juengster
+2026-10-01T10:00:00+02:00), liegen vor der Uhr jedes Laufs ab diesem Tag;
+umgestellt: keiner. Zwei Testwege rufen `neues_glied` unmittelbar und nennen
+die Uhr jetzt ausdruecklich. *Grenze, benannt:* Laeuft die Suite auf einer
+Maschine, deren Uhr vor 2026-10-01T09:00Z steht, werden diese festen
+Zeitpunkte zu Zukunft und rot — eine falsch gestellte Uhr, kein Fund.
+
+**4. Eine Sperre, und je Nummer ein Glied (I18, mittel).** Zwei gleichzeitige
+`stand_belegen ordnung` auf derselben Spitze endeten beide mit Exit 0 und
+legten zwei Glieder derselben Nummer ab; die Linie war fuer jeden gruendenden
+Leser unladbar, und kein Kommando entfernt etwas aus `ordnung/`. Die
+Exklusivitaet wirkte je Dateiname, und der Name trug den Hash des Glieds.
+Gemessen auf dem Stand davor (zwei Prozesse, gemeinsamer Start, 20 Runden): in
+20 von 20 Runden zwei Glieder der Nummer 2, in 5 davon beide Aufrufe Exit 0,
+sonst einer Exit 50. *Regel.* (a) Lesen der Spitze, Pruefen des Vorgaengers
+und Anhaengen geschehen unter EINER Sperre (`stand_belegen.sperre_der_ordnung`,
+`linie/.ordnung.sperre`) mit demselben Sperrmittel wie der Eingang eines Falls
+(`fall._sperre_datei`: `flock` auf einem stabilen Deskriptor, blockierend; die
+Sperrdatei bleibt liegen, sie ist kein Sentinel). Die Schicht `gates` hatte
+kein eigenes; eine zweite Bauform waere eine zweite Regel. Der zweite Aufruf
+wartet, liest die neue Spitze und wird benannt verweigert ("der genannte
+Vorgaenger ... ist nicht die Spitze"); die Wiederholung desselben Aufrufs
+ergibt `bereits_vorhanden`. (b) Ein Glied heisst nach seiner Nummer,
+`ordnung/<nummer:04d>.json` (`ordnungslinie.dateiname`): Auch ein Weg ohne die
+Sperre kann kein zweites Glied derselben Nummer exklusiv ablegen; trifft der
+Produzent dort auf ein schon liegendes, verweigert er benannt ("liegt schon").
+Der Hash steht im Glied und wird beim Lesen nachgerechnet; ein Glied unter
+einem anderen Namen nimmt der Leser nicht auf. Nebenbei schliesst das die
+benannte Grenze aus Punkt 4 des vorigen Nachtrags: Eine Wiederholung nach einem
+Ausfall vor dem Einhaengen schreibt dasselbe Ziel und raeumt den Rest weg.
+*Verworfen:* **nur die Sperre** — ein Weg ohne sie legte die Gabel weiter ab;
+**nur der Name** — der zweite Aufruf endete dann je nach Zeitpunkt mit "liegt
+schon" oder einem Ein-/Ausgabefehler statt mit der Aussage, dass die Spitze
+eine andere ist; **eine Reservierungsdatei je Nummer neben dem Glied** — ein
+Prozessende zwischen Reservierung und Glied sperrte die Nummer fuer immer, und
+aus `ordnung/` entfernt kein Kommando etwas. *Gemessen, nicht gebaut* (gehoert
+zu `gate_entscheid`): Zwei gleichzeitige Annahmen desselben Gates im selben
+Bereich (A-K2 im Linienbereich, 5 Runden) legten in 4 Runden zwei Snapshots ab,
+beide Exit 0, in 3 davon mit demselben Vorgaenger — die Kette des Gates ist
+danach nicht lesbar ("braucht genau eine eindeutige Spitze"); in einer Runde
+endete ein Aufruf mit Exit 50. Dieselbe Bauform wie hier (der Name traegt den
+Hash, keine Sperre ueber Lesen der Spitze und Schreiben).
+
+**Ablage, gemessen vor der Verschaerfung.** Wer Glieder schreibt: der
+Produzent (`stand_belegen ordnung`, im Paket der einzige Aufrufer von
+`neues_glied`) und Testwege, die Glieder von Hand bauen (`baue_glied`, sieben
+Module) — alle legen sie unter `ordnungslinie.dateiname` ab und folgen dem
+neuen Namen ohne Aenderung. Umgestellt: drei Stellen, die den alten Namen als
+Muster suchten (`tests/test_erstabnahme_linie.py`), die zwei unmittelbaren
+Aufrufe von `neues_glied` (Uhr) und die Ratsche der anzeigenden Linienleser
+(die Vorschau) — sechs Stellen in drei Modulen. Linien nach dem alten Namen
+gibt es ausserhalb der Tests nicht (die Erstabnahme ist nicht gezeichnet).
+
+**Versionen.** `stand_belegen` 6.0.0 (Major: ein `--eingetragen-am` nach der
+Uhr war gruen, ein Glied heisst anders). Glied Schema 2 unveraendert: Die
+Gestalt des Glieds aendert sich nicht, nur der Name seiner Datei. Die
+Gate-Version P9 bleibt 5.0.0 und das Snapshot-Schema 10: Die Gestalt des
+Snapshots aendert sich nicht; geaendert ist die Leseregel in `models`, die
+Aufrufer bleiben dieselben.
+
+**Benannte Grenzen.** (i) Wie im vorigen Nachtrag: Es gibt keine
+vertrauenswuerdige Zeit; `gueltig` mit zurueckgestellter Uhr bleibt die
+ausdrueckliche Entscheidung, dem Halter weiter zu trauen — bis ein spaeteres
+`verfallen` auf die Linie der Rolle sie zuruecknimmt. Das geht immer, aber
+nicht immer in einem Schritt (bei der Vereinigung an Ketten von Hand
+nachgerechnet): `verfallen` an einem Glied, das der Rolle nur Gates entzieht,
+trifft nur diese Gates — ein frueher mit `gueltig` entzogenes Gate nimmt erst
+eine Minderung zurueck, die den Schluessel trifft (Wechsel, Klasse, Wegfall).
+Und entfaellt eine Rolle mit `gueltig` so, dass weder ihr Name noch ihr
+Schluessel in der Ordnung bleibt, kann kein spaeteres Glied sie mehr mindern;
+zurueckgenommen wird dann ueber den Umweg, den Namen wieder einzutragen und
+mit `verfallen` zu entfernen (die Linie setzt sich ueber den Namen fort).
+(ii) Die Kontinuitaet ueber den Namen ist eine Annahme des Hauses: Wer einen
+Rollennamen spaeter einer anderen Person gibt, verbindet deren Linie mit der
+des frueheren Halters (Ueberentwertung, die sichere Richtung). (iii) Die Sperre
+wirkt zwischen Prozessen, die dieselbe Sperrdatei mit `flock` sperren koennen
+(dieselbe Maschine, ein Dateisystem mit `flock`); darueber hinaus bleibt die
+Exklusivitaet je Nummer.

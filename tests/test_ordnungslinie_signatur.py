@@ -172,7 +172,7 @@ def test_ein_glied_das_den_vorstand_selbst_austauscht(tmp_path):
     weiter["rollen"][RECHENKERN]["schluessel_sha256"] = _fp(zweiter)
     glieder = _glieder_roh(linie)
     folge = ol.neues_glied(glieder, json.dumps(weiter, sort_keys=True).encode("utf-8"),
-                           vorgaenger=gefaelscht["glied_sha256"], eingetragen_am=EINGETRAGEN,
+                           vorgaenger=gefaelscht["glied_sha256"], eingetragen_am=EINGETRAGEN, uhr=EINGETRAGEN,
                            fruehere_zeichnungen=_gueltig(ordnung, weiter),
                            vorstand_schluessel=angreifer.read_bytes())
     (linie / ol.VERZEICHNIS / ol.dateiname(folge)).write_text(json.dumps(folge),
@@ -205,7 +205,7 @@ def test_ohne_den_schluessel_des_vorstands_gruendet_keine_linie_mit_zwei_glieder
         "schluessel_sha256": "ab" * 32, "schluesselklasse": "simulation", "gates": []}
     glied = ol.neues_glied(_glieder_roh(linie), json.dumps(ordnung, sort_keys=True).encode(),
                            vorgaenger=_glieder_roh(linie)[-1]["glied_sha256"],
-                           eingetragen_am=EINGETRAGEN, fruehere_zeichnungen={},
+                           eingetragen_am=EINGETRAGEN, uhr=EINGETRAGEN, fruehere_zeichnungen={},
                            vorstand_schluessel=(tmp_path / VORSTAND_SCHLUESSEL_DATEI).read_bytes())
     (linie / ol.VERZEICHNIS / ol.dateiname(glied)).write_text(json.dumps(glied), encoding="utf-8")
     glieder, fehler = ol.lade_linie(linie, ring={})

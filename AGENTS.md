@@ -254,9 +254,13 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   signing role: such a link carries the board's signed declaration per
   reduced role (`stand_belegen ordnung --fruehere-zeichnungen
   <role>=gueltig|verfallen`, mandatory, no default) — `verfallen` voids
-  earlier signatures of that role whenever they were made (for the board:
-  every case mandate A-M6 and everything resting on it), `gueltig` keeps
-  those signed before the link. Every `--repo-root` must be the tree of
+  every earlier signature in the LINE of that role (its earlier names and
+  keys, continued over the same name or the same key, also after an earlier
+  `gueltig`), whenever it was made (for the board: every case mandate A-M6
+  and everything resting on it), `gueltig` keeps those signed before the
+  link; read the consequence of both answers first with `stand_belegen
+  ordnung ... --vorschau` (writes and signs nothing, ADR-025 addendum
+  Pruefrunde I). Every `--repo-root` must be the tree of
   the package that is executing, and is refused if a bytecode file the
   interpreter would load under that package is not the code of its source
   (remedy: delete the package's `__pycache__`). Without a line nothing is

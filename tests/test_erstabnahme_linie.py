@@ -264,7 +264,7 @@ def test_die_aenderungsliste_unterscheidet_verbreiterung_und_neue_rolle(tmp_path
     sicht = (linie / "abgeleitet" / "ordnung" / "linie.md").read_text(encoding="utf-8")
     assert f"bestehende Rolle {ARCHITEKTUR} um ['A-K2'] erweitert" in sicht
     # Behauptet statt gerechnet: die Liste leeren und das Glied neu hashen.
-    pfad = next((linie / ol.VERZEICHNIS).glob("0002-*.json"))
+    pfad = (linie / ol.VERZEICHNIS / "0002.json")
     glied = json.loads(pfad.read_text(encoding="utf-8"))
     glied["aenderungen"] = []
     glied["glied_sha256"] = ol.glied_sha256(glied)
@@ -280,7 +280,7 @@ def test_ein_umgeschriebenes_oder_entferntes_glied_bricht_die_linie(tmp_path):
     neu["rollen"]["mensch/revision"] = {
         "schluessel_sha256": "ab" * 32, "schluesselklasse": "simulation", "gates": []}
     assert _haenge_an(linie, neu, tmp_path / "o2.json").exit_code == 0
-    erstes = next((linie / ol.VERZEICHNIS).glob("0001-*.json"))
+    erstes = (linie / ol.VERZEICHNIS / "0001.json")
     roh = erstes.read_bytes()
     daten = json.loads(roh)
     daten["eingetragen_am"] = "2020-01-01T00:00:00+00:00"
@@ -554,7 +554,7 @@ def test_ein_ausgetauschtes_erstes_glied_verweigert_jede_lesestelle(tmp_path):
     Ordnungs-Hash statt das Glied lokalisieren -> bleibt gruen -> rot."""
     linie, fall = _fall_mit_linie(tmp_path)
     _verweise(fall, linie)
-    erstes = next((linie / ol.VERZEICHNIS).glob("0001-*.json"))
+    erstes = (linie / ol.VERZEICHNIS / "0001.json")
     alt = json.loads(erstes.read_text(encoding="utf-8"))
     ersatz = ol.baue_glied(alt["ordnung_text"].encode("utf-8"), nummer=1, vorgaenger=None,
                            eingetragen_am="2026-10-01T23:59:00+00:00")

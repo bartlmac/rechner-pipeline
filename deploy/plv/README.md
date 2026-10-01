@@ -86,12 +86,32 @@ python -m rechner_pipeline.gates.stand_belegen ordnung --linie ~/apps/plv/linie 
 Mindert ein spaeteres Glied eine Rolle (Entzug eines Gates, Schluessel- oder
 Klassenwechsel, Rolle entfaellt), ist je geminderter Rolle
 `--fruehere-zeichnungen <rolle>=gueltig|verfallen` Pflicht; es gibt keine
-Vorgabe. Erst die Folge in der Ausgabe lesen (`summary.fruehere_zeichnungen`,
-dieselben Zeilen in `linie.md`): `gueltig` laesst gelten, was vor dem Glied
-gezeichnet wurde (Rollenwechsel, Umbenennung); `verfallen` verlangt, jede
-fruehere Abnahme dieser Rolle neu zu zeichnen, beim Vorstand jeden
-Fallauftrag und alles, was darauf gruendet. Ein Glied wird nie frueher
-datiert als sein Vorgaenger.
+Vorgabe. Erst die Folge lesen, dann anhaengen: Die Vorschau rechnet fuer
+genau dieses Glied die Aenderungen, die geminderten Rollen und je Rolle die
+Folge von `gueltig` UND `verfallen` (bzw. der genannten Erklaerung) — sie
+schreibt nichts, zeichnet nichts und braucht keinen Schluessel; das
+Anhaengen danach nennt dieselbe Folge (`summary.fruehere_zeichnungen`,
+dieselben Zeilen in `linie.md`):
+
+```
+python -m rechner_pipeline.gates.stand_belegen ordnung --linie ~/apps/plv/linie \
+    --ordnung <neue-ordnung> --vorgaenger <glied_sha256 der Spitze> --vorschau
+python -m rechner_pipeline.gates.stand_belegen ordnung --linie ~/apps/plv/linie \
+    --ordnung <neue-ordnung> --vorgaenger <glied_sha256 der Spitze> \
+    --vorstand-schluessel <schluessel-vorstand> --fruehere-zeichnungen <rolle>=gueltig
+```
+
+`gueltig` laesst gelten, was vor dem Glied gezeichnet wurde (Rollenwechsel,
+Umbenennung); `verfallen` verlangt, jede fruehere Abnahme der LINIE dieser
+Rolle neu zu zeichnen — auch die unter ihren frueheren Namen und Schluesseln,
+auch wenn ein frueheres Glied sie fuer `gueltig` erklaert hat —, beim
+Vorstand jeden Fallauftrag und alles, was darauf gruendet. Ein Glied wird nie
+frueher datiert als sein Vorgaenger und nie spaeter als die Uhr des Aufrufs
+(`--eingetragen-am` weglassen heisst: die Uhr). Zwei gleichzeitige Eintraege
+sind ausgeschlossen: Lesen der Spitze und Anhaengen geschehen unter einer
+Sperre (`linie/.ordnung.sperre`, bleibt liegen, kein Glied), der zweite
+Aufruf wird mit "nicht die Spitze" verweigert; ein Glied heisst nach seiner
+Nummer (`ordnung/0002.json`), ein zweites derselben Nummer entsteht nicht.
 
 Faellt `stand_belegen` beim Schreiben aus (Code `ein_ausgabe`), denselben
 Aufruf wiederholen: Ein Rest von `linie.json` sperrt `linie` nicht, und

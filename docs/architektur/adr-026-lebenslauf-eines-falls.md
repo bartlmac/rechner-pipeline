@@ -566,10 +566,15 @@ Glied nicht und zeichnet weiter; das ist die Naht, an der gefangen wird.
 **Die Kaskade des Auftrags.** Jede Annahme eines Falls gruendet auf A-M6
 (Abschnitt 3), A-M6 zeichnet der Vorstand. Erklaert ein Glied die frueheren
 Zeichnungen des Vorstands fuer `verfallen` (sein Schluessel ist nicht mehr
-vertrauenswuerdig), traegt keine A-M6 dieses Schluessels mehr — und keine
+vertrauenswuerdig), traegt keine A-M6 der Linie des Vorstands mehr — seit
+Pruefrunde I jede fruehere A-M6 unter jedem frueheren Namen und Schluessel
+dieser Linie, nicht nur die des zuletzt gehaltenen Schluessels (ADR-025,
+Nachtrag Pruefrunde I) — und keine
 Annahme eines Falls, der unter ihr beauftragt ist: `fallauftrag_pruefen`
-verweigert mit Code `fallauftrag`. Jeder laufende Fall ist neu zu beauftragen
-und neu zu zeichnen. Mit `gueltig` (Umbenennung, geordneter Wechsel, derselbe
+verweigert mit Code `fallauftrag`, der Betrieb verweigert Registrierung,
+Zugangsprobe und Neuaufsetzen (Nachtrag Pruefrunde I, I07). Jeder laufende
+Fall ist neu zu beauftragen und neu zu zeichnen; ein Zugang, der vorher schon
+registriert wurde, bleibt registriert. Mit `gueltig` (Umbenennung, geordneter Wechsel, derselbe
 Halter) tragen die Auftraege weiter.
 
 ### g) Grenze, benannt: die Kopie als ganze Linie (H11, vom Widerleger nicht bestaetigt)
