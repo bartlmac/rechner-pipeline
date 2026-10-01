@@ -364,6 +364,9 @@ class Ablage:
 #: Ratsche ``tests/test_betrieb_schreibreste_klasse.py``.
 SCHREIBZIELE: Tuple[Tuple[str, str], ...] = (
     (".", PUBLISH_MARKER_DATEI),
+    # Die Bindung der Abnahme des Anfangsbestands (ADR-025;
+    # ``betrieb.anfangsbestand binden``, models.anfangsbestand.BINDUNG_DATEI).
+    (".", "anfangsbestand.json"),
     (JOURNAL_DIR, TAGESJOURNAL_DATEI),
     (ABSCHLUSS_DIR, "abschluss_*.parquet"),
     (BERICHT_DIR, "bestandsbericht_*.html"),
@@ -401,6 +404,7 @@ def betriebszeichner(
     wofuer: str = "der Tageslauf",
     ohne: str = "kein Tageslauf",
     flag: str = "--schluessel",
+    linie: Optional[Path] = None,
 ) -> Zeichner:
     """Den Betriebsschluessel aufloesen: ausdruecklich > Naht > Fehler.
 
@@ -423,12 +427,26 @@ def betriebszeichner(
             f"{flag} und --zeichnungsordnung gehoeren zusammen: Die Rolle "
             "wird aus dem Schluessel BESTIMMT, und die Ordnung sagt, welche")
     try:
-        return verlange_betrieb(
+        zeichner = verlange_betrieb(
             lade_zeichner(Path(schluessel), Path(zeichnungsordnung),
                           ausserhalb=ablage.wurzel),
             wofuer)
     except ZeichnungFehler as exc:
         raise TageslaufError(str(exc)) from exc
+    if linie is None:
+        return zeichner
+    # Mit Linie (ADR-025): die geprueften Glieder ihrer Ordnungslinie — die
+    # Leser halten jede Abnahme gegen den Stand der Ordnung, unter dem sie
+    # gezeichnet wurde.
+    from rechner_pipeline.models.ordnungslinie import lade_linie
+
+    glieder, fehler = lade_linie(Path(linie))
+    if fehler or not glieder:
+        raise TageslaufError(
+            f"{linie}: die Ordnungslinie ist " + ("verletzt: " + "; ".join(fehler[:3])
+                                                  if fehler else "leer")
+            + " — Ausweg: die Linie pruefen bzw. die Ordnung eintragen (ADR-025)")
+    return dataclasses.replace(zeichner, ordnungslinie=glieder)
 
 
 def _schreibe_json_atomar(pfad: Path, daten: Dict[str, Any]) -> None:
@@ -1765,6 +1783,13 @@ def _stand_bauen(
     # Nach dem Eintritt gefragt: Dessen Meldung ist fuer einen wartenden
     # Eingang die genauere.
     _pruefe_config_unveraendert(ablage, zeilen, config_pfad)
+    # Nach dem Aufbaulauf laeuft kein Tag ohne abgenommenen Anfangsbestand
+    # (ADR-025): die gezeichnete Bindung an eine gruene Zeile dieser Ablage.
+    from rechner_pipeline.betrieb.anfangsbestand import anfangsbestand_fehler
+
+    fehler_ab3 = anfangsbestand_fehler(ablage, zeichner)
+    if fehler_ab3 is not None:
+        raise TageslaufError(fehler_ab3)
 
     zugaenge = neugeschaeft_zwischen(config, betriebsbeginn, heute)
     ergebnis = fortschreiben(

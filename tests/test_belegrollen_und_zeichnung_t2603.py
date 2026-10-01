@@ -47,7 +47,8 @@ def test_der_vertrag_wohnt_in_models_und_die_scopes_bleiben_gleich():
     assert set(br.BELEGROLLEN) == set(GATES_MIT_PFLICHTBELEGEN)
     assert br.am4_belegrollen("bestand") == [
         "pq3_ledger", "aq1_snapshot", "am1_snapshot", "am2_snapshot", "am3_snapshot",
-        "pk1_belege", "kernstand", "tboxstand", "pb1_ledger", "migrationssuite", "fuehrungsprobe",
+        "pk1_belege", "kernstand", "tboxstand", "tarifwerkstand", "pb1_ledger", "migrationssuite",
+        "fuehrungsprobe",
         "abnahmebericht"]
     assert not hasattr(fall_mod, "BELEGROLLEN") and not hasattr(fall_mod, "belegrollen")
     with pytest.raises(br.BelegrollenFehler, match="Scope"):

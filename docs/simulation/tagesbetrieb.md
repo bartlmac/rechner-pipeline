@@ -656,6 +656,19 @@ Der Übernahme-Eingang trägt seit dieser Routine auch die Bausteine
 Fortschreibung, die damit nach dem Tarifwerk der Generation rechnet,
 dieselbe Welt wie die Führungsprobe vor A-M4.
 
+**Reihenfolge beim Aufsetzen: die Abnahme des Anfangsbestands vor dem
+ersten produktiven Lauf** (ADR-025). Der erste Tageslauf einer neuen
+Ablage ist ihr Aufbaulauf; er baut den Anfangsbestand und läuft ohne
+Abnahme. Bevor der nächste Lauf — der erste produktive — läuft, nimmt die
+Betriebsverantwortung (`mensch/betrieb`) diesen Anfangsbestand ab:
+`betrieb.anfangsbestand belegen` (Tabellen, Config, Code-Stand, ein neu
+gefahrener P-B1-Befund, Kennzahlen und die Abweichung zum zuletzt
+abgenommenen Anfangsbestand der archivierten Ablage), `A-B3` im
+Linienbereich der Erstabnahme zeichnen, `betrieb.anfangsbestand binden`.
+Ohne die Bindung hält jeder weitere Lauf an (Exit 2, Ausweg in der
+Meldung). Die Reihenfolge ist also: Zugangsprobe auf leerer Ablage, A-B2,
+Neuaufsetzen, Aufbaulauf, Abnahme des Anfangsbestands, Export, Timer.
+
 ### 8.6 Eine neue Config gilt von Beginn der Simulation an
 
 Die Laufzeitumgebung führt eine **eigene Kopie** der Config

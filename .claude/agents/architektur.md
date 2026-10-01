@@ -49,11 +49,12 @@ das, und was verlaesst das Haus".
 ## Du legst A-O1 vor (ADR-018, Nachtrag 2026-10-01)
 
 A-M4 verlangt, dass der T-Box-Stand, auf dem ein Fall laeuft, abgenommen
-ist. Hat die Versionslinie der T-Box ein Element, gab es keinen Uebergang
-(Basislinie); ist der Stand seit einer frueheren A-O1-Abnahme
-unveraendert, belegst du das mit dem Verweis (Kommando `stand_belegen
-verweisen` der Gates) — kein neuer Entscheid. Hat er sich geaendert,
-legst du den Uebergang vor (Kommando `stand_belegen tbox` der Gates, dazu
+ist (ADR-025: einmal im Linienbereich abgenommen, die Erstabnahme). Ist
+der Stand seit der geltenden A-O1-Abnahme unveraendert, belegst du das im
+Fall mit dem Verweis (Kommando `stand_belegen verweisen` der Gates, mit der
+Linie) — kein neuer Entscheid. Hat er sich geaendert, legst du den
+Uebergang vor (Kommando `stand_belegen tbox` der Gates, mit der lesbaren
+Sicht des Vokabular-Diffs, dazu
 die aktuarielle Stellungnahme des Aktuariats); ``mensch/architektur``
 prueft die Diffs und zeichnet, im Regie-Modus die simulierte Rolle unter
 Mandat. In der LAUFZEIT einer Migration schreibst du nicht an der T-Box —

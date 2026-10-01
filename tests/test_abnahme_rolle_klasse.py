@@ -567,6 +567,9 @@ LESESTELLEN = Counter({
     ("betrieb/uebernahme.py", "eingang_anlegen", "A-B2"): 1,
     ("betrieb/zugangsprobe.py", "lies_soll", "A-M4"): 1,
     ("betrieb/zugangsprobe.py", "lies_soll", "A-M1"): 1,
+    # Die Bindung der Abnahme des Anfangsbestands (ADR-025): derselbe Leser,
+    # im Linienbereich.
+    ("betrieb/anfangsbestand.py", "binden", "A-B3"): 1,
 })
 
 LESER = ("lies_abnahme_snapshot", "lies_am4_snapshot")
@@ -605,7 +608,9 @@ def test_ratsche_jede_lesestelle_des_betriebs_reicht_die_ordnung():
         alle += _aufrufe(pfad.read_text(encoding="utf-8"), str(pfad.relative_to(SRC)))
     assert Counter((d, f, g) for d, f, g, _ in alle) == LESESTELLEN
     assert [(d, f, g) for d, f, g, mit in alle if not mit] == []
-    assert {g for _, _, g in LESESTELLEN} == set(GATES) == set(ueb._ABNAHME)
+    # A-B3 (ADR-025) liest der Betrieb beim Binden des Anfangsbestands; die
+    # Angriffe darauf stehen in tests/test_erstabnahme_linie.py.
+    assert {g for _, _, g in LESESTELLEN} == set(GATES) | {"A-B3"} == set(ueb._ABNAHME)
 
 
 def test_ratsche_der_leser_verlangt_die_ordnung_ohne_default():
@@ -912,8 +917,10 @@ def test_ratsche_die_test_ordnungen_trennen_fall_und_betrieb(tmp_path):
 #: Begruendet: Sie pruefen das Merkmal '*' der Ordnung selbst bzw. die
 #: Zeichnung im Gate (ADR-018); keine signiert A-B1/A-B2, und keiner ihrer
 #: Snapshots wird von einem Leser des Betriebs gelesen. Neue Stellen nicht.
+#: ``test_erstabnahme_linie.py``: die Probe, dass eine Ordnung mit '*' NICHT
+#: in die Versionslinie kommt (ADR-025) — sie wird nie gezeichnet.
 STERN_IN_TESTS = Counter({"test_rollenmodell_adr018.py": 6, "test_zeichnungsvertrag_t23.py": 4,
-                          "test_zeichnungsordnung.py": 2})
+                          "test_zeichnungsordnung.py": 2, "test_erstabnahme_linie.py": 1})
 
 
 def _sterne(quelle: str) -> int:

@@ -441,6 +441,10 @@ def _als_altes_protokoll(ablage: Ablage, aendern=lambda i, z: None) -> list:
         z["vorgaenger_sha256"] = hashlib.sha256(neu[-1].encode("utf-8")).hexdigest() if neu else ""
         neu.append(_dump(z))
     _schreibe(ablage, neu)
+    # Eine Ablage aus der Zeit vor dem Betriebsschluessel kannte auch die
+    # Abnahme des Anfangsbestands nicht (ADR-025): Ihre Bindung entfaellt;
+    # der naechste Lauf verlangt sie neu (in der Suite: die Naht).
+    (ablage.wurzel / "anfangsbestand.json").unlink(missing_ok=True)
     return neu
 
 

@@ -25,6 +25,10 @@ Knoten: system/assurance
 from __future__ import annotations
 from rechner_pipeline.models.standabnahme import GEGENSTAENDE as _STAND_GEGENSTAENDE
 from rechner_pipeline.models.standabnahme import WEGE as _STAND_WEGE
+from rechner_pipeline.models.standabnahme import WEGE_LESBAR as _STAND_WEGE_LESBAR
+from rechner_pipeline.models.standabnahme import LINIEN_GATES as _LINIEN_GATES
+from rechner_pipeline.models.standabnahme import LINIE_MARKER as _LINIE_MARKER
+from rechner_pipeline.models.standabnahme import LINIE_SCOPE as _LINIE_SCOPE
 from rechner_pipeline.models.zeichnung import (
     GATES_MIT_PFLICHTBELEGEN,
     GUELTIGE_GATES,
@@ -96,12 +100,25 @@ GATE_VERSION_DEFAULT = "1.0.0"
 #: (``models.belegrollen``). Gate-Version 3.0.0 (Major: ein vorher
 #: gruener A-M4-Entscheid wird ohne abgenommenen Kernstand rot). Schema 7
 #: bleibt lesbar.
-P9_SNAPSHOT_SCHEMA_VERSION = 8
+#:
+#: Version 9 (2026-10-01, ADR-025): die Erstabnahme des Zielsystems. Neu
+#: sind (1) der Scope ``linie`` (``fall_scope``) fuer Snapshots des
+#: LINIENBEREICHS — Abnahmen ausserhalb eines Falls, ohne Eingang und A-Box;
+#: statt ``eingang.json``/A-Box binden sie ``linie.json``; zeichenbar dort
+#: nur die vier Gegenstaende (A-K2, A-O1, A-T1, A-B3); (2) die Gates
+#: ``A-T1`` (Tarifwerk) und ``A-B3`` (Anfangsbestand), beide mit ``stand``;
+#: (3) ``zeichnung.ordnungsglied_sha256`` — das Glied der Ordnungslinie,
+#: unter dem gezeichnet wurde; (4) in ``standabnahmen`` von A-M4 nur noch die
+#: Wege (a) und (b), (c) "basislinie" ist entfallen (Schema 8 lesbar). Die
+#: Pflichtrolle ``tarifwerkstand`` von A-M4 macht die Gate-Version 4.0.0
+#: (Major: ein vorher gruener A-M4-Entscheid wird ohne abgenommenes
+#: Tarifwerk rot). Schema 8 bleibt lesbar.
+P9_SNAPSHOT_SCHEMA_VERSION = 9
 _ROLLEN_MUSTER = re.compile(r"^(mensch|agent)/[a-z][a-z0-9-]*$")
-P9_SNAPSHOT_SCHEMA_VERSIONEN = (6, 7, 8)
-P9_GATE_VERSION = "3.0.0"
+P9_SNAPSHOT_SCHEMA_VERSIONEN = (6, 7, 8, 9)
+P9_GATE_VERSION = "4.0.0"
 #: Gate-Version je lesbarem Schnappschuss-Schema.
-P9_GATE_VERSION_JE_SCHEMA = {6: "0.6.0", 7: "2.0.0", 8: P9_GATE_VERSION}
+P9_GATE_VERSION_JE_SCHEMA = {6: "0.6.0", 7: "2.0.0", 8: "3.0.0", 9: P9_GATE_VERSION}
 #: Gates, deren Snapshot ab Schema 8 das Feld ``ausnahmen`` traegt.
 P9_GATES_MIT_AUSNAHMEN: tuple[str, ...] = ("A-K2",)
 #: Gates, deren Snapshot ab Schema 8 den abgenommenen ``stand`` traegt —
@@ -611,6 +628,10 @@ class P9Snapshot:
         if missing:
             return errors
 
+        ab_schema_9 = type(version) is int and version >= 9
+        linie = data.get("fall_scope") == _LINIE_SCOPE
+        if isinstance(z, dict) and "ordnungsglied_sha256" in z and not ab_schema_9:
+            errors.append("zeichnung.ordnungsglied_sha256 exists only from schema 9 (ADR-025)")
         if type(version) is not int or version not in P9_SNAPSHOT_SCHEMA_VERSIONEN:
             errors.append(
                 f"schema_version must be one of {P9_SNAPSHOT_SCHEMA_VERSIONEN}"
@@ -647,7 +668,11 @@ class P9Snapshot:
         hashes = data.get("artefakt_hashes")
         errors.extend(_hashmap_errors("artefakt_hashes", hashes))
         if data.get("entscheid") == "angenommen" and isinstance(hashes, dict):
-            for key in ("eingang.json", "abgeleitet/abox/abox.json"):
+            # Der Linienbereich (ADR-025) hat keinen Eingang und keine A-Box;
+            # er bindet seine Kennzeichnung.
+            pflicht_hashes = ((_LINIE_MARKER,) if linie
+                              else ("eingang.json", "abgeleitet/abox/abox.json"))
+            for key in pflicht_hashes:
                 if key not in hashes:
                     errors.append(f"artefakt_hashes must contain {key!r}")
 
@@ -687,7 +712,12 @@ class P9Snapshot:
         # kam ohne Beanstandung durch, und A-M4 pinnte ihn danach als
         # eigenen Pflichtbeleg.
         if gate in GATES_MIT_PFLICHTBELEGEN:
-            if data.get("fall_scope") not in ("tarif", "bestand"):
+            if linie:
+                if not ab_schema_9 or gate not in _LINIEN_GATES:
+                    errors.append(
+                        f"fall_scope 'linie' only from schema 9 and only for {_LINIEN_GATES} "
+                        "(ADR-025)")
+            elif data.get("fall_scope") not in ("tarif", "bestand"):
                 errors.append("fall_scope must be 'tarif' or 'bestand'")
             pflichtbelege = data.get("pflichtbelege")
             if not isinstance(pflichtbelege, dict):
@@ -700,7 +730,7 @@ class P9Snapshot:
                 # Tarif-Fall liefert keinen Bestand aus). Die EXAKTE
                 # Rollenmenge je Gate und Scope erzwingt ohnehin der
                 # Lesepfad in gate_entscheid gegen models.belegrollen.BELEGROLLEN.
-                gate in ("A-M4", "A-O1", "A-K2", "A-B2")
+                gate in ("A-M4", "A-O1", "A-K2", "A-T1", "A-B2", "A-B3")
                 and data.get("entscheid") == "angenommen"
                 and not pflichtbelege
             ):
@@ -755,9 +785,10 @@ class P9Snapshot:
             if not isinstance(standabnahmen, dict):
                 errors.append("standabnahmen must be an object")
             else:
+                wege = _STAND_WEGE if ab_schema_9 else _STAND_WEGE_LESBAR
                 for rolle, eintrag in standabnahmen.items():
                     if not (isinstance(eintrag, dict)
-                            and eintrag.get("weg") in _STAND_WEGE
+                            and eintrag.get("weg") in wege
                             and isinstance(eintrag.get("gate"), str)
                             and isinstance(eintrag.get("anzeige"), str) and eintrag["anzeige"].strip()):
                         errors.append(

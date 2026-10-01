@@ -229,3 +229,23 @@ def _testzugangsabnahme():
     _ueb._STANDARD_ZUGANGSABNAHME = schreibe_zugangsabnahme
     yield
     _ueb._STANDARD_ZUGANGSABNAHME = vorher
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _testanfangsbestand():
+    """Jeder Tageslauf nach dem Aufbaulauf verlangt die Abnahme des
+    Anfangsbestands A-B3 (ADR-025). Im Testlauf legt die Naht
+    ``betrieb.anfangsbestand._STANDARD_ANFANGSBESTAND``
+    (tests/anfangsbestand_testhelfer.py) Beleg (echter Produzent), A-B3-Snapshot
+    im Linienbereich neben der Ablage und Bindung (echtes ``binden``) an,
+    sobald ein Lauf sie verlangt. Produktiv ist sie None; dort laeuft nach dem
+    Aufbaulauf kein Tag ohne A-B3. Tests, deren Gegenstand die Verweigerung
+    ist, setzen die Naht per monkeypatch auf None. SESSION-weit aus demselben
+    Grund wie die anderen Nahte."""
+    from rechner_pipeline.betrieb import anfangsbestand as _anf
+    from tests.anfangsbestand_testhelfer import schreibe_anfangsbestand
+
+    vorher = _anf._STANDARD_ANFANGSBESTAND
+    _anf._STANDARD_ANFANGSBESTAND = schreibe_anfangsbestand
+    yield
+    _anf._STANDARD_ANFANGSBESTAND = vorher

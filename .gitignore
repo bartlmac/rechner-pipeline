@@ -15,6 +15,10 @@ __pycache__/
 # Fall-Arbeitsbereiche (lokale Demo-Faelle; echte Faelle liegen ausserhalb
 # des Repos — eingang/ ist dort NICHT regenerierbar, siehe ADR-002)
 /faelle/
+# Linienbereich der Erstabnahme des Zielsystems (ADR-025): Snapshots,
+# Belege und Versionslinie der Zeichnungsordnung einer Installation —
+# Klarnamen und installationsgebundenes Material, nicht regenerierbar
+/linie/
 # Artefakt-Simulationen der Showcase-Faelle (Regie-Bereich, ausserhalb
 # des Systems)
 /simulation

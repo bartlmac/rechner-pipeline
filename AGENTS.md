@@ -221,10 +221,22 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   gate A-M4; A-M1 precedes A-M4). A-M4 also requires that the state the
   case runs on is accepted: kernel state A-K2 (presented by
   `agent/rechenkern` with `gates.kernstand_belegen`, signed by
-  `mensch/rechenkern`) and T-Box state A-O1 (presented by
-  `agent/architektur`, signed by `mensch/architektur`) — signed in the
-  case, or "keine Aenderung" via `gates.stand_belegen verweisen` to an
-  earlier accepted snapshot, or for the T-Box its baseline. Until the
+  `mensch/rechenkern`), T-Box state A-O1 (presented by
+  `agent/architektur` with `gates.stand_belegen tbox`, signed by
+  `mensch/architektur`) and the PLV tariff work A-T1 (presented by
+  `agent/aktuariat` with `gates.tarifwerk_belegen`, signed by
+  `mensch/aktuariat`). Each is accepted ONCE outside any case in the
+  line area (`linie/`, gitignored; `gate_entscheid --linie`, ADR-025);
+  a case signs only what it changes and otherwise refers to the current
+  acceptance via `gates.stand_belegen verweisen --linie` ("keine
+  Aenderung"). The opening portfolio of a store (A-B3, presented by
+  `agent/betrieb` with `betrieb.anfangsbestand belegen`, signed by
+  `mensch/betrieb`, bound with `betrieb.anfangsbestand binden`) is
+  required by the daily run after the build run. With a line, signing
+  happens only under the tip of the signing-order version line and every
+  reader holds an acceptance against the order it was signed under
+  (`models.ordnungslinie`; its root role is the board, `mensch/vorstand`,
+  which signs order changes A-Z1 and nothing else). Until the
   regression tool exists, the A-K2 regression record is the named
   EXCEPTION "nicht gefahren, Werkzeug noch nicht erstellt", never a pass.
   During a running migration no agent writes to the T-Box or the kernel:

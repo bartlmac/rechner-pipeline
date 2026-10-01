@@ -41,8 +41,10 @@ Was die Routine tut, in dieser Reihenfolge — und was sie NICHT tut:
    (``lies_uebernahme``): unbekannte Generation, falscher Stichtag, fehlende
    Merkmale oder abweichendes Tarifwerk fallen auf, BEVOR etwas bewegt ist.
 4. Den Stand faehrt sie NICHT: Der naechste Tageslauf baut ihn vom
-   Betriebsbeginn bis heute in einem Lauf (Erstbefuellung), danach das
-   Stands-Paket. Die Routine nennt beide Kommandos.
+   Betriebsbeginn bis heute in einem Lauf (Erstbefuellung, der Aufbaulauf),
+   danach nimmt der Betrieb den Anfangsbestand ab (A-B3, ADR-025: belegen,
+   zeichnen, binden — ohne sie laeuft kein weiterer Tag), dann das
+   Stands-Paket. Die Routine nennt die Kommandos.
 
 Knoten: klv, bu
 """
@@ -95,6 +97,7 @@ def neu_aufsetzen(
     zeichnungsordnung: Optional[Path] = None,
     aufschalten: bool = False,
     zugangsabnahme_sha256: Optional[str] = None,
+    linie: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Die Laufzeitumgebung ``stand`` aus dem Fall ``fall`` neu aufsetzen.
 
@@ -133,7 +136,8 @@ def neu_aufsetzen(
     try:
         zeichner = betriebszeichner(
             Ablage(stand), betriebsschluessel, zeichnungsordnung,
-            wofuer="das Neuaufsetzen", ohne="kein Aufbau", flag="--betriebsschluessel")
+            wofuer="das Neuaufsetzen", ohne="kein Aufbau", flag="--betriebsschluessel",
+            linie=linie)
     except TageslaufError as exc:
         raise NeuaufsetzenError(str(exc)) from exc
     # Die Zugangsabnahme VOR jedem Aufbau (ADR-022): Ohne sie verweigert die
@@ -164,6 +168,7 @@ def neu_aufsetzen(
                 schluesselring=schluesselring, betriebsschluessel=betriebsschluessel,
                 zeichnungsordnung=zeichnungsordnung, zeichner=zeichner,
                 aufschalten=aufschalten, zugangsabnahme_sha256=zugangsabnahme_sha256,
+                linie=linie,
             )
     except TageslaufError as exc:
         raise NeuaufsetzenError(
@@ -222,6 +227,7 @@ def _neu_aufsetzen_unter_sperre(
     zeichner: Any = None,
     aufschalten: bool = False,
     zugangsabnahme_sha256: Optional[str] = None,
+    linie: Optional[Path] = None,
 ) -> Dict[str, Any]:
     # Das alte Protokoll ohne gezeichnete Zeile nur ausdruecklich
     # (Nachbesserung Runde C). Gelesen wird nur, WELCHE Zeilen gezeichnet
@@ -290,7 +296,8 @@ def _neu_aufsetzen_unter_sperre(
     # die angelegte neue Ablage blieb liegen.
     registrierung_vorbedingungen(
         fall, ordnung=zeichner.ordnung if zeichner is not None else None,
-        schluesselring=schluesselring, zugangsabnahme_sha256=zugangsabnahme_sha256)
+        schluesselring=schluesselring, zugangsabnahme_sha256=zugangsabnahme_sha256,
+        ordnungslinie=zeichner.ordnungslinie if zeichner is not None else None)
 
     # 2. Neue Ablage vollstaendig NEBEN der alten aufbauen. Was nur gegen
     # sie pruefbar ist (Bindung der A-B2 an Eingang und Stand, A-M1 der
@@ -306,7 +313,7 @@ def _neu_aufsetzen_unter_sperre(
         eingang = eingang_anlegen(
             neu_pfad, fall, stichtag, schluesselring=schluesselring,
             betriebsschluessel=betriebsschluessel, zeichnungsordnung=zeichnungsordnung,
-            zugangsabnahme_sha256=zugangsabnahme_sha256)
+            zugangsabnahme_sha256=zugangsabnahme_sha256, linie=linie)
         # Der neue Eingang muss lesbar sein, BEVOR die alte Ablage bewegt
         # wird: dieselbe Pruefung, die der Tageslauf bei der Erstbefuellung
         # macht — samt der Betriebszeichnung, die er gerade bekommen hat.
@@ -329,6 +336,15 @@ def _neu_aufsetzen_unter_sperre(
         "eingang": str(stand / UEBERNAHME_DIR / eingang.name),
         "naechste_schritte": [
             f"python -m rechner_pipeline.betrieb.tageslauf --stand {stand} "
+            "--schluessel <betriebsschluessel> --zeichnungsordnung <ordnung>",
+            # Nach dem Aufbaulauf die Abnahme des Anfangsbestands (ADR-025):
+            # ohne sie laeuft kein weiterer Tag.
+            f"python -m rechner_pipeline.betrieb.anfangsbestand belegen --stand {stand} "
+            "--linie <linie> --schluessel <betriebsschluessel> --zeichnungsordnung <ordnung>",
+            "python -m rechner_pipeline.gates.gate_entscheid --linie <linie> --gate A-B3 "
+            "--entscheid angenommen ... (mensch/betrieb)",
+            f"python -m rechner_pipeline.betrieb.anfangsbestand binden --stand {stand} "
+            "--linie <linie> --freigabe-schluessel <schluessel mensch/betrieb> "
             "--schluessel <betriebsschluessel> --zeichnungsordnung <ordnung>",
             f"python -m rechner_pipeline.betrieb.seite --stand {stand} --paket <paketverzeichnis> "
             "--anker <ankerverzeichnis> --betriebsschluessel <betriebsschluessel> "
@@ -379,6 +395,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--zugangsabnahme", default=None,
                         help="Snapshot-Hash der Zugangsabnahme A-B2 fuer den Eingang der neuen "
                              "Ablage (ADR-022; Default: aus dem A-B2-Gate-Beleg des Falls).")
+    parser.add_argument("--linie", default=None,
+                        help="Linienbereich (ADR-025): die Abnahmen werden gegen die Ordnung "
+                             "gehalten, unter der sie gezeichnet wurden (Ordnungslinie).")
     parser.add_argument("--aufschalten", action="store_true",
                         help="Einmalig: die alte Ablage traegt ein Protokoll ohne gezeichnete "
                              "Zeile (Altbestand vor dem Betriebsschluessel) und wird trotzdem "
@@ -422,6 +441,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             schluesselring=ring, betriebsschluessel=Path(ns.betriebsschluessel),
             zeichnungsordnung=Path(ns.zeichnungsordnung), aufschalten=ns.aufschalten,
             zugangsabnahme_sha256=ns.zugangsabnahme,
+            linie=Path(ns.linie) if ns.linie else None,
         )
     except (NeuaufsetzenError, UebernahmeError, ValueError) as exc:
         print(f"neuaufsetzen: {exc}", file=sys.stderr)

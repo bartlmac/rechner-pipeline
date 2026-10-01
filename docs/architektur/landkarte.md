@@ -29,12 +29,12 @@ dahinter sind nachrechenbar (`ontologie.code_karte`), nicht Prosa.
 flowchart TD
     n__init__["__init__<br/>1 Module"]
     bestand["bestand<br/>23 Module"]
-    betrieb["betrieb<br/>10 Module"]
+    betrieb["betrieb<br/>11 Module"]
     fall["fall<br/>1 Module"]
-    gates["gates<br/>20 Module"]
+    gates["gates<br/>21 Module"]
     kern["kern<br/>12 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
-    models["models<br/>14 Module"]
+    models["models<br/>17 Module"]
     ontologie["ontologie<br/>16 Module"]
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
@@ -42,13 +42,13 @@ flowchart TD
     bestand -- 24 --> kern
     bestand -- 18 --> models
     bestand -- 1 --> qa
-    betrieb -- 28 --> bestand
+    betrieb -- 29 --> bestand
     betrieb -- 2 --> kern
-    betrieb -- 26 --> models
+    betrieb -- 32 --> models
     gates -- 14 --> bestand
     gates -- 9 --> fall
     gates -- 13 --> kern
-    gates -- 26 --> models
+    gates -- 37 --> models
     gates -- 12 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
@@ -78,24 +78,24 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 ```mermaid
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
-    bu["bu<br/>40 Module"]
-    klv["klv<br/>90 Module"]
+    bu["bu<br/>41 Module"]
+    klv["klv<br/>91 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
-    system_entscheid["system/entscheid<br/>10 Module"]
+    system_entscheid["system/entscheid<br/>14 Module"]
     system_fall["system/fall<br/>1 Module"]
     bu -- 3 --> system_assurance
-    bu -- 14 --> system_entscheid
+    bu -- 19 --> system_entscheid
     klv -- 9 --> system_assurance
-    klv -- 32 --> system_entscheid
+    klv -- 41 --> system_entscheid
     klv -- 9 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv
     system_assurance -- 2 --> system_entscheid
     system_assurance -- 1 --> system_fall
     system_entscheid -- 3 --> bu
-    system_entscheid -- 7 --> klv
-    system_entscheid -- 5 --> system_assurance
+    system_entscheid -- 9 --> klv
+    system_entscheid -- 7 --> system_assurance
 ```
 
 ## 3 Der Zielrechenkern von innen

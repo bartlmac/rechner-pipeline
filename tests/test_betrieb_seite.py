@@ -590,6 +590,12 @@ def test_ein_prozessende_vor_der_protokollzeile_laesst_im_ausgelieferten_verzeic
     from rechner_pipeline.betrieb import tageslauf as tl
 
     schluessel, ordnung = tl._STANDARD_BETRIEBSZEICHNUNG
+    # Der Kindprozess hat auch die Naht des Anfangsbestands nicht (ADR-025):
+    # Die Abnahme wird vorher im Elternprozess gebunden, wie im Betrieb.
+    from tests.anfangsbestand_testhelfer import schreibe_anfangsbestand
+
+    with tl.lauf_sperre(am_31_1):
+        schreibe_anfangsbestand(am_31_1, tl.betriebszeichner(am_31_1))
     lauf = subprocess.run([sys.executable, str(kind), str(am_31_1.wurzel),
                            str(schluessel), str(ordnung)],
                           cwd=REPO_ROOT, env=env, capture_output=True, text=True)

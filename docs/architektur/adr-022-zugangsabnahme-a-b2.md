@@ -436,3 +436,26 @@ Toleranz (Positivkontrolle); je Angriffsart auf die Ablagekopie
 (Tarifparameter, Erhoehungsscheibe, Korrekturschicht, Vertragsbeginn) ein
 Zaehltest mit ``==`` ueber die roten Groessen; die maximale Manipulation
 (alle vier, Abschluss stimmig neu geschrieben).
+
+## Nachtrag 2026-10-01: Anfangsbestand und Versionslinie der Ordnung (ADR-025)
+
+**Der Anfangsbestand ist abgenommen, bevor ein Zugang abgenommen wird.**
+Die Zugangsprobe bindet den gefuehrten Stand der Ablage. Seit ADR-025
+laeuft auf einer Ablage nach ihrem Aufbaulauf kein Tag ohne die
+gezeichnete Abnahme ihres Anfangsbestands (`A-B3`, Bindung
+`anfangsbestand.json`); die Probe faehrt den Tageslauf auf einer Kopie der
+Ablage und verlangt deshalb dieselbe Bindung — eine A-B2 entsteht nur auf
+einer Ablage, deren Anfangsbestand abgenommen ist. Auf der LEEREN Ablage
+eines Neuaufsetzens (Punkt 8) gibt es noch keinen Anfangsbestand; der
+Zugang wird dort Teil des Anfangsbestands und mit ihm abgenommen.
+
+**Die Konvention fuer den Eintritt wird pruefbar.** "Massgeblich ist die
+Ordnung zum Zeitpunkt der Registrierung" (Nachtrag 2026-10-01, oben) gilt
+im Ergebnis unveraendert. Mit der Versionslinie der Zeichnungsordnung ist
+der Stand, unter dem eine Abnahme gezeichnet wurde, auffindbar: Jede
+Zeichnung pinnt ihr Glied, und der Leser haelt Rolle, Klasse und Gate gegen
+DIESEN Stand ("wer durfte damals zeichnen") — ein spaeterer Entzug wirkt
+nicht zurueck, eine spaetere Erweiterung entwertet nichts. Der Leser des
+Betriebs (`uebernahme.lies_abnahme_snapshot`) nimmt die Linie als
+Parameter; Registrierung, Zugangsprobe und Neuaufsetzen reichen sie mit
+`--linie` durch, die Bindung des Anfangsbestands mit `--ordnungslinie`.

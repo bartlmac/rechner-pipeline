@@ -100,23 +100,50 @@ def _zeichne_tboxstand(fall: Path, *schluessel_args: str):
 
 
 def test_die_gegenstaende_sind_eine_menge_an_jeder_stelle():
-    """Ratsche: Gegenstaende == Gates mit ``stand`` im Snapshot; jede Rolle
-    ist Pflichtrolle von A-M4 in beiden Scopes; jedes Gate ist zeichenbar."""
+    """Ratsche (==): Gegenstaende == Gates mit ``stand`` im Snapshot; die
+    A-M4-Gegenstaende == die Standrollen von A-M4 in beiden Scopes; die
+    Gates der Linie == die Gates mit Belegrollen im Scope ``linie``; jedes
+    Gate ist zeichenbar (ADR-025)."""
+    from rechner_pipeline.models.belegrollen import BELEGROLLEN, LINIE
+
     assert tuple(g.gate for g in sa.GEGENSTAENDE) == P9_GATES_MIT_STAND
+    assert [g.gate for g in sa.GEGENSTAENDE] == ["A-K2", "A-O1", "A-T1", "A-B3"]
+    stand_rollen = {"kernstand", "tboxstand", "tarifwerkstand"}
     for scope in ("tarif", "bestand"):
-        assert {g.rolle for g in sa.GEGENSTAENDE} <= set(belegrollen("A-M4", scope))
+        assert {g.rolle for g in sa.AM4_GEGENSTAENDE} == stand_rollen
+        assert stand_rollen <= set(belegrollen("A-M4", scope))
+    assert {g for g, v in BELEGROLLEN.items() if LINIE in v} == set(sa.LINIEN_GATES)
     assert {g.gate for g in sa.GEGENSTAENDE} <= set(GUELTIGE_GATES)
-    assert [g.gate for g in sa.GEGENSTAENDE if g.basislinie] == ["A-O1"]
+    assert sa.NUR_LINIE == ("A-B3",)
 
 
-def test_die_echte_linie_hat_einen_uebergang_die_basislinie_nur_kuenstlich(monkeypatch):
-    """Messung: Seit 0.2.0 hat die Linie zwei Elemente — kein Fall faellt
-    fuer die T-Box mehr unter (c). Mit kuenstlich einelementiger Linie gilt
-    (c) weiter (Positivkontrolle der Basislinien-Probe)."""
-    assert tuple(tbox.TBOX_VERSIONEN) == ("0.1.0", "0.2.0")
-    assert not stand_belegen.basislinie_gilt()
+def test_weg_c_ist_entfallen_und_nur_im_schema_8_lesbar(tmp_path, monkeypatch):
+    """Die Basislinie (Weg c) ersetzte die erste Abnahme der T-Box — die gibt
+    es jetzt (ADR-025). Auch mit kuenstlich einelementiger Linie verlangt
+    A-M4 eine Abnahme der T-Box; ein Schema-9-Snapshot fuehrt den Weg nicht,
+    ein Schema-8-Snapshot bleibt mit ihm lesbar.
+
+    Mutationsprobe: BASISLINIE in WEGE zuruecknehmen -> der Schema-9-Teil rot."""
+    assert sa.BASISLINIE not in sa.WEGE and sa.BASISLINIE in sa.WEGE_LESBAR
     monkeypatch.setattr(tbox, "TBOX_VERSIONEN", LINIE_OHNE_UEBERGANG)
-    assert stand_belegen.basislinie_gilt()
+    fall = _fall(tmp_path, mit_tboxstand=False)
+    am4 = _am4(fall)
+    assert am4.exit_code != 0
+    assert "T-Box-Stand" in am4.errors[0]["message"], am4.errors
+
+    from tests.test_betrieb_uebernahme import am4_snapshot
+    from rechner_pipeline.models.freigabe import freigabe_fuer
+    from rechner_pipeline.models.schemas import P9Snapshot, p9_snapshot_sha256
+
+    for schema, gueltig in ((8, True), (9, False)):
+        daten = am4_snapshot("fall-x", schema=schema)
+        daten["standabnahmen"]["tboxstand"]["weg"] = sa.BASISLINIE
+        daten.pop("snapshot_sha256")
+        daten["freigabe"] = freigabe_fuer(
+            {k: v for k, v in daten.items() if k != "freigabe"}, b"k" * 64)
+        daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
+        fehler = P9Snapshot.validate_payload(daten)
+        assert (fehler == []) is gueltig, (schema, fehler)
 
 
 def test_der_lebende_stand_je_gegenstand():
@@ -124,6 +151,8 @@ def test_der_lebende_stand_je_gegenstand():
     assert set(kern) == {"version", "kern_sha256", "referenzwerte_sha256", "kernstand_sha256"}
     t = stand_belegen.lebender_stand("A-O1", REPO)
     assert t == {"version": tbox.TBOX_VERSION, "tbox_sha256": stand_belegen.tbox_modul_sha256()}
+    tw = stand_belegen.lebender_stand("A-T1", REPO)
+    assert set(tw) == {"tarifplaene_sha256", "parametrierung_sha256", "tarifwerk_sha256"}
 
 
 # --------------------------------------------------------------------------- #
@@ -217,15 +246,14 @@ def test_der_verweis_produzent_nimmt_keine_ablehnung_und_kein_fremdes_gate(tmp_p
 
 
 # --------------------------------------------------------------------------- #
-# T-Box-Stand: (c), (a), (b) — mit kuenstlich verlaengerter Versionslinie
+# T-Box-Stand: (a), (b) — mit der echten Linie (Uebergang 0.1.0 -> 0.2.0)
 # --------------------------------------------------------------------------- #
 
 
 def test_t_box_mit_uebergang_braucht_eine_abnahme(tmp_path, monkeypatch):
-    """Zwei Elemente in der Linie: Es gab einen Uebergang, die Basislinie
-    traegt nicht mehr. Ohne A-O1 und ohne Verweis verweigert A-M4.
+    """Ohne A-O1 und ohne Verweis verweigert A-M4.
 
-    Mutationsprobe: basislinie_gilt auch bei zwei Elementen -> rot."""
+    Mutationsprobe: den T-Box-Gegenstand aus AM4_GEGENSTAENDE nehmen -> rot."""
     monkeypatch.setattr(tbox, "TBOX_VERSIONEN", LINIE_MIT_UEBERGANG)
     fall = _fall(tmp_path, mit_tboxstand=False)
     am4 = _am4(fall)
@@ -293,15 +321,3 @@ def test_t_box_keine_aenderung_ueber_den_verweis(tmp_path, monkeypatch):
     assert eintrag["anzeige"] == sa.anzeige_keine_aenderung(
         snap["snapshot_sha256"], sa.herkunft(snap))
     assert eintrag["anzeige"].startswith("keine Aenderung seit Abnahme ")
-
-
-def test_die_basislinie_steht_woertlich_im_a_m4_snapshot(tmp_path, monkeypatch):
-    """Weg (c) gibt es nur bei einelementiger Linie — seit 0.2.0 kuenstlich."""
-    monkeypatch.setattr(tbox, "TBOX_VERSIONEN", LINIE_OHNE_UEBERGANG)
-    fall = _fall(tmp_path, mit_tboxstand=False)
-    am4 = _am4(fall)
-    assert am4.exit_code == 0, am4.errors
-    snapshot = json.loads(Path(am4.paths["snapshot"]).read_text(encoding="utf-8"))
-    assert snapshot["standabnahmen"]["tboxstand"]["anzeige"] == (
-        f"keine Aenderung: die Versionslinie der T-Box hat ein Element "
-        f"({tbox.TBOX_VERSION}), es gab keinen Uebergang")

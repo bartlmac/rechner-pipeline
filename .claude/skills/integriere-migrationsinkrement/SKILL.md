@@ -42,14 +42,21 @@ knotengebundener Inkremente, nie ein langlebiger Branch.
   benanntes Staging (nie `git add -A`); Merge nach menschlicher
   Abnahme; **Push macht der Mensch**.
 - **Ein Inkrement am Rechenkern verschiebt den Kernstand** (Code unter
-  `kern/`, Referenzwerte, Grundsatzdokumentation, Tarifpläne —
-  `models.kernabnahme.KERNSTAND`). Jeder offene Fall, der danach A-M4
-  zeichnet, braucht ein A-K2 auf dem neuen Stand: Belege mit
-  `gates.kernstand_belegen --von <zuletzt abgenommener Kernstand>`
-  neu erzeugen, `mensch/rechenkern` zeichnet (ADR-018, Nachtrag
-  2026-10-01). Vor dem Merge gehört das A-K2 des Inkrements zur
-  menschlichen Abnahme; die Regression steht bis zu ihrem Werkzeug als
-  benannte Ausnahme darin, nie als bestanden.
+  `kern/`, Referenzwerte, Grundsatzdokumentation —
+  `models.kernabnahme.KERNSTAND`), **eines an Tarifplänen oder an der
+  Parametrierung der eigenen Generationen das Tarifwerk**
+  (`models.tarifwerkabnahme.TARIFWERK`), **eines an der T-Box ihren
+  Stand**. Eine Änderung in der Entwicklung (ohne Fall) zeichnet die
+  zuständige Rolle im Linienbereich (`gate_entscheid --linie linie`,
+  ADR-025): `mensch/rechenkern` A-K2 (Belege `gates.kernstand_belegen
+  --linie linie --von <zuletzt abgenommener Stand>`), `mensch/aktuariat`
+  A-T1 (`gates.tarifwerk_belegen --linie linie ...`),
+  `mensch/architektur` A-O1 (`gates.stand_belegen tbox --linie linie
+  ...`). Jeder offene Fall verweist danach neu (`stand_belegen verweisen
+  --linie linie`); eine Änderung, die ein Fall erzwingt, zeichnet die
+  Rolle im Fall. Vor dem Merge gehört die Abnahme des Inkrements zur
+  menschlichen Abnahme; die Regression von A-K2 steht bis zu ihrem
+  Werkzeug als benannte Ausnahme darin, nie als bestanden.
 
 ## Ablauf je Inkrement
 

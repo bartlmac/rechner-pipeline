@@ -47,8 +47,9 @@ eine Architekturregel zu brechen.
 
 A-M4 verlangt, dass der Kernstand, auf dem ein Fall rechnet, abgenommen
 ist — einschliesslich der Aenderungen, die ausserhalb des Falls entstanden
-sind. Ist er seit einer frueheren Abnahme unveraendert, belegst du das mit
-dem Verweis (Kommando `stand_belegen verweisen` der Gates) — kein neuer
+sind (ADR-025: einmal im Linienbereich abgenommen, die Erstabnahme). Ist
+er seit der geltenden Abnahme unveraendert, belegst du das im Fall mit dem
+Verweis (Kommando `stand_belegen verweisen` der Gates, mit der Linie) — kein neuer
 Entscheid. Hat er sich geaendert, legst du ihn vor; in der Laufzeit einer
 Migration schreibst du dafuer nicht am Kern, du zeigst die Aenderungen.
 Du erzeugst die Vorlage mit dem Kommando `kernstand_belegen` der

@@ -66,6 +66,7 @@ from tests.zeichnung_fixture import (
     annahme_args,
     zeichne_kernstand,
     zeichne_stand,
+    zeichne_tarifwerk,
     zeichne_tboxstand,
 )
 
@@ -94,12 +95,14 @@ def _bereite_fall(
     scope: str = "tarif",
     mit_kernstand: bool = True,
     mit_tboxstand: bool = True,
+    mit_tarifwerk: bool = True,
 ) -> Path:
     """Echten TG2012-Input vorbereiten; weitere Generationen teilen die Werte.
 
     ``mit_kernstand=False`` laesst die A-K2-Annahme weg, ``mit_tboxstand=False``
-    die A-O1-Annahme des T-Box-Uebergangs — fuer die Tests, deren Gegenstand
-    genau sie ist."""
+    die A-O1-Annahme des T-Box-Uebergangs, ``mit_tarifwerk=False`` die
+    A-T1-Annahme des Tarifwerks — fuer die Tests, deren Gegenstand genau sie
+    ist."""
     fall = bereite_pk1_fall(tmp_path, generationen, scope=scope)
     if scope == "bestand":
         bestandsquelle = tmp_path / "synthetischer-bestand.csv"
@@ -119,11 +122,13 @@ def _bereite_fall(
     # Der Kernstand, auf dem der Fall rechnet (Entscheid 2026-10-01): A-M4
     # verlangt die A-K2-Annahme in jedem Scope; gezeichnet von
     # mensch/rechenkern mit eigenem Schluessel.
-    # Der T-Box-Stand (A-O1, mensch/architektur): Seit die Versionslinie
-    # einen Uebergang hat (T-Box 0.2.0), traegt jeder Fall sein A-O1 — oder
-    # einen Verweis; der Helfer tut nichts, solange die Linie ein Element hat.
+    # Der T-Box-Stand (A-O1, mensch/architektur) und das Tarifwerk (A-T1,
+    # mensch/aktuariat, ADR-025): jeder Fall traegt sein A-O1 und A-T1 — oder
+    # einen Verweis auf die Erstabnahme der Linie.
     if mit_tboxstand:
         zeichne_tboxstand(fall, REPO_ROOT)
+    if mit_tarifwerk:
+        zeichne_tarifwerk(fall, REPO_ROOT)
     if mit_kernstand:
         zeichne_kernstand(fall, REPO_ROOT)
     if scope == "tarif":
@@ -499,6 +504,7 @@ def test_echtes_pk1_schreibt_beleg_und_am4_nimmt_denselben_stand_an(
     assert snapshot["fall_scope"] == "tarif"
     assert set(snapshot["pflichtbelege"]) == {
         "pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege", "kernstand", "tboxstand",
+        "tarifwerkstand",
     }
     assert not any("bestand" in rolle for rolle in snapshot["pflichtbelege"])
 
@@ -544,7 +550,8 @@ def test_bestands_scope_bindet_pb1_suite_und_abnahmebericht_bis_am4(
     assert set(snapshot["pflichtbelege"]) == {
         "pq3_ledger", "aq1_snapshot",
         "am1_snapshot", "am2_snapshot", "am3_snapshot",
-        "pk1_belege", "kernstand", "tboxstand", "pb1_ledger", "migrationssuite", "fuehrungsprobe",
+        "pk1_belege", "kernstand", "tboxstand", "tarifwerkstand", "pb1_ledger", "migrationssuite",
+        "fuehrungsprobe",
         "abnahmebericht",
     }
     assert all(snapshot["pflichtbelege"].values())

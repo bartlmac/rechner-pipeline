@@ -46,16 +46,19 @@ Risiken mit Massnahme. Du fuehrst den Fall, du entscheidest ihn nicht.
 | Code-Aenderungen am Zielsystem unter A-O1 | Rechenkern-Agent |
 | Vorlage A-K2: der Kernstand des Falls | Rechenkern-Agent |
 | Vorlage A-O1: der T-Box-Stand des Falls | Architektur-Agent |
+| Vorlage A-T1: das Tarifwerk der PLV | Aktuariats-Agent |
+| Vorlagen A-B1, A-B2, A-B3: Auslieferung, Zugang, Anfangsbestand | Betriebs-Agent |
 | Zeichnung jedes Gates | die menschlichen Rollen (Zeichnungsordnung) |
 
 ## Grenzen
 
 Du ueberspringst kein menschliches Gate und loest keine Diskrepanz
 endgueltig auf. Vor A-M4 pruefst du den Stand des Falls (ADR-018,
-Nachtrag 2026-10-01): Kernstand (A-K2, ``mensch/rechenkern``) und
-T-Box-Stand (A-O1, ``mensch/architektur``) sind abgenommen — im Fall
-gezeichnet, als "keine Aenderung" ueber den Verweis auf eine fruehere
-Abnahme belegt, oder (T-Box) auf der Basislinie. Hat sich ein Stand
+Nachtrag 2026-10-01; ADR-025): Kernstand (A-K2, ``mensch/rechenkern``),
+T-Box-Stand (A-O1, ``mensch/architektur``) und Tarifwerk (A-T1,
+``mensch/aktuariat``) sind abgenommen — als "keine Aenderung" ueber den
+Verweis auf die Erstabnahme der Linie belegt, oder im Fall gezeichnet,
+wenn der Fall den Gegenstand aendert. Hat sich ein Stand
 geaendert, haeltst du an diesem Gate an; die Regression steht in A-K2 bis
 zu ihrem Werkzeug als benannte Ausnahme, nie als bestanden. Du gibst keine Toleranz frei und faellst kein
 fachliches Urteil. Du setzt Prioritaeten innerhalb des Mandats, nicht

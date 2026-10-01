@@ -1,31 +1,43 @@
-"""``stand_belegen`` — Belege der Standabnahme: lebender Stand, Verweis, T-Box-Uebergang.
+"""``stand_belegen`` — Belege der Standabnahme: Linienbereich, Ordnungslinie, Verweis, T-Box.
 
-Entscheid des Maintainers 2026-10-01 (ADR-018, Nachtrag 2026-10-01): Der
-Stand, auf dem ein Fall laeuft, ist abgenommen — Kernstand (A-K2) und
-T-Box-Stand (A-O1) nach EINER Regel (``models.standabnahme``). Dieses
-Modul haelt, was beide Gegenstaende gemeinsam brauchen:
+Entscheid des Maintainers 2026-10-01 (ADR-018, Nachtrag 2026-10-01; ADR-025):
+Das Zielsystem wird einmal ausserhalb jedes Falls abgenommen (Erstabnahme),
+ein Fall zeichnet danach nur, was sich durch ihn aendert, und verweist sonst
+auf die geltende Abnahme. Dieses Modul haelt, was die Gegenstaende gemeinsam
+brauchen (``models.standabnahme``):
 
-* :func:`lebender_stand` — der Stand, den der Code JETZT traegt (Kern:
-  Version, Sammelhash des Kernpakets, der Referenzwerte und der ganzen
-  Pfadmenge; T-Box: Version und SHA-256 des Moduls). Das Gate schreibt ihn
-  beim Zeichnen von A-K2/A-O1 als Feld ``stand`` in den Snapshot und haelt
-  ihn bei A-M4 per ``==`` gegen jeden abgenommenen Stand.
-* ``verweisen`` — der Weg "keine Aenderung": Ein Fall, dessen Stand ein
-  FRUEHER angenommener Snapshot schon abgenommen hat, legt eine
-  vollstaendige Kopie dieses Snapshots an den festen Ort
-  (``abgeleitet/kern/verweis.json`` bzw. ``abgeleitet/tbox/verweis.json``).
-  Die Kopie ist selbstadressiert und signiert; A-M4 prueft Signatur, Rolle,
-  Klasse und Stand. Kein neuer Entscheid.
-* ``tbox`` — der Aenderungsbeleg eines T-Box-Uebergangs
-  (``abgeleitet/tbox/aenderung.json``) aus der Versionslinie des Codes: der
-  Produzent, den A-O1 bis hierher nicht hatte. Die aktuarielle
-  Stellungnahme bleibt fachliche Arbeit des Aktuariats.
+* ``linie`` — den LINIENBEREICH anlegen: ein Arbeitsbereich, der sich wie ein
+  Fall verhaelt (``entscheide/``, ``abgeleitet/``), aber keinen Eingang einer
+  Migration hat; gekennzeichnet durch ``linie.json``.
+* ``ordnung`` — einen Stand der Zeichnungsordnung an ihre Versionslinie
+  anhaengen (``models.ordnungslinie``): das erste Glied unsigniert und
+  menschlich angelegt, jedes weitere gezeichnet von der Wurzelrolle, dem Vorstand
+  (Ordnungsaenderung A-Z1) mit dem Schluessel, den die Spitze ihr gibt; mit
+  lesbarer Sicht, was sich zwischen den Staenden aendert.
+* :func:`lebender_stand` — der Stand, den der Code JETZT traegt (Kern,
+  T-Box, Tarifwerk) bzw. den der Beleg des Anfangsbestands bezeugt. Das Gate
+  schreibt ihn beim Zeichnen als Feld ``stand`` in den Snapshot und haelt ihn
+  bei A-M4 per ``==`` gegen jeden abgenommenen Stand.
+* ``verweisen`` — der Weg "keine Aenderung": Ein Fall, dessen Stand eine
+  FRUEHER angenommene Abnahme schon abgenommen hat — die Erstabnahme der
+  Linie (``--linie``: ihre geltende Spitze) oder ein frueherer Fall
+  (``--snapshot``) —, legt eine vollstaendige Kopie dieses Snapshots an den
+  festen Ort. Die Kopie ist selbstadressiert und signiert; A-M4 prueft
+  Signatur, Rolle, Klasse und Stand. Kein neuer Entscheid.
+* ``tbox`` — der Aenderungsbeleg eines T-Box-Uebergangs aus der
+  Versionslinie des Codes, mit dem ganzen Vokabular und der lesbaren Sicht
+  (``abgeleitet/tbox/aenderung.md``: Vokabular-Diff gegen das zuletzt
+  abgenommene Vokabular, bei der Erstabnahme das ganze Vokabular). Die
+  aktuarielle Stellungnahme bleibt fachliche Arbeit des Aktuariats.
 
 Run via::
 
+    python -m rechner_pipeline.gates.stand_belegen linie --linie linie
+    python -m rechner_pipeline.gates.stand_belegen ordnung --linie linie \\
+        --ordnung <ordnung.json> --vorgaenger keiner|<glied> [--vorstand-schluessel <datei>]
     python -m rechner_pipeline.gates.stand_belegen verweisen --fall faelle/<fall> \\
-        --gate A-K2|A-O1 --snapshot <frueherer-snapshot.json> --repo-root .
-    python -m rechner_pipeline.gates.stand_belegen tbox --fall faelle/<fall> \\
+        --gate A-K2|A-O1|A-T1 (--linie linie | --snapshot <datei>) --repo-root .
+    python -m rechner_pipeline.gates.stand_belegen tbox (--fall faelle/<fall> | --linie linie) \\
         --artefakt <adr-oder-vermerk> --begruendung "<text>" --repo-root .
 
 Knoten: system/entscheid
@@ -39,7 +51,7 @@ import json
 import os
 import secrets
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from rechner_pipeline.gates import kernstand_belegen as _kern
 from rechner_pipeline.gates._common import (
@@ -48,19 +60,30 @@ from rechner_pipeline.gates._common import (
     build_result,
     raeume_schreibreste,
     run_command,
+    schreibe_exklusiv,
+    utc_now,
 )
 from rechner_pipeline.models import kernabnahme as ka
+from rechner_pipeline.models import ordnungslinie as ol
 from rechner_pipeline.models import standabnahme as sa
 from rechner_pipeline.models.schemas import P9Snapshot
 
 COMMAND = "stand_belegen"
-GATE_VERSION = "1.0.0"
+GATE_VERSION = "2.0.0"
 
 #: Fester Ort des T-Box-Aenderungsbelegs (wie bisher von A-O1 gelesen).
 TBOX_AENDERUNG_RELATIV = "abgeleitet/tbox/aenderung.json"
 TBOX_STELLUNGNAHME_RELATIV = "abgeleitet/tbox/stellungnahme.json"
+TBOX_SICHT_RELATIV = "abgeleitet/tbox/aenderung.md"
+#: Inhaltsadressiertes Archiv der T-Box-Belege: Die Sicht der naechsten
+#: Abnahme findet dort das zuletzt abgenommene Vokabular (der Beleg am
+#: festen Ort wird ersetzt, das Archiv nie).
+TBOX_ARCHIV_RELATIV = "abgeleitet/tbox/archiv"
 #: Schema des T-Box-Aenderungsbelegs (gates.gate_entscheid.pruefe_tbox_aenderung).
-TBOX_AENDERUNG_SCHEMA_VERSION = 1
+#: 2 (2026-10-01, ADR-025): das ganze Vokabular (``vokabular``,
+#: ``vokabular_sha256``) und das zuletzt abgenommene (``vorher``) — die
+#: Grundlage der lesbaren Sicht.
+TBOX_AENDERUNG_SCHEMA_VERSION = 2
 
 
 class StandFehler(RuntimeError):
@@ -77,8 +100,14 @@ def tbox_modul_sha256() -> str:
     return hashlib.sha256(Path(_tbox_modul().__file__).read_bytes()).hexdigest()
 
 
-def lebender_stand(gate: str, repo_root: Optional[Path]) -> Optional[Dict[str, str]]:
-    """Der Stand, den der Code JETZT traegt (None = nicht bestimmbar)."""
+def lebender_stand(gate: str, repo_root: Optional[Path],
+                   bereich: Optional[Path] = None) -> Optional[Dict[str, str]]:
+    """Der Stand, den der Code JETZT traegt (None = nicht bestimmbar).
+
+    Fuer A-B3 der Stand, den der Beleg des Anfangsbestands im ``bereich``
+    bezeugt (``models.anfangsbestand.stand_aus_beleg``): Das Gate sieht die
+    Ablage nicht; gegen sie haelt der Betrieb den Stand beim Binden.
+    """
     if gate == "A-K2":
         if repo_root is None:
             return None
@@ -92,15 +121,26 @@ def lebender_stand(gate: str, repo_root: Optional[Path]) -> Optional[Dict[str, s
         }
     elif gate == "A-O1":
         stand = {"version": _tbox_modul().TBOX_VERSION, "tbox_sha256": tbox_modul_sha256()}
+    elif gate == "A-T1":
+        if repo_root is None:
+            return None
+        from rechner_pipeline.gates.tarifwerk_belegen import lebender_stand as tw_stand
+
+        stand = tw_stand(repo_root)
+    elif gate == "A-B3":
+        from rechner_pipeline.models import anfangsbestand as ab
+
+        if bereich is None or not (bereich / ab.BELEG_RELATIV).is_file():
+            return None
+        try:
+            stand = ab.stand_aus_beleg(json.loads(
+                (bereich / ab.BELEG_RELATIV).read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            return None
     else:
         raise ValueError(f"{gate!r} ist kein Gegenstand der Standabnahme")
-    return stand if all(isinstance(v, str) and v for v in stand.values()) else None
-
-
-def basislinie_gilt() -> bool:
-    """Weg (c): Die Versionslinie der T-Box hat EIN Element — kein Uebergang."""
-    tbox = _tbox_modul()
-    return len(tuple(tbox.TBOX_VERSIONEN)) == 1
+    return stand if all(isinstance(v, str) and v and v != "None"
+                        for v in stand.values()) else None
 
 
 def verweis_fehler(daten: object, gegenstand: sa.Gegenstand,
@@ -135,7 +175,8 @@ def verweis_fehler(daten: object, gegenstand: sa.Gegenstand,
     elif snap.get("stand") != stand:
         fehler.append(
             f"der abgenommene Stand {snap.get('stand')!r} ist nicht der lebende {stand!r} "
-            "— es gab eine Aenderung; sie braucht eine Abnahme im Fall")
+            "— es gab eine Aenderung; sie braucht eine Abnahme (im Fall, oder in der Linie "
+            "und dann ein neuer Verweis)")
     return fehler
 
 
@@ -149,15 +190,74 @@ def baue_verweis(snapshot: dict) -> Dict[str, Any]:
     }
 
 
+def geltende_spitze(bereich: Path, gate: str) -> Tuple[Optional[dict], List[str]]:
+    """Die geltende Spitze der Kette eines Gates in einem Bereich — strukturell
+    (Schema, Selbstadressierung, Graph), OHNE Signatur: Die prueft A-M4 an der
+    Kopie im Verweis mit dem Ring. Fuer Produzenten und Sichten."""
+    from rechner_pipeline.models.snapshot_kette import pruefe_snapshot_graph
+
+    kette: Dict[str, dict] = {}
+    fehler: List[str] = []
+    verzeichnis = Path(bereich) / "entscheide"
+    for pfad in sorted(verzeichnis.glob(f"{gate}-*.json")) if verzeichnis.is_dir() else []:
+        try:
+            daten = json.loads(pfad.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            fehler.append(f"{pfad.name}: nicht lesbar ({exc})")
+            continue
+        sf = P9Snapshot.validate_payload(daten)
+        if sf or pfad.name != f"{gate}-{daten.get('snapshot_sha256')}.json":
+            fehler.append(f"{pfad.name}: kein gueltiger Snapshot ({'; '.join(sf[:2])})")
+            continue
+        kette[daten["snapshot_sha256"]] = daten
+    if fehler:
+        return None, fehler
+    if not kette:
+        return None, [f"keine {gate}-Abnahme in {bereich}"]
+    spitzen, gf = pruefe_snapshot_graph(kette)
+    if gf or len(spitzen) != 1:
+        return None, gf or [f"keine eindeutige Spitze der {gate}-Kette"]
+    return kette[spitzen[0]], []
+
+
+def _vokabular_sha256(vokabular: Any) -> str:
+    roh = json.dumps(vokabular, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+    return hashlib.sha256(roh.encode("ascii")).hexdigest()
+
+
+def _vorher_tbox(bereiche: List[Path]) -> Optional[Dict[str, Any]]:
+    """Das zuletzt abgenommene Vokabular: der Beleg, den die geltende
+    A-O1-Spitze pinnt, aus dem Archiv seines Bereichs (None = es gibt keinen)."""
+    for bereich in bereiche:
+        spitze, fehler = geltende_spitze(bereich, "A-O1")
+        if spitze is None or spitze.get("entscheid") != "angenommen":
+            continue
+        pin = ((spitze.get("pflichtbelege") or {}).get("tbox_aenderung") or [None])[0]
+        datei = bereich / TBOX_ARCHIV_RELATIV / f"{pin}.json"
+        if not datei.is_file():
+            continue
+        roh = datei.read_bytes()
+        if hashlib.sha256(roh).hexdigest() != pin:
+            continue
+        alt = json.loads(roh)
+        if isinstance(alt.get("vokabular"), dict):
+            return {"beleg_sha256": pin, "snapshot_sha256": spitze["snapshot_sha256"],
+                    "version": alt.get("nach_version"),
+                    "vokabular_sha256": _vokabular_sha256(alt["vokabular"]),
+                    "vokabular": alt["vokabular"]}
+    return None
+
+
 def tbox_aenderungsbeleg(fall: Path, repo_root: Optional[Path], artefakt: str,
-                         begruendung: str) -> Dict[str, Any]:
+                         begruendung: str, *,
+                         vorher_bereiche: Optional[List[Path]] = None) -> Dict[str, Any]:
     """Der Aenderungsbeleg des letzten Uebergangs der T-Box-Versionslinie."""
     tbox = _tbox_modul()
     linie = tuple(tbox.TBOX_VERSIONEN)
     if len(linie) < 2:
         raise StandFehler(
-            f"die Versionslinie {linie!r} hat ein Element — kein Uebergang, nichts "
-            "abzunehmen (Weg c: keine Aenderung)")
+            f"die Versionslinie {linie!r} hat ein Element — kein Uebergang; die erste "
+            "Abnahme der T-Box braucht einen (ADR-025)")
     if linie[-1] != tbox.TBOX_VERSION:
         raise StandFehler(f"die Linie endet nicht bei der Version des Codes ({tbox.TBOX_VERSION})")
     if Path(artefakt).is_absolute() or ".." in Path(artefakt).parts:
@@ -168,7 +268,8 @@ def tbox_aenderungsbeleg(fall: Path, repo_root: Optional[Path], artefakt: str,
             sha = hashlib.sha256(ort.read_bytes()).hexdigest()
             break
     else:
-        raise StandFehler(f"artefakt {artefakt!r} liegt weder im Fall noch im Repo")
+        raise StandFehler(f"artefakt {artefakt!r} liegt weder im Bereich noch im Repo")
+    vokabular = json.loads(json.dumps(tbox.vokabular(), sort_keys=True))
     return {
         "schema_version": TBOX_AENDERUNG_SCHEMA_VERSION,
         "von_version": linie[-2],
@@ -176,7 +277,77 @@ def tbox_aenderungsbeleg(fall: Path, repo_root: Optional[Path], artefakt: str,
         "tbox_sha256": tbox_modul_sha256(),
         "artefakt": {"pfad": artefakt, "sha256": sha},
         "begruendung": begruendung,
+        "vokabular_sha256": _vokabular_sha256(vokabular),
+        "vokabular": vokabular,
+        "vorher": _vorher_tbox(list(vorher_bereiche or [fall])),
     }
+
+
+def _flach(wert: Any, praefix: str = "") -> Dict[str, Any]:
+    """Ein Vokabular als Pfad -> Blattwert (Listen als Ganzes)."""
+    if isinstance(wert, dict):
+        aus: Dict[str, Any] = {}
+        for k in sorted(wert):
+            aus.update(_flach(wert[k], f"{praefix}.{k}" if praefix else str(k)))
+        return aus
+    return {praefix: wert}
+
+
+def vokabular_diff(alt: Dict[str, Any], neu: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Was sich zwischen zwei Vokabularen aendert — je Pfad, deterministisch."""
+    a, n = _flach(alt), _flach(neu)
+    zeilen = []
+    for pfad in sorted(set(a) | set(n)):
+        if a.get(pfad) == n.get(pfad):
+            continue
+        zustand = "neu" if pfad not in a else "entfallen" if pfad not in n else "geaendert"
+        zeilen.append({"pfad": pfad, "zustand": zustand, "vorher": a.get(pfad),
+                       "nachher": n.get(pfad)})
+    return zeilen
+
+
+def rendere_tbox_sicht(beleg: Dict[str, Any]) -> str:
+    """Die Sicht des Pruefers fuer A-O1 (Markdown), deterministisch aus dem Beleg."""
+    from rechner_pipeline.gates.kernstand_belegen import _c, _md
+
+    def w(x: Any) -> str:
+        return _c(json.dumps(x, ensure_ascii=False, sort_keys=True))
+
+    z = ["# T-Box-Abnahme A-O1 — Vokabular des Zielsystems", "",
+         f"Uebergang der Versionslinie: {_md(beleg.get('von_version'))} -> "
+         f"{_md(beleg.get('nach_version'))}; Modul {_c(str(beleg.get('tbox_sha256'))[:16])}, "
+         f"Vokabular {_c(str(beleg.get('vokabular_sha256'))[:16])}.  ",
+         f"Begruendung der Vorlage: {_md(beleg.get('begruendung'))}; Artefakt "
+         f"{_c((beleg.get('artefakt') or {}).get('pfad'))}.", ""]
+    vorher = beleg.get("vorher")
+    neu = beleg.get("vokabular") or {}
+    if vorher:
+        diff = vokabular_diff(vorher.get("vokabular") or {}, neu)
+        z += [f"## Aenderungen gegenueber dem zuletzt abgenommenen Vokabular "
+              f"(Version {_md(vorher.get('version'))}, A-O1-Snapshot "
+              f"{_c(str(vorher.get('snapshot_sha256'))[:16])})", ""]
+        if not diff:
+            z += ["Keine Aenderung am Vokabular.", ""]
+        for d in diff:
+            z.append(f"- {_c(d['pfad'])} ({_md(d['zustand'])}): {w(d['vorher'])} -> "
+                     f"{w(d['nachher'])}")
+        z.append("")
+    else:
+        z += ["## Erstabnahme: das ganze Vokabular", "",
+              "Es gibt kein zuletzt abgenommenes Vokabular, gegen das sich eine "
+              "Differenz bilden liesse — fruehere Versionen der Linie sind nicht als "
+              "Vokabular belegt. Gezeigt wird deshalb das ganze Vokabular dieser Version; "
+              "jede spaetere Abnahme zeigt die Differenz dagegen.", ""]
+        for abschnitt in sorted(neu):
+            eintraege = _flach(neu[abschnitt])
+            z += [f"### {_md(abschnitt)} ({len(eintraege)} Eintraege)", ""]
+            for pfad, wert in eintraege.items():
+                z.append(f"- {_c(pfad)}: {w(wert)}")
+            z.append("")
+    z += ["Aus dem Aenderungsbeleg erzeugt (`gates.stand_belegen tbox`); massgeblich ist "
+          "der Beleg, nicht diese Sicht. Die aktuarielle Stellungnahme legt das Aktuariat "
+          "vor.", ""]
+    return "\n".join(z)
 
 
 def _ersetze(ziel: Path, daten: bytes) -> None:
@@ -197,22 +368,62 @@ def _json_bytes(daten: Dict[str, Any]) -> bytes:
     return (json.dumps(daten, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
+def ordnung_sicht(alt: Optional[dict], neu: dict) -> List[str]:
+    """Was sich zwischen zwei Staenden der Ordnung aendert, lesbar — aus
+    ``models.ordnungslinie.aenderungen`` (gerechnet, nicht behauptet)."""
+    zeilen = [f"- {ol.aenderung_text(e)}" for e in ol.aenderungen(alt, neu)]
+    return zeilen or ["- keine Aenderung an Rollen, Schluesseln oder Gates"]
+
+
+def rendere_ordnungslinie(glieder: List[Dict[str, Any]]) -> str:
+    """Die Sicht der ganzen Ordnungslinie — je Glied, was es aendert."""
+    z = ["# Versionslinie der Zeichnungsordnung", ""]
+    alt: Optional[dict] = None
+    for g in glieder:
+        neu = ol.ordnung_aus(g)
+        z += [f"## Glied {g['nummer']} — `{g['glied_sha256'][:16]}`", "",
+              f"Ordnung `{g['ordnung_sha256'][:16]}`, eingetragen am {g['eingetragen_am']}.  ",
+              f"{g['eintrag']['vermerk']}", ""]
+        if g.get("zeichnung"):
+            z += [f"Gezeichnet: {g['zeichnung']['rolle']} ({g['zeichnung']['gate']}), Schluessel "
+                  f"`{g['zeichnung']['schluessel_sha256'][:16]}`.", ""]
+        z += ordnung_sicht(alt, neu) + [""]
+        alt = neu
+    return "\n".join(z)
+
+
 def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     p = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.gates.stand_belegen",
-        description="Belege der Standabnahme (A-K2, A-O1): Verweis 'keine Aenderung', "
-                    "T-Box-Uebergang. Producer, kein Gate.")
+        description="Belege der Abnahme des Zielsystems: Linienbereich, Ordnungslinie, "
+                    "Verweis 'keine Aenderung', T-Box-Uebergang. Producer, kein Gate.")
     unter = p.add_subparsers(dest="aktion", required=True)
-    v = unter.add_parser("verweisen", help="Verweis auf einen frueher angenommenen Snapshot")
+    li = unter.add_parser("linie", help="den Linienbereich anlegen (ADR-025)")
+    li.add_argument("--linie", required=True)
+    o = unter.add_parser("ordnung", help="einen Stand der Zeichnungsordnung an die Linie haengen")
+    o.add_argument("--linie", required=True)
+    o.add_argument("--ordnung", required=True, help="die Ordnungsdatei (ausserhalb der Linie)")
+    o.add_argument("--vorgaenger", required=True,
+                   help="die Spitze, wie der Mensch sie gesehen hat (glied_sha256), oder 'keiner'")
+    o.add_argument("--vorstand-schluessel", dest="vorstand_schluessel", default=None,
+                   help="Schluessel der Wurzelrolle (Vorstand) laut Spitze (ab dem zweiten Glied)")
+    o.add_argument("--eingetragen-am", dest="eingetragen_am", default=None)
+    v = unter.add_parser("verweisen", help="Verweis auf eine frueher angenommene Abnahme")
     v.add_argument("--fall", required=True)
     v.add_argument("--repo-root", dest="repo_root", required=True)
-    v.add_argument("--gate", required=True, choices=[g.gate for g in sa.GEGENSTAENDE])
-    v.add_argument("--snapshot", required=True, help="der frueher angenommene Snapshot (Datei)")
+    v.add_argument("--gate", required=True, choices=[g.gate for g in sa.AM4_GEGENSTAENDE])
+    quelle = v.add_mutually_exclusive_group(required=True)
+    quelle.add_argument("--snapshot", help="der frueher angenommene Snapshot (Datei)")
+    quelle.add_argument("--linie", help="Linienbereich: seine geltende Abnahme des Gates")
     t = unter.add_parser("tbox", help="Aenderungsbeleg des letzten T-Box-Uebergangs")
-    t.add_argument("--fall", required=True)
+    ziel = t.add_mutually_exclusive_group(required=True)
+    ziel.add_argument("--fall", default=None)
+    ziel.add_argument("--linie", default=None)
+    t.add_argument("--vorher-linie", dest="vorher_linie", default=None,
+                   help="Linienbereich mit der zuletzt abgenommenen T-Box (fuer die Sicht im Fall)")
     t.add_argument("--repo-root", dest="repo_root", required=True)
     t.add_argument("--artefakt", required=True,
-                   help="ADR oder Aenderungsvermerk, relativ zu Fall oder Repo")
+                   help="ADR oder Aenderungsvermerk, relativ zu Bereich oder Repo")
     t.add_argument("--begruendung", required=True)
     args = p.parse_args(argv)
 
@@ -220,35 +431,119 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
         return build_result(command=COMMAND, gate_version=GATE_VERSION, exit_code=code,
                             errors=[{"code": "stand", "message": text}])
 
-    fall = Path(args.fall)
-    if not (fall / "eingang.json").is_file():
-        return _fehler(Exit.USAGE, f"kein Fall-Arbeitsbereich: {fall}")
-    repo = Path(args.repo_root).resolve()
-    if args.aktion == "verweisen":
-        gegenstand = sa.gegenstand_fuer(args.gate)
+    if args.aktion == "linie":
+        linie = Path(args.linie)
+        if sa.bereich_art(linie) is not None:
+            return _fehler(Exit.USAGE, f"{linie} ist schon ein Fall- oder Linienbereich")
+        if linie.exists() and any(linie.iterdir()):
+            return _fehler(Exit.USAGE, f"{linie} ist nicht leer — ein Linienbereich entsteht leer")
+        linie.mkdir(parents=True, exist_ok=True)
+        daten = _json_bytes(sa.linie_kennung(linie.resolve().name))
+        schreibe_exklusiv(linie / sa.LINIE_MARKER, daten)
+        return build_result(command=COMMAND, gate_version=GATE_VERSION, exit_code=Exit.OK,
+                            paths={"linie": str(linie)}, summary={"linie": linie.resolve().name},
+                            output_hashes={sa.LINIE_MARKER: hashlib.sha256(daten).hexdigest()})
+    if args.aktion == "ordnung":
+        linie = Path(args.linie)
+        if sa.bereich_art(linie) != "linie":
+            return _fehler(Exit.USAGE, f"kein Linienbereich: {linie}")
+        from rechner_pipeline.models.zeichnung import ausserhalb_von
+
+        quelle_pfad = Path(args.ordnung)
+        if not ausserhalb_von(quelle_pfad, linie):
+            return _fehler(Exit.USAGE, "die Ordnung liegt innerhalb der Linie — sie wird extern "
+                                       "verwahrt; die Linie traegt ihre Kopie im Glied")
+        schluessel = None
+        if args.vorstand_schluessel:
+            from rechner_pipeline.models.freigabe import lade_schluesselring
+
+            ring, rf, aktiv = lade_schluesselring(args.vorstand_schluessel, ausserhalb=linie)
+            if rf or aktiv is None:
+                return _fehler(Exit.USAGE, "; ".join(rf) or "Schluessel des Vorstands nicht geladen")
+            schluessel = ring[aktiv]
+        glieder, lf = ol.lade_linie(linie)
+        if lf:
+            return _fehler(Exit.FILE_CONTRACT, "die Linie ist verletzt: " + "; ".join(lf[:3]))
         try:
-            snapshot = json.loads(Path(args.snapshot).read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            return _fehler(Exit.USAGE, f"--snapshot nicht lesbar: {exc}")
+            glied = ol.neues_glied(
+                glieder, quelle_pfad.read_bytes(),
+                vorgaenger=None if args.vorgaenger == "keiner" else args.vorgaenger,
+                eingetragen_am=args.eingetragen_am or utc_now(),
+                vorstand_schluessel=schluessel)
+        except (ol.OrdnungslinieFehler, OSError) as exc:
+            return _fehler(Exit.FILE_CONTRACT, str(exc))
+        ziel = linie / ol.VERZEICHNIS / ol.dateiname(glied)
+        ziel.parent.mkdir(parents=True, exist_ok=True)
+        daten = _json_bytes(glied)
+        schreibe_exklusiv(ziel, daten)
+        neu, _ = ol.lade_linie(linie)
+        _ersetze(linie / "abgeleitet" / "ordnung" / "linie.md",
+                 rendere_ordnungslinie(neu).encode("utf-8"))
+        return build_result(
+            command=COMMAND, gate=ol.ORDNUNGS_GATE, gate_version=GATE_VERSION, exit_code=Exit.OK,
+            paths={"glied": str(ziel)},
+            summary={"nummer": glied["nummer"], "glied_sha256": glied["glied_sha256"],
+                     "ordnung_sha256": glied["ordnung_sha256"],
+                     "gezeichnet": glied["zeichnung"] is not None,
+                     "aenderung": ordnung_sicht(
+                         ol.ordnung_aus(glieder[-1]) if glieder else None, ol.ordnung_aus(glied))},
+            output_hashes={str(ziel): hashlib.sha256(daten).hexdigest()})
+
+    fall = Path(args.fall or getattr(args, "linie", None) or "")
+    if args.aktion == "verweisen":
+        if sa.bereich_art(fall) != "fall":
+            return _fehler(Exit.USAGE, f"kein Fall-Arbeitsbereich: {fall}")
+        repo = Path(args.repo_root).resolve()
+        gegenstand = sa.gegenstand_fuer(args.gate)
+        if args.linie:
+            if sa.bereich_art(Path(args.linie)) != "linie":
+                return _fehler(Exit.USAGE, f"kein Linienbereich: {args.linie}")
+            snapshot, sf = geltende_spitze(Path(args.linie), args.gate)
+            if snapshot is None:
+                return _fehler(Exit.FILE_CONTRACT, "; ".join(sf[:3]))
+        else:
+            try:
+                snapshot = json.loads(Path(args.snapshot).read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                return _fehler(Exit.USAGE, f"--snapshot nicht lesbar: {exc}")
         verweis = baue_verweis(snapshot)
-        fehler = verweis_fehler(verweis, gegenstand, lebender_stand(args.gate, repo))
+        fehler = verweis_fehler(verweis, gegenstand, lebender_stand(args.gate, repo, fall))
         if fehler:
             return _fehler(Exit.FILE_CONTRACT, "; ".join(fehler[:5]))
         ziel, daten = fall / gegenstand.verweis_relativ, _json_bytes(verweis)
-        summary = {"gate": args.gate, "anzeige": sa.anzeige_keine_aenderung(
-            snapshot["snapshot_sha256"], verweis["herkunft"])}
-    else:
-        try:
-            beleg = tbox_aenderungsbeleg(fall, repo, args.artefakt, args.begruendung.strip())
-        except StandFehler as exc:
-            return _fehler(Exit.FILE_CONTRACT, str(exc))
-        ziel, daten = fall / TBOX_AENDERUNG_RELATIV, _json_bytes(beleg)
-        summary = {"von_version": beleg["von_version"], "nach_version": beleg["nach_version"],
-                   "stellungnahme": f"{TBOX_STELLUNGNAHME_RELATIV} legt das Aktuariat vor"}
-    _ersetze(ziel, daten)
-    return build_result(command=COMMAND, gate_version=GATE_VERSION, exit_code=Exit.OK,
-                        paths={"beleg": str(ziel)}, summary=summary,
-                        output_hashes={str(ziel): hashlib.sha256(daten).hexdigest()})
+        _ersetze(ziel, daten)
+        return build_result(
+            command=COMMAND, gate_version=GATE_VERSION, exit_code=Exit.OK,
+            paths={"beleg": str(ziel)},
+            summary={"gate": args.gate, "anzeige": sa.anzeige_keine_aenderung(
+                snapshot["snapshot_sha256"], verweis["herkunft"])},
+            output_hashes={str(ziel): hashlib.sha256(daten).hexdigest()})
+    # tbox
+    if sa.bereich_art(fall) is None:
+        return _fehler(Exit.USAGE, f"kein Fall- oder Linienbereich: {fall}")
+    repo = Path(args.repo_root).resolve()
+    vorher = [fall] + ([Path(args.vorher_linie)] if args.vorher_linie else [])
+    try:
+        beleg = tbox_aenderungsbeleg(fall, repo, args.artefakt, args.begruendung.strip(),
+                                     vorher_bereiche=vorher)
+    except StandFehler as exc:
+        return _fehler(Exit.FILE_CONTRACT, str(exc))
+    daten = _json_bytes(beleg)
+    sha = hashlib.sha256(daten).hexdigest()
+    _ersetze(fall / TBOX_AENDERUNG_RELATIV, daten)
+    _ersetze(fall / TBOX_SICHT_RELATIV, rendere_tbox_sicht(beleg).encode("utf-8"))
+    archiv = fall / TBOX_ARCHIV_RELATIV / f"{sha}.json"
+    archiv.parent.mkdir(parents=True, exist_ok=True)
+    if not archiv.exists():
+        schreibe_exklusiv(archiv, daten)
+    return build_result(
+        command=COMMAND, gate_version=GATE_VERSION, exit_code=Exit.OK,
+        paths={"beleg": str(fall / TBOX_AENDERUNG_RELATIV),
+               "sicht": str(fall / TBOX_SICHT_RELATIV)},
+        summary={"von_version": beleg["von_version"], "nach_version": beleg["nach_version"],
+                 "vorher": (beleg["vorher"] or {}).get("snapshot_sha256"),
+                 "stellungnahme": f"{TBOX_STELLUNGNAHME_RELATIV} legt das Aktuariat vor"},
+        output_hashes={str(fall / TBOX_AENDERUNG_RELATIV): sha})
 
 
 if __name__ == "__main__":  # pragma: no cover

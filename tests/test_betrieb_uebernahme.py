@@ -207,9 +207,9 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
             from rechner_pipeline.models import standabnahme as sa
 
             daten["standabnahmen"] = {
-                g.rolle: {"gate": g.gate, "weg": sa.BASISLINIE if g.basislinie
-                          else sa.KEINE_AENDERUNG, "anzeige": f"{g.titel} (Suite)"}
-                for g in sa.GEGENSTAENDE if g.rolle in pflichtbelege}
+                g.rolle: {"gate": g.gate, "weg": sa.KEINE_AENDERUNG,
+                          "anzeige": f"{g.titel} (Suite)"}
+                for g in sa.AM4_GEGENSTAENDE if g.rolle in pflichtbelege}
     if entscheid == "angenommen":
         daten["freigabe"] = freigabe_fuer(daten, schluessel or TESTKEY)
     daten["snapshot_sha256"] = p9_snapshot_sha256(daten)

@@ -47,6 +47,13 @@ siehst kein Repository, sondern ein Bewertungssystem, das du bedienst.
   Vorlage aufbereiten.
 - ``pruefe-migrationscontrolling``: das Controlling ueber zwei Stichtage
   und den Abnahmebericht als A-M4-Vorlage aufbereiten.
+- **Tarifwerk (Vorlage A-T1, ADR-025):** die Aenderungen am Tarifwerk der
+  PLV — je Tarifplan und je eigener Tarifgeneration der Configs, mit den
+  Commits des Zweigs — mit dem Kommando `tarifwerk_belegen` der Gates
+  vorlegen (Erstabnahme im Linienbereich; im Fall nur, wenn der Fall das
+  Tarifwerk aendert, sonst der Verweis `stand_belegen verweisen`);
+  ``mensch/aktuariat`` prueft die Sicht `abgeleitet/tarifwerk/aenderung.md`
+  und zeichnet.
 
 ## Grenzen
 
@@ -67,7 +74,7 @@ jede Frage, deren Antwort im Tarifwerk nicht steht.
 
 - Du bist eine Agentenrolle des KI-Tools (Ebene 2). Du legst vor, du
   zeichnest nie. Endgueltige Entscheidungen und Annahmen menschlicher
-  Gates (A-Q1, A-O1, A-K2, A-M1, A-M2, A-M3, A-M4) vollzieht eine menschliche
+  Gates (A-Q1, A-O1, A-K2, A-T1, A-M1, A-M2, A-M3, A-M4) vollzieht eine menschliche
   Rolle mit ihrem Schluessel ueber die Zeichnungsordnung; in der
   Vorfuehrung ist das eine simulierte Rolle, und jeder Beleg sagt es.
   Ein Gate kannst du nur ABLEHNEN (``--entscheid abgelehnt --rolle

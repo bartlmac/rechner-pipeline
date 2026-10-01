@@ -272,6 +272,44 @@ Tag ist ein benannter No-op — Exit 0, `tageslauf: <Tag> bereits gefuehrt,
 nichts zu tun`, keine Protokollzeile, Stand unveraendert. Nur ein Tag VOR
 dem gefuehrten (rueckwaerts) bricht mit Exit 2 ab.
 
+**Abnahme des Anfangsbestands A-B3** (ADR-025). Der erste Lauf einer
+Ablage ist ihr AUFBAULAUF: Er baut den Anfangsbestand und laeuft ohne
+Abnahme. Jeder weitere Lauf verlangt, dass die Betriebsverantwortung
+(`mensch/betrieb`) diesen Anfangsbestand abgenommen hat — die gezeichnete
+Bindung `anfangsbestand.json` in der Ablage, deren Stand eine gruene Zeile
+DIESER Ablage ist; sonst haelt der Lauf an (Exit 2, rote Protokollzeile,
+Ausweg in der Meldung). Das gilt auch fuer eine Ablage, die schon vor dieser
+Regel gefuehrt wurde: Sie wird auf ihrem gefuehrten Stand nachtraeglich
+abgenommen, mit denselben drei Schritten. Also nach dem Aufbaulauf (und vor
+dem Einschalten des Timers):
+
+```
+python -m rechner_pipeline.betrieb.anfangsbestand belegen --stand ~/apps/plv/daten \
+    --linie <linienbereich> --schluessel ~/apps/plv/schluessel/betrieb.key \
+    --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json
+# ansehen: <linienbereich>/abgeleitet/anfangsbestand/beleg.md
+python -m rechner_pipeline.gates.gate_entscheid --linie <linienbereich> --gate A-B3 \
+    --entscheid angenommen --entscheider "<Rolle>" --begruendung "..." --repo-root . \
+    --zeichnungsordnung <ordnung> --freigabe-schluessel <schluessel-mensch-betrieb> \
+    [--mandat <mandat>]
+python -m rechner_pipeline.betrieb.anfangsbestand binden --stand ~/apps/plv/daten \
+    --linie <linienbereich> --freigabe-schluessel <schluessel-mensch-betrieb> \
+    --schluessel ~/apps/plv/schluessel/betrieb.key \
+    --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json [--ordnungslinie]
+```
+
+Der Beleg bindet Tabellen, Config, Code-Stand und einen neu gefahrenen
+Befund der Bestandswache P-B1 (gruen ist Voraussetzung), dazu Kennzahlen;
+nach einem Neuaufsetzen zeigt die Sicht die Abweichung zum zuletzt
+abgenommenen Anfangsbestand (aus der Bindung im Archiv der alten Ablage).
+`binden` haelt den Stand des A-B3-Snapshots per Gleichheit gegen den der
+Ablage — liegt zwischen Belegen und Binden ein Lauf, verweigert es. Der
+Linienbereich ist der Ort der Erstabnahme des Zielsystems (ADR-025); die
+Ordnung von `binden` nennt `mensch/betrieb` mit `A-B3`. Eine Zugangsprobe
+auf einer Ablage mit gefuehrtem Stand verlangt die Bindung ebenso (sie
+faehrt den Tageslauf auf einer Kopie); auf der LEEREN Ablage eines
+Neuaufsetzens wird der Zugang Teil des Anfangsbestands.
+
 **Betrieb neu aufsetzen (Betriebsweg, Fachkonzept Abschnitt 8.5).** Wenn
 ein Fall auf dem Entwicklerweg korrigiert und seine Uebernahme neu erzeugt
 wurde, setzt diese Routine die Laufzeitumgebung daraus neu auf. Sie
@@ -305,7 +343,8 @@ python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
     --betriebsschluessel ~/apps/plv/schluessel/betrieb.key \
     --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json \
     --zugangsabnahme <sha256-des-a-b2-snapshots>
-cd ~/apps/plv && docker compose run --rm tageslauf
+cd ~/apps/plv && docker compose run --rm tageslauf      # Aufbaulauf
+# Abnahme des Anfangsbestands A-B3: belegen, zeichnen, binden (siehe oben)
 python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten \
     --paket <paket> --anker faelle/<fall>/abgeleitet/anker \
     --betriebsschluessel ~/apps/plv/schluessel/betrieb.key \

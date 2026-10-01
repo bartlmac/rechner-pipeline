@@ -549,6 +549,13 @@ _ABNAHME = {
              "A-B2 zeichnen (python -m rechner_pipeline.gates.gate_entscheid --gate "
              "A-B2), dann registrieren mit --zugangsabnahme <sha256> oder dem "
              "gruenen A-B2-Gate-Ledger unter abgeleitet/diagnostics/"),
+    # A-B3 liest nicht die Registrierung, sondern die Bindung des
+    # Anfangsbestands (``betrieb.anfangsbestand binden``, ADR-025) — ueber
+    # denselben einen Leser, im Linienbereich statt im Fall.
+    "A-B3": ("Abnahme des Anfangsbestands",
+             "belegen (python -m rechner_pipeline.betrieb.anfangsbestand belegen), A-B3 "
+             "im Linienbereich zeichnen (python -m rechner_pipeline.gates.gate_entscheid "
+             "--linie <linie> --gate A-B3), dann binden"),
 }
 
 
@@ -556,14 +563,16 @@ def lies_am4_snapshot(
     fall: Path, snapshot_sha256: Optional[str], *,
     schluesselring: Optional[Mapping[str, bytes]] = None,
     ordnung: Optional[Mapping[str, Any]],
+    ordnungslinie: Optional[list] = None,
 ) -> Tuple[Dict[str, Any], str, bool]:
     """Den A-M4-Snapshot einer Uebernahme pruefen (siehe :func:`lies_abnahme_snapshot`)."""
     return lies_abnahme_snapshot(fall, "A-M4", snapshot_sha256, schluesselring=schluesselring,
-                                 ordnung=ordnung)
+                                 ordnung=ordnung, ordnungslinie=ordnungslinie)
 
 
 def zeichnende_rolle(
     daten: Mapping[str, Any], gate: str, ordnung: Optional[Mapping[str, Any]], name: str,
+    *, ordnungslinie: Optional[list] = None,
 ) -> str:
     """Die Rolle, die einen Abnahme-Snapshot gezeichnet hat — oder Verweigerung.
 
@@ -580,7 +589,8 @@ def zeichnende_rolle(
     from rechner_pipeline.models.zeichnung import zeichnende_rolle_fehler
 
     rolle, fehler = zeichnende_rolle_fehler(
-        dict(daten), gate, dict(ordnung) if isinstance(ordnung, Mapping) else None)
+        dict(daten), gate, dict(ordnung) if isinstance(ordnung, Mapping) else None,
+        linie=ordnungslinie)
     if fehler is not None or rolle is None:
         raise UebernahmeError(f"{name}: {_ABNAHME[gate][0]}: {fehler}")
     return rolle
@@ -590,6 +600,7 @@ def lies_abnahme_snapshot(
     fall: Path, gate: str, snapshot_sha256: Optional[str], *,
     schluesselring: Optional[Mapping[str, bytes]] = None,
     ordnung: Optional[Mapping[str, Any]],
+    ordnungslinie: Optional[list] = None,
 ) -> Tuple[Dict[str, Any], str, bool]:
     """Den Abnahme-Snapshot (A-M1, A-M4 oder A-B2) einer Uebernahme pruefen.
 
@@ -647,10 +658,15 @@ def lies_abnahme_snapshot(
             f"{pfad.name}: Entscheid {daten.get('entscheid')!r} — nur eine ANGENOMMENE "
             f"{abnahme} begruendet eine Uebernahme"
         )
-    try:
-        fallname = json.loads((Path(fall) / "fall.json").read_text(encoding="utf-8"))["name"]
-    except (OSError, json.JSONDecodeError, KeyError):
-        fallname = Path(fall).name
+    # Der Name des Bereichs: ein Fall (fall.json) oder der Linienbereich der
+    # Erstabnahme (linie.json, ADR-025) — derselbe Leser fuer beide.
+    fallname = Path(fall).name
+    for kennung in ("fall.json", "linie.json"):
+        try:
+            fallname = json.loads((Path(fall) / kennung).read_text(encoding="utf-8"))["name"]
+            break
+        except (OSError, json.JSONDecodeError, KeyError, TypeError):
+            continue
     if daten.get("fall") != fallname:
         raise UebernahmeError(
             f"{pfad.name}: der Snapshot gehoert zum Fall {daten.get('fall')!r}, "
@@ -695,7 +711,7 @@ def lies_abnahme_snapshot(
     # Der dritte Zeuge: Wer gezeichnet hat, muss das Gate zeichnen duerfen
     # (Entscheid 2026-10-01). Nach der Signatur — eine Rolle aus einem
     # Fingerabdruck, dessen Signatur nicht stimmt, sagte nichts.
-    zeichnende_rolle(daten, gate, ordnung, pfad.name)
+    zeichnende_rolle(daten, gate, ordnung, pfad.name, ordnungslinie=ordnungslinie)
     return daten, pfad.name, verifiziert
 
 
@@ -1055,7 +1071,8 @@ def _zugangsabnahme_binden(
     # und wer _zugangsabnahme_binden mit anders gelesenen Daten ruft,
     # bekommt dieselbe Pruefung.
     ordnung = zeichner.ordnung if isinstance(getattr(zeichner, "ordnung", None), dict) else None
-    rolle = zeichnende_rolle(ab2, "A-B2", ordnung, ab2_name)
+    linie = getattr(zeichner, "ordnungslinie", None)
+    rolle = zeichnende_rolle(ab2, "A-B2", ordnung, ab2_name, ordnungslinie=linie)
     eingang_sha = sha256_bytes(_eingang_bytes(eingang))
     belege = ab2.get("pflichtbelege") or {}
     if belege.get("am4_snapshot") != [am4_sha256]:
@@ -1120,7 +1137,7 @@ def _zugangsabnahme_binden(
     am1: Optional[Dict[str, Any]] = None
     if _ist_sha256(am1_pin[0]):
         am1, _, _ = lies_abnahme_snapshot(fall, "A-M1", am1_pin[0], schluesselring=schluesselring,
-                                          ordnung=ordnung)
+                                          ordnung=ordnung, ordnungslinie=linie)
     soll_fehler = zp.soll_bindung_fehler(beleg.get("abnahmen"), am4=am4, am1=am1)
     if soll_fehler:
         raise UebernahmeError(
@@ -1769,6 +1786,7 @@ def registrierung_vorbedingungen(
     zugangsabnahme_sha256: Optional[str] = None,
     quelle: Optional[Path] = None,
     probe_kopie: bool = False,
+    ordnungslinie: Optional[list] = None,
 ) -> Vorbedingungen:
     """Die Vorbedingungen der Registrierung, die KEINEN Ort brauchen: Fall,
     Zugangsstand, A-M4 (Rollenregel, Schema), A-B2 (Rollenregel; seine
@@ -1833,7 +1851,8 @@ def registrierung_vorbedingungen(
             "nimmt nur einen Eingang mit verifizierter Signatur an; "
             "--freigabe-schluessel angeben")
     snapshot, snapshot_name, verifiziert = lies_am4_snapshot(
-        fall, snapshot_sha256, schluesselring=ring, ordnung=ordnung)
+        fall, snapshot_sha256, schluesselring=ring, ordnung=ordnung,
+        ordnungslinie=ordnungslinie)
     # Zeichnungsschicht zu Ende (Entscheid 2026-09-22): Registriert wird
     # nur ein Snapshot des aktuellen Schemas — mit Schluesselklasse und
     # Rolle aus der Zeichnungsordnung. Ein Altsnapshot (Schema 6) traegt
@@ -1866,7 +1885,7 @@ def registrierung_vorbedingungen(
         if zugangsabnahme_sha256 is not None:
             ab2_daten, ab2_name, ab2_verifiziert = lies_abnahme_snapshot(
                 fall, "A-B2", zugangsabnahme_sha256, schluesselring=ring,
-                ordnung=ordnung)
+                ordnung=ordnung, ordnungslinie=ordnungslinie)
             ab2 = (ab2_daten, ab2_name)
         elif _STANDARD_ZUGANGSABNAHME is None:
             raise UebernahmeError(
@@ -1968,6 +1987,7 @@ def eingang_anlegen(
     zeichnungsordnung: Optional[Path] = None,
     zugangsabnahme_sha256: Optional[str] = None,
     probe_kopie: bool = False,
+    linie: Optional[Path] = None,
 ) -> Path:
     """Den Zugangsstand eines Falls als Eingang der Laufzeitumgebung registrieren.
 
@@ -2039,13 +2059,13 @@ def eingang_anlegen(
         zeichner = betriebszeichner(
             _Ablage(Path(stand)), betriebsschluessel, zeichnungsordnung,
             wofuer="die Registrierung", ohne="keine Registrierung",
-            flag="--betriebsschluessel")
+            flag="--betriebsschluessel", linie=linie)
     except _TageslaufError as exc:
         raise UebernahmeError(str(exc)) from exc
     vor = registrierung_vorbedingungen(
         fall, ordnung=zeichner.ordnung, schluesselring=schluesselring,
         snapshot_sha256=snapshot_sha256, zugangsabnahme_sha256=zugangsabnahme_sha256,
-        quelle=quelle, probe_kopie=probe_kopie)
+        quelle=quelle, probe_kopie=probe_kopie, ordnungslinie=zeichner.ordnungslinie)
     fall, fallname, quelle, ring = vor.fall, vor.fallname, vor.quelle, vor.ring
     snapshot_sha256, snapshot, zeichnung = vor.snapshot_sha256, vor.snapshot, vor.zeichnung
     ab2, ab2_verifiziert, roh = vor.ab2, vor.ab2_verifiziert, vor.roh
@@ -2234,7 +2254,8 @@ def eingang_anlegen(
                     am4_snapshot_sha256=snapshot_sha256, zeichner=zeichner,
                     schluesselring=ring)
                 ab2_daten, ab2_name, ab2_verifiziert = lies_abnahme_snapshot(
-                    fall, "A-B2", sha, schluesselring=ring, ordnung=zeichner.ordnung)
+                    fall, "A-B2", sha, schluesselring=ring, ordnung=zeichner.ordnung,
+                    ordnungslinie=zeichner.ordnungslinie)
                 ab2 = (ab2_daten, ab2_name)
             abnahme = _zugangsabnahme_binden(
                 fall, fallname, ab2[0], ab2[1], stand_sha256=stand_sha,
@@ -2285,6 +2306,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                              "eingang.json gezeichnet wird; ausserhalb der Ablage.")
     parser.add_argument("--zeichnungsordnung", required=True,
                         help="Zeichnungsordnung, die dem Betriebsschluessel seine Rolle gibt.")
+    parser.add_argument("--linie", default=None,
+                        help="Linienbereich (ADR-025): die Abnahmen werden gegen die Ordnung "
+                             "gehalten, unter der sie gezeichnet wurden (Ordnungslinie).")
     ns = parser.parse_args(argv)
     ring: Optional[Mapping[str, bytes]] = None
     if ns.freigabe_schluessel:
@@ -2306,6 +2330,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             schluesselring=ring, betriebsschluessel=Path(ns.betriebsschluessel),
             zeichnungsordnung=Path(ns.zeichnungsordnung),
             zugangsabnahme_sha256=ns.zugangsabnahme,
+            linie=Path(ns.linie) if ns.linie else None,
         )
     except UebernahmeError as exc:
         print(f"uebernahme: {exc}", file=sys.stderr)

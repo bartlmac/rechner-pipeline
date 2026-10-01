@@ -79,7 +79,7 @@ der Merge — er verweigert bei aufgeloesten Diskrepanzen den Lauf, und
 
 Erzwungen ist im Code nur zweierlei: **A-Q1 und A-M1 gehen A-M4
 voraus** (im Bestands-Scope auch A-M2 und A-M3), und **der Stand des
-Falls ist abgenommen** (Kernstand A-K2, T-Box-Stand A-O1) — als
+Falls ist abgenommen** (Kernstand A-K2, T-Box-Stand A-O1, Tarifwerk A-T1) — als
 Pflichtrollen im A-M4-Snapshot. Alles andere ist
 Datenabhaengigkeit ohne Gate-DAG; wer sie missachtet, bekommt keinen
 Fehler, sondern einen Beleg, der spaeter nicht mehr gilt.
@@ -545,39 +545,46 @@ A-Box- und Systemstands, einen geltenden signierten A-Q1-Annahme-Snapshot
 2. Volle Suite: `.venv/bin/python -m pytest` — bestehende Referenzwerte
    duerfen sich nicht bewegen.
 
-### Der Stand des Falls — A-K2 und A-O1 (Mensch; hier STOPPST du, wenn sich etwas geaendert hat)
+### Der Stand des Falls — A-K2, A-O1, A-T1 (Mensch; hier STOPPST du, wenn sich etwas geaendert hat)
 
 A-M4 verlangt in beiden Scopes, dass der Stand, auf dem der Fall laeuft,
-abgenommen ist — der KERNSTAND (A-K2, gezeichnet von `mensch/rechenkern`)
-und der T-BOX-STAND (A-O1, gezeichnet von `mensch/architektur`), nach EINER
-Regel (ADR-018, Nachtrag 2026-10-01). Je Gegenstand gilt genau einer von
-drei Wegen:
+abgenommen ist — der KERNSTAND (A-K2, gezeichnet von `mensch/rechenkern`),
+der T-BOX-STAND (A-O1, `mensch/architektur`) und das TARIFWERK der PLV
+(A-T1, `mensch/aktuariat`), nach EINER Regel (ADR-018, Nachtrag
+2026-10-01; ADR-025). Jeder Gegenstand ist einmal AUSSERHALB jedes Falls
+abgenommen — die Erstabnahme im Linienbereich `linie/` (Bedienfolge in
+ADR-025). Ein Fall zeichnet nur, was sich DURCH IHN aendert. Je Gegenstand
+gilt genau einer von zwei Wegen:
 
-1. **Abnahme im Fall** — der Stand hat sich seit der letzten Abnahme
-   geaendert. Kern: Der Rechenkern-Agent legt vor mit
+1. **Keine Aenderung** (der Normalfall) — der Stand ist identisch zu dem,
+   den die geltende Abnahme der Linie abgenommen hat:
+   `python -m rechner_pipeline.gates.stand_belegen verweisen --fall faelle/<fall> --gate A-K2|A-O1|A-T1 --linie linie --repo-root .`
+   legt die Kopie ihrer geltenden Spitze an den festen Ort (mit
+   `--snapshot <datei>` statt `--linie` auf einen frueheren Fall). Kein
+   neuer Entscheid; A-M4 prueft Signatur, Rolle, Klasse und Stand und fuehrt
+   woertlich "keine Aenderung seit Abnahme <snapshot> (Linie ...)".
+2. **Abnahme im Fall** — der Fall erzwingt eine Aenderung (etwa eine
+   T-Box-Erweiterung). Kern: Der Rechenkern-Agent legt vor mit
    `python -m rechner_pipeline.gates.kernstand_belegen --fall faelle/<fall> --repo-root . --von <zuletzt abgenommener Kernstand> --begruendung "<Kurzbegruendung>"`
-   (Aenderungen je Modul mit den Commits des Zweigs, Sicht
-   `abgeleitet/kern/aenderung.md`, Regressionsbeleg — bis zu seinem
+   (Sicht `abgeleitet/kern/aenderung.md`; die Regression ist bis zu ihrem
    Werkzeug die benannte AUSNAHME "Regression: Ausnahme — nicht gefahren,
    Werkzeug noch nicht erstellt"; gib sie genau so weiter, nie als
    bestanden). T-Box: Der Architektur-Agent legt vor mit
-   `python -m rechner_pipeline.gates.stand_belegen tbox --fall faelle/<fall> --repo-root . --artefakt <vermerk> --begruendung "<text>"`,
-   das Aktuariat legt `abgeleitet/tbox/stellungnahme.json` daneben. Der
-   Mensch prueft die Diffs und zeichnet: `gate_entscheid --gate A-K2` bzw.
-   `--gate A-O1` mit dem Schluessel seiner Rolle — uebergeben, nicht selbst
-   entscheiden.
-2. **Keine Aenderung** — der Stand ist identisch zu dem, den ein frueher
-   angenommener Snapshot (meist der des vorigen Falls) abgenommen hat:
-   `python -m rechner_pipeline.gates.stand_belegen verweisen --fall faelle/<fall> --gate A-K2|A-O1 --snapshot <frueherer Snapshot> --repo-root .`
-   legt den Verweis an den festen Ort. Kein neuer Entscheid; A-M4 prueft
-   Signatur, Rolle und Stand und fuehrt woertlich "keine Aenderung seit
-   Abnahme <snapshot> (<Herkunft>)".
-3. **Basislinie** (nur T-Box): Solange die Versionslinie der T-Box ein
-   Element hat, gab es keinen Uebergang — nichts vorzulegen.
+   `python -m rechner_pipeline.gates.stand_belegen tbox --fall faelle/<fall> --repo-root . --artefakt <vermerk> --begruendung "<text>" [--vorher-linie linie]`
+   (Sicht `abgeleitet/tbox/aenderung.md`: Vokabular-Diff), das Aktuariat
+   legt `abgeleitet/tbox/stellungnahme.json` daneben. Tarifwerk: Der
+   Aktuariats-Agent legt vor mit
+   `python -m rechner_pipeline.gates.tarifwerk_belegen --fall faelle/<fall> --repo-root . --von <zuletzt abgenommener Stand> --begruendung "<text>"`
+   (Sicht `abgeleitet/tarifwerk/aenderung.md`). Der Mensch prueft die
+   Sicht und zeichnet: `gate_entscheid --gate A-K2|A-O1|A-T1` mit dem
+   Schluessel seiner Rolle — uebergeben, nicht selbst entscheiden.
 
-Fuer den Kern gibt es keine Basislinie: die erste Abnahme ist zu zeichnen
-(`--von` nennt der Mensch). Liegt im Fall eine Kette des Gates, gilt nur
-Weg 1 — eine Ablehnung wird nicht durch einen Verweis umgangen.
+Liegt im Fall eine Kette des Gates, gilt nur Weg 2 — eine Ablehnung wird
+nicht durch einen Verweis umgangen. Die fruehere Basislinie der T-Box gibt
+es nicht mehr. Jeden Entscheid des Falls zeichnet der Mensch mit
+`--linie linie`: Gezeichnet wird nur unter der Spitze der Versionslinie
+der Zeichnungsordnung, und jede Vorbedingung wird gegen die Ordnung
+gelesen, unter der sie gezeichnet wurde (ADR-025).
 
 **In der Laufzeit einer Migration schreibst du nicht an der T-Box und
 nicht am Kern.** Du legst den Aenderungsvorschlag vor; der Mensch prueft
@@ -680,8 +687,9 @@ sie als Rollen `am1_snapshot`/`am2_snapshot`/`am3_snapshot`: A-M1 immer
 (aktuarielle vor finanzieller Abnahme, ADR-010), im Bestands-Scope auch
 A-M2 und A-M3 (Entscheidung 2026-08-31 — ein Bestand mit richtigem
 Stichtagswert und falscher Ablaufleistung kam vorher durch das
-Controlling). In beiden Scopes verlangt A-M4 ausserdem, dass Kernstand
-und T-Box-Stand abgenommen sind (Rollen `kernstand`, `tboxstand`; Weg und
+Controlling). In beiden Scopes verlangt A-M4 ausserdem, dass Kernstand,
+T-Box-Stand und Tarifwerk abgenommen sind (Rollen `kernstand`, `tboxstand`,
+`tarifwerkstand`; Weg und
 Anzeige je Gegenstand im Snapshot unter `standabnahmen`), und rechnet die
 Belege nach. A-M4 liest den Scope aus `fall.json`
 und leitet seine exakte Pflichtbelegmenge je Gate aus dem Fall-Scope ab. Im

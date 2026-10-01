@@ -64,6 +64,8 @@ Gates hinzu. Jedes Gate, das vor der Umstellung entsteht, verteuert sie.
 | `K` | Rechenkern |
 | `B` | Bestand |
 | `M` | Migration als Ganzes |
+| `T` | Tarifwerk des Zielsystems (seit ADR-025) |
+| `Z` | Zeichnungsordnung (seit ADR-025) |
 
 **Nummer** — Reihenfolge innerhalb des Gegenstands, lueckenlos vergeben.
 Ein abgeschaltetes Gate hinterlaesst eine Luecke; es rutscht nichts nach,
@@ -91,6 +93,9 @@ die Belege lesen.
 | (neu) | `A-B1.auslieferung` | Auslieferung eines Stands-Pakets |
 | (neu) | `A-K2.kernaenderung` | Aenderung am Rechenkern |
 | (neu) | `A-B2.zugangsabnahme` | Zugang eines abgenommenen Bestands in die produktive Ablage (ADR-022) |
+| (neu) | `A-T1.tarifwerk` | Tarifwerk der PLV: Tarifplaene und Parametrierung der eigenen Generationen (ADR-025) |
+| (neu) | `A-B3.anfangsbestand` | Anfangsbestand einer aufgesetzten Ablage (ADR-025) |
+| (neu) | `A-Z1.ordnungsaenderung` | ein Glied der Versionslinie der Zeichnungsordnung (ADR-025; kein P9-Snapshot) |
 | `A-K1` | `A-O1.tbox-aenderung` | T-Box-Aenderung (Gegenstand `O`) |
 | `P9.gate-entscheid` | `entscheid.vollzug` | das Entscheid-Kommando |
 | `P9.<gate>` | `entscheid.<abnahme>` | Ledger-Eintrag eines Vollzugs |
@@ -251,6 +256,21 @@ Bisher musste man wissen, dass `G-A` vor `G-2` kommt.
   Uebersetzen. Die Beschluesse selbst sind unveraendert; das haelt der
   Hinweis in `docs/architektur/README.md` fuer die ganze Sammlung fest,
   damit nicht zehn Dokumente denselben Vermerk tragen.
+
+## Nachtrag 2026-10-01: drei Namen der Erstabnahme (ADR-025)
+
+* **`A-T1.tarifwerk`** — ein neuer Gegenstand `T`, Nummer 1: Das Tarifwerk
+  der PLV ist weder Rechenkern (`K`) noch Vokabular (`O`) noch eine Quelle
+  (`Q`). Es lief bis hierher im Kernstand mit und wurde von der falschen
+  Rolle gezeichnet; jetzt zeichnet `mensch/aktuariat`.
+* **`A-B3.anfangsbestand`** — Gegenstand `B`, die naechste freie Nummer.
+* **`A-Z1.ordnungsaenderung`** — ein neuer Gegenstand `Z` (die
+  Zeichnungsordnung), Nummer 1: die Zeichnung eines Glieds ihrer
+  Versionslinie durch die Wurzelrolle. Kein P9-Snapshot, deshalb nicht im
+  Entscheid-Kommando; aber eine Kennung, die eine Ordnung vergeben kann.
+
+Der kuenftige Fallauftrag bekommt einen eigenen Namen; `A-M5` bleibt dem
+Fallabbruch vorbehalten.
 
 ## Nachtrag 2026-09-05: Versionierungsregel der Gates
 

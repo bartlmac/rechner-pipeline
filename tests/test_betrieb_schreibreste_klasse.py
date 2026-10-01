@@ -124,6 +124,14 @@ AUSSERHALB = {
      "_umnummeriert(tabelle, abbildung, datei), arbeit / datei"): _STAGING,
     ("rechner_pipeline.betrieb.uebernahme.eingang_anlegen", "write_portfolio",
      "uebersetzung, arbeit / POLICENNUMMERN_DATEI"): _STAGING,
+    # Der Beleg des Anfangsbestands und seine Sicht liegen im LINIENBEREICH
+    # (ADR-025), nicht in der Ablage: Kein Lauf der Ablage raeumt dort, und
+    # ``belegen`` ersetzt beide atomar. ``main`` reicht die Linie durch.
+    ("rechner_pipeline.betrieb.anfangsbestand.belegen", "_schreibe",
+     "Path(linie) / ab.BELEG_RELATIV, roh"): "Ziel im Linienbereich",
+    ("rechner_pipeline.betrieb.anfangsbestand.belegen", "_schreibe",
+     "Path(linie) / ab.SICHT_RELATIV, rendere_sicht(beleg).encode('utf-8')"):
+        "Ziel im Linienbereich",
 }
 #: Eine Stelle, die GENAU so zweimal in ihrer Funktion steht (die Ratsche
 #: vergleicht die Anzahl): ``run_command`` schliesst das Ledger auf zwei Wegen.

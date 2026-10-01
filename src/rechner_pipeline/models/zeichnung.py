@@ -128,8 +128,12 @@ def validiere_zeichnung(zeichnung: object, *, form: str = "beide") -> List[str]:
     pflicht = {"rolle", "ordnung_sha256", "schluesselklasse"}
     fehler: List[str] = []
     mandat = zeichnung.get("mandat_sha256")
+    glied = zeichnung.get("ordnungsglied_sha256")
+    if glied is not None and not (isinstance(glied, str) and _SHA256.match(glied)):
+        fehler.append("zeichnung.ordnungsglied_sha256 muss ein SHA-256 sein (das Glied der "
+                      "Ordnungslinie, ADR-025)" + AUSWEG)
     if not (
-        pflicht <= schluessel <= pflicht | {"mandat_sha256"}
+        pflicht <= schluessel <= pflicht | {"mandat_sha256", "ordnungsglied_sha256"}
         and all(isinstance(zeichnung.get(k), str) and zeichnung[k] for k in pflicht)
         and gueltige_rollenkennung(zeichnung.get("rolle"))
         and ordnung_ok
@@ -139,7 +143,7 @@ def validiere_zeichnung(zeichnung: object, *, form: str = "beide") -> List[str]:
         fehler.append(
             "zeichnung muss {rolle (Rollenkennung ebene/name), ordnung_sha256 "
             "(SHA-256), schluesselklasse in (mensch, simulation)[, mandat_sha256 "
-            "(SHA-256)]} sein" + AUSWEG
+            "(SHA-256)][, ordnungsglied_sha256 (SHA-256)]} sein" + AUSWEG
         )
     if zeichnung.get("schluesselklasse") == "simulation" and not (
         isinstance(mandat, str) and _SHA256.match(mandat)
@@ -209,7 +213,24 @@ def gueltige_rollenkennung(rolle: object) -> bool:
 #: mit und einmal ohne den Eingang; ihre Differenz ist der Beleg.
 #: Gezeichnet wird sie von ``mensch/betrieb`` wie die Auslieferung — der
 #: Betrieb verantwortet, was er fuehrt; ``agent/betrieb`` legt vor.
-GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-O1", "A-K2", "A-B1", "A-B2")
+#:
+#: ``A-T1.tarifwerk`` und ``A-B3.anfangsbestand`` (ADR-025, Entscheid des
+#: Maintainers 2026-10-01: "entweder eine Initialzeichnung an allen
+#: relevanten Zustaenden oder gar nicht"): die Abnahme des TARIFWERKS der PLV
+#: (Tarifplaene und Parametrierung der eigenen Tarifgenerationen; gezeichnet
+#: von ``mensch/aktuariat``, Gegenstand ``T`` nach ADR-012) und des
+#: ANFANGSBESTANDS einer aufgesetzten Ablage (``mensch/betrieb``). Mit
+#: Kernstand (A-K2) und T-Box-Stand (A-O1) sind das die vier Gegenstaende
+#: der Erstabnahme des Zielsystems (``models.standabnahme``).
+GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-O1", "A-K2", "A-T1",
+                  "A-B1", "A-B2", "A-B3")
+
+#: Was eine Ordnung einer Rolle geben kann: die P9-Gates und die
+#: Ordnungsaenderung ``A-Z1`` (ADR-025). ``A-Z1`` zeichnet die Wurzelrolle (Vorstand)
+#: — kein P9-Snapshot, sondern das Anhaengen eines Glieds an die
+#: Versionslinie der Ordnung (``models.ordnungslinie``); das Entscheid-Kommando
+#: kennt es deshalb nicht.
+ZEICHENBARE_GATES = GUELTIGE_GATES + ("A-Z1",)
 
 #: Zeichenbare Gates OHNE Belegvertrag — die begruendete Ausnahme.
 #:
@@ -335,11 +356,25 @@ def lade_zeichnungsordnung(
         daten = json.loads(roh.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return None, None, [f"Zeichnungsordnung nicht als JSON lesbar: {exc}"]
+    fehler = pruefe_ordnung(daten)
+    if fehler:
+        return None, None, fehler
+    sha = hashlib.sha256(roh).hexdigest()
+    return daten, sha, []
+
+
+def pruefe_ordnung(daten: object) -> List[str]:
+    """Die Regeln einer Zeichnungsordnung (Schema 2) ueber ihren INHALT.
+
+    Eine Regel fuer zwei Leser: den Lader (:func:`lade_zeichnungsordnung`)
+    und die Versionslinie der Ordnung (``models.ordnungslinie``), die den
+    Inhalt eines Glieds ohne Datei prueft. Leer = in Ordnung.
+    """
     fehler: List[str] = []
     if not isinstance(daten, dict):
-        return None, None, ["Zeichnungsordnung: kein JSON-Objekt"]
+        return ["Zeichnungsordnung: kein JSON-Objekt"]
     if daten.get("schema_version") == 1:
-        return None, None, [
+        return [
             "Zeichnungsordnung nach Schema 1 wird nicht mehr gelesen "
             "(ADR-018): Rollen heissen jetzt mensch/<funktion> oder "
             "agent/<name> und tragen eine schluesselklasse (mensch, "
@@ -347,10 +382,10 @@ def lade_zeichnungsordnung(
         ]
     if daten.get("schema_version") != ORDNUNG_SCHEMA_VERSION:
         fehler.append(f"Zeichnungsordnung: schema_version {ORDNUNG_SCHEMA_VERSION} erwartet")
-        return None, None, fehler
+        return fehler
     rollen = daten.get("rollen")
     if not isinstance(rollen, dict) or not rollen:
-        return None, None, ["Zeichnungsordnung: 'rollen' fehlt oder leer"]
+        return ["Zeichnungsordnung: 'rollen' fehlt oder leer"]
     gesehen: Dict[str, str] = {}
     for name, eintrag in rollen.items():
         if not isinstance(eintrag, dict):
@@ -426,17 +461,14 @@ def lade_zeichnungsordnung(
         gesehen[fp] = name
         gates = eintrag.get("gates")
         if not isinstance(gates, list) or not all(
-            isinstance(g, str) and (g == "*" or g in GUELTIGE_GATES)
+            isinstance(g, str) and (g == "*" or g in ZEICHENBARE_GATES)
             for g in gates
         ):
             fehler.append(
                 f"Zeichnungsordnung: Rolle {name!r} mit ungueltiger "
-                f"gates-Liste (erlaubt: {list(GUELTIGE_GATES)} oder '*')"
+                f"gates-Liste (erlaubt: {list(ZEICHENBARE_GATES)} oder '*')"
             )
-    if fehler:
-        return None, None, fehler
-    sha = hashlib.sha256(roh).hexdigest()
-    return daten, sha, []
+    return fehler
 
 
 def zeichnungsrolle(
@@ -458,6 +490,7 @@ def rolle_darf_gate(ordnung: dict, rolle: str, gate: str) -> bool:
 
 def zeichnende_rolle_fehler(
     daten: object, gate: str, ordnung: Optional[dict],
+    *, linie: Optional[list] = None,
 ) -> Tuple[Optional[str], Optional[str]]:
     """Die EINE Regel fuer jeden Leser, der auf einem Abnahme-Snapshot etwas
     gruendet: ``(rolle, None)`` oder ``(None, meldung)``.
@@ -492,8 +525,24 @@ def zeichnende_rolle_fehler(
     seine Vorbedingungen, A-B2 die Abnahmen, auf denen das Soll der Probe
     steht) und der Betrieb (Registrierung, Zugangsprobe). Die Meldung nennt
     den Ausweg; der Aufrufer stellt den Dateinamen voran.
+
+    **Mit Ordnungslinie** (``linie``: die geprueften Glieder aus
+    ``models.ordnungslinie.lade_linie``; ADR-025) gilt die Ordnung, unter der
+    der Snapshot GEZEICHNET wurde — lokalisiert ueber das Glied, das seine
+    Zeichnung pinnt —, nicht die heutige ``ordnung`` des Lesers: "Wer durfte
+    damals zeichnen". Eine spaetere Erweiterung der Ordnung entwertet so
+    keine Abnahme, und ein spaeterer Entzug wirkt nicht zurueck (ADR-022,
+    Nachtrag 2026-10-01 — jetzt pruefbar). Ein Snapshot ohne lokalisierbares
+    Glied ist als Grundlage nicht verwendbar. Ohne Linie gilt der bisherige
+    Weg: die Ordnung des Lesers.
     """
     daten = daten if isinstance(daten, dict) else {}
+    if linie is not None:
+        from rechner_pipeline.models.ordnungslinie import damalige_ordnung
+
+        ordnung, meldung = damalige_ordnung(daten, linie)
+        if meldung is not None:
+            return None, meldung
     fingerabdruck = str((daten.get("freigabe") or {}).get("schluessel_sha256") or "")
     kurz = f"{fingerabdruck[:16]}…"
     ausweg = (f"Ausweg: {gate} mit dem Schluessel einer berechtigten Rolle neu zeichnen, "
@@ -563,7 +612,7 @@ def schluesselklasse(ordnung: dict, rolle: str) -> Optional[str]:
 
 def zeichnung_fuer(
     ordnung: dict, ordnung_sha256: str, schluessel_sha256: str,
-    mandat_sha256: Optional[str] = None,
+    mandat_sha256: Optional[str] = None, ordnungsglied_sha256: Optional[str] = None,
 ) -> Optional[Dict[str, str]]:
     """Der Zeichnungs-Eintrag eines Belegs: Rolle (aus dem Schluessel
     bestimmt), Ordnungs-Hash, Schluesselklasse, optional das Mandat.
@@ -582,4 +631,10 @@ def zeichnung_fuer(
     }
     if mandat_sha256:
         eintrag["mandat_sha256"] = mandat_sha256
+    # Das Glied der Ordnungslinie, unter dem gezeichnet wird (ADR-025): Es
+    # macht die Ordnung in der Geschichte lokalisierbar und bindet die
+    # unsignierte Wurzel der Linie — ein ausgetauschtes Glied faellt bei
+    # jedem Leser auf, der die Abnahme in der Linie sucht.
+    if ordnungsglied_sha256:
+        eintrag["ordnungsglied_sha256"] = ordnungsglied_sha256
     return eintrag

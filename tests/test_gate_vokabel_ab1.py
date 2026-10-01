@@ -207,7 +207,7 @@ ERLAUBTE_LITERALE = {
     # Tarif-Scope belegfrei angenommen werden, A-B1 hat dort gar keine
     # Rollen. Die exakte Rollenmenge erzwingt der Lesepfad. A-B2 (ADR-022)
     # steht darin: Eine Zugangsabnahme ohne Belege naehme nichts ab.
-    ("A-M4", "A-O1", "A-K2", "A-B2"),
+    ("A-M4", "A-O1", "A-K2", "A-T1", "A-B2", "A-B3"),
 }
 
 

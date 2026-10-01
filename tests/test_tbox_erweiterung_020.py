@@ -601,11 +601,14 @@ def _aenderungsbeleg(fall: Path, von: str) -> Path:
                        encoding="utf-8")
     pfad = tbox_dir / "aenderung.json"
     pfad.write_text(json.dumps({
-        "schema_version": 1, "von_version": von, "nach_version": tbox.TBOX_VERSION,
+        "schema_version": 2, "von_version": von, "nach_version": tbox.TBOX_VERSION,
         "tbox_sha256": hashlib.sha256(Path(tbox.__file__).read_bytes()).hexdigest(),
         "artefakt": {"pfad": "abgeleitet/tbox/aenderungsvermerk.md",
                      "sha256": hashlib.sha256(vermerk.read_bytes()).hexdigest()},
         "begruendung": "Erste Erweiterung der T-Box seit 0.1.0.",
+        # Schema 2 (ADR-025): das ganze Vokabular, Grundlage der Sicht.
+        "vokabular": json.loads(json.dumps(tbox.vokabular(), sort_keys=True)),
+        "vokabular_sha256": tbox.vokabular_sha256(), "vorher": None,
     }), encoding="utf-8")
     (tbox_dir / "stellungnahme.json").write_text(json.dumps({
         "schema_version": 1, "nach_version": tbox.TBOX_VERSION,

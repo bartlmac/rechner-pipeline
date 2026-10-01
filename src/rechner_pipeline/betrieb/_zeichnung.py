@@ -60,6 +60,11 @@ class Zeichner:
     #: Kennzeichen der Kopie ist eine ungezeichnete Datei und verschwindet
     #: ohne Schluessel — die Probezeile nicht, ohne die Signatur zu brechen.
     zugangsprobe: Optional[Dict[str, str]] = None
+    #: Die Versionslinie der Zeichnungsordnung (ADR-025; geprueft aus
+    #: ``models.ordnungslinie.lade_linie``), wenn der Aufrufer eine Linie
+    #: angibt: Dann haelt jeder Leser des Betriebs eine Abnahme gegen die
+    #: Ordnung, unter der sie gezeichnet wurde. None = bisheriger Weg.
+    ordnungslinie: Optional[list] = dataclasses.field(default=None, repr=False)
 
     @property
     def schluessel_sha256(self) -> str:

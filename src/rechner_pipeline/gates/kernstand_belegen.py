@@ -33,6 +33,7 @@ Run via::
     python -m rechner_pipeline.gates.kernstand_belegen --fall faelle/<fall> \\
         --repo-root . --von <zuletzt abgenommener Kernstand> \\
         --begruendung "<warum dieser Kernstand>"
+    python -m rechner_pipeline.gates.kernstand_belegen --linie linie ...   (Erstabnahme, ADR-025)
 
 Knoten: system/entscheid
 """
@@ -72,10 +73,12 @@ COMMAND = "kernstand_belegen"
 GATE = "A-K2.kernaenderung"
 GATE_VERSION = "1.0.0"
 
-#: Schema des Aenderungsbelegs. 3 (2026-10-01): der Kernstand entlang der
-#: Module mit Commits, ``--von`` statt ``origin/main``, ein unveraenderter
-#: Kern ist ein gueltiger Beleg. 2 kannte nur Hashes und Versionen.
-KERN_AENDERUNG_SCHEMA_VERSION = 3
+#: Schema des Aenderungsbelegs. 4 (2026-10-01, ADR-025): der Gegenstand
+#: ohne die Tarifplaene (sie gehoeren zum Tarifwerk, A-T1). 3 (2026-10-01):
+#: der Kernstand entlang der Module mit Commits, ``--von`` statt
+#: ``origin/main``, ein unveraenderter Kern ist ein gueltiger Beleg. 2
+#: kannte nur Hashes und Versionen.
+KERN_AENDERUNG_SCHEMA_VERSION = 4
 #: Schema des Regressionsbelegs (Ergebnis wie Ausnahme).
 KERN_REGRESSION_SCHEMA_VERSION = 1
 ART = "kernstand"
@@ -124,7 +127,7 @@ def referenzwerte_hash(repo_root: Path) -> Optional[str]:
 def kernstand_hash(repo_root: Path) -> Optional[str]:
     """Sammelhash ueber die GANZE Pfadmenge des Kernstands
     (:data:`models.kernabnahme.KERNSTAND`: Code, Referenzwerte,
-    Grundsatzdokumentation, Tarifplaene) — Name relativ zur Repo-Wurzel und
+    Grundsatzdokumentation) — Name relativ zur Repo-Wurzel und
     Inhalt je Datei, ohne ``__pycache__``. Der Code-Stand, gegen den ein
     Verweis "keine Aenderung" gehalten wird."""
     eintraege: List[Tuple[str, bytes]] = []
@@ -421,7 +424,10 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
         prog="python -m rechner_pipeline.gates.kernstand_belegen",
         description="Belege der Kernabnahme A-K2: Aenderungen am Rechenkern seit "
                     "dem zuletzt abgenommenen Kernstand, Regression (Producer, kein Gate).")
-    p.add_argument("--fall", required=True)
+    ziel = p.add_mutually_exclusive_group(required=True)
+    ziel.add_argument("--fall", default=None)
+    ziel.add_argument("--linie", default=None,
+                      help="Linienbereich: Abnahme ausserhalb eines Falls (Erstabnahme, ADR-025)")
     p.add_argument("--repo-root", dest="repo_root", required=True)
     p.add_argument("--von", required=True,
                    help="der zuletzt abgenommene Kernstand (Commit-Angabe); fuer die "
@@ -434,9 +440,11 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
         return build_result(command=COMMAND, gate=GATE, gate_version=GATE_VERSION,
                             exit_code=code, errors=[{"code": "kernstand", "message": text}])
 
-    fall = Path(args.fall)
-    if not (fall / "eingang.json").is_file():
-        return _fehler(Exit.USAGE, f"kein Fall-Arbeitsbereich: {fall}")
+    from rechner_pipeline.models.standabnahme import bereich_art
+
+    fall = Path(args.fall or args.linie)
+    if bereich_art(fall) is None:
+        return _fehler(Exit.USAGE, f"kein Fall- oder Linienbereich: {fall}")
     if not args.begruendung.strip():
         return _fehler(Exit.USAGE, "--begruendung ist leer")
     repo = Path(args.repo_root).resolve()

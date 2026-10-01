@@ -487,6 +487,54 @@ Ring, um die A-K2- und A-O1-Annahmen (im Fall oder im Verweis) zu
 pruefen — dieselbe Grenze wie bei A-B2 und A-M4 (Abschnitt
 "zeichnende_rolle_fehler", models.zeichnung).
 
+## Nachtrag 2026-10-01: Erstabnahme des Zielsystems, Versionslinie der Ordnung, Wurzelrolle
+
+Entschieden und gebaut in ADR-025 (Befund des Maintainers: "Entweder gibt
+es eine Initialzeichnung an allen relevanten Zustaenden oder gar nicht").
+Fuer dieses Rollenmodell aendert sich:
+
+1. **Die Linie hat eigene Abnahmen, und einen Ort dafuer.** Die offene
+   Frage nach dem "Ort der Linien-Snapshots" (Nachtrag 2026-09-16) ist
+   beantwortet: der Linienbereich (`linie/`, gitignored, kein Fall), in
+   dem dieselbe Mechanik zeichnet. Dort zeichnen die vier fachlichen
+   Linienrollen die Erstabnahme ihres Gegenstands — `mensch/rechenkern`
+   den Kernstand (A-K2), `mensch/architektur` die T-Box (A-O1),
+   `mensch/aktuariat` das Tarifwerk der PLV (neu: A-T1), `mensch/betrieb`
+   den Anfangsbestand einer Ablage (neu: A-B3). Der Satz oben "Damit bleibt
+   die Linie ohne eigene Abnahme" gilt nicht mehr; `A-B1` bleibt, wo es
+   ist, bis eine Auslieferung der Linie ansteht.
+2. **Wege der Standabnahme.** Ein Fall zeichnet nur, was sich durch ihn
+   aendert (Weg a), und verweist sonst auf die geltende Abnahme der Linie
+   (Weg b); A-M4 verlangt dazu das Tarifwerk (Pflichtrolle
+   `tarifwerkstand`). Weg (c), die Basislinie der T-Box, entfaellt (fuer
+   Schema 8 lesbar).
+3. **Wer durfte damals zeichnen.** Die Zeichnungsordnung bekommt eine
+   Versionslinie im Linienbereich (`models.ordnungslinie`). Mit Linie wird
+   nur unter ihrer Spitze gezeichnet, und jede Zeichnung pinnt das Glied;
+   wer eine Abnahme liest, haelt Rolle, Klasse und Gate gegen die Ordnung
+   DIESES Glieds, nicht gegen die heutige. Die Regel aus dem Nachtrag zur
+   Rollenregel ("die Rolle ist die des Schluessels") gilt unveraendert —
+   nur der Stand der Ordnung, gegen den sie gehalten wird, ist jetzt der
+   der Zeichnung.
+4. **Die Wurzelrolle: der Vorstand.** Die Versionslinie braucht eine
+   Instanz, die Zeichnungsrechte vergibt: `mensch/vorstand` (Anzeige
+   "Vorstand"; `models.ordnungslinie.WURZELROLLE`). In einem Versicherer
+   vergibt der Vorstand die Vollmachten und beschliesst die Uebernahme eines
+   Bestands. Der Satz oben ("Nicht Teil des Rollenmodells ist der Maintainer
+   dieses Repos ...") bleibt WAHR: Die Wurzel ist eine Rolle des
+   Unternehmens, kein Nachfolger des Platzhalters; der Maintainer spielt sie
+   im Regie-Modus wie die anderen simulierten Rollen. Sie ist eine Rolle der
+   Linie ohne Agenten-Gegenstueck (ein Agent vergibt keine
+   Zeichnungsrechte), traegt genau `A-Z1` und keine fachliche Abnahme, keine
+   andere Rolle traegt `A-Z1`, eine Ordnung mit `gates: ["*"]` und eine Rolle
+   des abgebenden Hauses (`mensch/quell-aktuar`) kommen nicht in die Linie.
+   Ihre Wirkung ist unbegrenzt innerhalb des eigenen Hauses und endet an der
+   Hausgrenze (ADR-025, Abschnitt 8).
+5. **Paritaet.** `agent/betrieb` hat seine Definition
+   (`.claude/agents/betrieb.md`): Jede fachliche Linienrolle hat ihr
+   vorlegendes Gegenstueck; ohne Gegenstueck bleiben begruendet der
+   Vorstand und `mensch/quell-aktuar`.
+
 ## Bewusst nicht Bestandteil
 
 Die Modellierung simulierter Rueckfragen (naechste Ausbaustufe der

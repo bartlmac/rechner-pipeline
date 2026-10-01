@@ -529,12 +529,15 @@ def abnahmen(fall: Path) -> Dict[str, Any]:
 
 
 def standabnahmen(fall: Path) -> List[Dict[str, Any]]:
-    """Je Gegenstand (Kernstand A-K2, T-Box-Stand A-O1), auf welchem Weg der
-    Stand des Falls abgenommen ist — woertlich aus dem A-M4-Snapshot, der es
-    signiert (ADR-018, Nachtrag 2026-10-01): "abgenommen im Fall", "keine
-    Aenderung seit Abnahme <snapshot> (<Herkunft>)" oder die Basislinie der
-    T-Box. Gelesen wird der juengste strukturell unversehrte, angenommene
-    A-M4-Snapshot; die Signatur prueft dieses Werkzeug nicht (T19-02)."""
+    """Je Gegenstand, den A-M4 verlangt (Kernstand A-K2, T-Box-Stand A-O1,
+    Tarifwerk A-T1), auf welchem Weg der Stand des Falls abgenommen ist —
+    woertlich aus dem A-M4-Snapshot, der es signiert (ADR-018, Nachtrag
+    2026-10-01; ADR-025): "abgenommen im Fall" oder "keine Aenderung seit
+    Abnahme <snapshot> (<Herkunft>)" — die Herkunft nennt die Linie der
+    Erstabnahme oder einen frueheren Fall; aeltere Snapshots fuehren noch die
+    Basislinie der T-Box. Gelesen wird der juengste strukturell unversehrte,
+    angenommene A-M4-Snapshot; die Signatur prueft dieses Werkzeug nicht
+    (T19-02)."""
     from rechner_pipeline.models import standabnahme as sa
 
     kandidaten = []
@@ -550,8 +553,8 @@ def standabnahmen(fall: Path) -> List[Dict[str, Any]]:
     return [{"gate": g.gate, "titel": g.titel,
              "weg": (eintraege.get(g.rolle) or {}).get("weg"),
              "anzeige": (eintraege.get(g.rolle) or {}).get("anzeige")
-             or "im Snapshot nicht ausgewiesen (Schema vor 8)"}
-            for g in sa.GEGENSTAENDE]
+             or "im Snapshot nicht ausgewiesen (Schema vor 8 bzw. vor 9)"}
+            for g in sa.AM4_GEGENSTAENDE]
 
 
 def kernstand(fall: Path) -> Optional[Dict[str, Any]]:

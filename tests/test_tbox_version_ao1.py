@@ -117,14 +117,18 @@ def _beleg(fall: Path, **ueberschreibung) -> Path:
     tbox_dir.mkdir(parents=True, exist_ok=True)
     artefakt = tbox_dir / "aenderungsvermerk.md"
     artefakt.write_text("Neues Pflichtfeld in der T-Box.\n", encoding="utf-8")
+    # Schema 2 (ADR-025): mit dem ganzen Vokabular — Grundlage der Sicht.
     daten = {
-        "schema_version": 1,
+        "schema_version": 2,
         "von_version": "0.0.9",
         "nach_version": TBOX_VERSION,
         "tbox_sha256": hashlib.sha256(Path(tbox_modul.__file__).read_bytes()).hexdigest(),
         "artefakt": {"pfad": "abgeleitet/tbox/aenderungsvermerk.md",
                      "sha256": hashlib.sha256(artefakt.read_bytes()).hexdigest()},
         "begruendung": "Erweiterung um ein Pflichtfeld, siehe Vermerk.",
+        "vokabular": json.loads(json.dumps(tbox_modul.vokabular(), sort_keys=True)),
+        "vokabular_sha256": tbox_modul.vokabular_sha256(),
+        "vorher": None,
     }
     daten.update(ueberschreibung)
     pfad = tbox_dir / "aenderung.json"

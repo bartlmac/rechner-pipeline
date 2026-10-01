@@ -1,0 +1,453 @@
+# ADR-025: Erstabnahme des Zielsystems — vier Gegenstaende, vier Rollen, ein Ort ausserhalb des Falls
+
+**Status:** angenommen 2026-10-01 (Entscheide des Maintainers im Dialog),
+gebaut 2026-10-01. Die Zeichnungen selbst stehen aus: Die Erstabnahme ist
+ein Akt der Rollen, nicht des Codes (Bedienfolge am Ende).
+
+## Kontext
+
+Seit dem Nachtrag 2026-10-01 zu ADR-018 verlangt `A-M4`, dass der Stand,
+auf dem ein Fall rechnet, abgenommen ist: der Kernstand (`A-K2`,
+`mensch/rechenkern`) und der T-Box-Stand (`A-O1`, `mensch/architektur`) —
+im Fall gezeichnet (Weg a), per Verweis auf eine fruehere Abnahme (Weg b)
+oder, nur fuer die T-Box, auf der Basislinie (Weg c). Der Befund des
+Maintainers dazu, woertlich:
+
+> "Zum Zeichnen der T-Box am Anfang des Falls — so richtig verstehe ich es
+> nicht. Rechenkern muss ich nicht zeichnen, warum denn T-Box. Entweder gibt
+> es eine Initialzeichnung an allen relevanten Zustaenden (Rechenkern,
+> Tarifwerk — Aktuar, T-Box — Architekt, Bestand — Bestand) oder gar nicht.
+> Sonst ist das inkonsistent."
+
+Gemessen war die Lage so: Kern und T-Box mussten im ERSTEN Fall gezeichnet
+werden, obwohl ihre Aenderungen nicht aus dem Fall stammten (der Kern ist
+ausserhalb jedes Falls von 3.6.0 auf 3.16.0 gewachsen, die T-Box in der
+Entwicklung auf 0.2.0); einen Ort fuer eine Abnahme ausserhalb eines Falls
+gab es nicht (`gate_entscheid` verlangte `--fall`, ADR-018 nannte den "Ort
+der Linien-Snapshots" offen). Das Tarifwerk der PLV hatte keine eigene
+Abnahme — die Tarifplaene liefen im Kernstand mit und wurden von der
+Rechenkern-Verantwortung gezeichnet, die Parametrierung der eigenen
+Generationen in den Configs von niemandem. Der Anfangsbestand einer Ablage
+hatte keine Abnahme; gezeichnet wurde nur jeder Zugang (`A-B2`) und die
+Auslieferung (`A-B1`).
+
+Auf den Vorschlag "eine Erstabnahme des Zielsystems, ausserhalb jedes
+Falls; ein Fall zeichnet danach nur, was sich durch ihn aendert, und
+verweist sonst auf die Erstabnahme" entschied der Maintainer: "ja, alle".
+Zeitpunkt: vor dem Merge und vor dem naechsten Fall. Im selben Zug
+entschied er drei Erweiterungen: Die Zeichnungsordnung bekommt eine
+Versionslinie, bevor die Erstabnahmen gezeichnet werden; die Wurzel dieser
+Linie verantwortet eine eigene Rolle; der Betriebs-Agent wird definiert,
+damit jede fachliche Linienrolle ihr vorlegendes Gegenstueck hat.
+
+## Entscheidung
+
+### 1. Eine Regel, vier Gegenstaende (`models.standabnahme.GEGENSTAENDE`)
+
+| Gegenstand | Gate | zeichnet | legt vor | Werkzeug (Beleg und Sicht) | verlangt von |
+|---|---|---|---|---|---|
+| Kernstand: Code des Rechenkerns, Referenzwerte, Grundsatzdokumentation | `A-K2.kernaenderung` | `mensch/rechenkern` | `agent/rechenkern` | `gates.kernstand_belegen` -> `abgeleitet/kern/aenderung.md` | A-M4 |
+| T-Box-Stand | `A-O1.tbox-aenderung` | `mensch/architektur` | `agent/architektur` | `gates.stand_belegen tbox` -> `abgeleitet/tbox/aenderung.md` | A-M4 |
+| Tarifwerk der PLV: Tarifplaene und Parametrierung der eigenen Tarifgenerationen | `A-T1.tarifwerk` (neu) | `mensch/aktuariat` | `agent/aktuariat` | `gates.tarifwerk_belegen` -> `abgeleitet/tarifwerk/aenderung.md` | A-M4 |
+| Anfangsbestand einer Ablage | `A-B3.anfangsbestand` (neu) | `mensch/betrieb` | `agent/betrieb` | `betrieb.anfangsbestand belegen` -> `abgeleitet/anfangsbestand/beleg.md` | Betrieb |
+
+Jedes Werkzeug zeigt die Aenderung gegenueber der zuletzt abgenommenen
+Fassung als lesbare Sicht, deterministisch aus dem Beleg erzeugt: der Kern
+je Modul mit den Commits des Zweigs; die T-Box als Vokabular-Diff gegen das
+Vokabular des zuletzt abgenommenen Belegs (bei der Erstabnahme das ganze
+Vokabular — fruehere Versionen sind nicht als Vokabular belegt); das
+Tarifwerk je Tarifplan und je Tarifgeneration jeder Config, jedes geaenderte
+Feld mit altem und neuem Wert, mit den Commits; der Anfangsbestand mit
+Kennzahlen und, bei einem erneuten Aufsetzen, der Abweichung zum zuletzt
+abgenommenen. Jedes Gate prueft mit der Rollenregel
+(`models.zeichnung.zeichnende_rolle_fehler`). `tests/test_erstabnahme_linie.py`
+haelt die Tabelle mit `==`.
+
+### 2. Erstabnahme ausserhalb jedes Falls: der Linienbereich
+
+Jede Rolle zeichnet ihren Gegenstand einmal im LINIENBEREICH; spaetere
+Aenderungen in der Entwicklung zeichnet dieselbe Rolle ebenfalls dort. Je
+Gegenstand entsteht eine Kette wie im Fall (Vorgaenger, geltende Spitze),
+ueber dasselbe Entscheid-Kommando: `gate_entscheid --linie <linie>` ohne
+`--fall`. Der Linienbereich verhaelt sich wie ein Fall (`entscheide/`,
+`abgeleitet/`, Snapshot-Format, Signatur, Rollenregel, Kettenleser,
+exklusives Schreiben, Idempotenz), hat aber keinen Eingang einer Migration:
+Seine Kennzeichnung ist `linie.json` (Name, Zweck), seine Snapshots tragen
+den Scope `linie` (`fall_scope`, P9-Schema 9) und binden `linie.json` statt
+`eingang.json` und A-Box. Zeichenbar sind dort genau die vier Gegenstaende;
+`A-B3` NUR dort (der Anfangsbestand gehoert einer Ablage, keinem Fall).
+
+**Ort: ein neues Top-Level-Verzeichnis `linie/`, gitignored** (Vorgabe:
+`stand_belegen linie --linie linie`). Begruendung: Die Snapshots tragen den
+Namen des Entscheiders, Schluessel-Fingerabdruecke und Mandats-Hashes einer
+konkreten Installation — Klarnamen und installationsgebundenes Material
+gehoeren nicht in ein oeffentliches Repository; dieselbe Regel wie fuer
+`faelle/`. Nicht unter `faelle/`, weil der Linienbereich kein Fall ist und
+dort jede Aufzaehlung der Faelle verfaelschte (gemessen: `ontologie.impact`
+zaehlt `faelle/*/abgeleitet/abox/abox.json`, die Werkzeuge nehmen den Fall
+ausdruecklich; ein Bereich ohne A-Box fiele heute nicht auf, eine kuenftige
+Aufzaehlung ueber `faelle/*` aber schon). Eingecheckt sind nur Code,
+Vertraege und diese Dokumentation; die Zeichnungen nicht. **Schutz:**
+mindestens derselbe wie `faelle/<fall>/entscheide/` — `entscheide/` und
+`ordnung/` sind nur-anfuegbar (Snapshots und Glieder werden exklusiv
+geschrieben, nie ueberschrieben; derselbe Entscheid ist idempotent; die
+Kette pinnt jeden Vorgaenger), kein Kommando loescht dort, und die
+Ratschen ueber das Lesen von `entscheide/` im Betrieb gelten
+unveraendert, weil der Betrieb den Linienbereich nur ueber den einen
+Leser `uebernahme.lies_abnahme_snapshot` liest. Die Erstabnahmen sind die
+am haeufigsten referenzierten Zeichnungen des Systems — jeder kuenftige
+Fall verweist darauf; ihre Sicherung gehoert in die Sicherung der
+Installation wie die der Faelle.
+
+*Verworfen:* eingecheckt im Repository (Klarnamen, installationsgebunden,
+und ein Repository-Stand, der seine eigene Abnahme traegt, belegte sich
+selbst); ein Bereich unter `faelle/` (verfaelscht Aufzaehlungen, ist kein
+Fall); ein zweites Zeichnungswerkzeug (zwei Regeln fuer dieselbe Sache).
+
+### 3. Ein Fall zeichnet nur, was sich durch ihn aendert
+
+A-M4 verlangt in beiden Scopes Kernstand, T-Box-Stand UND Tarifwerk
+(Pflichtrollen `kernstand`, `tboxstand`, `tarifwerkstand`). Ist ein
+Gegenstand gegenueber seiner geltenden Abnahme unveraendert, verweist der
+Fall darauf: `stand_belegen verweisen --fall <fall> --gate <gate> --linie
+<linie>` legt die vollstaendige Kopie der geltenden Spitze der Linie an
+den festen Ort im Fall; A-M4 prueft Signatur, Rolle, Klasse und haelt den
+Stand per `==` gegen den lebenden — "keine Aenderung seit Abnahme
+<snapshot> (Linie <name>, ...)". Der Fall bleibt in sich pruefbar.
+Aendert der Fall einen Gegenstand (etwa eine T-Box-Erweiterung, die der Fall
+erzwingt), zeichnet die zustaendige Rolle im Fall (Weg a). Eine Kette im
+Fall geht jedem Verweis vor.
+
+**Weg (c) entfaellt.** Die Basislinie der T-Box ersetzte deren erste
+Abnahme; die gibt es jetzt. Gemessen: Seit T-Box 0.2.0 hat die
+Versionslinie zwei Elemente, Weg (c) griff real nicht mehr; ein Leser
+braucht ihn noch — ein A-M4-Snapshot nach Schema 8, der ihn fuehrt, bleibt
+ein gueltiges Glied seiner Kette. Er ist deshalb fuer Schema 8 lesbar
+(`WEGE_LESBAR`), nicht mehr erzeugbar.
+
+### 4. Das Tarifwerk der PLV (`models.tarifwerkabnahme`)
+
+Gegenstand, einmal bestimmt (`TARIFWERK`): `docs/tarifplaene/*` und je
+eigener Generation (Knoten `<familie>/plv_<...>`) jeder Config unter
+`configs/*.toml` alle Felder des `[[generation]]`-Blocks AUSSER
+`NICHT_TARIFWERK` (Neuzugang, Trend, Verteilungen, Korrelationen,
+Nummernkreis), samt Tarifzellen und Tarifwerks-Schaltern. **Die Grenze:**
+Die Erfahrungsannahmen und die Simulation der Vorfuehrung (`[annahmen]`,
+`[plausibilitaet]`, `[tagesbetrieb]`, Neugeschaeftsvolumen, Verteilungen)
+sagen, wie sich die simulierte Welt verhaelt, nicht, was ein Vertrag
+verspricht — kein Vertragswert aendert sich mit ihnen; der Nummernkreis ist
+Identitaet der Policen (Betrieb); uebernommene Generationen tragen das
+Tarifwerk des abgebenden Hauses und werden im Fall abgenommen. Die Auswahl
+ist eine Ausnahmeliste: Ein neues Feld gehoert zum Tarifwerk, bis jemand
+begruendet, dass es Erfahrung ist — eine vergessene Einordnung faellt als
+Abnahme auf, nicht als stille Luecke. Die Tarifplaene verlassen dafuer den
+Kernstand (`models.kernabnahme.KERNSTAND`; Schema des Kern-Belegs 4).
+
+### 5. Der Anfangsbestand (`models.anfangsbestand`, `betrieb.anfangsbestand`)
+
+Abgenommen wird der GEFUEHRTE Stand einer Ablage nach ihrem Aufbaulauf:
+Hash je Tabelle des Stands, Config, Code-Stand (Kern-Version, Paket-Hash,
+Image), gefuehrter Stand (`tageslauf.ablage_stand`), registrierte
+Eingaenge, ein NEU gefahrener Befund der Bestandswache P-B1 auf genau diesen
+Bytes (Voraussetzung: gruen), Kennzahlen zur Ansicht. Der Beleg entsteht im
+Linienbereich, `mensch/betrieb` zeichnet `A-B3` dort; das Gate prueft Form,
+Urteil und innere Ableitungen (es sieht die Ablage nicht). Die Bindung liegt
+IN DER ABLAGE (`anfangsbestand.json` neben `configs/`, wie
+`zugangsabnahme.json` neben dem Eingang), geschrieben von `binden`: Es liest
+den A-B3-Snapshot ueber den einen Leser des Betriebs (Kette, Signatur,
+Rollenregel), haelt seinen Stand per `==` gegen den lebenden Anfangsbestand
+der Ablage und zeichnet die Bindung mit dem Betriebsschluessel — der
+Tageslauf kennt die Linie nicht und haelt keinen Freigabeschluessel.
+
+**Wann verlangt.** Das Neuaufsetzen bereitet vor (es nennt die Schritte);
+der Aufbaulauf (erster Lauf einer Ablage ohne gruene Zeile) laeuft ohne
+Abnahme — er erzeugt erst, was abgenommen wird; jeder weitere Lauf verlangt
+die gezeichnete Bindung, deren Stand eine gruene Zeile DIESER Ablage ist,
+sonst Exit 2 mit roter Protokollzeile und Ausweg. **Bestehende Ablagen ohne
+Bindung** sind ein benannter Zustand: Sie laufen nicht weiter, bis der
+Betrieb ihren gefuehrten Stand nachtraeglich als Anfangsbestand abnimmt
+(dieselben drei Kommandos). Das trifft jede produktive Ablage beim ersten
+Lauf nach dem Einspielen — gewollt, kein stiller Durchlass. **Zugang:** Eine
+Zugangsprobe faehrt den Tageslauf auf einer Kopie der Ablage; traegt die
+Ablage gruene Zeilen, verlangt dieser Lauf die Bindung (die Kopie traegt
+sie mit) — eine A-B2 entsteht so nur auf einer Ablage, deren Anfangsbestand
+abgenommen ist. Auf einer LEEREN Ablage (Neuaufsetzen) wird der Zugang Teil
+des Anfangsbestands und mit ihm abgenommen.
+
+*Annahme (benannt):* Der Beleg des Anfangsbestands traegt keine eigene
+Betriebszeichnung — die A-B3-Signatur pinnt seinen Hash, und `binden`
+rechnet den Stand gegen die Ablage nach.
+
+### 6. Namen nach ADR-012
+
+`A-T1.tarifwerk`: Art A, ein neuer Gegenstand `T` (das Tarifwerk), Nummer 1
+— das Tarifwerk ist weder Rechenkern (`K`) noch Vokabular (`O`) noch eine
+Quelle (`Q`). `A-B3.anfangsbestand`: Gegenstand `B`, naechste freie Nummer.
+`A-Z1.ordnungsaenderung`: Gegenstand `Z` (die Zeichnungsordnung), Nummer 1
+— die Zeichnung eines Glieds der Ordnungslinie (Abschnitt 7), kein
+P9-Snapshot und deshalb nicht in `GUELTIGE_GATES`, aber eine Gate-Kennung,
+die eine Ordnung vergeben kann (`ZEICHENBARE_GATES`). Der kuenftige
+Fallauftrag (eigener Block) bekommt einen eigenen Namen; `A-M5` ist fuer
+den Fallabbruch vorgesehen (dev-docs/offene-punkte.md).
+
+### 7. Die Versionslinie der Zeichnungsordnung (`models.ordnungslinie`)
+
+Jeder Snapshot pinnt `zeichnung.ordnung_sha256`, aber nirgends stand, welche
+Ordnungsstaende es je gab; die Rollenregel hielt eine fruehere Abnahme gegen
+die HEUTIGE Ordnung, ihren Ordnungs-Hash gegen nichts. Ein
+Gleichheitsvergleich waere die falsche Reparatur gewesen: Die Ordnung
+aendert sich oefter, als gezeichnet wird, jede Erweiterung entwertete alle
+Belege.
+
+**Die Linie** liegt im Linienbereich unter `ordnung/`, je Glied eine Datei
+`<nummer>-<glied_sha256>.json`, angehaengt, nie umgeschrieben (exklusiv
+geschrieben), hash-verkettet. Ein Glied traegt Nummer, Vorgaenger (Hash des
+Glieds davor), den SHA-256 der Ordnungsdatei und ihren INHALT Byte fuer
+Byte (Rollen mit Klasse, Fingerabdruck und Gates — keine Geheimnisse),
+die aus beiden Staenden GERECHNETE Aenderungsliste (`neue_rolle`,
+`rolle_entfallen`, `gates_erweitert`, `gates_entzogen`,
+`schluessel_gewechselt`, `klasse_geaendert`; beim Lesen nachgerechnet, nie
+behauptet), einen injizierten Zeitpunkt, den Eintragsvermerk und die
+Zeichnung. Beispiel (gekuerzt):
+
+```
+{"schema_version": 1, "art": "ordnungsglied", "nummer": 2,
+ "vorgaenger": "<glied_sha256 von Glied 1>",
+ "ordnung_sha256": "<sha256 der Ordnungsdatei>", "ordnung_text": "{...}",
+ "aenderungen": [{"art": "gates_erweitert", "rolle": "mensch/architektur",
+                  "gates": ["A-K2"]}],
+ "eingetragen_am": "2026-10-01T09:00:00+00:00",
+ "eintrag": {"art": "anhang", "vermerk": "gezeichnet von ... (A-Z1) ..."},
+ "zeichnung": {"gate": "A-Z1", "rolle": "mensch/vorstand", "schluesselklasse": "mensch",
+               "schluessel_sha256": "<laut Glied 1>", "verfahren": "hmac-sha256-v1",
+               "signatur": "..."},
+ "glied_sha256": "..."}
+```
+
+**Zeichnen:** Mit `--linie` zeichnet `gate_entscheid` nur unter einer
+Ordnung, die die SPITZE der Linie ist (sonst Verweigerung mit dem Ausweg
+"Ordnung in die Linie eintragen"), und die Zeichnung pinnt das GLIED
+(`zeichnung.ordnungsglied_sha256`, P9-Schema 9). Im Linienbereich ist die
+Linie Pflicht. **Lesen:** Wer eine Abnahme liest, um darauf zu gruenden
+(Vorbedingungen von A-M4, Soll der Zugangsprobe in A-B2, Standabnahme Weg a
+und b im Gate; im Betrieb der eine Leser, ueber `ordnungslinie` von
+`lies_abnahme_snapshot`), lokalisiert das gepinnte Glied und haelt Rolle,
+Klasse und Gate-Berechtigung gegen DESSEN Ordnung — "wer durfte damals
+zeichnen". Eine spaetere Erweiterung entwertet nichts; ein spaeterer Entzug
+wirkt nicht zurueck. Das aendert die Konvention aus ADR-022 (Nachtrag
+2026-10-01, "massgeblich ist die Ordnung zum Zeitpunkt der Registrierung")
+nicht im Ergebnis, macht sie aber PRUEFBAR: massgeblich ist der Stand der
+Ordnung, unter dem gezeichnet wurde, und der ist jetzt auffindbar. Ein
+Snapshot ohne lokalisierbares Glied wird benannt verweigert. Ohne `--linie`
+(Tests, alte Faelle) gilt der bisherige Weg — die Ordnung des Aufrufs —,
+und die Ausgabe sagt es (`ordnungslinie: keine — bisheriger Weg`).
+
+**Der Schnitt** ist ein Entscheid, kein Verlust: Die Linie beginnt mit der
+Ordnung der Erstabnahme. Davor existieren gezeichnete Abnahmen
+abgeschlossener Faelle — im zweiten Baldrian-Lauf 30 Snapshots unter drei
+abgeloesten Ordnungsstaenden, darunter 16 im alten Schema unter einer
+Ordnung mit Allzweck-Rolle. Sie gelten fuer IHREN Fall (abgeschlossene
+Faelle bleiben auf ihrem Stand, ADR-011) und sind als Grundlage eines neuen
+Falls nicht verwendbar. Die Hashes der betriebenen Ordnung stehen in keiner
+eingecheckten Datei.
+
+**Die Wurzel.** Wer an die Linie anhaengen darf, bestimmt, wer kuenftig
+zeichnen darf. Verlangte das ERSTE Glied eine Signatur, kaeme das Recht des
+Signierenden aus der Linie selbst — eine Vertrauenswurzel kann sich nicht
+selbst begruenden. Das erste Glied ist deshalb ausdruecklich unsigniert und
+menschlich angelegt (das Glied sagt es woertlich, dieselbe Haltung wie die
+benannte Regressions-Ausnahme von A-K2); seine Ordnung benennt die
+Wurzelrolle mit ihrem Fingerabdruck. Gebunden ist es nicht durch eine
+Signatur, sondern dadurch, dass jede Zeichnung das Glied pinnt: Die
+Glied-Hashes sind verkettet, ein ausgetauschtes erstes Glied (anderer
+Inhalt, gleiche Form) aendert jeden Hash danach, und jede Lesestelle
+verweigert. Jedes SPAETERE Glied zeichnet die Wurzelrolle (`A-Z1`) mit dem
+Schluessel, den die bis dahin geltende Spitze ihr gibt — auch ein Wechsel
+ihres Schluessels ist ein solches Glied, gezeichnet vom alten; ohne diese
+Zeichnung ist ein Glied nicht anhaengbar.
+
+### 8. Die Wurzelrolle: der Vorstand
+
+Die Versionslinie braucht eine Instanz, die Zeichnungsrechte vergibt. Im
+Unternehmen ist das der **Vorstand** (`mensch/vorstand`, Anzeige
+"Vorstand"; Entscheid des Maintainers 2026-10-01): In einem Versicherer
+vergibt der Vorstand die Vollmachten und beschliesst die Uebernahme eines
+Bestands — genau die zwei Aufgaben der Rolle (die Zeichnungsordnung
+verantworten; kuenftig den Fall beauftragen, eigener Block). Die Kennung
+steht an genau einer Stelle (`models.ordnungslinie.WURZELROLLE`); Leser,
+Tests und Texte beziehen sie von dort.
+
+Damit bleibt der Satz aus ADR-018 wahr — "Nicht Teil des Rollenmodells ist
+der Maintainer dieses Repos; er gehoert zur Entwicklungsumgebung des
+Werkzeugs, nicht zum Unternehmen" — und wird nicht umgekehrt: Die Wurzel ist
+eine Rolle des Unternehmens, kein Nachfolger des Allzweck-Platzhalters; der
+Maintainer des Repos spielt sie im Regie-Modus wie die anderen simulierten
+Rollen. Sie ist eine Rolle der LINIE (Tabelle Linie/Fall in ADR-018: Linie
+ja, Fall nein). Sie hat KEIN Agenten-Gegenstueck: Ein Agent vergibt keine
+Zeichnungsrechte — wer vorschlaegt, wer zeichnen darf, und es dann selbst
+einrichtet, hat die Trennung zwischen Vorlage und Zeichnung aufgehoben.
+
+**Ihre Macht, beschrieben statt gezaehlt.** Die Wurzelrolle ist die
+Vertrauenswurzel. Ihre Gates sind wenige (`A-Z1`); ihre Wirkung ist
+unbegrenzt INNERHALB DES EIGENEN HAUSES — mit einem Glied der Linie kann sie
+jeder Rolle der PLV jedes Gate geben — und endet an der Hausgrenze: Eine
+fremde Vollmacht (der Aktuar des abgebenden Hauses) wird im Fallauftrag
+ANERKANNT, nicht verliehen. Eine Wurzel, die fremde Vollmachten verleihen
+koennte, waere ein Konstruktionsfehler. Das ist mehr, als der abgeschaffte
+Platzhalter konnte (der alles zeichnen, aber niemandem etwas erlauben
+konnte), und deshalb hat sie Schranken (gebaut):
+
+* (a) Eine Ordnung mit Allzweck-Rolle (`gates: ["*"]`) ist nicht
+  anhaengbar — unter der Linie zeichnet niemand mit Stern. Der Lader
+  (`lade_zeichnungsordnung`) liest den Stern weiter, damit alte Ordnungen
+  lesbar bleiben: Der offene Punkt ist fuer die Linie geschlossen, fuer den
+  Lader bleibt er Lesefaehigkeit des Altbestands.
+* (b) Jedes Glied benennt lesbar und GERECHNET, was es gegenueber dem
+  Vorgaenger aendert, und unterscheidet eine neue Rolle von einer stillen
+  Verbreiterung einer bestehenden (`gates_erweitert`); eine behauptete
+  Liste bricht die Linie.
+* (c) Die Wurzel kann Vollmachten vergeben, aber keine fachliche an sich
+  selbst: Sie traegt genau `["A-Z1"]`, keine andere Rolle traegt `A-Z1`, und
+  ein Glied, das ihr eine fachliche Abnahme gibt, ist nicht anhaengbar. Das
+  ist die Trennung, die den Rest tragbar macht — sonst koennte sie
+  beauftragen, erlauben und abnehmen in einer Hand.
+* (d) Die Ordnung der PLV fuehrt nur Rollen der PLV: Eine Rolle des
+  abgebenden Hauses (`mensch/quell-aktuar`) ist in einem Glied nicht
+  anhaengbar (benannte Meldung). Gemessen: Sie zeichnet heute kein Gate, hat
+  keinen Schluessel und steht in keiner Ordnung. Ihre Vollmacht kaeme von
+  ihrem eigenen Haus; sollte sie kuenftig etwas zeichnen, benennt sie das
+  abgebende Haus in der Lieferung, und der Fallauftrag der PLV haelt die
+  Benennung fest — die PLV erkennt sie an, sie verleiht sie nicht (nicht
+  gebaut, nur benannt).
+
+**Gewaltenteilung, als Grenze benannt.** Dieselbe Rolle verwaltet die
+Vertrauenswurzel (administrativ) und soll kuenftig den Fall beauftragen
+(fachlich). Der Schluessel, der einen Fall beauftragt, kann damit aendern,
+wer dessen Abnahmen zeichnen darf. Hier ist das vertretbar: eine Person,
+Vorfuehrung, kein Vier-Augen-Umfeld — eine Trennung, die mit einer Person
+nur Schein waere, wird nicht gebaut. Ein Haus mit getrennten Funktionen
+fuehrte zwei Rollen statt einer (eine fuer die Ordnung, eine fuer den
+Auftrag); die Gestalt der Linie laesst das ohne Umbau zu.
+
+### 9. Rollen und Gegenstuecke
+
+| Rolle | Linie | Fall | Gegenstueck | Gates |
+|---|---|---|---|---|
+| `mensch/rechenkern` | ja | ja | `agent/rechenkern` | A-K2 |
+| `mensch/architektur` | ja | ja | `agent/architektur` | A-O1 |
+| `mensch/aktuariat` | ja | ja | `agent/aktuariat` | A-T1, A-M1 bis A-M4 |
+| `mensch/betrieb` | ja | ja | `agent/betrieb` (neu definiert) | A-B1, A-B2, A-B3 |
+| `mensch/programmleitung` | nein | ja | `agent/programmleitung` | keine (fuehrt durch den Prozess) |
+| `mensch/quell-aktuar` | nein | ja | keins (Rolle des abgebenden Hauses) | keine (Vollmacht vom eigenen Haus, Abschnitt 8 d) |
+| `mensch/vorstand` (Vorstand, Wurzelrolle) | ja | nein | keins (vergibt Rechte) | A-Z1 |
+
+Mit `.claude/agents/betrieb.md` (byte-gleich unter `.agents/`) hat jede
+fachliche Linienrolle ihr vorlegendes Gegenstueck; ohne Gegenstueck bleiben
+begruendet der Vorstand und `mensch/quell-aktuar`.
+
+### 10. Regie-Modus
+
+Simulierte Rollen (Schluesselklasse `simulation`) zeichnen unter Mandat wie
+bisher, auch im Linienbereich und als Wurzelrolle; nichts Neues.
+
+## Verworfene Alternativen
+
+* **Gar keine Initialzeichnung: der Stand beim ersten Fall gilt
+  ungezeichnet.** Verworfen, weil dann niemand die Aenderungen vor dem
+  ersten Fall abnimmt — der Kern waere mit neun Minor-Versionen ohne
+  Abnahme in die Produktion gegangen, das Tarifwerk nie.
+* **Im ersten Fall zeichnen** (der Stand bis hierher). Verworfen, weil die
+  Aenderungen nicht aus dem Fall stammen und zwei der vier Gegenstaende
+  dort gar nicht vorkommen (das Tarifwerk der eigenen Generationen, der
+  Anfangsbestand einer Ablage).
+* **Ort im Repository eingecheckt** und **Ort unter `faelle/`**: siehe
+  Abschnitt 2.
+* **Hash-Gleichheit der Ordnung statt einer Linie**: entwertete bei jeder
+  Erweiterung alle Belege (Abschnitt 7).
+* **Jedes Glied der Linie mit eigener Rolle gezeichnet, auch das erste**:
+  das Recht dieser Rolle muesste dann ebenfalls ausserhalb der Linie
+  begruendet werden — die Wurzel verschoebe sich nur.
+* **Die Basislinie (Weg c) behalten**: sie ersetzte eine Abnahme, die es
+  jetzt gibt; zwei Wege fuer denselben Sachverhalt sind zwei Regeln.
+
+## Folgen
+
+* **Versionen:** P9-Schema 9 und Gate-Version 4.0.0 (Major: ein vorher
+  gruener A-M4-Entscheid wird ohne abgenommenes Tarifwerk rot); Schema 6
+  bis 8 bleiben lesbar. T-Box-Aenderungsbeleg Schema 2 (mit Vokabular),
+  Kern-Aenderungsbeleg Schema 4 (ohne Tarifplaene), `stand_belegen` 2.0.0,
+  neu `tarifwerk_belegen` 1.0.0, Beleg und Bindung des Anfangsbestands
+  Schema 1, Glied der Ordnungslinie Schema 1. Der lebende Kernstand
+  (`kernstand_sha256`) aendert sich, weil die Tarifplaene ihn verlassen:
+  Fruehere A-K2-Abnahmen nehmen nicht mehr den heutigen Stand ab — auch
+  deshalb beginnt die Kette mit der Erstabnahme.
+* **Betrieb:** Jede bestehende Ablage braucht vor dem naechsten Lauf ihre
+  Abnahme des Anfangsbestands. `tageslauf.SCHREIBZIELE` fuehrt die Bindung.
+* **Tests:** Die gemeinsamen Helfer zeichnen das Tarifwerk mit
+  (`zeichne_stand`); eine sessionweite Naht legt Beleg, A-B3 und Bindung
+  ueber die echten Wege an (`tests/anfangsbestand_testhelfer.py`); wer eine
+  Linie anlegt (`linie_anlegen`), zeichnet und liest ueber
+  `annahme_args` unter ihrer Ordnungslinie — die uebrigen Wege der Suite
+  laufen benannt ohne Linie.
+* **Betrieb:** Registrierung, Zugangsprobe und Neuaufsetzen nehmen
+  `--linie` (der Zeichner des Betriebs laedt die Ordnungslinie, der eine
+  Leser haelt jede Abnahme gegen den damaligen Stand); ohne `--linie` der
+  bisherige Weg. Ob die Linie dort Pflicht wird, entscheidet der Betrieb
+  mit dem ersten Fall nach der Erstabnahme.
+* **Offen:** der Fallauftrag als Gate am Anfang des Falls (eigener Block).
+
+## Bedienfolge: Erstabnahme durchfuehren
+
+Je Rolle "ansehen, zeichnen" — mit dem Schluessel der Rolle (64 Byte, 0600,
+ausserhalb des Repos), der Zeichnungsordnung ausserhalb des Linienbereichs
+und bei Schluesselklasse `simulation` dem Mandat.
+
+1. **Schluessel des Vorstands anlegen** (wie die anderen):
+   `head -c 64 /dev/urandom > <schluessel>/vorstand.key && chmod 600
+   <schluessel>/vorstand.key && sha256sum <schluessel>/vorstand.key`.
+2. **Ordnung ergaenzen:** `mensch/vorstand` mit seinem Fingerabdruck und
+   `"gates": ["A-Z1"]`; `mensch/aktuariat` um `A-T1`, `mensch/betrieb` um
+   `A-B3`. Keine Rolle mit `"*"`.
+3. **Linienbereich anlegen und erstes Glied eintragen:**
+   `python -m rechner_pipeline.gates.stand_belegen linie --linie linie`
+   `python -m rechner_pipeline.gates.stand_belegen ordnung --linie linie
+   --ordnung <ordnung> --vorgaenger keiner`; ansehen:
+   `linie/abgeleitet/ordnung/linie.md`.
+4. **Kernstand** (`mensch/rechenkern`): `python -m
+   rechner_pipeline.gates.kernstand_belegen --linie linie --repo-root .
+   --von <letzter abgenommener Stand, fuer die Erstabnahme ausdruecklich>
+   --begruendung "Erstabnahme"`; ansehen `linie/abgeleitet/kern/aenderung.md`;
+   zeichnen `python -m rechner_pipeline.gates.gate_entscheid --linie linie
+   --gate A-K2 --entscheid angenommen --entscheider "<Rolle>" --begruendung
+   "..." --repo-root . --zeichnungsordnung <ordnung> --freigabe-schluessel
+   <rechenkern.key> [--mandat <mandat>]`.
+5. **T-Box** (`mensch/architektur`): `python -m
+   rechner_pipeline.gates.stand_belegen tbox --linie linie --repo-root .
+   --artefakt docs/architektur/adr-024-tbox-020-tarifwerk-gevo-zustandsextrakt.md
+   --begruendung "Erstabnahme"`; Stellungnahme des Aktuariats nach
+   `linie/abgeleitet/tbox/stellungnahme.json`; ansehen
+   `linie/abgeleitet/tbox/aenderung.md`; zeichnen wie oben mit `--gate A-O1`
+   und dem Schluessel von `mensch/architektur`.
+6. **Tarifwerk** (`mensch/aktuariat`): `python -m
+   rechner_pipeline.gates.tarifwerk_belegen --linie linie --repo-root .
+   --von <...> --begruendung "Erstabnahme"`; ansehen
+   `linie/abgeleitet/tarifwerk/aenderung.md`; zeichnen mit `--gate A-T1`
+   und dem Schluessel von `mensch/aktuariat`.
+7. **Anfangsbestand** (`mensch/betrieb`), je Ablage nach dem Aufbaulauf
+   (bei einer bestehenden Ablage: jetzt, auf ihrem gefuehrten Stand):
+   `python -m rechner_pipeline.betrieb.anfangsbestand belegen --stand
+   <daten> --linie linie --schluessel <betrieb.key> --zeichnungsordnung
+   <betriebsordnung>`; ansehen `linie/abgeleitet/anfangsbestand/beleg.md`;
+   zeichnen mit `--gate A-B3` und dem Schluessel von `mensch/betrieb`;
+   binden `python -m rechner_pipeline.betrieb.anfangsbestand binden --stand
+   <daten> --linie linie --freigabe-schluessel <betrieb-freigabe.key>
+   --schluessel <betrieb.key> --zeichnungsordnung <betriebsordnung>
+   [--ordnungslinie]`.
+8. **Jeder Fall danach:** je unveraendertem Gegenstand `python -m
+   rechner_pipeline.gates.stand_belegen verweisen --fall <fall> --gate
+   A-K2|A-O1|A-T1 --linie linie --repo-root .`; jeden Entscheid des Falls
+   mit `--linie linie` zeichnen.
+9. **Eine Ordnungsaenderung spaeter:** `... stand_belegen ordnung --linie
+   linie --ordnung <neue ordnung> --vorgaenger <glied_sha256 der Spitze>
+   --vorstand-schluessel <vorstand.key>`; ansehen, was sich aendert:
+   `linie/abgeleitet/ordnung/linie.md`.

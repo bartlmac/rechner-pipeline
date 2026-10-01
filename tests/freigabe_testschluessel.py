@@ -52,7 +52,9 @@ AKTUARIAT_GATES = ["A-M1", "A-M2", "A-M3", "A-M4"]
 #: der Freigabe gegen eine Rolle mit A-B2 in dieser Ordnung (Block F,
 #: Nachbesserung, Pruefer-Befund 9).
 AB2_ROLLE = "mensch/betrieb"
-AB2_GATES = ["A-B2"]
+#: A-B3 (Abnahme des Anfangsbestands, ADR-025) zeichnet dieselbe Rolle mit
+#: demselben Schluessel — getrennt wird je Rolle, nicht je Gate.
+AB2_GATES = ["A-B2", "A-B3"]
 
 
 def freigaberollen() -> dict:

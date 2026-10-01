@@ -131,7 +131,7 @@ def test_rollen_skills_tragen_ihre_haerte_grenzen() -> None:
 # Agentenrollen des KI-Tools (ADR-018, Schritt 2)
 # --------------------------------------------------------------------------- #
 
-AGENTENROLLEN = ("aktuariat", "architektur", "rechenkern", "programmleitung")
+AGENTENROLLEN = ("aktuariat", "architektur", "rechenkern", "programmleitung", "betrieb")
 
 
 def test_agentenrollen_sind_in_beiden_baeumen_byte_identisch() -> None:

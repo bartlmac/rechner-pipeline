@@ -185,6 +185,14 @@ def _seite(ablage: Ablage, tmp: Path, fall: Path) -> None:
 
 #: Je Modul, das eine Ablage als Betrieb liest oder beschreibt, eine Instanz
 #: (die Ratsche unten haelt die Menge gegen den Code).
+def _anfangsbestand(ablage, tmp_path, fall):
+    """Die Abnahme des Anfangsbestands (ADR-025) belegt nie eine Probenkopie."""
+    from rechner_pipeline.betrieb import anfangsbestand as anf
+    from tests.anfangsbestand_testhelfer import linie_neben
+
+    anf.belegen(ablage.wurzel, linie_neben(ablage.wurzel), tl.betriebszeichner(ablage))
+
+
 INSTANZEN = {
     "tageslauf": lambda a, t, f: tageslauf(a, NACH_DER_PROBE),
     "seite": _export,
@@ -193,6 +201,7 @@ INSTANZEN = {
     "uebernahme": _registrierung,
     "zugangsprobe": _zugangsprobe,
     "falldaten": _konsument,
+    "anfangsbestand": _anfangsbestand,
 }
 
 
@@ -541,6 +550,10 @@ from rechner_pipeline.betrieb import zugangsprobe as zpb
 from tests.freigabe_testschluessel import TESTRING
 ueb._STANDARD_SCHLUESSELRING = TESTRING
 tl._STANDARD_BETRIEBSZEICHNUNG = (Path(sys.argv[4]), Path(sys.argv[5]))
+# Die Naht des Anfangsbestands (ADR-025) wie im Elternprozess.
+from rechner_pipeline.betrieb import anfangsbestand as _anf
+from tests.anfangsbestand_testhelfer import schreibe_anfangsbestand
+_anf._STANDARD_ANFANGSBESTAND = schreibe_anfangsbestand
 echt = shutil.copytree
 tiefe = [0]
 def stirbt(*a, **k):

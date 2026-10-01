@@ -56,6 +56,10 @@ KERN_REFERENZWERTE = "tests/fixtures/kern_referenzwerte"
 #: * die uebrigen Tests — sie sind Mittel der Regression, nicht ihr
 #:   Gegenstand; ``docs/mathematik/README.md`` — ein Verzeichnis der
 #:   Dokumente, keine Beschreibung des Kerns.
+#: * ``docs/tarifplaene`` — seit ADR-025 Teil des TARIFWERKS
+#:   (``models.tarifwerkabnahme``, A-T1, ``mensch/aktuariat``): Was die PLV
+#:   ihren Kunden verspricht, verantwortet das Aktuariat, nicht die
+#:   Rechenkern-Verantwortung; vorher zeichnete A-K2 die Tarifplaene mit.
 KERNSTAND: Tuple[Tuple[str, str, str], ...] = (
     (KERN_PAKET, "je_eintrag",
      "Code des Rechenkerns: was der Kern rechnet und wie (Thiele-Rueckgrat, "
@@ -66,8 +70,6 @@ KERNSTAND: Tuple[Tuple[str, str, str], ...] = (
     ("docs/mathematik/grundsatzdokumentation.md", "gesamt",
      "Grundsatzdokumentation: die normative Mathematik, der die "
      "Implementierung folgt"),
-    ("docs/tarifplaene", "je_eintrag",
-     "Tarifplaene: die produktspezifische Ausgestaltung des Kerns"),
 )
 
 

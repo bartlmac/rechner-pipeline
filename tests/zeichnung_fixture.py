@@ -52,17 +52,24 @@ STANDROLLEN = (
     (ARCHITEKTUR, "A-O1", ARCHITEKTUR_SCHLUESSEL_DATEI, _ARCHITEKTUR_SCHLUESSEL),
 )
 RECHENKERN_GATES = ["A-K2"]
+#: Die Wurzelrolle der Ordnungslinie (ADR-025) — die Kennung steht an EINER
+#: Stelle (``models.ordnungslinie.WURZELROLLE``); eigener Schluessel.
+_VORSTAND_SCHLUESSEL = b"test-only-p9-vorstand-key-az1!!!!" * 2
+VORSTAND_SCHLUESSEL_DATEI = "p9-vorstand.key"
 
 
 def _fall_gates() -> List[str]:
     from rechner_pipeline.models.zeichnung import GUELTIGE_GATES
 
     eigene = {gate for _, gate, _, _ in STANDROLLEN}
-    return [g for g in GUELTIGE_GATES if g not in ("A-B1", "A-B2") and g not in eigene]
+    return [g for g in GUELTIGE_GATES
+            if g not in ("A-B1", "A-B2", "A-B3") and g not in eigene]
 
 
-#: Die Gates der Standardrolle: alle zeichenbaren ausser denen des Betriebs
-#: und der Standabnahme (A-K2, A-O1).
+#: Die Gates der Standardrolle (mensch/aktuariat): alle zeichenbaren ausser
+#: denen des Betriebs (A-B1, A-B2, A-B3) und der Standabnahme von Kern und
+#: T-Box (A-K2, A-O1). Das Tarifwerk (A-T1) zeichnet sie selbst: Es gehoert
+#: dem Aktuariat (ADR-025).
 FALL_GATES: List[str] = _fall_gates()
 
 
@@ -124,8 +131,14 @@ def annahme_args(fall: Path, **kw) -> List[str]:
     if fuer in eigene:
         ring = [eigene[fuer]]
     else:
-        ring = [d for d in eigene.values() if d.exists()] + [schluessel]
+        ring = [d for d in eigene.values() if d.exists()] + (
+            [schluessel] if schluessel.exists() else [])
     args = ["--zeichnungsordnung", str(ordnung)]
+    # Fuehrt der Test eine Linie (ADR-025; :func:`linie_anlegen`), zeichnet
+    # und liest jeder Aufruf unter ihrer Ordnungslinie — der Normalweg.
+    linie = fall.parent / "linie"
+    if fall.resolve() != linie.resolve() and (linie / "linie.json").is_file():
+        args += ["--linie", str(linie)]
     for datei in ring:
         args += ["--freigabe-schluessel", str(datei)]
     # Eine simulierte Rolle handelt unter einem Mandat — Pflicht seit
@@ -179,16 +192,12 @@ def zeichne_tboxstand(fall: Path, repo_root: Path, **kw):
     Stellungnahme legt (simuliert) das Aktuariat. Alles wird LEBEND
     gerechnet: Modul-Hash, Versionen, Artefakt-Hash; ein Vermerk im Fall
     dient als Artefakt, damit keine Datei des Repos festgeschrieben ist.
-    Solange die Linie ein Element hat (Weg c, Basislinie), tut der Helfer
-    nichts und gibt None zurueck.
     """
     import json
 
     from rechner_pipeline.gates import gate_entscheid, stand_belegen
     from rechner_pipeline.ontologie import tbox
 
-    if stand_belegen.basislinie_gilt():
-        return None
     vermerk = fall / "abgeleitet" / "tbox" / "vermerk-suite.md"
     vermerk.parent.mkdir(parents=True, exist_ok=True)
     vermerk.write_text(
@@ -214,9 +223,70 @@ def zeichne_tboxstand(fall: Path, repo_root: Path, **kw):
     return ergebnis
 
 
+def zeichne_tarifwerk(fall: Path, repo_root: Path, *, von: str = "HEAD", **kw):
+    """Das Tarifwerk eines Falls vorlegen und als mensch/aktuariat zeichnen
+    (A-T1, ADR-025) — die Standardrolle der Suite IST mensch/aktuariat.
+    ``von`` = der zuletzt abgenommene Stand; in der Suite ``HEAD``."""
+    from rechner_pipeline.gates import gate_entscheid, tarifwerk_belegen
+
+    beleg = tarifwerk_belegen.main([
+        "--fall", str(fall), "--repo-root", str(repo_root), "--von", von,
+        "--begruendung", "Tarifwerk des Falls (Suite)"])
+    assert beleg.exit_code == 0, beleg.errors
+    args = annahme_args(fall, **kw)
+    # Die Standardrolle IST mensch/aktuariat; ihr Schluessel ist der, den die
+    # Ordnung neben dem Fall ihr gibt — manche Tests legen sie mit einem
+    # eigenen Schluessel an (nicht p9-freigabe.key).
+    ordnung = json.loads((fall.parent / "zeichnungsordnung.json").read_text(encoding="utf-8"))
+    fp = (ordnung["rollen"].get(VA) or {}).get("schluessel_sha256")
+    for datei in sorted(fall.parent.glob("*.key")):
+        if hashlib.sha256(datei.read_bytes()).hexdigest() == fp:
+            args += ["--freigabe-schluessel", str(datei)]
+            break
+    ergebnis = gate_entscheid.main([
+        "--fall", str(fall), "--gate", "A-T1", "--entscheid", "angenommen",
+        "--entscheider", "aktuariat",
+        "--begruendung", "Tarifplaene und Generationen geprueft (Suite)",
+        "--repo-root", str(repo_root), *args])
+    assert ergebnis.exit_code == 0, ergebnis.errors
+    return ergebnis
+
+
 def zeichne_stand(fall: Path, repo_root: Path, **kw):
-    """Den ganzen Stand eines Falls zeichnen: T-Box-Stand (A-O1, falls die
-    Linie einen Uebergang hat) und Kernstand (A-K2). Der gemeinsame Weg fuer
-    jeden Test, der A-M4 zeichnet."""
+    """Den ganzen Stand eines Falls zeichnen: T-Box-Stand (A-O1), Tarifwerk
+    (A-T1) und Kernstand (A-K2). Der gemeinsame Weg fuer jeden Test, der A-M4
+    zeichnet."""
     zeichne_tboxstand(fall, repo_root, **kw)
+    zeichne_tarifwerk(fall, repo_root, **kw)
     return zeichne_kernstand(fall, repo_root, **kw)
+
+
+def vorstand_rolle(verzeichnis: Path) -> Dict[str, dict]:
+    """Die Wurzelrolle der Ordnungslinie mit ihrem eigenen Schluessel."""
+    from rechner_pipeline.models.ordnungslinie import WURZELROLLE, ORDNUNGS_GATE
+
+    fp = schluessel_anlegen(verzeichnis / VORSTAND_SCHLUESSEL_DATEI, _VORSTAND_SCHLUESSEL)
+    return {WURZELROLLE: {"schluessel_sha256": fp, "schluesselklasse": "simulation",
+                               "gates": [ORDNUNGS_GATE]}}
+
+
+def linie_anlegen(verzeichnis: Path, **kw) -> Path:
+    """Den Linienbereich ``<verzeichnis>/linie`` anlegen und die Standardordnung
+    (mit der Wurzelrolle) als erstes Glied seiner Ordnungslinie eintragen.
+
+    VOR jeder Zeichnung aufrufen: Danach zeichnet jeder Aufruf ueber
+    :func:`annahme_args` unter der Spitze der Linie und pinnt ihr Glied."""
+    from rechner_pipeline.gates import stand_belegen
+
+    verzeichnis.mkdir(parents=True, exist_ok=True)
+    linie = verzeichnis / "linie"
+    weitere = dict(kw.pop("weitere", None) or {})
+    weitere.update(vorstand_rolle(verzeichnis))
+    ordnung = standard_ordnung(verzeichnis, verzeichnis / "p9-freigabe.key",
+                               weitere=weitere, **kw)
+    assert stand_belegen.main(["linie", "--linie", str(linie)]).exit_code == 0
+    ergebnis = stand_belegen.main([
+        "ordnung", "--linie", str(linie), "--ordnung", str(ordnung),
+        "--vorgaenger", "keiner", "--eingetragen-am", "2026-10-01T08:00:00+00:00"])
+    assert ergebnis.exit_code == 0, ergebnis.errors
+    return linie

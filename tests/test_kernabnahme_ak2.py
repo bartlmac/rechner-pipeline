@@ -38,7 +38,7 @@ from pathlib import Path
 
 import pytest
 
-from rechner_pipeline.gates import gate_entscheid, kernstand_belegen, stand_belegen
+from rechner_pipeline.gates import gate_entscheid, kernstand_belegen
 from rechner_pipeline.gates.gate_entscheid import (
     kernstand_belege_pruefen,
     pruefe_kernaenderung,
@@ -143,22 +143,18 @@ def test_a_m4_ohne_a_k2_wird_verweigert_und_mit_a_k2_angenommen(tmp_path):
     assert eintrag["anzeige"] == (sa.anzeige_im_fall("A-K2", ak2.summary["snapshot_sha256"])
                                   + "; " + ka.ANZEIGE_REGRESSION)
     assert mit.summary["standabnahmen"] == am4["standabnahmen"]
-    # Der T-Box-Stand: auf der Basislinie (eine Version, kein Uebergang) der
-    # Modul-Hash; seit T-Box 0.2.0 (Linie mit Uebergang) die A-O1-Annahme,
-    # die die Fall-Fixture zeichnet (zeichne_tboxstand).
-    if stand_belegen.basislinie_gilt():
-        assert am4["standabnahmen"]["tboxstand"]["weg"] == sa.BASISLINIE
-        assert am4["pflichtbelege"]["tboxstand"] == [stand_belegen.tbox_modul_sha256()]
-    else:
-        (ao1,) = list((fall / "entscheide").glob("A-O1-*.json"))
-        ao1_sha = json.loads(ao1.read_text(encoding="utf-8"))["snapshot_sha256"]
-        assert am4["standabnahmen"]["tboxstand"]["weg"] == sa.ABNAHME_IM_FALL
-        assert am4["pflichtbelege"]["tboxstand"] == [ao1_sha]
+    # Der T-Box-Stand: die A-O1-Annahme, die die Fall-Fixture zeichnet
+    # (zeichne_tboxstand); die Basislinie (Weg c) ist mit der Erstabnahme
+    # entfallen (ADR-025).
+    (ao1,) = list((fall / "entscheide").glob("A-O1-*.json"))
+    ao1_sha = json.loads(ao1.read_text(encoding="utf-8"))["snapshot_sha256"]
+    assert am4["standabnahmen"]["tboxstand"]["weg"] == sa.ABNAHME_IM_FALL
+    assert am4["pflichtbelege"]["tboxstand"] == [ao1_sha]
 
 
 def test_die_pflichtrolle_steht_in_beiden_scopes():
     for scope in ("tarif", "bestand"):
-        assert {"kernstand", "tboxstand"} <= set(belegrollen("A-M4", scope))
+        assert {"kernstand", "tboxstand", "tarifwerkstand"} <= set(belegrollen("A-M4", scope))
 
 
 def test_a_k2_zeichnet_nur_die_rolle_mensch_rechenkern(tmp_path):
@@ -437,7 +433,7 @@ def test_der_beleg_zeigt_die_aenderungen_je_modul_mit_den_commits(kernrepo):
     assert set(module) == {
         f"{ka.KERN_PAKET}/__init__.py", f"{ka.KERN_PAKET}/rechenkern.py",
         f"{ka.KERN_PAKET}/tafeln.xml", ka.KERN_REFERENZWERTE,
-        "docs/mathematik/grundsatzdokumentation.md", "docs/tarifplaene/klv.md"}
+        "docs/mathematik/grundsatzdokumentation.md"}
     rk = module[f"{ka.KERN_PAKET}/rechenkern.py"]
     assert (rk["hinzu"], rk["weg"], len(rk["commits"])) == (1, 0, 1)
     assert module[f"{ka.KERN_PAKET}/tafeln.xml"]["commits"] == []
@@ -597,13 +593,11 @@ def test_die_darstellung_zeigt_den_stand_des_falls(tmp_path):
     falldaten = _werkzeug("falldaten")
     fallbericht = _werkzeug("fallbericht")
     stand = falldaten.standabnahmen(fall)
-    assert [s["gate"] for s in stand] == ["A-K2", "A-O1"]
+    assert [s["gate"] for s in stand] == ["A-K2", "A-O1", "A-T1"]
     assert stand[0]["anzeige"].endswith(ka.ANZEIGE_REGRESSION)
-    from rechner_pipeline.gates import stand_belegen as _sb
-
-    erwartet = ("keine Aenderung: die Versionslinie der T-Box" if _sb.basislinie_gilt()
-                else "abgenommen im Fall (A-O1-Snapshot ")
+    erwartet = "abgenommen im Fall (A-O1-Snapshot "
     assert stand[1]["anzeige"].startswith(erwartet)
+    assert stand[2]["anzeige"].startswith("abgenommen im Fall (A-T1-Snapshot ")
     html = fallbericht._fach({"abnahmen": {"aktuariell": [], "standabnahmen": stand}}, {})
     assert "A-O1" in html and erwartet in html and ka.ANZEIGE_REGRESSION in html
 

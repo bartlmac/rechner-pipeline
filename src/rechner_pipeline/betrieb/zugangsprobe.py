@@ -162,6 +162,7 @@ def lies_soll(
     quelle: Optional[Path] = None,
     schluesselring: Optional[Mapping[str, bytes]] = None,
     ordnung: Optional[Mapping[str, Any]],
+    ordnungslinie: Optional[list] = None,
 ) -> Soll:
     """Das Soll aus dem Fall: Uebernahme, aktuarieller Test, Migrationssuite.
 
@@ -236,13 +237,14 @@ def lies_soll(
     roh: Dict[str, bytes] = {rolle: lies(fall / datei) for rolle, (_, datei) in SOLL_BELEGE.items()}
     try:
         am4, _, _ = ueb.lies_am4_snapshot(fall, am4_snapshot_sha256, schluesselring=ring,
-                                          ordnung=ordnung)
+                                          ordnung=ordnung, ordnungslinie=ordnungslinie)
         am1_pin = (am4.get("pflichtbelege") or {}).get("am1_snapshot") or [None]
         am1: Optional[Dict[str, Any]] = None
         am1_verifiziert = False
         if isinstance(am1_pin[0], str):
             am1, _, am1_verifiziert = ueb.lies_abnahme_snapshot(
-                fall, "A-M1", am1_pin[0], schluesselring=ring, ordnung=ordnung)
+                fall, "A-M1", am1_pin[0], schluesselring=ring, ordnung=ordnung,
+                ordnungslinie=ordnungslinie)
     except ueb.UebernahmeError as exc:
         raise ZugangsprobeError(
             f"die Abnahmen, auf denen das Soll steht, sind nicht lesbar oder nicht "
@@ -669,6 +671,7 @@ def zugangsprobe(
     quelle: Optional[Path] = None,
     image_digest: Optional[str] = None,
     jetzt: Optional[_dt.datetime] = None,
+    linie: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Die Probe fahren und den gezeichneten Beleg liefern (geschrieben wird er
     von :func:`main`; das Original wird nie beschrieben).
@@ -712,7 +715,7 @@ def zugangsprobe(
     try:
         zeichner = tl.betriebszeichner(
             original, schluessel, zeichnungsordnung, wofuer="die Zugangsprobe",
-            ohne="keine Zugangsprobe", flag="--schluessel")
+            ohne="keine Zugangsprobe", flag="--schluessel", linie=linie)
     except tl.TageslaufError as exc:
         raise ZugangsprobeError(str(exc)) from exc
     try:
@@ -740,6 +743,16 @@ def zugangsprobe(
         try:
             with tl.lauf_sperre(original):
                 gefuehrt = tl.gefuehrter_tag(original, zeichner)
+                # Ein Zugang wird nur auf eine Ablage abgenommen, deren
+                # Anfangsbestand abgenommen ist (ADR-025): dieselbe Pruefung
+                # wie im Tageslauf, hier VOR dem Kopieren benannt — sonst
+                # verweigerte erst der Lauf in der Kopie. Eine leere Ablage
+                # (Neuaufsetzen) hat noch keinen; ihr Zugang wird Teil davon.
+                from rechner_pipeline.betrieb.anfangsbestand import anfangsbestand_fehler
+
+                fehler_ab3 = anfangsbestand_fehler(original, zeichner)
+                if fehler_ab3 is not None:
+                    raise ZugangsprobeError(fehler_ab3)
                 stand_inhalt = tl.ablage_stand(original)
                 zeitpunkt = (jetzt or _dt.datetime.now(_dt.timezone.utc)).isoformat()
                 kennzeichen = {"fall": fallname, "original": str(stand),
@@ -769,7 +782,7 @@ def zugangsprobe(
             eingang_dir = ueb.eingang_anlegen(
                 mit.wurzel, fall, stichtag, quelle=quelle, snapshot_sha256=snapshot_sha256,
                 schluesselring=schluesselring, betriebsschluessel=schluessel,
-                zeichnungsordnung=zeichnungsordnung, probe_kopie=True)
+                zeichnungsordnung=zeichnungsordnung, probe_kopie=True, linie=linie)
         except ueb.UebernahmeError as exc:
             raise ZugangsprobeError(f"die Registrierung in der Kopie verweigert: {exc}") from exc
         eingang_roh = (eingang_dir / ueb.EINGANG_DATEI).read_bytes()
@@ -777,7 +790,8 @@ def zugangsprobe(
         uebersetzung = ueb.zielnummern(eingang_dir)
         soll = lies_soll(fall, stichtag, uebersetzung, quelle=quelle,
                          am4_snapshot_sha256=str(eingang.get("snapshot_sha256")),
-                         schluesselring=schluesselring, ordnung=zeichner.ordnung)
+                         schluesselring=schluesselring, ordnung=zeichner.ordnung,
+                         ordnungslinie=zeichner.ordnungslinie)
 
         # 3. Beide Laeufe bis zum Ziel (verpasste Tage holt der Lauf nach;
         #    der Stand ist derselbe, als liefe er jede Nacht).
@@ -962,6 +976,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help=f"Beleg (Default: <fall>/{zp.BELEG_RELATIV} — dort liest ihn A-B2).")
     parser.add_argument("--image-digest", dest="image_digest", default=None,
                         help="Digest des produktiven Images fuer den Beleg (Default: PLV_IMAGE_DIGEST).")
+    parser.add_argument("--linie", default=None,
+                        help="Linienbereich (ADR-025): die Abnahmen werden gegen die Ordnung "
+                             "gehalten, unter der sie gezeichnet wurden (Ordnungslinie).")
     ns = parser.parse_args(argv)
     try:
         stichtag = _dt.date.fromisoformat(ns.stichtag)
@@ -985,7 +1002,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             schluessel=Path(ns.schluessel), zeichnungsordnung=Path(ns.zeichnungsordnung),
             schluesselring=ring, snapshot_sha256=ns.snapshot,
             quelle=Path(ns.quelle) if ns.quelle else None,
-            image_digest=ns.image_digest or os.environ.get("PLV_IMAGE_DIGEST") or None)
+            image_digest=ns.image_digest or os.environ.get("PLV_IMAGE_DIGEST") or None,
+            linie=Path(ns.linie) if ns.linie else None)
     except (ZugangsprobeError, ValueError) as exc:
         print(f"zugangsprobe: {exc}", file=sys.stderr)
         return 2
