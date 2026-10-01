@@ -793,8 +793,12 @@ REGEL_AUFRUFE = Counter({
 #: ``gate``: die Kette der LINIE, auf die ein Verweis (Weg b) zeigt — er
 #: traegt nur ihre geltende Spitze (Pruefrunde G, G11; ``_verweis_gilt_fehler``),
 #: gelesen ueber denselben Kettenleser mit Signaturpruefung.
+#: ``AUFTRAG_GATE`` zweimal: ``fallauftrag_pruefen`` und der Leser des
+#: gezeichneten Widerrufs vor dem Abbruch, der Mandat und Trennung gegen den
+#: geltenden Auftrag nachrechnet (ADR-026, Nachtrag Pruefrunde J) — er geht
+#: durch ``gezeichneter_widerruf_fehler`` (Regelaufruf ``gate`` unten).
 GATE_KETTENLESER = Counter({"'A-M4'": 2, "'A-M1'": 1, "'A-Q1'": 1, "gegenstand.gate": 1,
-                            "abnahme_gate": 1, "args.gate": 1, "AUFTRAG_GATE": 1,
+                            "abnahme_gate": 1, "args.gate": 1, "AUFTRAG_GATE": 2,
                             "gate": 1})
 
 

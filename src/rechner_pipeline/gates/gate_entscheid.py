@@ -2245,8 +2245,18 @@ def _lebenslauf_vorlage(
         # (ADR-026, Nachtrag Pruefrunde I): Eine Ablehnung ist unsigniert
         # moeglich (ADR-008, Punkt 6) — als Datei in entscheide/ hingelegt oder
         # von einem Agenten gezeichnet, schaltete sie sonst die Sperre ab.
+        # Gegen welchen Auftrag der Widerruf nachgerechnet wird (Nachtrag
+        # Pruefrunde J): die geltende, angenommene Spitze der A-M6-Kette, mit
+        # Signatur gelesen — nicht die Behauptung der Vorlage.
+        am6, am6_spitzen, am6_fehler = _lade_snapshot_kette(
+            entscheide_verzeichnis(fall), AUFTRAG_GATE, fall, schluesselring, systemstand)
+        geltender_auftrag = (am6[am6_spitzen[0]][1]
+                             if not am6_fehler and len(am6_spitzen) == 1
+                             and am6[am6_spitzen[0]][1].get("entscheid") == "angenommen"
+                             else None)
         widerruf = gezeichneter_widerruf_fehler(
-            am4[am4_spitzen[0]][1], "A-M4", ordnung=ordnung, linie=linie)
+            am4[am4_spitzen[0]][1], "A-M4", ordnung=ordnung, linie=linie,
+            auftrag=geltender_auftrag)
         if widerruf is not None:
             fehler.append(
                 f"die Migrationsabnahme ist nicht gezeichnet widerrufen — die Spitze der "
@@ -2264,12 +2274,28 @@ _AUSWEG_WIDERRUF_AM4 = (
     "--freigabe-schluessel <vorstand.key> --freigabe-schluessel <aktuariat.key> ...)")
 
 
+#: Der Ausweg einer verweigerten gezeichneten Ablehnung (ADR-026, Nachtrag
+#: Pruefrunde J): ablehnen geht immer, nur nicht gezeichnet.
+_AUSWEG_UNSIGNIERT = (
+    " — oder unsigniert ablehnen (ohne --zeichnungsordnung bzw. ohne den Schluessel der "
+    "Rolle): das sperrt und gibt nichts frei (ADR-008, Punkt 6; ADR-026, Nachtrag "
+    "Pruefrunde J)")
+
+
 def gezeichneter_widerruf_fehler(
     spitze: Mapping[str, object], gate: str, *, ordnung: Optional[dict],
     linie: Optional[list],
+    auftrag: Optional[Mapping[str, object]],
 ) -> Optional[str]:
     """Ist ``spitze`` ein gezeichneter Widerruf einer ``gate``-Annahme?
     (None = ja; sonst, woran es fehlt.)
+
+    ``auftrag``: der geltende, angenommene A-M6-Snapshot des Falls (oder
+    None). Der Leser rechnet nach, was an der Zeichnung im Fall haengt, statt
+    dem Gate zu glauben (ADR-026, Nachtrag Pruefrunde J): Der Widerruf nennt
+    signiert den geltenden Auftrag; eine simulierte Rolle zeichnete unter dem
+    Mandat, das dieser Auftrag ihr nennt; der zeichnende Schluessel ist nicht
+    der der Programmleitung dieses Auftrags.
 
     Die EINE Regel fuer jeden Leser, dem eine Ablehnung als Spitze etwas
     FREIGIBT (ADR-026, Nachtrag Pruefrunde I; gemessen: heute nur der Abbruch
@@ -2289,6 +2315,27 @@ def gezeichneter_widerruf_fehler(
     _, zf = zeichnende_rolle_fehler(dict(spitze), gate, ordnung, linie=linie)
     if zf is not None:
         return f"ist gezeichnet, aber nicht von einer berechtigten Rolle: {zf}"
+    if auftrag is None:
+        return ("ist gezeichnet, aber der Fall hat keinen geltenden Fallauftrag, gegen den "
+                "Mandat und Trennung der Programmleitung nachzurechnen waeren")
+    geltend = str(auftrag.get("snapshot_sha256"))
+    if spitze.get("fallauftrag") != geltend:
+        return (f"nennt den Fallauftrag {str(spitze.get('fallauftrag'))[:16]}…, geltend ist "
+                f"{geltend[:16]}… — ein Widerruf steht auf dem geltenden Auftrag")
+    inhalt: Mapping = auftrag["auftrag"]  # type: ignore[assignment]
+    zeichnung: Mapping = spitze.get("zeichnung") or {}  # type: ignore[assignment]
+    soll_mandat = (inhalt.get("mandate") or {}).get(zeichnung.get("rolle"))
+    if zeichnung.get("schluesselklasse") == "simulation" \
+            and zeichnung.get("mandat_sha256") != soll_mandat:
+        return (f"ist unter dem Mandat {str(zeichnung.get('mandat_sha256'))[:16]}… gezeichnet, "
+                f"der geltende Fallauftrag nennt der Rolle {zeichnung.get('rolle')!r} "
+                f"{str(soll_mandat)[:16]}… — das Mandat ist Teil des Auftrags")
+    pl_fp = (inhalt.get("programmleitung") or {}).get("schluessel_sha256")
+    if spitze["freigabe"].get("schluessel_sha256") == pl_fp:  # type: ignore[union-attr]
+        return (f"ist mit dem Schluessel der Programmleitung des geltenden Fallauftrags "
+                f"({str(pl_fp)[:16]}…) gezeichnet — derselbe Schluessel widerriefe die "
+                "Abnahme und braeche als Programmleitung ab; die Trennung der Operatoren "
+                "waere nur behauptet")
     return None
 
 
@@ -3593,25 +3640,32 @@ def main(argv: Optional[List[str]] = None):
                 rolle: pflichtbelege[rolle] for rolle in erwartete_rollen
             }
 
-    # Jede Annahme eines Falls ausser dem Auftrag selbst setzt den geltenden
-    # Fallauftrag voraus (ADR-026) — EINE Stelle fuer alle Gates, nach den
-    # gate-eigenen Vorbedingungen (deren Befund ist genauer) und vor jedem
-    # Schreiben.
-    if args.entscheid == "angenommen" and not linie_modus and args.gate != AUFTRAG_GATE:
+    # Jede ZEICHNUNG eines Falls ausser am Auftrag selbst — Annahme oder
+    # gezeichnete Ablehnung — setzt den geltenden Fallauftrag voraus (ADR-026;
+    # Nachtrag Pruefrunde J: die gezeichnete Ablehnung ist seit Runde I eine
+    # Zeichnung im Fall und geht durch dieselben Pruefungen: Auftrag,
+    # Lieferung, Linie, Trennung der Programmleitung, Mandat). EINE Stelle fuer
+    # alle Gates, nach den gate-eigenen Vorbedingungen (deren Befund ist
+    # genauer) und vor jedem Schreiben. Die Ablehnung des Auftrags selbst (der
+    # Rueckzug) steht nicht unter einem Auftrag, sie ist der Akt auf ihm.
+    verweigert = ("Annahme verweigert" if args.entscheid == "angenommen"
+                  else "Gezeichnete Ablehnung verweigert")
+    ausweg_ablehnung = _AUSWEG_UNSIGNIERT if args.entscheid == "abgelehnt" else ""
+    if gezeichnet and not linie_modus and args.gate != AUFTRAG_GATE:
         sf = _schluessel_laden()
         if sf:
-            return _sperre("freigabe", "Annahme verweigert: externe Freigabeschluessel "
+            return _sperre("freigabe", f"{verweigert}: externe Freigabeschluessel "
                            "ungueltig: " + "; ".join(sf[:5]))
         if aktiver_schluessel is None:
             return _sperre(
                 "freigabe",
-                "Annahme verweigert: --freigabe-schluessel <externe-datei> ist "
+                f"{verweigert}: --freigabe-schluessel <externe-datei> ist "
                 "erforderlich; ein frei editierbarer Fall darf seine menschliche "
                 "Freigabe nicht selbst behaupten")
         if zeichnungsordnung is None:
             return _sperre(
                 "zeichnung",
-                "Annahme verweigert: --zeichnungsordnung fehlt — die zeichnende Rolle wird "
+                f"{verweigert}: --zeichnungsordnung fehlt — die zeichnende Rolle wird "
                 "aus dem Freigabeschluessel ueber die Ordnung bestimmt, nicht behauptet "
                 "(ADR-018)")
         auftrag_spitze, auftrag_meldung = fallauftrag_pruefen(
@@ -3619,7 +3673,7 @@ def main(argv: Optional[List[str]] = None):
             ordnung=zeichnungsordnung, linie=ordnungsglieder, linie_pfad=linie_pfad,
             vorbedingungen=fall_vorbedingungen, bekannt=bekannte_hashes)
         if auftrag_meldung is not None:
-            return _sperre("fallauftrag", f"Annahme verweigert: {auftrag_meldung}")
+            return _sperre("fallauftrag", f"{verweigert}: {auftrag_meldung}{ausweg_ablehnung}")
         if args.gate == ABBRUCH_GATE and (lebenslauf_inhalt or {}).get(
                 "fallauftrag") != auftrag_spitze["snapshot_sha256"]:
             return _sperre(
@@ -3737,14 +3791,14 @@ def main(argv: Optional[List[str]] = None):
         if aktiver_schluessel is None:
             return _sperre(
                 "freigabe",
-                "Annahme verweigert: --freigabe-schluessel <externe-datei> "
+                f"{verweigert}: --freigabe-schluessel <externe-datei> "
                 "ist erforderlich; ein frei editierbarer Fall darf seine "
                 "menschliche Freigabe nicht selbst behaupten",
             )
         if zeichnungsordnung is None:
             return _sperre(
                 "zeichnung",
-                "Annahme verweigert: --zeichnungsordnung fehlt — die "
+                f"{verweigert}: --zeichnungsordnung fehlt — die "
                 "zeichnende Rolle wird aus dem Freigabeschluessel ueber die "
                 "Ordnung bestimmt, nicht behauptet (ADR-018)",
             )
@@ -3753,21 +3807,19 @@ def main(argv: Optional[List[str]] = None):
             if args.gate in FALLROLLEN_GATES:
                 zf += (f" — {args.gate} zeichnet die Programmleitung, die der geltende "
                        "Fallauftrag benennt, mit dem Schluessel, den er ihr gibt (ADR-026)")
-            return _sperre("zeichnung", f"Annahme verweigert: {zf}")
+            return _sperre("zeichnung", f"{verweigert}: {zf}")
         glied_sha: Optional[str] = None
         if not linie_geprueft:
             # Waechter (Pruefrunde G, G09): Gezeichnet wird nur unter einer Linie,
             # deren Glieder gegen den Vorstand geprueft sind.
-            return _sperre("ordnungslinie", "Annahme verweigert: die Ordnungslinie wurde "
+            return _sperre("ordnungslinie", f"{verweigert}: die Ordnungslinie wurde "
                            "nicht gegen den Schluessel des Vorstands geprueft (ADR-025)")
         if ordnungsglieder:
             spitze_glied = ordnungsglieder[-1]
             if spitze_glied["ordnung_sha256"] != zeichnungsordnung_sha:
                 return _sperre(
                     "ordnungslinie",
-                    ("Annahme verweigert" if args.entscheid == "angenommen" else
-                     "Gezeichnete Ablehnung verweigert")
-                    + ": die Zeichnungsordnung dieses Aufrufs "
+                    f"{verweigert}: die Zeichnungsordnung dieses Aufrufs "
                     f"({str(zeichnungsordnung_sha)[:16]}) ist nicht die Spitze der "
                     f"Ordnungslinie (Glied {spitze_glied['nummer']}, "
                     f"{spitze_glied['ordnung_sha256'][:16]}) — gezeichnet wird nur unter "
@@ -3788,26 +3840,27 @@ def main(argv: Optional[List[str]] = None):
         ):
             return _sperre(
                 "mandat",
-                ("Annahme verweigert" if args.entscheid == "angenommen" else
-                 "Gezeichnete Ablehnung verweigert")
-                + f": die Rolle {zeichnung['rolle']!r} "
+                f"{verweigert}: die Rolle {zeichnung['rolle']!r} "
                 "ist mit einem Simulationsschluessel besetzt und handelt ohne "
                 "Mandat — --mandat <datei> ist bei Schluesselklasse simulation "
                 "Pflicht (ADR-018)",
             )
         # Die Mandate bindet der Fallauftrag (ADR-026): Eine simulierte Rolle
-        # handelt im Fall unter GENAU dem Mandat, das der Auftrag ihr nennt.
+        # handelt im Fall unter GENAU dem Mandat, das der Auftrag ihr nennt —
+        # bei jeder Zeichnung, der gezeichneten Ablehnung eingeschlossen
+        # (Nachtrag Pruefrunde J; auftrag_spitze ist fuer jede Zeichnung im
+        # Fall gesetzt).
         if (auftrag_spitze is not None
                 and zeichnung.get("schluesselklasse") == "simulation"
                 and auftrag_spitze["auftrag"]["mandate"].get(zeichnung["rolle"])
                 != zeichnung.get("mandat_sha256")):
             return _sperre(
                 "mandat",
-                f"Annahme verweigert: die simulierte Rolle {zeichnung['rolle']!r} handelt "
+                f"{verweigert}: die simulierte Rolle {zeichnung['rolle']!r} handelt "
                 f"unter dem Mandat {str(zeichnung.get('mandat_sha256'))[:16]}…, der Fallauftrag "
                 f"nennt ihr {str(auftrag_spitze['auftrag']['mandate'].get(zeichnung['rolle']))[:16]}"
                 "… — das Mandat ist Teil des Auftrags (ADR-026). Ausweg: unter dem genannten "
-                "Mandat zeichnen oder den Fall neu beauftragen")
+                f"Mandat zeichnen oder den Fall neu beauftragen{ausweg_ablehnung}")
 
     kern_inhalt = {
         "command": "gate_entscheid",
@@ -3864,7 +3917,8 @@ def main(argv: Optional[List[str]] = None):
         # liest, wer den Fall fuehrt und unter welchen Mandaten, liest es hier.
         kern_inhalt[P9_LEBENSLAUF_FELDER[args.gate]] = lebenslauf_inhalt
     if auftrag_spitze is not None:
-        # Der Abnahmepunkt nennt signiert den Auftrag, auf dem er steht.
+        # Jede Zeichnung im Fall (Annahme oder gezeichnete Ablehnung) nennt
+        # signiert den Auftrag, auf dem sie steht (Nachtrag Pruefrunde J).
         kern_inhalt["fallauftrag"] = auftrag_spitze["snapshot_sha256"]
     # Idempotenz gegen den GELTENDEN Snapshot: derselbe Entscheid auf
     # demselben Stand — unter derselben Rollenbindung — wird gemeldet,

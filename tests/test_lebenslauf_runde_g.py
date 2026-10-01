@@ -202,14 +202,17 @@ def _leser(quelle: str) -> Counter:
 #:   liest keine Kette des Falls und traegt keinen Auftrag — ausgenommen.
 #: * ``fallauftrag_pruefen`` — die A-M6-Kette selbst (der Auftrag).
 #: * ``_lebenslauf_vorlage`` — die A-M4-Kette als SPERRE des Abbruchs; sie
-#:   gruendet nichts (eine A-M4 unter welchem Auftrag auch immer sperrt).
+#:   gruendet nichts (eine A-M4 unter welchem Auftrag auch immer sperrt); dazu
+#:   die A-M6-Kette, gegen deren geltende Spitze der gezeichnete Widerruf
+#:   nachgerechnet wird (ADR-026, Nachtrag Pruefrunde J) — der Auftrag selbst,
+#:   keine Vorbedingung, nicht angemeldet.
 #: * ``main`` — A-B2: A-M4 und A-M1 (gruenden, melden an); A-M4: A-Q1 und
 #:   A-M1..A-M3 in einer Schleife (gruenden, melden an); die eigene Kette des
 #:   Gates (Vorgaenger, gruendet nichts).
 LESER = Counter({
     ("lesen", "standabnahme_pruefen"): 1, ("anmelden", "standabnahme_pruefen"): 1,
     ("lesen", "fallauftrag_pruefen"): 1,
-    ("lesen", "_lebenslauf_vorlage"): 1,
+    ("lesen", "_lebenslauf_vorlage"): 2,
     ("lesen", "main"): 5, ("anmelden", "main"): 4,
     # Weg (b) der Standabnahme (Pruefrunde G, G11): liest die Kette der LINIE,
     # um die Gueltigkeit des Verweises zu halten. Eine Abnahme der Linie

@@ -126,7 +126,9 @@ GATE_VERSION_DEFAULT = "1.0.0"
 #: SHA-256 des geltenden A-M6-Snapshots — in JEDER Annahme eines Falls ausser
 #: dem Auftrag selbst: der Abnahmepunkt nennt signiert den Auftrag, auf dem er
 #: steht. Gate-Version 5.0.0 (Major: ein vorher gruener Entscheid wird ohne
-#: geltenden Fallauftrag rot). Schema 9 bleibt lesbar.
+#: geltenden Fallauftrag rot). Schema 9 bleibt lesbar. Seit den Pruefrunden
+#: I und J (ohne neues Schema, ADR-026): eine GEZEICHNETE Ablehnung traegt
+#: ``freigabe`` und ``zeichnung`` und im Fall (ausser an A-M6) ``fallauftrag``.
 P9_SNAPSHOT_SCHEMA_VERSION = 10
 _ROLLEN_MUSTER = re.compile(r"^(mensch|agent)/[a-z][a-z0-9-]*$")
 P9_SNAPSHOT_SCHEMA_VERSIONEN = (6, 7, 8, 9, 10)
@@ -624,9 +626,12 @@ class P9Snapshot:
         ab_schema_10 = type(version) is int and version >= 10
         if gate in P9_LEBENSLAUF_FELDER and data.get("entscheid") == "angenommen":
             expected_fields.add(P9_LEBENSLAUF_FELDER[gate])
-        # Jede Annahme eines Falls nennt den Auftrag, auf dem sie steht
-        # (ADR-026) — ausser dem Auftrag selbst und den Abnahmen der Linie.
-        mit_fallauftrag = (ab_schema_10 and data.get("entscheid") == "angenommen"
+        # Jede ZEICHNUNG eines Falls — Annahme oder gezeichnete Ablehnung —
+        # nennt den Auftrag, auf dem sie steht (ADR-026; Nachtrag Pruefrunde J)
+        # — ausser am Auftrag selbst und im Linienbereich. Eine unsignierte
+        # Ablehnung nennt keinen: Sie zeichnet nichts.
+        mit_fallauftrag = (ab_schema_10
+                           and (data.get("entscheid") == "angenommen" or gezeichnete_ablehnung)
                            and gate != AUFTRAG_GATE
                            and data.get("fall_scope") != _LINIE_SCOPE)
         if mit_fallauftrag:

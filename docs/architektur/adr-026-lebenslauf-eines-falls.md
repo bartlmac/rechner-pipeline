@@ -333,7 +333,11 @@ Bedienfolge Schritt 9); die Programmleitung hat einen eigenen Schluessel
    --entscheider "<Name>" --begruendung "..." --repo-root .
    --zeichnungsordnung <ordnung> --freigabe-schluessel <vorstand.key>
    --freigabe-schluessel <aktuariat.key> [--mandat <mandat>]` — dann
-   Schritte 1 bis 3 mit dem Schluessel des Aktuariats im Ring. Eine Ablehnung
+   Schritte 1 bis 3 mit dem Schluessel des Aktuariats im Ring. Der Widerruf
+   ist eine Zeichnung im Fall (Nachtrag Pruefrunde J): Er braucht den
+   geltenden Auftrag, eine simulierte Rolle zeichnet unter dem Mandat, das
+   der Auftrag ihr nennt, und der Schluessel ist nicht der der
+   Programmleitung. Eine Ablehnung
    ohne Schluessel oder ohne Ordnung (etwa die eines Agenten) bleibt
    unsigniert und gibt den Abbruch nicht frei; das Gate verweigert mit Code
    `vorbedingung` und nennt diesen Ausweg. `entscheide/`
@@ -685,7 +689,8 @@ Aktuariats.
 Aktuariats im Ring haelt (der Abbruch nach A-M4 verlangt ihn ohnehin), kann
 den Widerruf zeichnen. Der Widerruf traegt keinen Fallauftrag; dass er
 unter dem geltenden Auftrag steht, haelt der Abbruch selbst
-(`fallauftrag_pruefen`).
+(`fallauftrag_pruefen`). (Ueberholt durch Nachtrag Pruefrunde J: Der
+gezeichnete Widerruf traegt den Auftrag, und der Leser rechnet ihn nach.)
 
 ### b) Der Betrieb liest den Auftrag, den die Abnahmen nennen (I07)
 
@@ -796,3 +801,142 @@ Testwege in 24 Modulen einen Auftrag, der nicht im Fall lag; dazu drei
 Fallbauer mit eigener Schreibstelle, das Neuzeichnen unter einem anderen
 Glied, drei Ringe ohne den Vorstand, der Test G15, der Rueckzug mit Mandat
 und die Meldung des Altsnapshots (Schema 6).
+
+## Nachtrag 2026-10-02: Pruefrunde J — die gezeichnete Ablehnung ist eine Zeichnung im Fall
+
+Befunde der blinden Pruefrunde J (J02, J03, beide mittel, eine Klasse),
+bestaetigt vom Widerleger. Je Entscheid Regel, Grund, verworfene Alternative,
+Grenze.
+
+### a) Befund und Invariante
+
+**Befund.** Seit Nachtrag I a ist eine Ablehnung mit dem Schluessel einer
+berechtigten Rolle GEZEICHNET. Die Pruefungen, die an einer Zeichnung im Fall
+haengen, liefen aber nur fuer `--entscheid angenommen`: (J02) Das simulierte
+Aktuariat widerrief A-M4 gezeichnet unter einem Mandat, das der Fallauftrag
+ihm nicht nennt — Exit 0, danach ging der Abbruch A-M5. (J03) Gab ein
+spaeteres Glied den Schluessel der Programmleitung dem Aktuariat, widerrief
+dieser Schluessel A-M4 als `mensch/aktuariat` (Exit 0); nach einem weiteren
+Glied brach derselbe Schluessel als Programmleitung ab. Abschnitt 2 (Mandate)
+und Nachtrag I d (Trennung "zu jedem Zeitpunkt") galten nur fuer Annahmen.
+
+**Invariante.** Jede Zeichnung in einem Fall — Annahme ODER gezeichnete
+Ablehnung — geht durch dieselben Pruefungen des Falls: geltender Fallauftrag
+samt Bindung an die Lieferung und Linie des Auftrags, Trennung der
+Programmleitung gegen die Ordnung der Spitze (`fallauftrag_pruefen`), Mandat
+der simulierten Rolle genau wie im Auftrag genannt. Und der Leser, dem eine
+gezeichnete Ablehnung etwas FREIGIBT, rechnet nach, was er nachrechnen kann,
+statt dem Gate zu glauben.
+
+### b) Regel
+
+* `gates.gate_entscheid.main` ruft `fallauftrag_pruefen` fuer jede Zeichnung
+  im Fall ausser an A-M6 (Bedingung `gezeichnet`, nicht mehr "angenommen").
+  Damit ist `auftrag_spitze` auch fuer die gezeichnete Ablehnung gesetzt, und
+  die Mandatssperre (gegen den Auftrag) greift fuer sie.
+* Die gezeichnete Ablehnung im Fall traegt signiert das Feld `fallauftrag`
+  (den SHA-256 des geltenden A-M6-Snapshots); das Schema verlangt es dort
+  (`models.schemas`, `mit_fallauftrag`). Eine unsignierte Ablehnung traegt es
+  nicht.
+* Verweigert eine Pruefung eine gezeichnete Ablehnung, beginnt die Meldung mit
+  "Gezeichnete Ablehnung verweigert:" (eine Weiche fuer alle Sperren der
+  Zeichnung) und nennt neben dem Ausweg der Pruefung (unter dem genannten
+  Mandat zeichnen, neu beauftragen, ...) immer: unsigniert ablehnen (ohne
+  `--zeichnungsordnung` bzw. ohne den Schluessel der Rolle) — das sperrt und
+  gibt nichts frei.
+* Der Leser `gezeichneter_widerruf_fehler` (einziger freigebender Leser, nur
+  der Abbruch nach A-M4) bekommt den geltenden Auftrag — `_lebenslauf_vorlage`
+  liest dafuer die A-M6-Kette mit Signatur ueber den Ring, nicht die
+  Behauptung der Vorlage — und verlangt zusaetzlich: es gibt einen geltenden,
+  angenommenen Auftrag; der Widerruf nennt ihn (`fallauftrag`); eine simulierte
+  Rolle zeichnete unter dem Mandat, das er ihr nennt; der Schluessel der
+  Freigabe ist nicht der der Programmleitung dieses Auftrags. Die letzte
+  Pruefung haelt auch den Fall, dass ein spaeteres Glied dem Aktuariat einen
+  eigenen Schluessel gibt und fruehere Zeichnungen fuer gueltig erklaert:
+  Dann laesst die Annahme des Abbruchs die Trennung unter der Spitze zu, der
+  Widerruf aber wurde mit dem Schluessel der Programmleitung gezeichnet.
+
+### c) Die Menge, gemessen (AST)
+
+Jede Bedingung auf `args.entscheid == "angenommen"` in
+`gate_entscheid.main`: 14 auf 90ee7e9, dazu zwei gleichwertige
+(`auftrag_spitze is not None`, gesetzt nur fuer Annahmen). Je Stelle:
+
+| Stelle (Bedingung) | gilt | Grund |
+|---|---|---|
+| Agentenrolle darf nicht annehmen | nur Annahme | ein Agent darf ablehnen (ADR-008, Punkt 6) |
+| Definition `gezeichnet` | Zeichnung | sie IST die Unterscheidung |
+| Vorlage von A-M6/A-M5 (`LEBENSLAUF_GATES`) | nur Annahme | eine Ablehnung bindet keine Vorlage; A-M5 wird nie gezeichnet abgelehnt (`FALLROLLEN_GATES`) |
+| A-O1: eine Version, ein Vokabular | nur Annahme | nur Angenommenes wird Vokabular |
+| Linienbereich: Belege | nur Annahme | eine Ablehnung pinnt keine Belege; im Linienbereich gibt es keinen Auftrag |
+| Fall: Eingang, A-Box, gate-eigene Vorbedingungen, Pflichtbelege | nur Annahme | eine Ablehnung pinnt nichts; die Bindung an die Lieferung haelt fuer die Zeichnung `fallauftrag_pruefen` |
+| **`fallauftrag_pruefen`** (Auftrag, Lieferung, Linie, Trennung) | **Zeichnung — umgestellt** | J03 |
+| Sicht der gepinnten Belege | nur Annahme | eine Ablehnung pinnt keine Belege, es gibt nichts zu sehen |
+| Schluessel ohne Rolle (`bestimmt is None`) | nur Annahme | bei der gezeichneten Ablehnung per Konstruktion bestimmt (dieselbe Ordnung, derselbe letzte Schluessel) |
+| Meldungsweiche Spitze der Linie, Mandatspflicht | Zeichnung (Wortlaut) | jetzt EINE Weiche `verweigert` fuer alle Sperren der Zeichnung |
+| **Mandat gegen den Auftrag** (`auftrag_spitze is not None`) | **Zeichnung — umgestellt** | J02 |
+| **Feld `fallauftrag`** (`auftrag_spitze is not None`) | **Zeichnung — umgestellt** | Abschnitt d |
+| Inhalt von Auftrag/Abbruch im Snapshot | nur Annahme | der Inhalt ist der der Annahme |
+| Ausgabe A-M6 (Programmleitung), A-M5 (Anzeige) | nur Annahme | Ausgabe der Annahme |
+
+Ratsche mit `==` ueber die Bedingungen (Quelltext) und eine zweite, dass der
+Aufruf von `fallauftrag_pruefen` unter `gezeichnet` steht, je mit
+Positivkontrolle des Detektors (`tests/test_lebenslauf_runde_j.py`). Nachgezogen:
+die Zaehlung der Kettenleser (`AUFTRAG_GATE` zweimal,
+`tests/test_abnahme_rolle_klasse.py`; `_lebenslauf_vorlage` liest zwei Ketten,
+`tests/test_lebenslauf_runde_g.py`).
+
+Gemessen vor der Verschaerfung (instrumentierter Suitenlauf): 32 Ablehnungen
+erreichten das Schreiben, 14 davon gezeichnet (4 im Linienbereich, 2 an A-M6,
+8 im Fall); alle 8 bestanden Auftrag, Trennung und Mandat. Kein Testweg
+umgestellt.
+
+### d) Der Rueckzug und "geltender Auftrag" bei A-M6
+
+Die Ablehnung von A-M6 (der Rueckzug) bleibt ausserhalb von
+`fallauftrag_pruefen`, gezeichnet wie unsigniert. Grund: Sie steht nicht
+UNTER einem Auftrag, sie ist der Akt AUF ihm — wie die Annahme von A-M6.
+Verlangte man fuer sie den geltenden Auftrag, liesse sich gerade ein Auftrag,
+der nicht mehr gilt (Lieferung geaendert, Linie verfallen), nicht
+zurueckziehen. Der gezeichnete Rueckzug traegt deshalb kein `fallauftrag`;
+seine Rolle prueft die Ordnung (A-M6 hat der Vorstand). Getestet mit
+geaenderter Lieferung, gezeichnet und unsigniert.
+
+Ohne geltenden Auftrag (nie beauftragt, zurueckgezogen) gibt es im Fall keine
+gezeichnete Ablehnung mehr; unsigniert ablehnen bleibt (die Meldung nennt es).
+
+### e) Feld `fallauftrag` in der gezeichneten Ablehnung — Version
+
+**Entschieden:** Die gezeichnete Ablehnung im Fall traegt `fallauftrag`.
+Grund: Nur so kann der freigebende Leser nachrechnen, dass der Widerruf unter
+dem GELTENDEN Auftrag steht (und gegen dessen Mandate und Programmleitung) —
+ein Widerruf unter einem abgeloesten Auftrag gibt den Abbruch nicht frei,
+dieselbe Regel wie fuer Vorbedingungen (Nachtrag G a).
+
+**Verworfen:** *kein Feld, der Leser nimmt den heute geltenden Auftrag* — dann
+truege ein Widerruf, der unter Auftrag 1 gezeichnet wurde, nach einer
+Neubeauftragung unter Auftrag 2, dessen Mandate er nie gesehen hat; der Leser
+glaubte dem Zeitpunkt statt dem Beleg (die Grenze, die Nachtrag I a noch
+benannte, ist damit gebaut). *Den Widerruf aus der Freigabe herausrechnen
+(Mandat nur strukturell lesen)* — das Feld schreibt, wer die Datei schreibt;
+signiert ist nur, was im Snapshot steht.
+
+**Version.** P9-Schema 10 und Gate 5.0.0 bleiben, mit derselben Begruendung
+wie in den Nachtraegen G und I: Schema 10 und Gate 5.0.0 sind ausserhalb der
+Tests nie gezeichnet, die gezeichnete Ablehnung gibt es erst seit Pruefrunde
+I. Eine gezeichnete Ablehnung im Fall ohne `fallauftrag` (Form von 90ee7e9)
+ist jetzt schemaverletzt; dass ausserhalb der Tests keine liegt, folgt aus der
+Begruendung oben und ist nicht gesondert nachgemessen (die Falldatenraeume
+liest diese Runde nicht).
+
+### f) Grenzen, benannt
+
+* Die HMAC-Grenze bleibt: Wer den Schluessel des Aktuariats und das Mandat
+  des Auftrags haelt, zeichnet den Widerruf.
+* Die Trennung haelt das Gate gegen die Ordnung der SPITZE der Linie dieses
+  Aufrufs (wie Nachtrag I d); der Leser haelt den Schluessel des Widerrufs
+  gegen die Programmleitung des geltenden Auftrags. Dass ein Schluessel einer
+  ANDEREN Rolle als der Programmleitung unter einem spaeteren Glied doppelt
+  besetzt wird, ist keine Frage dieser Klasse.
+* Eine Ablehnung ohne Schluessel sperrt weiter und gibt nichts frei; wer
+  `entscheide/` beschreiben kann, kann den Fall ohnehin unbrauchbar machen.
