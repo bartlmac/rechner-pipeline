@@ -109,18 +109,35 @@ def test_jeder_csv_unterleser_der_fuehrungsprobe_uebergibt_die_bindung():
     """Ratsche (statisch, benannt als solche): ``_lies_csv`` ohne
     ``bindung`` oeffnet die Datei ein zweites Mal — das war der Befund. Ein
     Verhaltenstest an der tatsaechlichen Oeffnung fehlt hier noch; er
-    braucht die Fuehrungsprobe-Welt (Uebernahme, Lauf, Spez, Suite)."""
+    braucht die Fuehrungsprobe-Welt (Uebernahme, Lauf, Spez, Suite).
+
+    Seit dem Entscheid 2026-09-30 liest ``lies_auskuenfte`` die Auskunft
+    zu den Herabsetzungsanteilen (frueher ein zweiter ``_lies_csv``-Aufruf);
+    sie ist derselbe CSV-Unterleser und steht unter derselben Ratsche. Die
+    Menge ist exakt zwei: Vorgeschichte und Auskunft."""
     quelle = (REPO_ROOT / "src" / "rechner_pipeline" / "gates" / "fuehrungsprobe.py").read_text(encoding="utf-8")
     baum = ast.parse(quelle)
     aufrufe = [
         knoten for knoten in ast.walk(baum)
         if isinstance(knoten, ast.Call)
-        and isinstance(knoten.func, ast.Name) and knoten.func.id == "_lies_csv"
+        and isinstance(knoten.func, ast.Name)
+        and knoten.func.id in ("_lies_csv", "lies_auskuenfte")
     ]
-    assert len(aufrufe) >= 2, "die Fuehrungsprobe liest keine CSV mehr?"
+    assert len(aufrufe) == 2, (
+        "die Fuehrungsprobe liest nicht mehr genau Vorgeschichte und Auskunft "
+        f"ueber die CSV-Unterleser ({len(aufrufe)} Aufrufe)")
+    def _ist_die_bindung(knoten) -> bool:
+        return isinstance(knoten, ast.Name) and knoten.id == "bindung"
+
     for aufruf in aufrufe:
-        assert len(aufruf.args) >= 3 or any(k.arg == "bindung" for k in aufruf.keywords), (
-            f"_lies_csv in Zeile {aufruf.lineno} ohne Bindung")
+        # Nicht nur "ein dritter Wert": ``None`` an dieser Stelle waere
+        # dasselbe zweite Oeffnen (Mutationsprobe 2026-09-30).
+        uebergeben = (
+            (len(aufruf.args) >= 3 and _ist_die_bindung(aufruf.args[2]))
+            or any(k.arg == "bindung" and _ist_die_bindung(k.value)
+                   for k in aufruf.keywords))
+        assert uebergeben, (
+            f"{aufruf.func.id} in Zeile {aufruf.lineno} ohne Bindung")
 
 
 # --------------------------------------------------------------------------- #

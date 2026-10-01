@@ -319,7 +319,7 @@ def _schicht_felder(eintrag: Any) -> Dict[str, Any]:
 
 def _schichten(
     fall: Path, name: Optional[str], repo_root: Optional[Path] = None,
-    bindung=None,
+    bindung=None, auskunft: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Die Korrekturschicht je Police aus einer BINDBAREN Quelle.
 
@@ -352,6 +352,19 @@ def _schichten(
     ``conv`` traegt seinen eigenen Verankerungszeitpunkt ``monate_t0``
     (Vertragsmonate am Migrationsstichtag — je Vertrag verschieden,
     obwohl der Kalendertag derselbe ist).
+
+    ``auskunft`` ist der Belegblock (``{name, sha256, bezug}``) der
+    Herabsetzungs-Auskunft, die DIESER Lauf gelesen hat, oder ``None``,
+    wenn er keine nennt. Block F, Nachbesserung: Die Schicht ist auf der
+    Anfangslage verankert, die die Auskunft des Erzeugers bestimmt hat;
+    rechnet der Lauf auf der Anfangslage einer ANDEREN Auskunft (oder ohne),
+    vergleicht er gelieferte Werte mit einer Welt, auf der die Schicht nie
+    verankert wurde — beide Belege einzeln gruen. Bei einem abgeleiteten
+    Beleg muessen deshalb die SHA-256 der Auskunft des Belegs und des
+    Laufs uebereinstimmen; ``keine Auskunft`` auf beiden Seiten gilt als
+    gleich. Jeder Aufrufer unter ``gates/`` uebergibt ``auskunft=``
+    ausdruecklich (Ratsche in ``tests/test_auskunft_registriert_klasse.py``);
+    das Vorgabe-``None`` verweigert im Zweifel, statt still durchzulassen.
     """
     if not name:
         return {}
@@ -396,6 +409,80 @@ def _schichten(
                     f"Schichtbeleg-Eingabe {rel} wurde veraendert "
                     "(SHA-256 weicht ab) — Beleg neu erzeugen, nicht "
                     "weiterverwenden")
+        # Die Auskunft zu den Herabsetzungsanteilen (Entscheid des
+        # Maintainers 2026-09-30): Sie ist eine registrierte Datei, und der
+        # Beleg nennt sie mit Name und Hash. Dieser Lauf rechnet die
+        # Aussage nach, statt ihr zu glauben — sie muss mit den Eingaben
+        # uebereinstimmen, die oben gegen die Platte geprueft wurden. Ein
+        # Beleg im alten Schema (Anteile als getippte Liste) ist nicht
+        # bindbar und wird nicht angenommen.
+        parameter = prov.get("parameter")
+        parameter = parameter if isinstance(parameter, dict) else {}
+        if "red_anteile" in parameter:
+            raise SystemExit(
+                f"Schichtbeleg {name!r} nennt Herabsetzungsanteile als "
+                "Einzelparameter (red_anteile) — fuer die Zeichnung nicht "
+                "bindbar; die Auskunft als registrierte Datei fuehren "
+                "(--red-anteile-datei) und den Beleg neu erzeugen "
+                "(gates.verankerung_belegen)")
+        datei = parameter.get("red_anteile_datei")
+        if datei is not None:
+            gebunden = None
+            if isinstance(datei, dict):
+                gebunden = (prov.get("eingaben") or {}).get(
+                    Eingangsbindung(fall).schluessel(
+                        fall_mod.verzeichnisse(fall)["eingang"]
+                        / str(datei.get("name", ""))))
+            if gebunden is None or gebunden != datei.get("sha256"):
+                raise SystemExit(
+                    f"Schichtbeleg {name!r}: red_anteile_datei "
+                    f"({datei!r}) steht nicht mit diesem Hash unter den "
+                    "Eingaben des Belegs — die Aussage ueber die Auskunft "
+                    "ist nicht nachrechenbar; Beleg neu erzeugen "
+                    "(gates.verankerung_belegen)")
+        # Formfehler (Block F, Nachbesserung): Was der Erzeuger aus dem
+        # Eingang gelesen hat, ohne dass der Parameterblock es als
+        # Vorgeschichte, Anker oder Auskunft benennt, ist eine Auskunft, die
+        # der Block verschweigt — der Beleg widerspricht sich selbst, und der
+        # Abgleich unten saehe nur ``keine Auskunft``.
+        schluessel = Eingangsbindung(fall).schluessel
+        eingang = fall_mod.verzeichnisse(fall)["eingang"]
+        erklaert = {
+            schluessel(eingang / str(erklaerer))
+            for erklaerer in (
+                parameter.get("vorgeschichte"),
+                parameter.get("anker_erwartungswerte"),
+                datei.get("name") if isinstance(datei, dict) else None)
+            if erklaerer}
+        praefix = schluessel(eingang) + "/"
+        unerklaert = sorted(
+            k for k in (prov.get("eingaben") or {})
+            if k.startswith(praefix) and k not in erklaert)
+        if unerklaert:
+            raise SystemExit(
+                f"Schichtbeleg {name!r}: Formfehler — die Eingaben nennen "
+                f"{unerklaert}, der Parameterblock fuehrt sie weder als "
+                "vorgeschichte, anker_erwartungswerte noch als "
+                "red_anteile_datei; der Beleg widerspricht sich selbst — "
+                "neu erzeugen (gates.verankerung_belegen)")
+        # Welt-Gleichheit: dieselbe Auskunft wie der Lauf.
+        beleg_sha = datei["sha256"] if isinstance(datei, dict) else None
+        lauf_sha = auskunft["sha256"] if auskunft else None
+        if beleg_sha != lauf_sha:
+            def _wer(block, sha):
+                return (f"{block.get('name')!r} (SHA-256 {sha[:12]}...)"
+                        if block else "keine Auskunft")
+
+            raise SystemExit(
+                f"Schichtbeleg {name!r} wurde mit der Auskunft "
+                f"{_wer(datei if isinstance(datei, dict) else None, beleg_sha)}"
+                f" erzeugt, dieser Lauf liest {_wer(auskunft, lauf_sha)} — "
+                "zwei Welten: die Schicht ist auf einer anderen Anfangslage "
+                "verankert als der, auf der dieser Lauf rechnet. Dieselbe "
+                "Auskunft an beiden Kommandos nennen (--red-anteile-datei), "
+                "oder den Schichtbeleg mit der Auskunft dieses Laufs neu "
+                "erzeugen (gates.verankerung_belegen --red-anteile-datei "
+                "...)")
         # Der Beleg wird auf sein EIGENES URTEIL geprueft, bevor er
         # fachlich verwendet wird (Befund T26-06). Vorher las der Consumer
         # Systemstand und Eingabenhashes nach und reduzierte dann direkt
@@ -561,14 +648,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "Police der Stichprobe")
     p.add_argument("--red-anteile-datei", dest="red_anteile_datei",
                    default=None, metavar="REGISTRIERTE_DATEI",
-                   help="REGISTRIERTE Nachlieferung der fortgefuehrten "
-                        "Beitragsanteile (POLNR;GEVO;DATUM;ANTEIL) — fuer "
-                        "die Zeichnung bindbar, anders als --red-anteil")
-    p.add_argument("--red-anteil", dest="red_anteile", action="append",
-                   default=[], metavar="POLNR=ANTEIL",
-                   help="nachgelieferter fortgefuehrter Beitragsanteil einer "
-                        "Alt-Absetzung, deren Beitragsgleichung entfaellt "
-                        "(wiederholbar)")
+                   help="REGISTRIERTE Auskunft der Quelle zu den "
+                        "fortgefuehrten Beitragsanteilen (POLNR;GEVO;DATUM;"
+                        "ANTEIL, optional BEZUG) — fuer die Zeichnung "
+                        "bindbar und der einzige Weg, sie zu nennen; wirkt "
+                        "mit --vorgeschichte")
     p.add_argument("--plausibilitaet-beleg", dest="plausibilitaet_beleg",
                    default=None, metavar="REGISTRIERTE_DATEI",
                    help="REGISTRIERTE Auskunft der abgebenden Gesellschaft, "
@@ -695,34 +779,32 @@ def main(argv: Optional[List[str]] = None) -> int:
             delimiter=";"))
 
     anfangszustaende = None
+    # Der Belegblock der Auskunft DIESES Laufs (None ohne Auskunft): die
+    # Schicht wird gegen ihn gehalten (Welt-Gleichheit, ``_schichten``).
+    auskunft_beleg: Optional[Dict[str, Any]] = None
+    if args.red_anteile_datei is not None and args.vorgeschichte is None:
+        print("--red-anteile-datei wirkt nur mit --vorgeschichte (die "
+              "Anteile gehoeren zu den Ereignissen der Vorgeschichte) — "
+              "ohne sie wuerde die Auskunft weder gelesen noch gebunden",
+              file=sys.stderr)
+        return 2
     if args.vorgeschichte is not None:
         from rechner_pipeline.gates.migrationssuite_lauf import (
             VORGABE,
             anfangszustaende_je_police,
+            lies_auskuenfte,
         )
 
         red_anteile: Dict[str, float] = {}
         red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
         if args.red_anteile_datei is not None:
-            _red_roh = bindung.binde(fall_mod.eingang_datei(
-                fall, args.red_anteile_datei)).text()
-            for zeile in csv.DictReader(_io.StringIO(_red_roh),
-                                        delimiter=";"):
-                if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
-                    red_anteile[str(zeile["POLNR"])] = float(
-                        zeile["ANTEIL"])
-                    if zeile.get("DATUM"):
-                        red_anteile_je_datum.setdefault(
-                                str(zeile["POLNR"]), {})[
-                                    str(zeile["DATUM"])] = float(
-                                        zeile["ANTEIL"])
-        for eintrag in args.red_anteile:
-            police, _, wert = eintrag.partition("=")
-            if not police or not wert:
-                print(f"--red-anteil {eintrag!r}: erwartet POLNR=ANTEIL",
-                      file=sys.stderr)
-                return 2
-            red_anteile[police.strip()] = float(wert)
+            auskuenfte = lies_auskuenfte(
+                fall, args.red_anteile_datei, bindung, vorgeschichte,
+                dict(VORGABE))
+            red_anteile = dict(auskuenfte.anteile)
+            red_anteile_je_datum = {
+                pol: dict(d) for pol, d in auskuenfte.je_datum.items()}
+            auskunft_beleg = auskuenfte.beleg
         # Ankerwerte fuer den Rueckfallweg: der gelieferte Wert am
         # Verankerungszeitpunkt je Vertrag der Stichprobe.
         anker: Dict[str, Any] = {}
@@ -788,7 +870,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         }
 
     schichten = _schichten(fall, args.schicht, bindung=bindung,
-                           repo_root=Path(args.repo_root).resolve())
+                           repo_root=Path(args.repo_root).resolve(),
+                           auskunft=auskunft_beleg)
     auftraege, schicht_ausgelassen, zustandslos = baue_auftraege(
         lieferung, bestand, spez, auspraegungen_je_police=auspraegungen,
         anfangszustaende=anfangszustaende, plausibilitaet=plausibilitaet,
@@ -824,6 +907,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     # Der Beleg nennt, worueber geurteilt wurde.
     ergebnis["eingaben"] = bindung.als_beleg()
+    # Block F, Nachbesserung: die Auskunft, auf deren Anfangslage gerechnet
+    # wurde, mit Name, SHA-256 und Bezug je Police (``null``, wenn keine).
+    ergebnis["red_anteile_datei"] = auskunft_beleg
     if schicht_ausgelassen:
         # Ausgewiesene Auslassung gehoert in den Beleg, nicht nur nach
         # stderr — A-M1 liest das Ergebnis, nicht das Terminal.

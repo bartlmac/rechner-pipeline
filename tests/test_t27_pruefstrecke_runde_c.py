@@ -757,10 +757,14 @@ def test_die_teilkuendigung_im_beitragsfreien_nachlauf_ist_bewusst_zulaessig_und
     Widerspruch von RC03 gilt dem BEITRAGSFREI GESTELLTEN Vertrag (PEX-Jahr
     <= Reduktionsjahr), nicht dem ausfinanzierten. Die Probe-Invariante
     'kein Soll auf einem beitragsfreien Vertrag' haengt deshalb am
-    PEX-Jahr, nicht an t. Dass die Engine selbst (Draw nur bei
-    ``j + 1 < t``) eine solche Buchung nie zieht, macht sie zu einer
-    registrierten, nicht zu einer gefahrenen Teilkuendigung — das Soll
-    wird trotzdem hergeleitet und gehalten.
+    PEX-Jahr, nicht an t. Seit dem Entscheid des Maintainers 2026-09-30
+    zieht die Engine selbst diese Buchung: Im ausfinanzierten Nachlauf
+    (``t <= j + 1 < n``) zieht sie die Teilkuendigung (Block F,
+    Nachbesserung; gezogen und gemessen in
+    tests/test_herabsetzung_ausfinanziert.py). DIESER Test haelt die
+    REGISTRIERTE Variante — eine von Hand in die Tabellen gelegte
+    Buchung ohne Lauf — und rechnet sie trotzdem her: Das Soll wird
+    hergeleitet und gehalten, gleich ob gezogen oder eingetragen.
 
     Mutationsproben: (a) die Teilkuendigungs-Grenze in validate_reduktionen
     von ``n`` auf ``t`` -> rot; (b) den RC03-Widerspruch in ledger_bindung

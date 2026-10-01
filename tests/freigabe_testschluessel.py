@@ -26,11 +26,23 @@ BETRIEBSKEY: bytes = hashlib.sha256(b"rechner-pipeline: testschluessel des betri
 BETRIEBSROLLE = "betrieb/tageslauf"
 
 
+#: Die Rolle, die im Test die Zugangsabnahme A-B2 zeichnet — mit dem
+#: Freigabe-Testschluessel, mit dem die Naht der Zugangsabnahme ihre
+#: A-B2-Snapshots signiert. Die Registrierung haelt den Fingerabdruck der
+#: Freigabe gegen eine Rolle mit A-B2 in dieser Ordnung (Block F,
+#: Nachbesserung, Pruefer-Befund 9).
+AB2_ROLLE = "mensch/betrieb"
+
+
 def betriebsordnung(weitere: "dict | None" = None) -> dict:
-    """Die Test-Zeichnungsordnung (Schema 2) mit der Betriebsrolle."""
+    """Die Test-Zeichnungsordnung (Schema 2) mit der Betriebsrolle und der
+    Rolle, die A-B2 zeichnet."""
     rollen = {BETRIEBSROLLE: {
         "schluessel_sha256": hashlib.sha256(BETRIEBSKEY).hexdigest(),
-        "schluesselklasse": "betrieb", "gates": []}}
+        "schluesselklasse": "betrieb", "gates": []},
+        AB2_ROLLE: {
+        "schluessel_sha256": hashlib.sha256(TESTKEY).hexdigest(),
+        "schluesselklasse": "mensch", "gates": ["A-B2"]}}
     rollen.update(weitere or {})
     return {"schema_version": 2, "rollen": rollen}
 

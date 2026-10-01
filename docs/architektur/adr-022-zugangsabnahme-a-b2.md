@@ -1,7 +1,7 @@
 # ADR-022: Zugangsabnahme A-B2 — der Betrieb nimmt den Migrationszugang mit einer Zugangsprobe ab
 
-**Status:** angenommen, 2026-09-30 (Entscheid des Maintainers im Dialog);
-Bauauftrag offen, Ziel: fliesst in Fall 3 ein.
+**Status:** umgesetzt, 2026-10-01 (angenommen 2026-09-30, Entscheid des
+Maintainers im Dialog; Umsetzung siehe Nachtrag unten).
 
 ## Anlass
 
@@ -106,3 +106,119 @@ Schluesselklassen, Nachtrag Betriebsschluessel), ADR-020 (Bestand aus dem
 Zugangsstrom, Determinismus), ADR-021 (Belegrollen in ``models``);
 ``gates.fuehrungsprobe`` als Vorbild fuer einen Beleg, den ein Gate
 bindet und ein Konsument nachrechnet.
+
+## Nachtrag 2026-10-01: Umsetzung und was dabei festgelegt wurde
+
+Gebaut nach dem Bauauftrag: ``models.zeichnung.GUELTIGE_GATES`` fuehrt
+``A-B2``, ``models.belegrollen`` die Pflichtrollen ``zugangsprobe``,
+``am4_snapshot``, ``eingang`` (nur Bestands-Scope); der Beleg-Vertrag der
+Probe wohnt in ``models.zugangsprobe`` (Producer, Gate und Registrierung
+lesen ihn, keine neue Schichtkante); der Producer ist
+``betrieb.zugangsprobe``; ``gates.gate_entscheid`` nimmt A-B2 ab;
+``betrieb.uebernahme`` und der Tageslauf verlangen sie. Tests:
+``tests/test_zugangsabnahme_ab2.py`` (Ratsche, Zaehltest je Groesse,
+Positivkontrolle, Registrierung und Eintritt, Gate). Was der Bauauftrag
+offenliess und hier festgelegt wurde — jeweils mit Grund:
+
+1. **Der Stand der Ablage ist der GEFUEHRTE Stand**
+   (``tageslauf.ablage_stand``): letzte gruene Protokollzeile (ueber die
+   Kette alles davor), Manifest des Stands, Config. Ein roter Lauf bewegt
+   ihn nicht — der Wiederanlauf nach einem gescheiterten Bericht (T26-02)
+   bleibt auf demselben Stand. Registrierte, noch nicht aufgenommene
+   Eingaenge gehoeren nicht dazu: Jeder bringt seine eigene Abnahme mit,
+   und zwei Registrierungen vor demselben Lauf entziehen einander nicht
+   die Abnahme; die Bindung an den Eingang (sein Nummernband) faengt, wenn
+   ein anderer dazwischen registriert wurde.
+2. **Aufnahme und Eintritt sind zwei Fragen.** Die Stand-Bindung gilt
+   der ersten Aufnahme durch einen gruenen Lauf — gefuehrt oder, bei einem
+   Stichtag nach dem Lauftag, wartend. Wartende Eingaenge tragen dafuer
+   ihren Hash in der Protokollzeile (``wartende_uebernahmen[].eingang_sha256``).
+   Sonst liefe ein vorausdatierter Zugang an seinem Stichtag gegen einen
+   laengst vergangenen Stand und traete nie ein. Am TATSAECHLICHEN Eintritt
+   (dem ersten Lauf, der ihn fuehrt) haelt der Tageslauf, was sich durch
+   den Betrieb nicht aendert, gegen die Abnahme: Config-Hash, Kern-Version
+   und Code-Stand (Image-Digest und Revision, soweit die Probe sie erfasst
+   hat, und der Hash des Pakets, ``quellcode_sha256``). Abweichung heisst
+   Verweigerung mit Ausweg (Probe und A-B2 neu). Danach fragt kein Lauf
+   mehr.
+3. **Die Bindung liegt in der Ablage** als ``zugangsabnahme.json`` neben
+   ``eingang.json``, gezeichnet mit dem Betriebsschluessel — der Tageslauf
+   kennt den Fall nicht und haelt keinen Freigabeschluessel. Sie steht
+   nicht in ``dateien`` von eingang.json: Die Abnahme bindet den Hash von
+   eingang.json, eingang.json kann ihren Hash nicht zugleich tragen.
+4. **Derselbe Eingang heisst dieselben Bytes.** Die Probe registriert in
+   ihrer Kopie ueber dieselbe Funktion und dieselbe Serialisierung wie die
+   Registrierung; die Betriebszeichnung ist deterministisch. Deshalb
+   braucht die Registrierung dieselben Angaben wie die Probe (``--fall``,
+   ``--quelle``, Stichtag, Betriebsschluessel); die Meldung nennt die
+   abweichenden Felder.
+5. **Das Soll sind die SYSTEMWERTE der geltenden Abnahmen**, gebunden an
+   ihre Bytes: ``aktuartest.json`` muss das Testergebnis sein, das der
+   A-M1-Snapshot pinnt, den der A-M4-Snapshot pinnt, ``migrationssuite.json``
+   die Suite, die der A-M4-Snapshot pinnt — beide Snapshots geltend und
+   angenommen. Probe, Beleg-Vertrag, Gate und Registrierung halten das
+   gegen dieselbe Regel (``models.zugangsprobe.soll_bindung_fehler``); das
+   Gate zusaetzlich die Bytes am festen Ort. Abweichung ist Verweigerung:
+   Die Dateien liegen ohne Schluessel beschreibbar im Fall, und gegen ein
+   fremdes Soll gibt es nichts zu rechnen. Verglichen werden Anzahl,
+   Versicherungssumme (aus der Uebernahme) und Jahresbeitrag
+   (``bjb_stichtag_1`` der Migrationssuite) je Summe UND je Vertrag ueber
+   den GANZEN Zugang, am Folgetermin die Anzahl in Kraft; dazu Zugaenge,
+   Zugangsbuchungen, Bewegungskonto und alles ausserhalb des Zugangs.
+   Toleranz ein halber Cent. Jede Bewertungsspalte des Abschlusses ist
+   entweder einer verglichenen Groesse zugeordnet oder mit Grund als
+   "nicht belegt" ausgenommen (``ABSCHLUSS_VERGLICHEN``,
+   ``ABSCHLUSS_NICHT_BELEGT``, Ratsche mit ``==`` gegen
+   ``models.bestand.ABSCHLUSS_ZAHLEN``).
+6. **Benannte Grenzen und der Code-Stand.** Der Zugangsstichtag ist ein
+   Monatserster (nur dort gibt es einen Abschluss, an dem die Differenz
+   gegen die Uebernahme zu halten ist). Der Folgetermin wird verglichen,
+   wenn er ein Abschluss im Fenster ist (sonst ``--bis``). Die Probe haelt
+   ihren Code-Stand gegen die letzte gruene Protokollzeile der Ablage:
+   Image-Digest und Revision, soweit die Zeile sie erfasst hat, und den
+   Hash des Pakets (``quellcode_sha256``, seit dieser Nachbesserung in
+   jeder Zeile), dazu die Kern-Version. Jede Abweichung ist ein Befund,
+   ebenso eine Zeile, die gar keinen Code-Stand belegt. Ein
+   Versionsstring allein ist keine Identitaet.
+7. **Die Kopie ist gekennzeichnet** (``zugangsprobe-kopie.json``): Nur auf
+   ihr registriert die Probe ohne Abnahme und laesst ihren Eingang ohne
+   Abnahme eintreten; auf einer echten Ablage verweigern beide Wege, und
+   auf der Kopie verweigert jeder echte Lauf.
+8. **Neuaufsetzen**: Der Eingang der neuen Ablage braucht seine eigene
+   A-B2, gerechnet auf einer leeren Ablage mit der neuen Config (deren
+   gefuehrter Stand ist genau das), uebergeben mit ``--zugangsabnahme``.
+9. **Tests**: Die Suite registriert an vielen Stellen, deren Gegenstand
+   nicht A-B2 ist. Fuer sie legt eine sessionweite Naht
+   (``uebernahme._STANDARD_ZUGANGSABNAHME``, Muster der Naht des
+   Betriebsschluessels) einen synthetischen, gezeichneten Probenbeleg und
+   einen signierten A-B2-Snapshot im Fall an; geprueft wird er danach wie
+   jeder andere. Produktiv ist sie leer.
+
+10. **Wer A-B2 zeichnet, prueft die Registrierung.** Sie haelt den
+    Fingerabdruck der Freigabe gegen die Zeichnungsordnung des Betriebs
+    (``--zeichnungsordnung``): Die Rolle muss A-B2 in ihrer gates-Liste
+    tragen. Das Gate A-B2 dagegen haelt den Betriebsschluessel nicht; es
+    prueft Form und Rolle der Betriebszeichnung der Probe und sagt in
+    seiner Ausgabe, dass es die Signatur nicht verifiziert hat
+    (``betriebssignatur``) — die Registrierung rechnet sie nach.
+
+**Offen, fachlich (nicht entschieden):** Das Deckungskapital eines
+Monatsabschlusses ist der Jahreswert zum letzten Vertragsjahrestag
+(``zustand_am``), der Systemwert des aktuariellen Tests und der
+Migrationssuite am Stichtag die Monatsreserve plus Schicht. Bis zum
+Entscheid des Maintainers vergleicht die Probe das Deckungskapital NICHT;
+sie fuehrt es an jedem Termin mit dem Grund "nicht vergleichbar:
+Konvention Jahreswert vs. Monatsreserve, Entscheid offen" im Beleg
+(``models.zugangsprobe.NICHT_VERGLICHEN``). Ein Beleg, der es gruen
+verglichen fuehrt, besteht nicht — ein Vergleich ungleicher Groessen ist
+kein Nachweis. Die Stelle, an der danach je Vertrag ueber den ganzen
+Zugang verglichen wird, ist vorbereitet
+(``DK_KONVENTION_ENTSCHIEDEN``), der Test dafuer ebenso (xfail, strict).
+Ob Abschluss oder Abnahme die Konvention wechselt, entscheidet das
+Aktuariat, nicht die Probe.
+
+**Offen, gleiches Muster fuer A-M4 (nicht gebaut):** Die Registrierung
+prueft Signatur, Kette und exakte Rollenmenge des A-M4-Snapshots, aber
+nicht, ob der Fingerabdruck seiner Freigabe in der Zeichnungsordnung einer
+Rolle mit A-M4 gehoert. Fuer A-B2 tut sie es; fuer A-M4 ist es derselbe
+Schritt und steht aus.

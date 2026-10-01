@@ -237,6 +237,52 @@ Laufzeitumgebung (Abschnitt 8.2; "Betrieb neu aufsetzen" ist als Routine
 noch zu bauen). Was nie geht: den Betrieb still weiterfahren, während
 der Fall etwas anderes bezeugt.
 
+### 6.2 Der Zugang in drei Schritten: Probe, Abnahme, Registrierung
+
+Die Abnahmen A-M1 bis A-M4 und die Führungsprobe urteilen im Fall, mit
+der Config des Falls. Was die Registrierung in der produktiven Ablage
+bewirkt, sah bis zum Entscheid des Maintainers vom 2026-09-30 niemand; der
+erste Monatsabschluss danach war die erste Gelegenheit, und dann stand er
+schon fest (ADR-022). Seitdem hat der Zugang drei Schritte:
+
+1. **Zugangsprobe** (`betrieb.zugangsprobe`): zwei Kopien der Ablage, unter
+   der Lauf-Sperre gezogen; in die eine wird der Eingang registriert,
+   dann fahren beide deterministisch vom geführten Tag über den
+   Zugangsstichtag bis zum nächsten Monatsabschluss (oder weiter). Die
+   Differenz der Abschlüsse „mit" minus „ohne" muss exakt der abgenommene
+   Bestand sein — am Stichtag Anzahl, Versicherungssumme (Übernahme) und
+   Jahresbeitrag (Migrationssuite) je Summe und je Vertrag über den
+   ganzen Zugang, am Folgetermin die Anzahl in Kraft; dazu die Zugänge,
+   die Zugangsbuchungen gegen den Ledger der Übernahme, das Bewegungskonto
+   der Differenz und die Gleichheit von allem, was nicht den Zugang
+   betrifft. Das Deckungskapital wird bis zum Entscheid über seine
+   Konvention (Jahreswert des Abschlusses gegen Monatsreserve der
+   Abnahmen) nicht verglichen, sondern mit diesem Grund im Beleg genannt.
+   Das Soll stammt nur aus den Bytes, die die geltenden Abnahmen A-M1 und
+   A-M4 pinnen; der Code-Stand der Probe (Image, Paket-Hash, Kern) wird
+   gegen die letzte grüne Protokollzeile gehalten. Der Beleg trägt die
+   Betriebszeichnung und bindet den geführten Stand der Ablage, den
+   Eingang und die Abnahmen.
+2. **Zugangsabnahme A-B2** (`gates.gate_entscheid --gate A-B2`): gezeichnet
+   von `mensch/betrieb`, vorbereitet von `agent/betrieb`, der nur ablehnen
+   kann. Pflichtbelege sind die Probe, der A-M4-Snapshot und der Eingang;
+   das Urteil der Probe wird nachgerechnet.
+3. **Registrierung** (`betrieb.uebernahme`): nur mit angenommener A-B2, die
+   genau den Eingang bindet, den sie schreibt, und den geführten Stand,
+   auf dem sie ihn schreibt. Die geprüfte Abnahme liegt als
+   `zugangsabnahme.json` neben dem Eingang.
+
+Der **geführte Stand** ist die letzte grüne Protokollzeile, das Manifest
+des Stands und die Config — ein roter Lauf bewegt ihn nicht, ein grüner
+schon. Der Tageslauf hält die Abnahme beim **Eintritt** gegen ihn: beim
+ersten grünen Lauf, der den Eingang aufnimmt, geführt oder wartend (ein
+Zugang mit künftigem Stichtag tritt mit seiner Aufnahme als wartender
+Eingang ein; die Zeile nennt seinen Hash). Tritt ein wartender Eingang an
+seinem Stichtag tatsächlich in die Bücher, hält der Tageslauf zusätzlich
+fest, was sich durch den Betrieb nicht ändert: Config, Kern-Version und
+Code-Stand müssen die der Probe sein. Danach fragt kein Lauf mehr — der
+Stand läuft dann weiter, weil der Eingang geführt wird.
+
 ## 7 Der Tageslauf
 
 Ein Kommando, `python -m rechner_pipeline.betrieb.tageslauf --stand
@@ -333,7 +379,7 @@ Die Simulation kennt keine Uhrzeit, nur den Kalendertag.
 | `journal/tagesjournal.parquet`, `journal/protokoll.jsonl` | nur-anfügbar | 0444 je Tagesabschnitt nicht praktikabel; Schutz über Prüfsumme im Protokoll |
 | `abschluesse/` | Monatsabschlüsse | 0444, genau einmal (ADR-011) |
 | `berichte/` | Tages- und Monatsberichte (HTML) | erzeugt, jederzeit neu renderbar |
-| `uebernahme/<fall>/` | Eingang je Migration | unantastbar wie ein Fall-Eingang |
+| `uebernahme/<fall>/` | Eingang je Migration, mit seiner Zugangsabnahme (`zugangsabnahme.json`, Abschnitt 6.2) | unantastbar wie ein Fall-Eingang |
 | `configs/` | die Config der PLV, versioniert im Repo, hier als Kopie mit Hash im Protokoll | |
 
 ## 8 Laufzeitumgebung und Deployment
@@ -535,7 +581,10 @@ python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
 ```
 
 Sie prüft, bevor sie etwas bewegt (keine Lauf-Sperre; die Tarifwerk-
-Schalter der Config stimmen mit dem Übernahmebeleg des Falls überein),
+Schalter der Config stimmen mit dem Übernahmebeleg des Falls überein; eine
+Zugangsabnahme A-B2 liegt vor — gerechnet auf einer leeren Ablage mit der
+neuen Config, denn das ist der geführte Stand der neuen Ablage, Abschnitt
+6.2, `--zugangsabnahme`),
 baut die neue Ablage vollständig neben der alten auf (Config, Übernahme-
 Eingang mit Stamm, Journal, Ledger, Merkmalen, Bausteinen, Korrektur-
 schicht, Verankerung und Übernahmebeleg, dazu `neuaufsetzen.json` als

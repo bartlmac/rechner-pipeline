@@ -9,7 +9,7 @@ auf::
         --fall faelle/<fall> --stichtag 2026-01-01 [--config configs/bestand_gesamt.toml] \\
         --freigabe-schluessel <freigabeschluessel> \\
         --betriebsschluessel <betriebsschluessel> --zeichnungsordnung <ordnung> \\
-        [--aufschalten]
+        [--zugangsabnahme <sha256>] [--aufschalten]
 
 Was die Routine tut, in dieser Reihenfolge — und was sie NICHT tut:
 
@@ -32,6 +32,10 @@ Was die Routine tut, in dieser Reihenfolge — und was sie NICHT tut:
    Tausch: Die neue Ablage ist fertig, sobald ihre Provenienzdatei liegt —
    sie wird als Letztes geschrieben und nennt das Archiv. Eine leere Wurzel
    wird neben einem Aufbau nie angelegt.
+   Die Registrierung verlangt die Zugangsabnahme A-B2 (ADR-022) — fuer
+   die NEUE Ablage: Ihr gefuehrter Stand ist der einer leeren Ablage mit
+   dieser Config, also laeuft die Zugangsprobe auf einer leeren Ablage,
+   die nur diese Config traegt (deploy/plv/README.md).
    Vor dem Tausch liest die Routine den neuen Eingang einmal vollstaendig
    (``lies_uebernahme``): unbekannte Generation, falscher Stichtag, fehlende
    Merkmale oder abweichendes Tarifwerk fallen auf, BEVOR etwas bewegt ist.
@@ -89,8 +93,13 @@ def neu_aufsetzen(
     betriebsschluessel: Optional[Path] = None,
     zeichnungsordnung: Optional[Path] = None,
     aufschalten: bool = False,
+    zugangsabnahme_sha256: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Die Laufzeitumgebung ``stand`` aus dem Fall ``fall`` neu aufsetzen.
+
+    ``zugangsabnahme_sha256``: die angenommene Zugangsabnahme A-B2 fuer den
+    Eingang der NEUEN Ablage (ADR-022; Default: das A-B2-Gate-Ledger des
+    Falls). Ohne sie wird nichts aufgebaut.
 
     ``betriebsschluessel``/``zeichnungsordnung``: der Betriebsschluessel,
     mit dem der neue Eingang gezeichnet und danach geprueft wird
@@ -123,6 +132,17 @@ def neu_aufsetzen(
             wofuer="das Neuaufsetzen", ohne="kein Aufbau", flag="--betriebsschluessel")
     except TageslaufError as exc:
         raise NeuaufsetzenError(str(exc)) from exc
+    # Die Zugangsabnahme VOR jedem Aufbau (ADR-022): Ohne sie verweigert die
+    # Registrierung erst, wenn die neue Ablage schon angelegt ist.
+    ab2_ledger = fall / "abgeleitet" / "diagnostics" / "gate_entscheid_ab2.gate.json"
+    if (zugangsabnahme_sha256 is None and not ab2_ledger.is_file()
+            and _ueb._STANDARD_ZUGANGSABNAHME is None):
+        raise NeuaufsetzenError(
+            "ohne Zugangsabnahme A-B2 wird nichts aufgebaut — der Eingang der neuen "
+            "Ablage braucht sie (ADR-022). Ausweg: die Zugangsprobe auf einer leeren "
+            "Ablage mit der neuen Config fahren (python -m "
+            "rechner_pipeline.betrieb.zugangsprobe), A-B2 zeichnen, dann "
+            "--zugangsabnahme <sha256>")
     if stand.is_symlink() or not stand.is_dir():
         raise NeuaufsetzenError(
             f"{stand}: keine Ablage (kein echtes Verzeichnis) — fuer die erste "
@@ -139,7 +159,7 @@ def neu_aufsetzen(
                 stand, fall, stichtag, alt, config=config, archiv=archiv, jetzt=jetzt,
                 schluesselring=schluesselring, betriebsschluessel=betriebsschluessel,
                 zeichnungsordnung=zeichnungsordnung, zeichner=zeichner,
-                aufschalten=aufschalten,
+                aufschalten=aufschalten, zugangsabnahme_sha256=zugangsabnahme_sha256,
             )
     except TageslaufError as exc:
         raise NeuaufsetzenError(
@@ -179,6 +199,7 @@ def _neu_aufsetzen_unter_sperre(
     zeichnungsordnung: Optional[Path] = None,
     zeichner: Any = None,
     aufschalten: bool = False,
+    zugangsabnahme_sha256: Optional[str] = None,
 ) -> Dict[str, Any]:
     # Das alte Protokoll ohne gezeichnete Zeile nur ausdruecklich
     # (Nachbesserung Runde C). Gelesen wird nur, WELCHE Zeilen gezeichnet
@@ -238,7 +259,8 @@ def _neu_aufsetzen_unter_sperre(
     neu.config_pfad.write_bytes(config_bytes)
     eingang = eingang_anlegen(
         neu_pfad, fall, stichtag, schluesselring=schluesselring,
-        betriebsschluessel=betriebsschluessel, zeichnungsordnung=zeichnungsordnung)
+        betriebsschluessel=betriebsschluessel, zeichnungsordnung=zeichnungsordnung,
+        zugangsabnahme_sha256=zugangsabnahme_sha256)
     # Der neue Eingang muss lesbar sein, BEVOR die alte Ablage bewegt wird:
     # dieselbe Pruefung, die der Tageslauf bei der Erstbefuellung macht —
     # samt der Betriebszeichnung, die er gerade bekommen hat.
@@ -307,6 +329,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                              "der neue Eingang gezeichnet wird; ausserhalb der Ablage.")
     parser.add_argument("--zeichnungsordnung", required=True,
                         help="Zeichnungsordnung, die dem Betriebsschluessel seine Rolle gibt.")
+    parser.add_argument("--zugangsabnahme", default=None,
+                        help="Snapshot-Hash der Zugangsabnahme A-B2 fuer den Eingang der neuen "
+                             "Ablage (ADR-022; Default: aus dem A-B2-Gate-Beleg des Falls).")
     parser.add_argument("--aufschalten", action="store_true",
                         help="Einmalig: die alte Ablage traegt ein Protokoll ohne gezeichnete "
                              "Zeile (Altbestand vor dem Betriebsschluessel) und wird trotzdem "
@@ -349,6 +374,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             archiv=Path(ns.archiv) if ns.archiv else None,
             schluesselring=ring, betriebsschluessel=Path(ns.betriebsschluessel),
             zeichnungsordnung=Path(ns.zeichnungsordnung), aufschalten=ns.aufschalten,
+            zugangsabnahme_sha256=ns.zugangsabnahme,
         )
     except (NeuaufsetzenError, UebernahmeError, ValueError) as exc:
         print(f"neuaufsetzen: {exc}", file=sys.stderr)

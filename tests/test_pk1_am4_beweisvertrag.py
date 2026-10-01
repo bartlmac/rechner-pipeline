@@ -504,6 +504,34 @@ def test_bestands_scope_bindet_pb1_suite_und_abnahmebericht_bis_am4(
     assert all(snapshot["pflichtbelege"].values())
 
 
+def test_der_abnahmebericht_verlangt_das_auskunftsfeld_der_suite(tmp_path: Path):
+    """Block F, Nachbesserung (A-M4, GATE_VERSION 6.0.0): Die Suite eines
+    Laufs, der die Auskunft zu den Herabsetzungsanteilen nicht nennen konnte
+    (Feld ``red_anteile_datei`` fehlt), wird vom Bericht nicht angenommen;
+    ``null`` (keine Auskunft) ist gueltig, ein Block, der nicht unter den
+    Eingaben der Suite steht, nicht. Mutationsprobe: den Aufruf von
+    ``_suite_auskunft_fehler`` in ``abnahmebericht.main`` entfernen -> rot."""
+    fall = _bereite_bestandsfall(tmp_path)
+    suite_pfad = fall / "abgeleitet" / "suite.json"
+    suite = json.loads(suite_pfad.read_text(encoding="utf-8"))
+    assert suite["red_anteile_datei"] is None
+    assert _abnahmebericht(fall).exit_code == 0
+
+    ohne = {k: v for k, v in suite.items() if k != "red_anteile_datei"}
+    suite_pfad.write_text(json.dumps(ohne, sort_keys=True), encoding="utf-8")
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    assert bericht.errors[0]["code"] == "suite_scope_contract"
+    assert "red_anteile_datei" in " ".join(f["message"] for f in bericht.errors)
+
+    frei = dict(suite, red_anteile_datei={
+        "name": "auskunft.csv", "sha256": "a" * 64, "bezug": {}})
+    suite_pfad.write_text(json.dumps(frei, sort_keys=True), encoding="utf-8")
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    assert bericht.errors[0]["code"] == "suite_scope_contract"
+
+
 def test_ohne_bestandene_fuehrungsprobe_gibt_es_keinen_gruenen_abnahmebericht(
     tmp_path: Path,
 ):

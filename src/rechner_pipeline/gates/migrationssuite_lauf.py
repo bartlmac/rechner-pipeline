@@ -34,7 +34,9 @@ import io as _io
 import datetime as dt
 import hashlib
 import json
+import math
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -89,6 +91,157 @@ def _lies_csv(fall: Path, name: str, bindung=None) -> List[Dict[str, str]]:
             _io.StringIO(bindung.binde(pfad).text()), delimiter=";"))
     with pfad.open(encoding="utf-8") as datei:
         return list(csv.DictReader(datei, delimiter=";"))
+
+
+@dataclass(frozen=True)
+class Auskuenfte:
+    """Die gelesene Auskunft: Anteile, Anteile je Ereignis, Belegblock."""
+
+    #: POLNR -> fortgefuehrter Beitragsanteil (Pauschalwert je Police; bei
+    #: mehreren Ereignissen gewinnt die letzte Zeile der Datei).
+    anteile: Dict[str, float]
+    #: POLNR -> DATUM -> Anteil (nur Zeilen mit Datum).
+    je_datum: Dict[str, Dict[str, float]]
+    #: ``{name, sha256, bezug}`` — der Block, den der Beleg des Kommandos
+    #: unter ``red_anteile_datei`` fuehrt.
+    beleg: Dict[str, Any]
+
+
+def lies_auskuenfte(
+    fall: Path, name: str, bindung,
+    vorgeschichte: List[Dict[str, str]],
+    spalten: Optional[Dict[str, str]] = None,
+) -> Auskuenfte:
+    """Die Auskunft der Quelle zu den Herabsetzungsanteilen lesen.
+
+    Entscheid des Maintainers (2026-09-30): Eine Auskunft der abgebenden
+    Gesellschaft — der fortgefuehrte Beitragsanteil einer Alt-Herabsetzung,
+    dessen Beitragsgleichung entfaellt — ist eine REGISTRIERTE Datei im
+    Fall, nie ein Kommandozeilenparameter je Police: Die menschlichen
+    Gates hashen den Eingang, nicht den Aufruf. Die Datei geht ueber die
+    Bindung (genau einmal gelesen, mit ihrem Hash im Beleg); der Beleg
+    nennt sie zusaetzlich als ``red_anteile_datei`` mit Name, SHA-256 und
+    dem Bezug je Police.
+
+    Format (CSV, Trenner ``;``): ``POLNR;GEVO;DATUM;ANTEIL`` und optional
+    ``BEZUG`` — Freitext, woher der Wert stammt (Auskunftsschreiben oder
+    Arbeits-Lesart). BEZUG ist rueckwaertskompatibel: Eine Datei ohne die
+    Spalte bleibt lesbar, ihr ``bezug`` ist dann leer. Gelesen werden die
+    Zeilen mit ``GEVO = RED`` und einem ANTEIL; ohne DATUM gilt der Anteil
+    als Pauschalwert der Police.
+
+    Fail-fast statt stillem Verwerfen: Eine Datei, der eine der Spalten
+    POLNR, GEVO, ANTEIL fehlt, ohne eine einzige RED-Zeile mit Anteil, mit
+    nichtnumerischem Anteil oder mit zwei Zeilen fuer dieselbe Police und
+    dasselbe Datum, die sich widersprechen, wird verweigert — sonst sieht
+    eine leer gelesene Auskunft aus wie eine gelesene. Eine nicht
+    registrierte Datei wird mit dem Ausweg verweigert.
+
+    Block F, Nachbesserung — drei weitere Verweigerungen, alle mit Ausweg:
+
+    * Ein ANTEIL muss endlich sein und echt zwischen 0 und 1 liegen
+      (``float()`` liess ``nan`` und ``inf`` durch).
+    * Jede RED-Zeile muss einem RED-Ereignis der ``vorgeschichte`` des
+      Laufs entsprechen: Police und — wenn die Zeile ein DATUM traegt — das
+      Datum, SO GESCHRIEBEN wie in der Vorgeschichte (``_serienzustand``
+      schlaegt den Anteil je Datum nach Text nach; ein anderes Format bliebe
+      dort still ohne Wirkung). Ohne DATUM genuegt die Police. Eine Zeile
+      ohne Ereignis stuende sonst im Beleg mit Hash und Bezug, als haette
+      sie getragen.
+    * Eine leere POLNR traegt nichts.
+
+    ``spalten`` nennt die Spaltennamen der Vorgeschichte (Vorgabe:
+    :data:`VORGABE`); die Auskunft selbst hat feste Spalten.
+    """
+    try:
+        pfad = fall_mod.eingang_datei(fall, name)
+    except fall_mod.FallFehler as exc:
+        raise SystemExit(
+            f"--red-anteile-datei {name!r}: {exc}. Eine Auskunft gilt nur "
+            "als registrierte Datei: erst registrieren (python -m "
+            "rechner_pipeline.fall registrieren --fall <fall> --datei "
+            "<auskunft.csv>), dann --red-anteile-datei <Dateiname>; ein "
+            "Anteil je Police am Aufruf wird nicht angenommen") from exc
+    gelesen = bindung.binde(pfad)
+    sp = spalten or VORGABE
+    red_ereignisse: Dict[str, set] = {}
+    for ereignis in vorgeschichte:
+        if ereignis.get(sp["gevo"]) == "RED":
+            red_ereignisse.setdefault(
+                str(ereignis[sp["police"]]), set()).add(
+                    str(ereignis.get(sp["datum"]) or ""))
+    leser = csv.DictReader(_io.StringIO(gelesen.text()), delimiter=";")
+    fehlend = [s for s in ("POLNR", "GEVO", "ANTEIL")
+               if s not in (leser.fieldnames or [])]
+    if fehlend:
+        raise SystemExit(
+            f"Auskunft {name!r}: Spalte(n) {', '.join(fehlend)} fehlt — "
+            "erwartet POLNR;GEVO;DATUM;ANTEIL (optional BEZUG)")
+    anteile: Dict[str, float] = {}
+    je_datum: Dict[str, Dict[str, float]] = {}
+    gesehen: Dict[Tuple[str, str], float] = {}
+    bezug: Dict[str, List[str]] = {}
+    for zeile in leser:
+        if zeile.get("GEVO") != "RED" or not zeile.get("ANTEIL"):
+            continue
+        police = str(zeile["POLNR"])
+        if not police.strip():
+            raise SystemExit(
+                f"Auskunft {name!r}: eine RED-Zeile mit ANTEIL "
+                f"{zeile['ANTEIL']!r} ohne POLNR traegt nichts — die "
+                "Auskunft berichtigen und neu registrieren")
+        try:
+            anteil = float(zeile["ANTEIL"])
+        except ValueError:
+            raise SystemExit(
+                f"Auskunft {name!r}: ANTEIL {zeile['ANTEIL']!r} der Police "
+                f"{police} ist keine Zahl") from None
+        datum = str(zeile.get("DATUM") or "")
+        # Block F, Nachbesserung: ein Anteil ist ein echter Bruchteil des
+        # Beitrags. ``float()`` laesst ``nan`` und ``inf`` durch (beide
+        # wanderten ungeprueft in den Anfangszustand); 0 waere eine
+        # Kuendigung, 1 keine Herabsetzung, 60 ein Prozentwert.
+        if not (math.isfinite(anteil) and 0.0 < anteil < 1.0):
+            raise SystemExit(
+                f"Auskunft {name!r}: Police {police}"
+                f"{f' am {datum}' if datum else ''}: ANTEIL "
+                f"{zeile['ANTEIL']!r} liegt nicht echt zwischen 0 und 1 "
+                "(endlich, als Bruchteil, nicht als Prozent) — die Auskunft "
+                "berichtigen und neu registrieren")
+        if police not in red_ereignisse or (
+                datum and datum not in red_ereignisse[police]):
+            wo = (f"Police {police} hat in der Vorgeschichte kein "
+                  "RED-Ereignis" if police not in red_ereignisse else
+                  f"Police {police} hat in der Vorgeschichte kein "
+                  f"RED-Ereignis am {datum} (vorhanden: "
+                  f"{', '.join(sorted(d for d in red_ereignisse[police] if d))}"
+                  ")")
+            raise SystemExit(
+                f"Auskunft {name!r}: {wo} — die Zeile (ANTEIL "
+                f"{zeile['ANTEIL']!r}) bliebe ohne Wirkung und stuende doch "
+                "im Beleg. Police und DATUM so schreiben wie in der "
+                "Vorgeschichte, oder die Zeile streichen; die Auskunft "
+                "berichtigen und neu registrieren")
+        vorher = gesehen.setdefault((police, datum), anteil)
+        if vorher != anteil:
+            raise SystemExit(
+                f"Auskunft {name!r}: Police {police} am {datum!r} mit "
+                f"ANTEIL {vorher} und {anteil} — die Zeilen widersprechen "
+                "sich; die Auskunft berichtigen und neu registrieren")
+        anteile[police] = anteil
+        if datum:
+            je_datum.setdefault(police, {})[datum] = anteil
+        text = (zeile.get("BEZUG") or "").strip()
+        if text and text not in bezug.setdefault(police, []):
+            bezug[police].append(text)
+    if not anteile:
+        raise SystemExit(
+            f"Auskunft {name!r}: keine RED-Zeile mit ANTEIL — eine Auskunft "
+            "ohne Anteil traegt nichts")
+    return Auskuenfte(
+        anteile=anteile, je_datum=je_datum,
+        beleg={"name": name, "sha256": gelesen.sha256,
+               "bezug": {p: sorted(t) for p, t in sorted(bezug.items())}})
 
 
 def _parse(wert: str) -> dt.date:
@@ -659,8 +812,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "Alt-Absetzung) je Police")
     p.add_argument("--red-anteile-datei", dest="red_anteile_datei",
                    default=None, metavar="REGISTRIERTE_DATEI",
-                   help="REGISTRIERTE Nachlieferung der fortgefuehrten "
-                        "Beitragsanteile (POLNR;GEVO;DATUM;ANTEIL)")
+                   help="REGISTRIERTE Auskunft der Quelle zu den fortgefuehrten "
+                        "Beitragsanteilen (POLNR;GEVO;DATUM;ANTEIL, optional "
+                        "BEZUG) — der einzige Weg, sie zu nennen; wirkt mit "
+                        "--vorgeschichte")
     p.add_argument("--anker-erwartungswerte", dest="anker_quelle",
                    default=None, metavar="REGISTRIERTE_DATEI",
                    help="REGISTRIERTE Erwartungswerte am Verankerungs"
@@ -669,11 +824,6 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "entfaellt — eine ANDERE Quelle als die hier "
                         "geprueften Abzugswerte, der Vergleich bleibt also "
                         "unabhaengig.")
-    p.add_argument("--red-anteil", dest="red_anteile", action="append",
-                   default=[], metavar="POLNR=ANTEIL",
-                   help="nachgelieferter fortgefuehrter Beitragsanteil einer "
-                        "Alt-Absetzung, deren Beitragsgleichung entfaellt "
-                        "(wiederholbar)")
     p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
                    action="append", type=float, default=[],
                    metavar="ANTEIL",
@@ -765,6 +915,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     beitragsfrei_seit = None
     anfangszustaende = None
+    # Der Belegblock der Auskunft DIESES Laufs (None ohne Auskunft), fuer
+    # die Welt-Gleichheit mit dem Schichtbeleg (aktuartest_lauf._schichten).
+    auskunft_beleg: Optional[Dict[str, Any]] = None
+    if args.red_anteile_datei is not None and args.vorgeschichte is None:
+        print("--red-anteile-datei wirkt nur mit --vorgeschichte (die "
+              "Anteile gehoeren zu den Ereignissen der Vorgeschichte) — "
+              "ohne sie wuerde die Auskunft weder gelesen noch gebunden",
+              file=sys.stderr)
+        return 2
     if args.vorgeschichte is not None:
         vorgeschichte = _lies_csv(fall, args.vorgeschichte, bindung)
         beitragsfrei_seit = beitragsfrei_seit_jahr_je_police(
@@ -772,13 +931,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         red_anteile: Dict[str, float] = {}
         red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
         if args.red_anteile_datei is not None:
-            for zeile in _lies_csv(fall, args.red_anteile_datei, bindung):
-                if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
-                    red_anteile[str(zeile["POLNR"])] = float(zeile["ANTEIL"])
-                    if zeile.get("DATUM"):
-                        red_anteile_je_datum.setdefault(
-                            str(zeile["POLNR"]), {})[str(zeile["DATUM"])] = (
-                                float(zeile["ANTEIL"]))
+            auskuenfte = lies_auskuenfte(
+                fall, args.red_anteile_datei, bindung, vorgeschichte,
+                spalten)
+            red_anteile = dict(auskuenfte.anteile)
+            red_anteile_je_datum = {
+                pol: dict(d) for pol, d in auskuenfte.je_datum.items()}
+            auskunft_beleg = auskuenfte.beleg
         anker: Dict[str, Any] = {}
         if args.anker_quelle is not None:
             quelle = bindung.binde(
@@ -791,13 +950,6 @@ def main(argv: Optional[List[str]] = None) -> int:
                     anker[str(eintrag["police_id"])] = (
                         int(erster["monate"]),
                         float(erster["erwartet"]["kVx_MRV"]))
-        for eintrag in args.red_anteile:
-            police, _, wert = eintrag.partition("=")
-            if not police or not wert:
-                print(f"--red-anteil {eintrag!r}: erwartet POLNR=ANTEIL",
-                      file=sys.stderr)
-                return 2
-            red_anteile[police.strip()] = float(wert)
         anfangszustaende, zustandswarnungen = anfangszustaende_je_police(
             spez, zeilen if args.zeilen is not None else [],
             vorgeschichte, bestand, spalten=spalten,
@@ -820,7 +972,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         from rechner_pipeline.gates.aktuartest_lauf import _schichten
 
         schichten = _schichten(fall, args.schicht, bindung=bindung,
-                               repo_root=Path(args.repo_root).resolve())
+                               repo_root=Path(args.repo_root).resolve(),
+                               auskunft=auskunft_beleg)
         ver = read_portfolio_aus_bytes(bindung.binde(
             fall / "abgeleitet" / "bestand" / "verankerung.parquet").roh)
         monate_ta_je_police = {
@@ -858,6 +1011,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         stichtag_2=_parse(args.stichtag_2).isoformat(),
         bestand_sha256=bestand_gelesen.sha256,
         system=systemstand(Path(args.repo_root).resolve()),
+        red_anteile_datei=auskunft_beleg,
     )
     # Der Beleg nennt, worueber geurteilt wurde — nicht nur den Bestand.
     ergebnis["eingaben"] = bindung.als_beleg()

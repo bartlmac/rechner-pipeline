@@ -175,12 +175,25 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   rechner_pipeline.betrieb.uebernahme --stand <daten> --fall <faelle/name>
   --stichtag <ISO> --freigabe-schluessel <key> --betriebsschluessel <key>
   --zeichnungsordnung <ordnung>` registers a migrated portfolio as a
-  dated, signed intake; `python -m rechner_pipeline.betrieb.seite --stand
+  dated, signed intake — only with an accepted intake acceptance A-B2
+  (ADR-022): the intake has three steps, `python -m
+  rechner_pipeline.betrieb.zugangsprobe --stand <daten> --fall
+  <faelle/name> --stichtag <ISO> [--bis <ISO>] --schluessel <key>
+  --zeichnungsordnung <ordnung> --freigabe-schluessel <key>` (two
+  deterministic runs on a copy of the store, with and without the intake;
+  their difference against the accepted portfolio is the evidence
+  `abgeleitet/berichte/zugangsprobe.json`), then `gates.gate_entscheid
+  --gate A-B2` (signed by `mensch/betrieb`; `agent/betrieb` can only
+  reject), then the registration; the day run checks the acceptance
+  against the store state when the intake is taken up, and config, kernel
+  and code state when it actually enters; `python -m rechner_pipeline.betrieb.seite --stand
   <daten> [--paket <dir> --anker <dir> --betriebsschluessel <key>
   --zeichnungsordnung <ordnung>]` renders "Bestand heute" and exports the
   stand package that `werkzeuge/falldaten.py --stands-paket` consumes.
   Tests get the operations key via the session seam
-  `tageslauf._STANDARD_BETRIEBSZEICHNUNG` (tests/conftest.py). Runtime
+  `tageslauf._STANDARD_BETRIEBSZEICHNUNG` and an intake acceptance via
+  `uebernahme._STANDARD_ZUGANGSABNAHME` (tests/conftest.py,
+  tests/zugangsabnahme_testhelfer.py). Runtime
   environment and image: `deploy/plv/`.
 - Navigate and scope changes via the ontology index (ADR-005;
   fundstellen are derived, not searched):

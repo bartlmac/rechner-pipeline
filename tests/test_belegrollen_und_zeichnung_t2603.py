@@ -53,6 +53,24 @@ def test_der_vertrag_wohnt_in_models_und_die_scopes_bleiben_gleich():
         br.belegrollen("A-M4", "irgendwas")
 
 
+def test_die_zugangsabnahme_traegt_genau_ihre_drei_pflichtrollen():
+    """ADR-022 (Entscheid des Maintainers 2026-09-30): A-B2 zeichnet den
+    Zugang eines abgenommenen Bestands in die produktive Ablage. Die
+    Unterschrift stuetzt sich auf drei Belege, und auf keinen weiteren: die
+    Zugangsprobe (die Differenz der Laeufe mit und ohne Eingang), den
+    A-M4-Snapshot des Falls (was abgenommen wurde) und den Eingang (was
+    eintreten soll). Ein Tarif-Fall hat keinen Zugang.
+
+    Ratsche mit ``==``: eine vierte Rolle ohne Produzenten waere A-B2 nicht
+    mehr zeichenbar, eine fehlende eine Unterschrift ohne Bezug.
+    Mutationsprobe: eine Rolle aus BELEGROLLEN['A-B2'] streichen -> rot."""
+    from rechner_pipeline.models.zeichnung import GUELTIGE_GATES
+
+    assert "A-B2" in GUELTIGE_GATES
+    assert br.belegrollen("A-B2", "bestand") == ["zugangsprobe", "am4_snapshot", "eingang"]
+    assert br.belegrollen("A-B2", "tarif") == []
+
+
 # --- DoRAs Fall: der Betrieb prueft die Rollenmenge ----------------------------
 
 def test_ein_snapshot_mit_nur_einer_pflichtrolle_wird_nicht_uebernommen(tmp_path):

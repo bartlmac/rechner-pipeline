@@ -863,6 +863,14 @@ def _pruefe_snapshot_graph(
     )
 
 
+#: Was A-B2 ueber die Betriebszeichnung der Zugangsprobe sagt (Block F,
+#: Nachbesserung, Pruefer-Befund 7).
+BETRIEBSSIGNATUR_NICHT_VERIFIZIERT = (
+    "nicht verifiziert — das Gate haelt den Betriebsschluessel nicht; es prueft "
+    "Form und Rolle der Betriebszeichnung, die Signatur rechnet die Registrierung "
+    "(betrieb.uebernahme) nach")
+
+
 def _lade_snapshot_kette(
     verzeichnis: Path,
     gate: str,
@@ -1932,6 +1940,130 @@ def main(argv: Optional[List[str]] = None):
                 )
             pflichtbelege["anker"] = [args.ankersatz]
 
+        if args.gate == "A-B2":
+            # Zugangsabnahme (ADR-022, Entscheid des Maintainers 2026-09-30):
+            # Der Betrieb nimmt den Zugang eines abgenommenen Bestands in die
+            # produktive Ablage ab. Drei Pflichtbelege, jeder mit eigener
+            # Aussage — die Zugangsprobe (die Rechnung), der A-M4-Snapshot
+            # (was abgenommen wurde), der Eingang (was eintreten soll). Der
+            # Beleg der Probe liegt an einem FESTEN Ort im Fall, wie bei A-O1
+            # und A-K2: kein Flag, das dorthin zeigt, wo es gerade passt.
+            # Die Annahme RECHNET das Urteil der Probe nach, sie glaubt es
+            # nicht; den Stand der Ablage bindet sie ueber den Beleg, und die
+            # Registrierung haelt ihn gegen die Ablage, in die sie schreibt.
+            from rechner_pipeline.models import zugangsprobe as zp_mod
+
+            probe_pfad = fall / zp_mod.BELEG_RELATIV
+            probe_kommando = (
+                "python -m rechner_pipeline.betrieb.zugangsprobe --stand <ablage> "
+                f"--fall {fall} --stichtag <iso> --schluessel <betriebsschluessel> "
+                "--zeichnungsordnung <ordnung> --freigabe-schluessel <schluessel>")
+            if not probe_pfad.is_file():
+                return _sperre(
+                    "vorbedingung",
+                    f"Annahme verweigert: A-B2 braucht den Beleg der Zugangsprobe "
+                    f"({zp_mod.BELEG_RELATIV} fehlt) — fahren mit: {probe_kommando}",
+                )
+            probe_gelesen = lies_gehasht(probe_pfad)
+            try:
+                probe = probe_gelesen.json()
+            except (OSError, ValueError) as exc:
+                return _sperre("vorbedingung",
+                               f"Annahme verweigert: Zugangsprobe unlesbar: {exc}")
+            probe_fehler = zp_mod.beleg_fehler(probe, ordnung=zeichnungsordnung)
+            if isinstance(probe, dict) and probe.get("fall") != fall.name:
+                probe_fehler.append(
+                    f"die Probe gehoert zum Fall {probe.get('fall')!r}, nicht {fall.name!r}")
+            if probe_fehler:
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: der Beleg der Zugangsprobe verletzt seinen "
+                    "Vertrag: " + "; ".join(probe_fehler[:5])
+                    + f" — Probe neu fahren: {probe_kommando}",
+                )
+            if probe.get("bestanden") is not True:
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: die Zugangsprobe ist nicht bestanden — der "
+                    "Zugang bewirkt in der Ablage nicht, was abgenommen wurde "
+                    "(Ablehnung bleibt moeglich)",
+                )
+            # Die Probe muss auf der GELTENDEN, angenommenen Migrationsabnahme
+            # gelaufen sein — derselbe Kettenleser wie fuer jedes Gate.
+            schluessel_fehler_ab2 = _schluessel_laden()
+            if schluessel_fehler_ab2:
+                return _sperre(
+                    "freigabe",
+                    "Entscheid verweigert: externe Freigabeschluessel ungueltig: "
+                    + "; ".join(schluessel_fehler_ab2[:5]),
+                )
+            am4_kette, am4_spitzen, am4_fehler = _lade_snapshot_kette(
+                entscheide_verzeichnis(fall), "A-M4", fall, schluesselring,
+                entscheid_systemstand)
+            am4_sha = probe["am4_snapshot_sha256"]
+            if am4_fehler or am4_spitzen != [am4_sha] or (
+                    am4_kette[am4_sha][1].get("entscheid") != "angenommen"):
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: die Zugangsprobe lief auf dem A-M4-Snapshot "
+                    f"{am4_sha[:16]}…, geltend und angenommen ist "
+                    f"{[s[:16] for s in am4_spitzen]}"
+                    + (f" (Kette: {'; '.join(am4_fehler[:3])})" if am4_fehler else "")
+                    + f" — die Probe auf der geltenden Migrationsabnahme fahren: {probe_kommando}",
+                )
+            # Das Soll der Probe muss das der GELTENDEN Abnahmen sein (Block
+            # F, Nachbesserung, Pruefer-Befund 1): die Bytes von
+            # aktuartest.json, die der geltende, angenommene A-M1-Snapshot
+            # pinnt (den A-M4 pinnt), und die von migrationssuite.json, die
+            # A-M4 pinnt — im Beleg UND am festen Ort im Fall. Dieselbe
+            # Regel wie Probe und Registrierung (models.zugangsprobe).
+            am4_daten = am4_kette[am4_sha][1]
+            am1_kette, am1_spitzen, am1_fehler = _lade_snapshot_kette(
+                entscheide_verzeichnis(fall), "A-M1", fall, schluesselring,
+                entscheid_systemstand)
+            am1_pin = ((am4_daten.get("pflichtbelege") or {}).get("am1_snapshot") or [None])[0]
+            am1_daten = am1_kette[am1_pin][1] if am1_pin in am1_kette else None
+            soll_fehler = zp_mod.soll_bindung_fehler(
+                probe.get("abnahmen"), am4=am4_daten, am1=am1_daten)
+            if am1_fehler or am1_spitzen != [am1_pin] or (
+                    am1_daten is not None and am1_daten.get("entscheid") != "angenommen"):
+                soll_fehler.append(
+                    f"der A-M1-Snapshot {str(am1_pin)[:16]}…, den A-M4 pinnt, ist nicht die "
+                    f"geltende angenommene Spitze ({[x[:16] for x in am1_spitzen]}"
+                    + (f"; Kette: {'; '.join(am1_fehler[:2])}" if am1_fehler else "") + ")")
+            for rolle, (_, datei) in zp_mod.SOLL_BELEGE.items():
+                gebunden = (probe.get("abnahmen") or {}).get(rolle) or {}
+                try:
+                    jetzt = lies_gehasht(fall / datei).sha256
+                except OSError as exc:
+                    jetzt = f"unlesbar ({exc})"
+                if jetzt != gebunden.get("sha256"):
+                    soll_fehler.append(
+                        f"{datei} am festen Ort ist nicht die gebundene Fassung "
+                        f"({str(jetzt)[:16]}… statt {str(gebunden.get('sha256'))[:16]}…)")
+            if soll_fehler:
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: das Soll der Zugangsprobe ist nicht das der "
+                    "geltenden Abnahmen: " + "; ".join(soll_fehler[:4])
+                    + f" — die abgenommenen Belege wiederherstellen oder die Abnahmen "
+                    f"neu entscheiden, dann die Probe fahren: {probe_kommando}",
+                )
+            pflichtbelege["zugangsprobe"] = [probe_gelesen.sha256]
+            pflichtbelege["am4_snapshot"] = [am4_sha]
+            pflichtbelege["eingang"] = [probe["eingang"]["sha256"]]
+            erwartete_rollen = belegrollen("A-B2", fall_scope or "")
+            if set(pflichtbelege) != set(erwartete_rollen):
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: aus dem Fall-Scope abgeleitete "
+                    f"Pflichtbelege unvollstaendig; fehlen="
+                    f"{sorted(set(erwartete_rollen) - set(pflichtbelege))}, fremd="
+                    f"{sorted(set(pflichtbelege) - set(erwartete_rollen))} — A-B2 "
+                    "gibt es nur im Bestands-Scope (ein Tarif-Fall hat keinen Zugang)",
+                )
+            pflichtbelege = {rolle: pflichtbelege[rolle] for rolle in erwartete_rollen}
+
         if args.gate in AKTUARIELLE_ABNAHMEN:
             # Aktuarielle Abnahme (ADR-010): Im Bestands-Scope stuetzt
             # sich der Entscheid auf das Testergebnis und den Bericht
@@ -2621,6 +2753,15 @@ def main(argv: Optional[List[str]] = None):
         ergebnis_summary["pk1_belege"] = pk1_belege
         ergebnis_summary["fall_scope"] = fall_scope
         ergebnis_summary["pflichtbelege"] = pflichtbelege
+    if args.gate == "A-B2":
+        # Die Registrierung liest den Snapshot-Hash aus diesem Ledger; die
+        # Belege daneben sagen dem Bediener, WELCHEN Eingang A-B2 abnimmt.
+        ergebnis_summary["pflichtbelege"] = pflichtbelege
+        # Was das Gate NICHT weiss (Block F, Nachbesserung, Pruefer-Befund
+        # 7): Die Betriebszeichnung des Belegs rechnet nur nach, wer den
+        # Betriebsschluessel haelt — das Gate prueft Form und Rolle, die
+        # Registrierung die Signatur. Gesagt wird es, nicht verschwiegen.
+        ergebnis_summary["betriebssignatur"] = BETRIEBSSIGNATUR_NICHT_VERIFIZIERT
     return _finalize(build_result(
         command=ledger_command, gate=f"entscheid.{args.gate}",
         gate_version=GATE_VERSION, exit_code=Exit.OK,

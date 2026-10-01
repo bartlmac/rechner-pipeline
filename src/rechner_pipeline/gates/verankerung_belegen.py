@@ -279,10 +279,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                    default=None,
                    help="Verfahren der Beitragsherabsetzung (siehe "
                         "aktuartest_lauf); Vorgabe: Zielverfahren")
-    p.add_argument("--red-anteil", dest="red_anteile", action="append",
-                   default=[], metavar="POLNR=ANTEIL",
-                   help="dokumentierte Anteils-Lesart je Police "
-                        "(wiederholbar)")
+    p.add_argument("--red-anteile-datei", dest="red_anteile_datei",
+                   default=None, metavar="REGISTRIERTE_DATEI",
+                   help="REGISTRIERTE Auskunft der Quelle zu den "
+                        "fortgefuehrten Beitragsanteilen (POLNR;GEVO;DATUM;"
+                        "ANTEIL, optional BEZUG; siehe aktuartest_lauf) — "
+                        "Name und SHA-256 stehen im Beleg; wirkt mit "
+                        "--vorgeschichte")
     p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
                    action="append", type=float, default=[],
                    metavar="ANTEIL",
@@ -359,6 +362,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None
     summen: Optional[Dict[str, float]] = None
+    # Der Beleg-Block der Auskunft (Name, SHA-256, Bezug je Police); None,
+    # wenn keine genannt wurde.
+    red_anteile_datei: Optional[Dict[str, Any]] = None
+    if args.red_anteile_datei is not None and args.vorgeschichte is None:
+        print("verankerung_belegen: --red-anteile-datei wirkt nur mit "
+              "--vorgeschichte (die Anteile gehoeren zu den Ereignissen der "
+              "Vorgeschichte) — ohne sie wuerde die Auskunft weder gelesen "
+              "noch gebunden", file=sys.stderr)
+        return 2
     if args.vorgeschichte is not None:
         # Dieselbe Zustandsbau-Maschinerie wie in den Pruefstrecken —
         # die Verankerung MUSS auf derselben Welt stehen, auf der
@@ -370,6 +382,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             VORGABE,
             anfangszustaende_je_police,
             auspraegungen_je_police,
+            lies_auskuenfte,
         )
         from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV
 
@@ -392,13 +405,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             io.StringIO(vorgeschichte_gelesen.roh.decode("utf-8")),
             delimiter=";"))
         red_anteile: Dict[str, float] = {}
-        for eintrag in args.red_anteile:
-            police, _, wert = eintrag.partition("=")
-            if not police or not wert:
-                print(f"--red-anteil {eintrag!r}: erwartet POLNR=ANTEIL",
-                      file=sys.stderr)
-                return 2
-            red_anteile[police.strip()] = float(wert)
+        red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
+        if args.red_anteile_datei is not None:
+            auskuenfte = lies_auskuenfte(
+                fall, args.red_anteile_datei, bindung, vorgeschichte,
+                dict(VORGABE))
+            red_anteile = dict(auskuenfte.anteile)
+            red_anteile_je_datum = {
+                pol: dict(d) for pol, d in auskuenfte.je_datum.items()}
+            red_anteile_datei = auskuenfte.beleg
         anker: Dict[str, Tuple[int, float]] = {}
         if args.anker_quelle is not None:
             quelle = bindung.binde(
@@ -415,7 +430,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         anfangszustaende, warnungen = anfangszustaende_je_police(
             spez, zeilen, vorgeschichte, bestand, spalten=dict(VORGABE),
             red_verfahren=args.red_verfahren or PROSPEKTIV,
-            red_anteile=red_anteile, auspraegungen=auspraegungen,
+            red_anteile=red_anteile,
+            red_anteile_je_datum=red_anteile_je_datum,
+            auspraegungen=auspraegungen,
             erhoehungssatz=args.erhoehungssatz, anker=anker,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
             scheiben_mit_gamma1=args.scheiben_mit_gamma1)
@@ -535,7 +552,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             "vorgeschichte": args.vorgeschichte,
             "erhoehungssatz": args.erhoehungssatz,
             "red_verfahren": args.red_verfahren,
-            "red_anteile": sorted(args.red_anteile),
+            "red_anteile_datei": red_anteile_datei,
             "red_anteil_kandidaten": sorted(args.red_anteil_kandidaten),
             "scheiben_mit_gamma1": args.scheiben_mit_gamma1,
             "anker_erwartungswerte": args.anker_quelle,

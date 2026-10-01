@@ -917,6 +917,7 @@ def pruefe_bestand(
     stichtag_2: Optional[str] = None,
     bestand_sha256: Optional[str] = None,
     system: Optional[Dict[str, str]] = None,
+    red_anteile_datei: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Suite über den ganzen Bestand: Urteile + Zusammenfassung.
 
@@ -943,6 +944,14 @@ def pruefe_bestand(
     Suite validiert und spiegelt diese Angaben in ihr Ergebnis. Ohne sie bleibt
     die Funktion fallunabhängig, ihr Ergebnis ist aber kein A-M4-Beleg eines
     Bestandsfalls.
+
+    AUSKUNFT (Block F, Nachbesserung): ``red_anteile_datei`` ist der
+    Belegblock ``{name, sha256, bezug}`` der registrierten Auskunft zu den
+    Herabsetzungsanteilen, auf deren Anfangslage die Suite gerechnet hat;
+    ``None``, wenn sie keine nannte. Mit Scope-Bindung steht das Feld IMMER
+    im Ergebnis (``null`` = keine Auskunft) — nur so unterscheidet der
+    Abnahmebericht ``keine Auskunft`` von ``Lauf, der das Feld nicht
+    kannte``.
 
     LEERE PRÜFMENGE: harter Fehler statt eines ausgewiesenen
     Nicht-Bestehens. Ein ``suite_bestanden = False`` wäre die Aussage
@@ -1066,6 +1075,7 @@ def pruefe_bestand(
             "stichtag_1": stichtag_1,
             "stichtag_2": stichtag_2,
             "bestand_sha256": bestand_sha256,
+            "red_anteile_datei": red_anteile_datei,
         })
     if system is not None:
         ergebnis["system"] = dict(system)

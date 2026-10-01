@@ -27,6 +27,21 @@ Verankerungszeitpunkt, Zustand und der gelieferte Wert. Was das
 abgebende Unternehmen in den Jahren davor gebucht hat, sieht dieses
 Modul nicht und braucht es nicht.
 
+**Offener Punkt (Block F, Nachbesserung; Entscheid des Maintainers
+steht aus).** Der Migrationszugang leitet keine gelieferte
+Alt-TEILKUENDIGUNG im ausfinanzierten Nachlauf ab (``t <= Jahr < n``):
+:func:`leite_ursprungssumme_ab` bricht dort mit "Absetzungsjahr liegt
+nicht in der Beitragszahlungsdauer" ab (``0 < jahr < t``). Die
+Fuehrung kennt diesen Fall seit dem Entscheid 2026-09-30 — die
+Simulationsengine zieht die Teilkuendigung nach ``t`` und Kern und
+Datenmodell tragen sie (klv.md 7.1) —, die RUECKRECHNUNG einer
+gelieferten Alt-Teilkuendigung dort aber nicht. Bewusst NICHT gebaut:
+Ob und wie sie ableitbar sein soll (Teilkuendigung hat nach ``t``
+keine Beitragsgleichung; die Ursprungssumme folgt allein aus der
+ERLSUMME), entscheidet der Maintainer. Bis dahin scheitert die
+Ableitung fuer einen solchen Vertrag fail-fast mit der genannten
+Meldung, sie rechnet nicht still anders.
+
 Knoten: klv
 """
 

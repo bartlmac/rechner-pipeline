@@ -12,6 +12,8 @@ Knoten: system/betrieb
 
 from __future__ import annotations
 
+import hashlib
+
 import datetime as dt
 import os
 from pathlib import Path
@@ -121,7 +123,12 @@ def test_ein_vorausdatierter_eingang_ruht_bis_zu_seinem_stichtag(tmp_path):
     ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     code, zeile = tageslauf(ablage, dt.date(2025, 12, 15))
     assert code == EXIT_OK, zeile.get("fehler")
-    assert zeile["wartende_uebernahmen"] == [{"fall": "probe-uebernahme", "stichtag": "2026-01-01"}]
+    # Mit dem Hash des Eingangs (ADR-022): Die Aufnahme als wartender Eingang
+    # ist sein Eintritt, ein spaeterer Lauf erkennt ihn daran wieder.
+    eingang_sha = hashlib.sha256(
+        (stand / "uebernahme" / "probe-uebernahme" / "eingang.json").read_bytes()).hexdigest()
+    assert zeile["wartende_uebernahmen"] == [
+        {"fall": "probe-uebernahme", "stichtag": "2026-01-01", "eingang_sha256": eingang_sha}]
     assert zeile["uebernahmen"] == []
     code, zeile = tageslauf(ablage, dt.date(2026, 1, 5))
     assert code == EXIT_OK, zeile.get("fehler")

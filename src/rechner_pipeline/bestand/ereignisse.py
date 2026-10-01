@@ -51,6 +51,13 @@ Model (Stufe 1, annual):
   draw. Runs of different configs on the same portfolio are therefore
   pathwise comparable as long as their event histories agree (e.g. the
   lapse set at storno_rate=0.02 is a subset of the one at 0.03).
+* Herabsetzung: eigener Substrom (``HERABSETZUNG_STREAM``), ein Draw je
+  Jahr ohne PEX und ohne schon erfolgte Reduktion. Solange Beitraege laufen
+  (``j+1 < t``) zieht jedes Verfahren; im ausfinanzierten Nachlauf
+  (``t <= j+1 < n``) nur, was der Kern dort traegt
+  (``NACH_BEITRAGSENDE_DEFINIERT``: die Teilkuendigung; Entscheid des
+  Maintainers 2026-09-30, klv.md 7.1). Fuer ``t = n`` ist das die alte
+  Bedingung, die Ziehungen vor ``t`` bleiben bitgleich.
 * Stornoabschlag bei Scheiben: WO die Tarif-Grenzen (stoab_min/max)
   greifen und ob eine Scheibe gamma1 traegt, sagt das Tarifwerk der
   GENERATION (``TarifGeneration.tarifwerk()``, Freischaltung Schritt 4):
@@ -89,6 +96,7 @@ from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.bestand.schichten import schichten_je_police
 from rechner_pipeline.kern.beitragsreduktion import (
+    NACH_BEITRAGSENDE_DEFINIERT,
     TEILKUENDIGUNG,
     ReduzierterVertrag,
     absorbierte_schicht,
@@ -488,17 +496,28 @@ def _simuliere_vertrag(
                 pex_summe = vertrag.beitragsfreie_summe(j + 1)
                 buche("PEX", j + 1, "VS_bfr", pex_summe)
         if beitragsfrei_ab is None:
-            # 4. Herabsetzung des Beitrags (nur beitragspflichtig, nur
-            #    einmal je Vertrag). Der Draw kommt aus einem EIGENEN
-            #    Strom (HERABSETZUNG_STREAM) — in der Reihenfolge oben
-            #    haette er jeden bestehenden Bestand verschoben. Die
-            #    Pruefung auf eine schon erfolgte Reduktion steht NACH
-            #    dem Draw, damit der Strom unabhaengig vom Ausgang
-            #    gleich weit laeuft.
-            if (j + 1 < t
+            # 4. Herabsetzung (nur ohne PEX, nur einmal je Vertrag). Der
+            #    Draw kommt aus einem EIGENEN Strom (HERABSETZUNG_STREAM) —
+            #    in der Reihenfolge oben haette er jeden bestehenden
+            #    Bestand verschoben. Die Pruefung auf eine schon erfolgte
+            #    Reduktion steht NACH dem Draw, damit der Strom
+            #    unabhaengig vom Ausgang gleich weit laeuft.
+            #
+            #    Solange Beitraege laufen (j + 1 < t) zieht jedes Verfahren.
+            #    Im ausfinanzierten Nachlauf (t <= j + 1 < n) zieht nur, was
+            #    der Kern dort traegt (Entscheid des Maintainers
+            #    2026-09-30: ein ausfinanzierter Vertrag KANN herabgesetzt
+            #    werden) — die Teilkuendigung; prospektiv und mit Abzug
+            #    wandeln einen BEITRAGSanteil um, und nach t gibt es keinen
+            #    (``NACH_BEITRAGSENDE_DEFINIERT``). Der Draw entfaellt dort
+            #    mit dem Verfahren: Der Strom laeuft nur dort weiter, wo
+            #    eine Reduktion moeglich ist, und die Ziehungen VOR t bleiben
+            #    bitgleich — fuer t = n ist die Bedingung die alte.
+            verfahren = str(vertrag.tarifwerk["red_verfahren"])
+            if (((j + 1 < t)
+                 or (verfahren in NACH_BEITRAGSENDE_DEFINIERT and j + 1 < n))
                     and rng_red.random() < annahmen.herabsetzung(0.0)
                     and vertrag.reduktion is None):
-                verfahren = str(vertrag.tarifwerk["red_verfahren"])
                 absorbiert, vs_neu, auszahlung = vertrag.herabsetzen(
                     j + 1, float(annahmen.red_anteil), verfahren)
                 # Die neue Gesamtsumme — fortgefuehrter plus umgewandelter

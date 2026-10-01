@@ -191,7 +191,17 @@ def gueltige_rollenkennung(rolle: object) -> bool:
 #: Regressionsproduzenten bewusst nicht zeichenbar. Das ist Absicht: Der
 #: geaenderte Kern bewertet nach der Migration den laufenden Bestand
 #: weiter, und diese Wirkung sieht sonst niemand.
-GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-O1", "A-K2", "A-B1")
+#:
+#: ``A-B2.zugangsabnahme`` (ADR-022, Entscheid des Maintainers 2026-09-30):
+#: die Abnahme des ZUGANGS eines abgenommenen Bestands in die produktive
+#: Ablage. A-M1 bis A-M4 und die Fuehrungsprobe urteilen im Fall, mit der
+#: Config des Falls; was die Registrierung in der Ablage bewirkt, sah bis
+#: dahin niemand, und der erste Monatsabschluss danach stand schon fest.
+#: Die Zugangsprobe (``betrieb.zugangsprobe``) faehrt die Ablage einmal
+#: mit und einmal ohne den Eingang; ihre Differenz ist der Beleg.
+#: Gezeichnet wird sie von ``mensch/betrieb`` wie die Auslieferung — der
+#: Betrieb verantwortet, was er fuehrt; ``agent/betrieb`` legt vor.
+GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-O1", "A-K2", "A-B1", "A-B2")
 
 #: Zeichenbare Gates OHNE Belegvertrag — die begruendete Ausnahme.
 #:

@@ -123,6 +123,21 @@ BELEGROLLEN = {
         "tarif": (),
         "bestand": ("anker",),
     },
+    # A-B2 (Zugangsabnahme, ADR-022, Entscheid des Maintainers
+    # 2026-09-30): DREI Pflichtbelege, jeder bezeugt etwas anderes. Die
+    # ZUGANGSPROBE ist die Rechnung — zwei Laeufe auf einer Kopie der
+    # produktiven Ablage, mit und ohne den Eingang, ihre Differenz gegen
+    # den abgenommenen Bestand; sie bindet auch den Stand der Ablage, auf
+    # dem sie lief. Der A-M4-SNAPSHOT sagt, WAS abgenommen wurde; der
+    # EINGANG (eingang.json mit Betriebszeichnung), WAS eintreten soll. Die
+    # Registrierung haelt ihre eigene eingang.json und den Stand der Ablage
+    # gegen genau diese Hashes, der Tageslauf beim Eintritt noch einmal.
+    #
+    # Nur im Bestands-Scope. Ein Tarif-Fall hat keinen Zugang.
+    "A-B2": {
+        "tarif": (),
+        "bestand": ("zugangsprobe", "am4_snapshot", "eingang"),
+    },
     "A-M4": {
         "tarif": ("pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege"),
         "bestand": (

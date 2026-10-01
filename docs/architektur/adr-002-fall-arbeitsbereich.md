@@ -100,3 +100,64 @@ Nur eine Verzeichnis-Konvention ohne Werkzeug: die Struktur existierte
 dann, aber Registrierung, Hashes, Schreibschutz und die
 Vor-Lauf-Pruefung blieben Handarbeit und Prosa — nichts machte die
 Regeln wahr.
+
+## Nachtrag 2026-09-30: Auskuenfte der Quelle sind registrierte Dateien
+
+Entscheid des Maintainers. Eine Auskunft der abgebenden Gesellschaft — der
+fortgefuehrte Beitragsanteil einer Alt-Herabsetzung, dessen
+Beitragsgleichung entfaellt — ist Eingang wie jede Lieferung: Sie wird
+registriert (Register, SHA-256, Schreibschutz) und erreicht die Kommandos nur
+als `--red-anteile-datei <registrierter Name>`. Ein Kommandozeilenparameter
+je Police (`--red-anteil POLNR=ANTEIL`) war der Weg am Register vorbei: Die
+menschlichen Gates hashen den Eingang, nicht den Aufruf, und der Beleg nannte
+die Werte als getippte Liste ohne Herkunft.
+
+Vertragsaenderung (Breaking Change), fuer alle fuenf Kommandos, die
+Herabsetzungsanteile verarbeiten (`bestand_uebernehmen`,
+`verankerung_belegen`, `aktuartest_lauf`, `migrationssuite_lauf`,
+`fuehrungsprobe`):
+
+* `--red-anteil` ist entfernt. `verankerung_belegen` kannte bisher NUR ihn
+  und kennt jetzt `--red-anteile-datei` mit derselben Lesart wie die
+  uebrigen (`migrationssuite_lauf.lies_auskuenfte`).
+* Format: `POLNR;GEVO;DATUM;ANTEIL`, optional `BEZUG` (Freitext:
+  Auskunftsschreiben oder Arbeits-Lesart). Rueckwaertskompatibel: Eine Datei
+  ohne die Spalte bleibt lesbar.
+* Provenienz: Der Schichtbeleg fuehrt unter `provenienz.parameter` statt der
+  Liste `red_anteile` den Block `red_anteile_datei` (`name`, `sha256`,
+  `bezug` je Police); Uebernahmebeleg und Fuehrungsprobe ebenso. Der
+  Konsument (`aktuartest_lauf --schicht`) lehnt einen Beleg mit `red_anteile`
+  ab und rechnet `red_anteile_datei` gegen die Eingaben des Belegs nach.
+* Fail-fast: nicht registrierte Datei (mit dem Ausweg), fehlende Spalte,
+  keine RED-Zeile, nichtnumerischer Anteil, widerspruechliche Zeilen, und
+  die Datei ohne Vorgeschichte (die Anteile wirkten sonst nicht) werden
+  verweigert.
+
+Nachbesserung nach der Pruefung (Block F):
+
+* Wertebereich: Ein Anteil ist endlich und liegt echt zwischen 0 und 1
+  (`nan`, `inf`, 0, 1, Prozentwerte werden mit Police, Datum, Wert und
+  Ausweg verweigert).
+* Zeilen ohne Wirkung: Jede RED-Zeile entspricht einem RED-Ereignis der
+  Vorgeschichte des Laufs (Police; mit DATUM zusaetzlich das Datum im
+  selben Wortlaut); eine leere POLNR traegt nichts. Sonst stuende die Zeile
+  mit Hash und Bezug im Beleg, ohne je gewirkt zu haben.
+* Welt-Gleichheit: Die Schicht eines Schichtbelegs ist auf der Anfangslage
+  seiner Auskunft verankert. Ein Lauf mit `--schicht` (`aktuartest_lauf`,
+  `migrationssuite_lauf`, `fuehrungsprobe`) vergleicht den SHA-256 der
+  Auskunft des Belegs mit dem der Auskunft, die er selbst gelesen hat;
+  `keine Auskunft` gilt nur auf beiden Seiten als gleich. Ein Beleg, dessen
+  Eingaben eine Auskunft nennen, dessen Parameterblock sie aber nicht fuehrt,
+  ist ein Formfehler.
+* `aktuartest_lauf` und `migrationssuite_lauf` fuehren die Auskunft im
+  Ergebnis als `red_anteile_datei` (`null` ohne Auskunft). Der Abnahmebericht
+  verlangt das Feld in der Suite, rechnet es gegen die Eingaben der Suite nach
+  und haelt Suite und Fuehrungsprobe auf derselben Auskunft — eine
+  verschaerfte Akzeptanzmenge (ADR-012): `GATE_VERSION` des Abnahmeberichts
+  `6.0.0`.
+
+`tests/test_auskunft_registriert_klasse.py` haelt die Klasse zu: Ratsche an
+der Senke (jeder Anteil, der in `anfangszustaende_je_police` oder
+`_serienzustand` geht, stammt aus `lies_auskuenfte`; jedes Modul mit einem
+solchen Aufruf kennt `--red-anteile-datei`; kein Argument unter `gates/`
+liefert je Police einen Anteil) und ein Zaehltest je Kommando.

@@ -86,6 +86,7 @@ from rechner_pipeline.gates.migrationssuite_lauf import (
     _lies_csv,
     anfangszustaende_je_police,
     auspraegungen_je_police,
+    lies_auskuenfte,
 )
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe, vertrags_monatsreserve
 from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
@@ -1146,10 +1147,12 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--erhoehungssatz", type=float, default=None)
     p.add_argument("--red-verfahren", dest="red_verfahren", default=PROSPEKTIV,
                    choices=sorted(VERFAHREN))
-    p.add_argument("--red-anteil", dest="red_anteile", action="append", default=[])
     p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
                    action="append", type=float, default=[])
-    p.add_argument("--red-anteile-datei", dest="red_anteile_datei", default=None)
+    p.add_argument("--red-anteile-datei", dest="red_anteile_datei", default=None,
+                   help="REGISTRIERTE Auskunft der Quelle zu den fortgefuehrten "
+                        "Beitragsanteilen (POLNR;GEVO;DATUM;ANTEIL, optional "
+                        "BEZUG) — der einzige Weg, sie zu nennen")
     p.add_argument("--anker-erwartungswerte", dest="anker_quelle", default=None)
     p.add_argument("--scheiben-mit-gamma1", dest="scheiben_mit_gamma1", action="store_true")
     p.add_argument("--stoab-je-baustein", dest="stoab_je_baustein", action="store_true")
@@ -1175,8 +1178,6 @@ def _aufruf(args: argparse.Namespace, ueber: Path, schluessel) -> List[str]:
             a += [option, str(wert)]
     if args.erhoehungssatz is not None:
         a += ["--erhoehungssatz", repr(float(args.erhoehungssatz))]
-    for eintrag in args.red_anteile:
-        a += ["--red-anteil", str(eintrag)]
     for wert in args.red_anteil_kandidaten:
         a += ["--red-anteil-kandidat", repr(float(wert))]
     if args.scheiben_mit_gamma1:
@@ -1328,23 +1329,27 @@ def fuehre_probe(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
         # Bytes, als der Beleg nannte.
         vorgeschichte = _lies_csv(fall, args.vorgeschichte, bindung)
 
+    if args.red_anteile_datei is not None and not args.vorgeschichte:
+        print("fuehrungsprobe: --red-anteile-datei wirkt nur mit "
+              "--vorgeschichte (die Anteile gehoeren zu den Ereignissen der "
+              "Vorgeschichte) — ohne sie waere die Auskunft gebunden, aber "
+              "ohne Wirkung", file=sys.stderr)
+        return 2, None
     red_anteile: Dict[str, float] = {}
     red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
+    red_anteile_datei: Optional[Dict[str, Any]] = None
     if args.red_anteile_datei is not None:
         # Auch die Herabsetzungs-Anteile binden (Review T25-05): Sie gehen
-        # in jede Bewertung ein und standen nicht im Beleg.
-        for zeile in _lies_csv(fall, args.red_anteile_datei, bindung):
-            if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
-                red_anteile[str(zeile["POLNR"])] = float(zeile["ANTEIL"])
-                if zeile.get("DATUM"):
-                    red_anteile_je_datum.setdefault(
-                        str(zeile["POLNR"]), {})[str(zeile["DATUM"])] = float(zeile["ANTEIL"])
-    for eintrag in args.red_anteile:
-        police, _, wert = eintrag.partition("=")
-        if not police or not wert:
-            print(f"--red-anteil {eintrag!r}: erwartet POLNR=ANTEIL", file=sys.stderr)
-            return 2, None
-        red_anteile[police.strip()] = float(wert)
+        # in jede Bewertung ein und standen nicht im Beleg. Seit dem
+        # Entscheid 2026-09-30 ist die registrierte Auskunft der einzige
+        # Weg; der Beleg nennt sie mit Name, SHA-256 und Bezug je Police.
+        auskuenfte = lies_auskuenfte(
+            fall, args.red_anteile_datei, bindung, vorgeschichte,
+            dict(VORGABE))
+        red_anteile = dict(auskuenfte.anteile)
+        red_anteile_je_datum = {
+            pol: dict(d) for pol, d in auskuenfte.je_datum.items()}
+        red_anteile_datei = auskuenfte.beleg
     anker: Dict[str, Tuple[int, float]] = {}
     if args.anker_quelle is not None:
         quelle_pfad = fall_mod.eingang_datei(fall, args.anker_quelle)
@@ -1365,7 +1370,7 @@ def fuehre_probe(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
         # Dieselbe Bindung weitergereicht: Der Beleg wird EINMAL gelesen,
         # und genau diese Bytes stehen danach im eigenen Beleg (T26-07 b).
         roh = _schichten(fall, args.schicht, repo_root=repo_root,
-                         bindung=bindung)
+                         bindung=bindung, auskunft=red_anteile_datei)
         schichtbeleg = {
             police: {k: (v.als_beleg() if hasattr(v, "als_beleg") else v)
                      for k, v in eintrag.items()}
@@ -1392,7 +1397,7 @@ def fuehre_probe(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
         "eingaben": bindung.als_beleg(),
         "parameter": {
             "generation": args.generation, "erhoehungssatz": args.erhoehungssatz,
-            "red_anteile": sorted(args.red_anteile),
+            "red_anteile_datei": red_anteile_datei,
             "red_anteil_kandidaten": sorted(args.red_anteil_kandidaten),
             "anker_erwartungswerte": args.anker_quelle,
             "vorgeschichte": args.vorgeschichte, "schicht": args.schicht,

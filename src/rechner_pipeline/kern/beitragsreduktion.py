@@ -60,10 +60,22 @@ RKW = max(0, ...)): Keine Summe und keine Leistung wird negativ, auch
 nicht bei nicht positiver Rueckstellung im ersten Vertragsjahr (Befund
 RC01 der Runde C). Auf dem Rueckkaufs-Track entsteht dort nach der
 Nachmessung kein negativer Wert mehr; die Untergrenze bleibt als
-Eigenschaft der Regel. Der Floor gilt fuer die Basisschicht; eine
-negative Korrekturschicht (rho < 0) kann den umgewandelten Teil darunter
-druecken — ob der Floor die Schicht einschliesst, entscheidet der
-Maintainer (offen seit 2026-09-30).
+Eigenschaft der Regel.
+
+**Grenze des Floors (Entscheid des Maintainers 2026-09-30).** Der Floor auf
+null gilt fuer den umgewandelten Teil der BASISSCHICHT, nicht fuer die
+Korrekturschicht: Eine negative Schicht (rho < 0) kann den umgewandelten
+Teil darunter druecken, und die Summe wird dann nicht geklemmt. Die Schicht
+ist Migrationsdifferenz, keine Tarifgroesse — eine Untergrenze, die sie
+einschlosse, machte aus einer Differenz zwischen zwei Systemen eine
+Tarifaussage und verdeckte genau die Abweichung, die die Schicht ausweisen
+soll. (Die Teilkuendigung kappt die Auszahlung dagegen auf null, weil dort
+Geld fliesst und ein Kunde aus einer Migrationsdifferenz keine
+Nachzahlungsforderung bekommt, Entscheid 2026-09-26 — siehe die Engine.)
+
+**Nach dem Beitragsende** (Entscheid des Maintainers 2026-09-30) ist nur
+die Teilkuendigung definiert (``NACH_BEITRAGSENDE_DEFINIERT``); die beiden
+beitragssenkenden Verfahren behalten ihre Wache.
 
 Knoten: klv
 """
@@ -101,6 +113,18 @@ MIT_ABZUG = "mit_abzug"
 #: den freiwerdenden Teil in eine beitragsfreie Summe um (Zweiteilung).
 TEILKUENDIGUNG = "teilkuendigung"
 VERFAHREN = (PROSPEKTIV, MIT_ABZUG, TEILKUENDIGUNG)
+#: Die Verfahren, die auch im ausfinanzierten Nachlauf (t <= Jahr < n, kein
+#: PEX) definiert sind — Entscheid des Maintainers 2026-09-30: ein
+#: ausfinanzierter Vertrag KANN herabgesetzt werden. Gemessen an
+#: ``reduziere``: Die Teilkuendigung kuendigt einen SUMMEN-Anteil und setzt
+#: keinen laufenden Beitrag voraus (Fund N6, Kern 3.4.0); ``prospektiv`` und
+#: ``mit_abzug`` wandeln den freiwerdenden BEITRAGSanteil (1-f) um, und nach
+#: t gibt es keinen Beitrag, den ein Anteil f fortfuehren koennte — der Kern
+#: verweigert sie dort, und der Tarifplan (klv.md 7.1) sagt nichts. Die
+#: Ereignis-Engine zieht nach t nur fuer diese Verfahren. Kein Zweitwissen:
+#: ``tests/test_herabsetzung_ausfinanziert.py`` haelt dieses Tupel (==) gegen
+#: das, was ``reduziere`` dort tatsaechlich akzeptiert.
+NACH_BEITRAGSENDE_DEFINIERT = (TEILKUENDIGUNG,)
 #: Was der PRODUKTIVE Pfad (``reduziere_geschichtet``, der eine Eingang
 #: der Fuehrung) tatsaechlich ausfuehrt. ``VERFAHREN`` sagt, welche Worte
 #: bekannt sind; dieses Tupel sagt, welche die Fuehrung rechnen kann. Ein

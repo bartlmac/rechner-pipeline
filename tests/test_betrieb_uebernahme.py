@@ -131,7 +131,8 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
                  fuehrungsprobe_sha: "str | None" = None,
                  rollen: "tuple[str, ...] | None" = None,
                  schema: int = 7,
-                 schluessel: "bytes | None" = None) -> dict:
+                 schluessel: "bytes | None" = None,
+                 pins: "dict | None" = None) -> dict:
     """Ein gueltiger P9-Snapshot, wie ihn das Gate schreibt — Schema 7 mit
     Zeichnung (Rolle, Schluesselklasse), EXAKT den Pflichtrollen seines
     Scopes und einer ECHTEN Freigabesignatur (Testschluessel; conftest
@@ -141,6 +142,12 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
     findet — im echten Fall schreibt das Gate sie, hier buergt die
     Signatur. ``rollen`` ueberschreibt die Rollenmenge (DoRAs Fall: nur
     pb1_ledger), ``schema=6`` baut einen Altsnapshot ohne Klasse.
+
+    ``pins`` setzt einzelne Rollen auf echte Hashes (Block F, Nachbesserung:
+    ``migrationssuite`` und ``am1_snapshot`` binden das Soll der
+    Zugangsprobe). Ohne Angabe pinnt ``am1_snapshot`` den deterministischen
+    A-M1-Snapshot :func:`am1_snapshot` dieses Falls — die Naht der
+    Zugangsabnahme legt ihn bei Bedarf in den Fall.
     """
     from rechner_pipeline.models.belegrollen import am4_belegrollen
     from rechner_pipeline.models.freigabe import freigabe_fuer
@@ -158,8 +165,13 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
             pflichtbelege[rolle] = [fuehrungsprobe_sha]
         elif rolle == "pk1_belege":
             pflichtbelege[rolle] = [gen_beleg]
+        elif rolle == "am1_snapshot" and gate == "A-M4":
+            pflichtbelege[rolle] = [am1_snapshot(fall_name, schluessel=schluessel)["snapshot_sha256"]]
         else:
             pflichtbelege[rolle] = [hashlib.sha256(rolle.encode()).hexdigest()]
+    for rolle, wert in (pins or {}).items():
+        assert rolle in pflichtbelege, (rolle, sorted(pflichtbelege))
+        pflichtbelege[rolle] = [wert]
     rolle_id = "mensch" if schema == 6 else "mensch/aktuar"
     daten = {
         "schema_version": schema, "command": "gate_entscheid",
@@ -183,6 +195,20 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
         daten["freigabe"] = freigabe_fuer(daten, schluessel or TESTKEY)
     daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
     return daten
+
+
+def am1_snapshot(fall_name: str, *, aktuartest_sha: "str | None" = None,
+                 schluessel: "bytes | None" = None) -> dict:
+    """Ein angenommener A-M1-Snapshot (Bestands-Scope) — ``aktuartest``
+    pinnt ``aktuartest_sha`` (Default: Platzhalter), der Bericht einen
+    Platzhalter. Deterministisch: Derselbe Fall ergibt denselben Hash, den
+    :func:`am4_snapshot` als ``am1_snapshot`` pinnt."""
+    from rechner_pipeline.models.belegrollen import belegrollen
+
+    return am4_snapshot(
+        fall_name, gate="A-M1", rollen=tuple(belegrollen("A-M1", "bestand")),
+        schluessel=schluessel,
+        pins={"aktuartest": aktuartest_sha} if aktuartest_sha else None)
 
 
 def _pb1_ledger(fall: Path) -> str:
@@ -504,7 +530,7 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
 
     Mutationsprobe: Schalter ignoriert — dann fehlt der Teilbestand-Bericht,
     obwohl teilbestand_getrennt = true in der Config steht."""
-    stand, _, _ = eingang
+    stand, fall, _ = eingang
     ablage = Ablage(stand)
     ablage.configs.mkdir(parents=True, exist_ok=True)
     ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
@@ -536,16 +562,14 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
     # entsteht es aus dem Tagesstrom ab Betriebsbeginn.
     assert int(dict(zeilen_gesamt)["KLV-2017"]) == 3
     assert int(dict(zeilen_gesamt).get("KLV-2025", "0")) > 0
-    # Ohne den Schalter kein Teilbestand-Bericht:
+    # Ohne den Schalter kein Teilbestand-Bericht. Eine eigene Ablage mit
+    # eigener Config und eigener Registrierung: Seit ADR-022 bindet die
+    # Zugangsabnahme den Stand der Ablage samt Config; ein kopierter Eingang
+    # unter umgeschriebener Config traete (richtig) nicht ein.
     aus = Ablage(stand.parent / "aus")
-    import shutil
-    shutil.copytree(stand, aus.wurzel)
-    for p in (aus.stand, aus.journal, aus.abschluesse, aus.berichte):
-        shutil.rmtree(p, ignore_errors=True)
-    aus.config_pfad.chmod(0o644)
-    aus.config_pfad.write_text(
-        _kleine_config().replace("teilbestand_getrennt = true", "teilbestand_getrennt = false"),
-        encoding="utf-8")
+    _mit_config(aus.wurzel, _kleine_config().replace(
+        "teilbestand_getrennt = true", "teilbestand_getrennt = false"))
+    ueb.eingang_anlegen(aus.wurzel, fall, STICHTAG)
     code, zeile = tageslauf(aus, dt.date(2026, 2, 2))
     assert code == EXIT_OK and "teilbestaende" not in zeile["abschluesse"][1]
 

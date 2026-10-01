@@ -20,7 +20,7 @@ Laufzeitumgebung selbst ist kein Repo-Inhalt.
 | Verzeichnis | Inhalt | Schutz |
 |---|---|---|
 | `configs/bestand.toml` | die Config der PLV — eine Kopie von `configs/bestand_gesamt.toml`; ihr SHA-256 steht in jedem Protokolleintrag. Nach dem Nachziehen der Kopie aendert sich der Hash im Protokoll, nicht der Bestand: `nummernkreis` traegt die bisherigen Positionen explizit (T22-09) | vom Menschen gepflegt |
-| `uebernahme/<fall>/` | je Migrationsfall ein Zugangsstand mit `eingang.json` (Fallname, Stichtag, Snapshot-Hash, SHA-256 je Datei), bei der Registrierung mit dem Betriebsschluessel gezeichnet (Schema 3) | unantastbar wie ein Fall-Eingang; jede Datei wird beim Lesen gegen ihre Summe gehalten |
+| `uebernahme/<fall>/` | je Migrationsfall ein Zugangsstand mit `eingang.json` (Fallname, Stichtag, Snapshot-Hash, SHA-256 je Datei), bei der Registrierung mit dem Betriebsschluessel gezeichnet (Schema 3), daneben `zugangsabnahme.json` (die gepruefte Zugangsabnahme A-B2, ADR-022) | unantastbar wie ein Fall-Eingang; jede Datei wird beim Lesen gegen ihre Summe gehalten |
 | `stand/` | Symlink auf den gefuehrten Stand (`stand-<manifest-kennung>/`; der Pfad `daten/stand/` fuehrt durch den Symlink dorthin): die sechs Ausgaben der Fortschreibung, `laufmanifest.json`, ggf. `merkmale.parquet` und `verankerung.parquet` der Uebernahmen. Der Stand ist die GEBUCHTE Sicht: Ereignisse mit Buchungstag nach heute (Meldeverzug, Werktagsregel) stehen noch nicht darin und kommen an ihrem Buchungstag, damit Stand, Seite und Journal dasselbe sagen | wechselt nur durch einen gruenen Lauf, in EINEM atomaren Schritt (Symlink-Tausch; es gibt keinen Moment ohne Stand); das alte Verzeichnis wird danach entfernt |
 | `lauf.lock` | Prozess-Sperre: zwei gleichzeitige Laeufe auf derselben Ablage gibt es nicht, der zweite bricht sofort ab; ebenso der `seite`-Befehl (Rendern und Export) neben einem laufenden Tageslauf | — |
 | `journal/tagesjournal.parquet` | die Buchungstage, nur angefuegt | Bijektion zum Ledger wird bei jedem Lauf geprueft |
@@ -98,9 +98,78 @@ Selbstadressierung, Gate, Entscheid, Fall — und seine Freigabesignatur
 mit dem Freigabeschluessel, der ausserhalb des Falls liegt. Ohne
 Schluessel wird nichts registriert: Der Tagesbetrieb nimmt nur einen
 Eingang mit verifizierter Signatur an). Der
-Eingang kommt von AUSSEN ins Volume: Das Kommando laeuft auf dem
+Eingang kommt von AUSSEN ins Volume: Die Kommandos laufen auf dem
 Betriebsrechner mit Zugriff auf den Fall, nicht im Container — der
-Container hat kein Netz und liest den Eingang nur:
+Container hat kein Netz und liest den Eingang nur.
+
+**Der Zugang hat drei Schritte** (ADR-022): Zugangsprobe, Zugangsabnahme
+A-B2, Registrierung. Ohne angenommene A-B2 wird nichts registriert, und
+ein Eingang ohne sie tritt nicht ein.
+
+1. **Zugangsprobe** — zieht unter der Lauf-Sperre zwei Kopien der Ablage
+   (das Original wird nicht beschrieben; die Kopien liegen ausserhalb von
+   `daten/`), registriert den Eingang in der einen und faehrt beide vom
+   gefuehrten Tag ueber den Zugangsstichtag bis zum naechsten
+   Monatsabschluss (mit `--bis` weiter, etwa bis zum Folgestichtag der
+   Migrationssuite). Die Differenz der Abschluesse "mit" minus "ohne" muss
+   exakt der abgenommene Bestand sein: am Stichtag Anzahl,
+   Versicherungssumme (Uebernahme) und Jahresbeitrag (Migrationssuite) je
+   Vertrag ueber den ganzen Zugang, am Folgetermin die Anzahl in Kraft;
+   dazu Zugaenge, Zugangsbuchungen, Bewegungskonto und Gleichheit von
+   allem anderen. Das Deckungskapital steht mit dem Grund "nicht
+   vergleichbar: Konvention Jahreswert vs. Monatsreserve, Entscheid offen"
+   im Beleg, bis der Maintainer die Konvention entscheidet. Das Soll liest
+   die Probe nur aus den Bytes, die die geltenden Abnahmen pinnen
+   (`aktuartest.json` ueber A-M1, `migrationssuite.json` ueber A-M4) —
+   sonst verweigert sie. Der Beleg `abgeleitet/berichte/zugangsprobe.json`
+   traegt die Betriebszeichnung und bindet den gefuehrten Stand der Ablage,
+   den Eingang und die Abnahmen (Exit 0 bestanden, 1 nicht bestanden, 2
+   Bedienfehler). Der Zugangsstichtag ist ein Monatserster. Die Probe
+   haelt ihren Code-Stand gegen die letzte gruene Protokollzeile: Image-
+   Digest und Revision (soweit dort erfasst) und den Hash des Pakets —
+   also im produktiven Image fahren bzw. `--image-digest` wie im
+   Tageslauf angeben; jede Abweichung ist ein Befund.
+
+```
+python -m rechner_pipeline.betrieb.zugangsprobe --stand ~/apps/plv/daten \
+    --fall faelle/<fall> --stichtag 2026-01-01 [--bis <ISO>] \
+    --freigabe-schluessel <pfad-zum-freigabeschluessel> \
+    --schluessel ~/apps/plv/schluessel/betrieb.key \
+    --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json \
+    [--arbeit <leeres-verzeichnis-ausserhalb-von-daten>]
+```
+
+2. **Zugangsabnahme A-B2** — `mensch/betrieb` zeichnet (in der Vorfuehrung
+   mit Schluesselklasse `simulation` unter Mandat); `agent/betrieb` legt
+   vor und kann nur ablehnen. Die Zeichnungsordnung des Maintainers gibt
+   `mensch/betrieb` dafuer `A-B2` in seine gates-Liste. Das Gate rechnet
+   das Urteil der Probe nach, haelt ihr Soll gegen die geltenden
+   A-M1-/A-M4-Snapshots und die Dateien am festen Ort, und pinnt drei
+   Belege: die Probe, den geltenden A-M4-Snapshot und den Eingang. Die
+   Betriebszeichnung der Probe verifiziert es nicht (es haelt den
+   Betriebsschluessel nicht) und sagt das in seiner Ausgabe; die
+   Registrierung rechnet sie nach.
+
+```
+python -m rechner_pipeline.gates.gate_entscheid --fall faelle/<fall> \
+    --gate A-B2 --entscheid angenommen --entscheider "<Name>" \
+    --begruendung "..." --freigabe-schluessel <schluessel-mensch-betrieb> \
+    --zeichnungsordnung <ordnung> [--mandat <mandat>]
+```
+
+3. **Registrierung** — auf DERSELBEN Ablage, ohne dass dazwischen ein
+   Tageslauf den gefuehrten Stand bewegt oder die Config getauscht wird,
+   mit denselben Angaben wie die Probe (`--fall`, `--quelle`, Stichtag,
+   Betriebsschluessel): Die Registrierung haelt ihre eigene `eingang.json`
+   und den Stand der Ablage gegen die Hashes, die A-B2 bindet, und legt die
+   gepruefte Abnahme als `zugangsabnahme.json` (gezeichnet) neben den
+   Eingang. Den A-B2-Snapshot liest sie aus dem Gate-Beleg des Falls oder
+   aus `--zugangsabnahme <sha256>`; seine Freigabe muss von einem
+   Schluessel stammen, dessen Rolle die Zeichnungsordnung fuer A-B2
+   berechtigt. Tritt der Eingang erst spaeter ein (Stichtag in der
+   Zukunft), haelt der Tageslauf am Stichtag Config, Kern-Version und
+   Code-Stand gegen die Abnahme: Wer dazwischen Config oder Image tauscht,
+   braucht Probe und A-B2 neu.
 
 ```
 python -m rechner_pipeline.betrieb.uebernahme --stand ~/apps/plv/daten \
@@ -109,6 +178,14 @@ python -m rechner_pipeline.betrieb.uebernahme --stand ~/apps/plv/daten \
     --betriebsschluessel ~/apps/plv/schluessel/betrieb.key \
     --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json
 ```
+
+Beim Eintritt — dem ersten gruenen Lauf, der den Eingang aufnimmt, gefuehrt
+oder (bei einem Stichtag in der Zukunft) wartend — haelt der Tageslauf
+die Abnahme noch einmal gegen den Stand, auf dem er laeuft. Lief die
+Ablage nach der Probe weiter, verweigert er (Exit 2, der Stand bleibt).
+Ausweg: Der Eingang ist nie eingetreten; ihn aus `uebernahme/` nehmen
+(sichern), die Probe auf dem heutigen Stand wiederholen, A-B2 neu zeichnen
+und neu registrieren. Ein roter Lauf bewegt den gefuehrten Stand nicht.
 
 Die Registrierung zeichnet `eingang.json` mit dem Betriebsschluessel —
 ueber alle Felder, auch die gepruefte Freigabesignatur der A-M4-Annahme.
@@ -177,13 +254,21 @@ gefahren vollendet den Tausch aus dem fertigen Aufbau, statt neu zu
 beginnen. Ein neues Ankerverzeichnis gehoert zur neuen Ablage: Die alte
 Ankerreihe bezeugt Zeilen eines Protokolls, das jetzt im Archiv liegt.
 
+Auch der Eingang der neuen Ablage braucht seine Zugangsabnahme A-B2
+(ADR-022). Ihr gefuehrter Stand ist der einer LEEREN Ablage mit der neuen
+Config; die Zugangsprobe laeuft deshalb auf einem leeren Verzeichnis, das
+nur `configs/bestand.toml` traegt (dieselben Bytes wie die neue Config),
+danach wird A-B2 gezeichnet und der Snapshot mit `--zugangsabnahme`
+uebergeben. Ohne A-B2 baut die Routine nichts auf.
+
 ```
 systemctl --user stop tageslauf.timer
 python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
     --fall faelle/<fall> --stichtag 2026-01-01 \
     --freigabe-schluessel <pfad-zum-freigabeschluessel> \
     --betriebsschluessel ~/apps/plv/schluessel/betrieb.key \
-    --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json
+    --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json \
+    --zugangsabnahme <sha256-des-a-b2-snapshots>
 cd ~/apps/plv && docker compose run --rm tageslauf
 python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten \
     --paket <paket> --anker faelle/<fall>/abgeleitet/anker \

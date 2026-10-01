@@ -270,7 +270,8 @@ python -m rechner_pipeline.gates.bestand_uebernehmen \
     --generation-spez klv/tg2015 \
     --anfangszustand materialisieren \
     --erhoehungssatz <satz> --red-verfahren <verfahren> \
-    [--red-anteil POLNR=ANTEIL ...] [--red-anteil-kandidat <anteil> ...] \
+    [--red-anteile-datei <registrierte-auskunft>.csv] \
+    [--red-anteil-kandidat <anteil> ...] \
     [--anker-erwartungswerte <registriert>.json] \
     [--scheiben-mit-gamma1] [--stoab-je-baustein] \
     --out-dir faelle/<fall>/abgeleitet/bestand
@@ -291,6 +292,49 @@ dann besteht die Fuehrungsprobe nicht, und A-M4 ist im Bestands-Scope
 unmoeglich). Eine Herabsetzung nach den PLV-Verfahren
 (prospektiv/mit_abzug) kann die Fuehrung nicht tragen und haelt an;
 die Teilkuendigung der Quelle fuehrt zustandslos weiter.
+
+**Auskunft der Quelle je Police: registrieren, dann `--red-anteile-datei`.**
+Der fortgefuehrte Beitragsanteil einer Alt-Herabsetzung, dessen
+Beitragsgleichung entfaellt, ist eine Auskunft der abgebenden
+Gesellschaft (oder, wo sie fehlt, eine dokumentierte Arbeits-Lesart des
+Aktuars). Sie kommt als REGISTRIERTE Datei in den Fall — nie als
+Wert am Aufruf (`--red-anteil POLNR=ANTEIL` gibt es nicht mehr; Entscheid
+des Maintainers 2026-09-30): Die Zeichnung hasht den Eingang, nicht den
+Aufruf. Format, CSV mit `;`: `POLNR;GEVO;DATUM;ANTEIL` und optional
+`BEZUG` (Freitext: Auskunftsschreiben oder Arbeits-Lesart, wird in die
+Provenienz uebernommen), eine Zeile je Police und Herabsetzung mit
+`GEVO = RED`:
+
+```
+POLNR;GEVO;DATUM;ANTEIL;BEZUG
+7000396;RED;01.10.2019;0.60;Arbeits-Lesart des Aktuars, Auskunft 2/4
+```
+
+Ablauf: `python -m rechner_pipeline.fall registrieren --fall <fall>
+--datei <auskunft>.csv`, dann in JEDEM der fuenf Kommandos, die
+Herabsetzungsanteile verarbeiten (`bestand_uebernehmen`,
+`verankerung_belegen`, `aktuartest_lauf`, `migrationssuite_lauf`,
+`fuehrungsprobe`), dieselbe `--red-anteile-datei <Dateiname>`. Eine nur
+im Dateisystem liegende Datei verweigert das Kommando mit dem Ausweg; ein
+Widerspruch in der Datei (zwei Anteile fuer dieselbe Police und dasselbe
+Datum) ebenso, ein Anteil ausserhalb von 0 bis 1 (nur echte Bruchteile,
+keine Prozentwerte) und eine RED-Zeile, die keinem RED-Ereignis der
+Vorgeschichte entspricht (Police, und mit DATUM das Datum im selben
+Wortlaut wie dort) — eine solche Zeile bliebe ohne Wirkung und stuende
+doch im Beleg. Der Beleg nennt die Datei mit Hash unter seinen Eingaben;
+Uebernahmebeleg, Schichtbeleg, Fuehrungsprobe, aktuarieller Test und
+Migrationscontrolling fuehren sie zusaetzlich als `red_anteile_datei`
+(Name, SHA-256, Bezug je Police; `null`, wenn keine genannt wurde).
+Ein Lauf mit `--schicht` (`aktuartest_lauf`, `migrationssuite_lauf`,
+`fuehrungsprobe`) rechnet diese Aussage gegen die Eingaben des
+Schichtbelegs nach UND haelt sie gegen seine eigene Auskunft: Die Schicht
+ist auf der Anfangslage EINER Auskunft verankert, ein Lauf mit einer
+anderen (oder ohne) verweigert mit dem Ausweg — dieselbe
+`--red-anteile-datei` an allen Kommandos. Der Abnahmebericht (A-M4)
+verlangt das Feld in der Suite und haelt Suite und Fuehrungsprobe auf
+derselben Auskunft. Die Anteile wirken mit `--vorgeschichte` (bei der
+Uebernahme mit `--anfangszustand materialisieren`); ohne sie haelt das
+Kommando an, statt die Auskunft still zu ueberlesen.
 
 Es schreibt `bestand.parquet`, `historie.parquet` und `ledger.parquet`
 deterministisch ueber `bestand/parquet_io.write_portfolio` und setzt die
@@ -586,6 +630,22 @@ das von P-B1 benannte Portfolio gegen die aktuellen Bytes nachgehasht. P-B1,
 Suite und Fuehrungsprobe werden semantisch erneut validiert; der HTML-Bericht wird aus der Suite
 deterministisch neu gerendert und bytegenau verglichen. Vorgelegt wird alles
 vollstaendig, ohne Stichproben-Beschoenigung.
+
+### Nach A-M4: der Zugang in den Betrieb (ADR-022)
+
+Ein abgenommener Bestand tritt in drei Schritten in die produktive Ablage
+ein, und der mittlere gehoert dem Menschen: (1) die Zugangsprobe
+`python -m rechner_pipeline.betrieb.zugangsprobe --stand <ablage> --fall
+faelle/<fall> --stichtag <iso> [--bis <iso>] --schluessel
+<betriebsschluessel> --zeichnungsordnung <ordnung> --freigabe-schluessel
+<schluessel>` — zwei Laeufe auf einer Kopie der Ablage, mit und ohne den
+Eingang, Beleg `abgeleitet/berichte/zugangsprobe.json`; (2) die
+Zugangsabnahme `gate_entscheid --gate A-B2` (zeichnet `mensch/betrieb`;
+`agent/betrieb` legt vor und kann nur ablehnen — hier STOPPST du); (3) die
+Registrierung `python -m rechner_pipeline.betrieb.uebernahme` auf
+derselben, unbewegten Ablage mit denselben Angaben wie die Probe. Eine rote
+Probe ist ein Befund fuer den Menschen, kein Auftrag, die Abnahme
+nachzubessern (`deploy/plv/README.md`).
 
 **Schichtbeleg erzeugen (Producer, seit Lauf 2):** Den Schichtbeleg fuer
 `aktuartest_lauf --schicht` erzeugt das Systemkommando

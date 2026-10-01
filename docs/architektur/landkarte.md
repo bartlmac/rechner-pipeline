@@ -29,12 +29,12 @@ dahinter sind nachrechenbar (`ontologie.code_karte`), nicht Prosa.
 flowchart TD
     n__init__["__init__<br/>1 Module"]
     bestand["bestand<br/>22 Module"]
-    betrieb["betrieb<br/>9 Module"]
+    betrieb["betrieb<br/>10 Module"]
     fall["fall<br/>1 Module"]
     gates["gates<br/>18 Module"]
     kern["kern<br/>12 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
-    models["models<br/>10 Module"]
+    models["models<br/>11 Module"]
     ontologie["ontologie<br/>16 Module"]
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
@@ -42,13 +42,13 @@ flowchart TD
     bestand -- 24 --> kern
     bestand -- 17 --> models
     bestand -- 1 --> qa
-    betrieb -- 22 --> bestand
-    betrieb -- 1 --> kern
-    betrieb -- 18 --> models
+    betrieb -- 25 --> bestand
+    betrieb -- 2 --> kern
+    betrieb -- 25 --> models
     gates -- 14 --> bestand
     gates -- 9 --> fall
     gates -- 13 --> kern
-    gates -- 17 --> models
+    gates -- 18 --> models
     gates -- 11 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
@@ -78,21 +78,23 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 ```mermaid
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
-    bu["bu<br/>38 Module"]
-    klv["klv<br/>88 Module"]
+    bu["bu<br/>39 Module"]
+    klv["klv<br/>89 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
-    system_entscheid["system/entscheid<br/>4 Module"]
+    system_entscheid["system/entscheid<br/>5 Module"]
     system_fall["system/fall<br/>1 Module"]
     bu -- 3 --> system_assurance
-    bu -- 8 --> system_entscheid
+    bu -- 13 --> system_entscheid
     klv -- 9 --> system_assurance
-    klv -- 17 --> system_entscheid
+    klv -- 23 --> system_entscheid
     klv -- 9 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv
     system_assurance -- 1 --> system_entscheid
     system_assurance -- 1 --> system_fall
+    system_entscheid -- 1 --> bu
+    system_entscheid -- 1 --> klv
     system_entscheid -- 1 --> system_assurance
 ```
 

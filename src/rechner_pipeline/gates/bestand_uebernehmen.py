@@ -956,18 +956,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="Verfahren der Beitragsherabsetzung der Quelle — "
                         "wie in der Pruefstrecke; nur 'teilkuendigung' "
                         "ist in der Fuehrung freigeschaltet")
-    p.add_argument("--red-anteil", dest="red_anteile", action="append",
-                   default=[], metavar="POLNR=ANTEIL",
-                   help="nachgelieferter fortgefuehrter Beitragsanteil "
-                        "(wiederholbar) — wie in der Pruefstrecke")
     p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
                    action="append", type=float, default=[], metavar="ANTEIL",
                    help="BELEGTER Tarif-Kandidat des Herabsetzungsanteils "
                         "(wiederholbar) — wie in der Pruefstrecke")
     p.add_argument("--red-anteile-datei", dest="red_anteile_datei",
                    default=None, metavar="REGISTRIERTE_DATEI",
-                   help="REGISTRIERTE Nachlieferung der Anteile "
-                        "(POLNR;GEVO;DATUM;ANTEIL)")
+                   help="REGISTRIERTE Auskunft der Quelle zu den fortgefuehrten "
+                        "Beitragsanteilen (POLNR;GEVO;DATUM;ANTEIL, optional "
+                        "BEZUG) — der einzige Weg, sie zu nennen; wirkt mit "
+                        "--anfangszustand materialisieren")
     p.add_argument("--anker-erwartungswerte", dest="anker_quelle",
                    default=None, metavar="REGISTRIERTE_DATEI",
                    help="REGISTRIERTE Erwartungswerte am Verankerungs"
@@ -1063,6 +1061,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"--anfangszustand {MATERIALISIEREN} braucht --generation-spez "
               "(Rechnungsgrundlagen der Bausteine)", file=sys.stderr)
         return 2
+    if (args.red_anteile_datei is not None
+            and args.anfangszustand != MATERIALISIEREN):
+        print(f"--red-anteile-datei wirkt nur mit --anfangszustand "
+              f"{MATERIALISIEREN} (die Anteile tragen den Anfangszustand der "
+              "Herabsetzungen) — ohne ihn wuerde die Auskunft weder gelesen "
+              "noch gebunden", file=sys.stderr)
+        return 2
     tarifwerk = {
         "scheiben_mit_gamma1": bool(args.scheiben_mit_gamma1),
         "stoab_je_baustein": bool(args.stoab_je_baustein),
@@ -1085,7 +1090,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "anfangszustand": args.anfangszustand or "ohne_bausteine",
         "tarifwerk": tarifwerk,
         "erhoehungssatz": args.erhoehungssatz,
-        "red_anteile": sorted(args.red_anteile),
+        "red_anteile_datei": None,
         "red_anteil_kandidaten": sorted(args.red_anteil_kandidaten),
         "anker_erwartungswerte": args.anker_quelle,
         "vorgeschichte": args.vorgeschichte,
@@ -1105,6 +1110,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             _lies_csv,
             anfangszustaende_je_police,
             auspraegungen_je_police,
+            lies_auskuenfte,
         )
 
         rohe_vorgeschichte = _lies_csv(fall, args.vorgeschichte, bindung)
@@ -1112,20 +1118,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         red_anteile: Dict[str, float] = {}
         red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
         if args.red_anteile_datei is not None:
-            for zeile in _lies_csv(fall, args.red_anteile_datei, bindung):
-                if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
-                    red_anteile[str(zeile["POLNR"])] = float(zeile["ANTEIL"])
-                    if zeile.get("DATUM"):
-                        red_anteile_je_datum.setdefault(
-                            str(zeile["POLNR"]), {})[str(zeile["DATUM"])] = (
-                                float(zeile["ANTEIL"]))
-        for eintrag in args.red_anteile:
-            police, _, wert = eintrag.partition("=")
-            if not police or not wert:
-                print(f"--red-anteil {eintrag!r}: erwartet POLNR=ANTEIL",
-                      file=sys.stderr)
-                return 2
-            red_anteile[police.strip()] = float(wert)
+            auskuenfte = lies_auskuenfte(
+                fall, args.red_anteile_datei, bindung, rohe_vorgeschichte,
+                dict(VORGABE))
+            red_anteile = dict(auskuenfte.anteile)
+            red_anteile_je_datum = {
+                pol: dict(d) for pol, d in auskuenfte.je_datum.items()}
+            beleg["red_anteile_datei"] = auskuenfte.beleg
         anker: Dict[str, Tuple[int, float]] = {}
         if args.anker_quelle is not None:
             quelle = bindung.binde(

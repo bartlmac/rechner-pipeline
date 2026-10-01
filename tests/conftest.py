@@ -203,3 +203,25 @@ def _testbetriebsschluessel():
     yield schluessel, ordnung
     _tl._STANDARD_BETRIEBSZEICHNUNG = vorher
     shutil.rmtree(verzeichnis, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _testzugangsabnahme():
+    """Jede Registrierung ohne ausdrueckliche Zugangsabnahme bekommt im
+    Testlauf eine: die Naht ``betrieb.uebernahme._STANDARD_ZUGANGSABNAHME``
+    (tests/zugangsabnahme_testhelfer.py) legt Beleg und A-B2-Snapshot im Fall
+    an, gebunden an den Eingang und den Stand, die die Registrierung ihr
+    reicht (ADR-022). Produktiv ist sie None; dort wird ohne A-B2 nichts
+    registriert. Geprueft wird der Snapshot danach wie jeder andere.
+
+    SESSION-weit aus demselben Grund wie Freigabe-Testring und
+    Betriebsschluessel: Modul-Fixtures registrieren, bevor eine
+    funktionsweite Naht griffe. Tests, deren Gegenstand die Verweigerung
+    ohne A-B2 ist, setzen die Naht per monkeypatch auf None."""
+    from rechner_pipeline.betrieb import uebernahme as _ueb
+    from tests.zugangsabnahme_testhelfer import schreibe_zugangsabnahme
+
+    vorher = _ueb._STANDARD_ZUGANGSABNAHME
+    _ueb._STANDARD_ZUGANGSABNAHME = schreibe_zugangsabnahme
+    yield
+    _ueb._STANDARD_ZUGANGSABNAHME = vorher

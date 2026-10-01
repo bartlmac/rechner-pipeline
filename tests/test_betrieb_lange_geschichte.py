@@ -79,8 +79,11 @@ def test_ein_zugang_mitten_im_betrieb_wird_gefuehrt(tmp_path):
     zurueckstellen -> dieser Lauf bricht mit TageslaufError ab."""
     fall = _fall_mit_nebentabellen(tmp_path)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)               # Zugang 2026-01-01
+    # Erst die Config, dann der Eingang: Die Zugangsabnahme bindet den Stand
+    # der Ablage samt Config (ADR-022); eine danach getauschte Config ist ein
+    # anderer Stand, und der Eingang traete nicht ein.
     ablage = _ablage_ab(stand, dt.date(2025, 1, 1))          # gefuehrt seit 2025
+    ueb.eingang_anlegen(stand, fall, STICHTAG)               # Zugang 2026-01-01
     code, zeile = tageslauf(ablage, dt.date(2026, 1, 9))
     assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
     assert zeile["pb1"]["urteil"] == "gruen"
@@ -120,8 +123,8 @@ def test_ein_zugang_nach_heute_ruht_bis_zu_seinem_stichtag(tmp_path):
     jeder Lauf bis zum Stichtag rot)."""
     fall = _fall_mit_nebentabellen(tmp_path)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
-    ablage = _ablage_ab(stand, dt.date(2025, 1, 1))
+    ablage = _ablage_ab(stand, dt.date(2025, 1, 1))   # Config vor Eingang (ADR-022)
+    ueb.eingang_anlegen(stand, fall, STICHTAG)
     code, zeile = tageslauf(ablage, dt.date(2025, 6, 1))
     assert code == EXIT_OK, zeile.get("fehler")
     assert zeile["uebernahmen"] == []
@@ -360,9 +363,9 @@ def test_jede_stichtagssicht_traegt_ein_bewegungskonto(tmp_path):
 
     fall = _fall_mit_nebentabellen(tmp_path)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)                # Zugang 2026-01-01
     betriebsbeginn = dt.date(2025, 1, 1)
     ablage = _ablage_ab(stand, betriebsbeginn)               # gefuehrt seit 2025
+    ueb.eingang_anlegen(stand, fall, STICHTAG)               # Zugang 2026-01-01 (Config vor Eingang, ADR-022)
     heute = dt.date(2026, 1, 9)
     assert tageslauf(ablage, heute)[0] == EXIT_OK
 

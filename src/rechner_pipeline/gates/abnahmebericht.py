@@ -162,7 +162,12 @@ GATE = "A-M4.migrationscontrolling"
 #: 5.0.0 (Angriffsrunde nach T27): Die Probe muss die Uebernahme des Falls
 #: pruefen, ihre Fortschreibung reicht bis zum Folgestichtag, und P-B1
 #: laeuft auf dieser Fortschreibung vollstaendig.
-GATE_VERSION = "5.0.0"
+#: 6.0.0 (Block F, Nachbesserung): Die Suite muss die Auskunft zu den
+#: Herabsetzungsanteilen als ``red_anteile_datei`` fuehren (``null`` = keine)
+#: und sie gegen ihre Eingaben nachrechnen lassen; Suite und Fuehrungsprobe
+#: muessen dieselbe Auskunft gelesen haben. Eine Suite eines Laufs vor dieser
+#: Aenderung (ohne das Feld) war vorher ein gueltiger Beleg.
+GATE_VERSION = "6.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -1354,6 +1359,58 @@ def _bestands_suite_fehler(
     return fehler
 
 
+def _suite_auskunft_fehler(suite: Dict[str, Any]) -> List[str]:
+    """Die Auskunft zu den Herabsetzungsanteilen, die die Suite gelesen hat
+    (Block F, Nachbesserung).
+
+    Das Feld ``red_anteile_datei`` ist Pflicht — ``null`` heisst: keine
+    Auskunft; fehlt der Schluessel, stammt die Suite von einem Lauf, der die
+    Auskunft nicht nennen konnte. Ein Block muss ``{name, sha256, bezug}``
+    sein, und Name und SHA-256 muessen unter den ``eingaben`` der Suite
+    stehen: Die Aussage ist nachrechenbar, nicht nur behauptet. (Dass die
+    Fuehrungsprobe dieselbe Auskunft las, prueft ``_fuehrungsprobe_fehler``.)
+    """
+    if "red_anteile_datei" not in suite:
+        return [
+            "Migrationssuite fuehrt 'red_anteile_datei' nicht — der Lauf "
+            "haette die Auskunft zu den Herabsetzungsanteilen (oder ihr "
+            "Fehlen: null) nennen muessen; die Suite neu ausfuehren "
+            "(gates.migrationssuite_lauf)"]
+    datei = suite["red_anteile_datei"]
+    if datei is None:
+        return []
+    if not isinstance(datei, dict) or set(datei) != {"name", "sha256", "bezug"}:
+        return ["Migrationssuite: 'red_anteile_datei' muss null oder "
+                "{name, sha256, bezug} sein"]
+    name, sha = datei["name"], datei["sha256"]
+    fehler: List[str] = []
+    if not isinstance(name, str) or not name:
+        fehler.append("Migrationssuite: red_anteile_datei.name muss ein "
+                      "nichtleerer Text sein")
+    if (not isinstance(sha, str) or len(sha) != 64
+            or any(z not in "0123456789abcdef" for z in sha)):
+        fehler.append("Migrationssuite: red_anteile_datei.sha256 muss ein "
+                      "SHA-256 sein")
+    if not isinstance(datei["bezug"], dict):
+        fehler.append("Migrationssuite: red_anteile_datei.bezug muss ein "
+                      "Objekt je Police sein")
+    if fehler:
+        return fehler
+    eingaben = suite.get("eingaben")
+    gebunden = None
+    if isinstance(eingaben, dict):
+        gebunden = next(
+            (w for k, w in eingaben.items()
+             if k == f"eingang/{name}" or k.endswith(f"/eingang/{name}")),
+            None)
+    if gebunden != sha:
+        return [f"Migrationssuite: red_anteile_datei ({name}) steht nicht mit "
+                "diesem SHA-256 unter den eingaben der Suite — die Aussage "
+                "ueber die Auskunft ist nicht nachrechenbar; die Suite neu "
+                "ausfuehren (gates.migrationssuite_lauf)"]
+    return []
+
+
 #: Rollen, die ein P-B1-Beleg des Bestands-Scope tragen muss (T22-01);
 #: dazu der Horizont ``bis`` und ``summary.betraege_hergeleitet``.
 #: ``scheiben`` und ``merkmale`` sind optional, weil ein Bestand ohne
@@ -1678,6 +1735,21 @@ def _fuehrungsprobe_fehler(
             f"gehasht hat: bestand_sha256 der Suite ist "
             f"{str(suite.get('bestand_sha256'))[:16]}…, die Probe las als "
             f"bestand.parquet {str(bestand_gelesen)[:16]}…")
+    # Dieselbe Welt wie die Suite (Block F, Nachbesserung): Hat die Fuehrung
+    # eine andere Auskunft gelesen als die Suite, traegt sie nicht die Welt,
+    # in der die Suite abgenommen wurde — beide Belege einzeln gruen.
+    def _auskunft_sha(block: Any) -> Any:
+        return block.get("sha256") if isinstance(block, dict) else None
+
+    if _auskunft_sha(suite.get("red_anteile_datei")) != _auskunft_sha(
+            parameter.get("red_anteile_datei")):
+        fehler.append(
+            "Fuehrungsprobe und Migrationssuite haben verschiedene Auskuenfte "
+            "zu den Herabsetzungsanteilen gelesen (Suite: "
+            f"{(suite.get('red_anteile_datei') or {}).get('name')!r}, Probe: "
+            f"{(parameter.get('red_anteile_datei') or {}).get('name')!r}) — die "
+            "Fuehrung traegt nicht die Welt, in der die Suite abgenommen "
+            "wurde; beide mit derselben --red-anteile-datei neu fahren")
     # Erst wenn der Beleg in sich die Form hat, wird er nachgerechnet —
     # die Nachrechnung ist teuer, und ihre Meldung ersetzt die genaueren
     # Formbefunde darueber nicht.
@@ -2390,7 +2462,7 @@ def main(argv: Optional[List[str]] = None):
             stichtag_1=args.stichtag_1,
             stichtag_2=args.stichtag_2,
             erwartetes_system=gemeinsame_bindung["system"],
-        )
+        ) + _suite_auskunft_fehler(suite)
         if suite_scope_fehler:
             return _contract_fehler(
                 "suite_scope_contract",
@@ -2493,6 +2565,9 @@ def main(argv: Optional[List[str]] = None):
     }
     if gemeinsame_bindung is not None:
         summary["scope_bindung"] = gemeinsame_bindung
+        # Die Auskunft, auf der Suite und Fuehrungsprobe gerechnet haben:
+        # der Bericht nennt sie mit (Block F, Nachbesserung).
+        summary["red_anteile_datei"] = suite.get("red_anteile_datei")
 
     # Welche Tabellen die Bestandspruefung tatsaechlich gesehen hat. Ein
     # gruenes A-M4 sagt sonst nichts darueber, ob das Bewegungskonto

@@ -102,16 +102,24 @@ def _kopie(quelle: Path, ziel: Path) -> Ablage:
 
 def _schluessel_und_ordnung(tmp_path: Path, rolle: str, klasse: str, gates=()):
     """Ein Schluessel (0600) ausserhalb jeder Ablage und eine Ordnung, die
-    ihm die Rolle gibt."""
+    ihm die Rolle gibt — dazu die Rolle, die im Test A-B2 zeichnet: Die
+    Registrierung haelt die Freigabe der Zugangsabnahme gegen DIESE Ordnung
+    (Block F, Nachbesserung, Pruefer-Befund 9)."""
+    from tests.freigabe_testschluessel import AB2_ROLLE, TESTKEY
+
     verzeichnis = tmp_path / "schluessel"
     verzeichnis.mkdir(exist_ok=True)
     schluessel = verzeichnis / f"{rolle.replace('/', '-')}.key"
     schluessel.write_bytes(hashlib.sha256(rolle.encode()).digest())
     schluessel.chmod(0o600)
     ordnung = verzeichnis / f"ordnung-{rolle.replace('/', '-')}.json"
-    ordnung.write_text(json.dumps({"schema_version": 2, "rollen": {rolle: {
+    rollen = {rolle: {
         "schluessel_sha256": hashlib.sha256(schluessel.read_bytes()).hexdigest(),
-        "schluesselklasse": klasse, "gates": list(gates)}}}), encoding="utf-8")
+        "schluesselklasse": klasse, "gates": list(gates)}}
+    if rolle != AB2_ROLLE:
+        rollen[AB2_ROLLE] = {"schluessel_sha256": hashlib.sha256(TESTKEY).hexdigest(),
+                             "schluesselklasse": "mensch", "gates": ["A-B2"]}
+    ordnung.write_text(json.dumps({"schema_version": 2, "rollen": rollen}), encoding="utf-8")
     return schluessel, ordnung
 
 

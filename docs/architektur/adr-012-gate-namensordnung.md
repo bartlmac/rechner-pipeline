@@ -90,6 +90,7 @@ die Belege lesen.
 | `G-2` | `A-M4` | Migrationscontrolling |
 | (neu) | `A-B1.auslieferung` | Auslieferung eines Stands-Pakets |
 | (neu) | `A-K2.kernaenderung` | Aenderung am Rechenkern |
+| (neu) | `A-B2.zugangsabnahme` | Zugang eines abgenommenen Bestands in die produktive Ablage (ADR-022) |
 | `A-K1` | `A-O1.tbox-aenderung` | T-Box-Aenderung (Gegenstand `O`) |
 | `P9.gate-entscheid` | `entscheid.vollzug` | das Entscheid-Kommando |
 | `P9.<gate>` | `entscheid.<abnahme>` | Ledger-Eintrag eines Vollzugs |

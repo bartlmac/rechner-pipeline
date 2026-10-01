@@ -75,10 +75,34 @@ ANKER = "baldrian_erwartungswerte_stichtag.json"
 #: Kandidatenmenge der Herabsetzungsstufen (Auskunft 2) und die
 #: dokumentierte Arbeits-Lesart f=0,60 der zwei unbestimmbaren Policen
 #: (mit Falsifizierbarkeits-Auflage, Abschlussbericht Abschnitt 5).
+#:
+#: Die Arbeits-Lesart kommt als REGISTRIERTE Auskunft in den Fall
+#: (Entscheid des Maintainers 2026-09-30: nie als Kommandozeilenparameter
+#: je Police) — so traegt sie Provenienz wie jede Lieferung und ist fuer
+#: die Zeichnung bindbar. ``RED_ANTEILE`` bleibt die Wahrheit fuer die
+#: Kontrollrechnungen dieses Moduls; die Datei wird aus ihr geschrieben.
 ERHOEHUNGSSATZ = "0.05"
 RED_VERFAHREN = "teilkuendigung"
 KANDIDATEN = ("0.50", "0.60", "0.75")
 RED_ANTEILE = ("7000396=0.60", "7000679=0.60")
+#: Die Herabsetzungsdaten der zwei Policen (Spalte DATUM der Auskunft,
+#: wie in den Metadaten der Vorgeschichte).
+RED_DATEN = {"7000396": "01.10.2019", "7000679": "01.05.2021"}
+AUSKUNFT = "baldrian_red_anteile_auskunft.csv"
+AUSKUNFT_BEZUG = "Arbeits-Lesart des Aktuars, Auskunft 2/4"
+
+
+def schreibe_auskunft(ziel: Path) -> Path:
+    """Die Auskunft je Police als CSV (POLNR;GEVO;DATUM;ANTEIL;BEZUG)."""
+    zeilen = ["POLNR;GEVO;DATUM;ANTEIL;BEZUG"]
+    for eintrag in RED_ANTEILE:
+        police, _, anteil = eintrag.partition("=")
+        zeilen.append(
+            f"{police};RED;{RED_DATEN[police]};{anteil};{AUSKUNFT_BEZUG}")
+    ziel.mkdir(parents=True, exist_ok=True)
+    pfad = ziel / AUSKUNFT
+    pfad.write_text("\n".join(zeilen) + "\n", encoding="utf-8")
+    return pfad
 
 ABNAHMEN = (
     ("A-M1", "baldrian_erwartungswerte_stichtag.json"),
@@ -95,8 +119,7 @@ def _lieferungs_flags() -> list[str]:
     ]
     for k in KANDIDATEN:
         flags += ["--red-anteil-kandidat", k]
-    for a in RED_ANTEILE:
-        flags += ["--red-anteil", a]
+    flags += ["--red-anteile-datei", AUSKUNFT]
     return flags
 
 
@@ -115,6 +138,7 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     fall = basis / "fall"
     anlegen(fall, scope="bestand")
     _registriere_alles(fall)
+    registrieren(fall, schreibe_auskunft(basis / "auskunft"))
 
     spez_ziel = fall / "abgeleitet" / "spez"
     spez_ziel.mkdir(parents=True, exist_ok=True)

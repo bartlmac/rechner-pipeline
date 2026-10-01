@@ -87,6 +87,7 @@ import argparse
 import contextlib
 import datetime as _dt
 import fnmatch
+import functools
 import hashlib
 import json
 import os
@@ -145,7 +146,8 @@ from rechner_pipeline.betrieb.tagesjournal import (
 )
 from rechner_pipeline.betrieb.uebernahme import (
     EINGANG_DATEI, STAGING_DIR as UEBERNAHME_STAGING_DIR,
-    UEBERNAHME_DIR, UebernahmeError, lies_uebernahmen,
+    UEBERNAHME_DIR, UebernahmeError, lies_uebernahmen, pruefe_eintritt,
+    pruefe_zugangsabnahme,
 )
 from rechner_pipeline.models.anker import jsonl_zeilen
 from rechner_pipeline.models.bestand import (
@@ -185,6 +187,50 @@ PROTOKOLL_SCHEMA_VERSION = 3
 _STANDARD_BETRIEBSZEICHNUNG: Optional[Tuple[Path, Path]] = None
 #: Benannter Zustand einer Protokollangabe, die die Umgebung nicht liefert.
 NICHT_ERFASST = "nicht erfasst"
+
+
+@functools.lru_cache(maxsize=1)
+def quellcode_sha256() -> str:
+    """SHA-256 des ausfuehrbaren Paketstands — dasselbe Verfahren wie der
+    Systemstand der Gates (``gates._provenienz``), hier ohne Git: Der
+    Betrieb laeuft auch dort, wo es keins gibt (Container), und die
+    Schichtenkarte laesst ``betrieb -> gates`` nicht zu.
+
+    Block F, Nachbesserung (Pruefer-Befund 6): Die Kern-Version allein ist
+    keine Identitaet des Codes, der rechnet. Die Protokollzeile, die
+    Zugangsprobe und die Zugangsabnahme tragen deshalb diesen Hash; die
+    Probe haelt ihn gegen die letzte gruene Zeile der Ablage, der Tageslauf
+    beim Eintritt eines Eingangs gegen die Abnahme. Einmal je Prozess: Der
+    Code aendert sich nicht, waehrend er laeuft.
+    """
+    paket = Path(__file__).resolve().parents[1]
+    h = hashlib.sha256()
+    for pfad in sorted(p for p in paket.rglob("*") if p.is_file() and p.suffix in {".py", ".xml"}):
+        relativ = pfad.relative_to(paket).as_posix().encode("utf-8")
+        inhalt = pfad.read_bytes()
+        h.update(len(relativ).to_bytes(8, "big"))
+        h.update(relativ)
+        h.update(len(inhalt).to_bytes(8, "big"))
+        h.update(inhalt)
+    return h.hexdigest()
+
+
+def code_stand(image_digest: Optional[str]) -> Dict[str, str]:
+    """Der Code-Stand eines Laufs, wie Protokollzeile und Zugangsprobe ihn
+    fuehren: drei Angaben zum Image, jede mit dem benannten Zustand
+    NICHT_ERFASST statt eines leeren Felds (ein leeres Feld liest sich wie
+    ein Fehler) — der Digest kommt aus .env, vom Menschen nach dem Pull
+    eingetragen, der Container kennt ihn selbst nicht (kein Netz, kein
+    Docker-Socket); Revision (Commit des Baus) und Tag traegt das Image bzw.
+    compose.yml; ausserhalb des Containers fehlen alle drei. Dazu der Hash
+    des Pakets (:func:`quellcode_sha256`), der immer erfasst ist."""
+    return {
+        "image_digest": image_digest or NICHT_ERFASST,
+        "image_revision": os.environ.get("PLV_IMAGE_REVISION") or NICHT_ERFASST,
+        "image_tag": os.environ.get("PLV_IMAGE_TAG") or NICHT_ERFASST,
+        "quellcode_sha256": quellcode_sha256(),
+    }
+
 STAND_DIR = "stand"
 JOURNAL_DIR = "journal"
 ABSCHLUSS_DIR = "abschluesse"
@@ -210,6 +256,12 @@ SPERRE_DATEI = "lauf.lock"
 PUBLISH_MARKER_DATEI = "publish.json"
 #: Uebergangsname des Symlinks beim atomaren Tausch.
 STAND_LINK_TMP = "stand.link"
+#: Kennzeichen einer Ablage-KOPIE der Zugangsprobe (ADR-022). Die Probe legt
+#: es in die Wurzel ihrer Kopie; ein Lauf ohne Probe-Auftrag verweigert auf
+#: einer so gekennzeichneten Ablage, und ein Probe-Lauf verweigert auf einer
+#: ohne. Beide Richtungen: Der Timer faehrt nie eine Probenkopie, und die
+#: Probe laesst nie einen Eingang ohne A-B2 in eine echte Ablage eintreten.
+ZUGANGSPROBE_KOPIE_DATEI = "zugangsprobe-kopie.json"
 
 #: Exit-Codes: 0 gruen und uebernommen, 2 Aufruf-, Eingangs- oder Ein-/
 #: Ausgabefehler vor der Wache (Stand nicht uebernommen), 3 Wache rot
@@ -1248,6 +1300,93 @@ def bezeugte_eingaenge(
     return bezeugt
 
 
+def gesichtete_eingaenge(
+    zeilen: List[Dict[str, Any]], *, aufschalten: bool = False, wartende: bool = True,
+) -> set:
+    """Die Hashes der Eingaenge, die schon in die Fuehrung aufgenommen sind —
+    gefuehrt ODER wartend (ADR-022).
+
+    Der Eintritt eines Eingangs ist der erste gruene Lauf, der ihn aufnimmt:
+    als gefuehrten Zugang oder, bei einem Stichtag in der Zukunft, als
+    wartenden. An DIESEM Lauf haelt der Tageslauf die Zugangsabnahme A-B2
+    gegen den Stand der Ablage; danach ist der Stand weitergelaufen, und
+    das ist dann kein Befund, sondern der Betrieb. Wartende Eingaenge
+    tragen ihren Hash deshalb seit ADR-022 in der Zeile — ohne ihn liefe
+    ein vorausdatierter Zugang an seinem Stichtag gegen einen laengst
+    vergangenen Stand und traete nie ein.
+
+    Zeuge ist, was ``bezeugte_eingaenge`` als Zeugen gelten laesst: eine
+    gezeichnete Zeile oder der gepinnte Vorlauf.
+
+    ``wartende=False``: nur die schon GEFUEHRTEN Eingaenge — die Frage nach
+    dem tatsaechlichen Eintritt (Block F, Nachbesserung).
+    """
+    gebunden = aufschalten or any(z.get("schema_version", 1) >= 3 for z in zeilen)
+    gesehen: set = set()
+    for zeile in zeilen:
+        if not zeile.get("uebernommen"):
+            continue
+        if zeile.get("schema_version", 1) < 3 and not gebunden:
+            continue
+        for u in list(zeile.get("uebernahmen") or []) + (list(
+                zeile.get("wartende_uebernahmen") or []) if wartende else []):
+            if u.get("eingang_sha256"):
+                gesehen.add(str(u["eingang_sha256"]))
+    return gesehen
+
+
+def ablage_stand(ablage: Ablage, *, config_pfad: Optional[Path] = None) -> Dict[str, Any]:
+    """Der GEFUEHRTE Stand einer Ablage — das, woran eine Zugangsprobe lief
+    (ADR-022; Hash: ``models.zugangsprobe.stand_sha256``).
+
+    Vier Angaben, jede mit ``None`` als benanntem Zustand "gibt es noch
+    nicht" (eine Ablage vor der Erstbefuellung): der gefuehrte Tag und der
+    Hash der letzten GRUENEN Protokollzeile (sie bindet ueber die Kette
+    alles davor), der Hash des Manifests des Stands und der Hash der
+    Config. Ein roter Lauf aendert den gefuehrten Stand nicht — ein Retry
+    nach einem gescheiterten Bericht bleibt auf demselben Stand (T26-02);
+    ein gruener Lauf, eine neue Config oder ein getauschter Stand aendern
+    ihn.
+
+    Registrierte, aber noch nicht aufgenommene Eingaenge gehoeren NICHT
+    dazu: Jeder bringt seine eigene Zugangsabnahme mit, und zwei Eingaenge
+    vor demselben Lauf sollen einander nicht die Abnahme entziehen.
+
+    Waehrend eines unterbrochenen Publish ist der gefuehrte Stand nicht
+    bestimmt — erst der naechste Tageslauf nimmt ihn zurueck. Dann gibt es
+    keinen Stand, auf dem eine Probe laufen koennte.
+    """
+    from rechner_pipeline.models.anker import jsonl_zeilen as _jsonl
+
+    if ablage.publish_marker.exists():
+        raise TageslaufError(
+            f"{ablage.publish_marker}: ein Publish ist unterbrochen — der gefuehrte "
+            "Stand ist nicht bestimmt. Ausweg: den Tageslauf fahren (er nimmt den "
+            "Publish zurueck), dann die Zugangsprobe bzw. Registrierung wiederholen")
+    letzte_roh: Optional[str] = None
+    letzte: Dict[str, Any] = {}
+    if ablage.protokoll_pfad.is_file():
+        for nummer, roh in enumerate(
+                _jsonl(ablage.protokoll_pfad.read_text(encoding="utf-8")), 1):
+            try:
+                zeile = json.loads(roh)
+            except json.JSONDecodeError as exc:
+                raise TageslaufError(
+                    f"{ablage.protokoll_pfad}: Zeile {nummer} ist kein JSON ({exc}) — "
+                    "ohne lesbares Protokoll ist der gefuehrte Stand nicht bestimmt") from exc
+            if isinstance(zeile, dict) and zeile.get("uebernommen"):
+                letzte_roh, letzte = roh, zeile
+    return {
+        "schema_version": 1,
+        "gefuehrter_tag": letzte.get("heute") if letzte_roh is not None else None,
+        "letzte_gruene_zeile_sha256": (
+            _zeilen_hash(letzte_roh) if letzte_roh is not None else None),
+        "stand_manifest_sha256": _datei_hash(ablage.stand / MANIFEST_DATEI),
+        "config_sha256": _datei_hash(config_pfad if config_pfad is not None
+                                     else ablage.config_pfad),
+    }
+
+
 def _pruefe_bezeugte_eingaenge(
     ablage: Ablage, zeilen: List[Dict[str, Any]], *, aufschalten: bool = False,
 ) -> None:
@@ -1361,8 +1500,21 @@ def _eingang_eingerechnet(ablage: Ablage, stichtag: _dt.date, police_ids) -> Opt
 def _stand_bauen(
     config: BestandConfig, config_pfad: Path, ablage: Ablage, heute: _dt.date,
     zeichner: Zeichner, *, aufschalten: bool = False,
+    zugangsprobe_fall: Optional[str] = None,
+    kern_version: Optional[str] = None,
+    code: Optional[Dict[str, str]] = None,
 ) -> Tuple[Path, Dict[str, Any]]:
-    """Den Stand fuer ``heute`` im Arbeitsverzeichnis erzeugen (noch nicht uebernommen)."""
+    """Den Stand fuer ``heute`` im Arbeitsverzeichnis erzeugen (noch nicht uebernommen).
+
+    ``zugangsprobe_fall``: nur in der Kopie einer Zugangsprobe — der Eingang
+    dieses Falls tritt dort OHNE Zugangsabnahme ein, denn ihre Differenz
+    ist erst die Grundlage der Abnahme (ADR-022). Jeder andere Eingang
+    braucht sie auch in der Kopie.
+
+    ``kern_version``/``code``: Kern-Version und Code-Stand DIESES Laufs
+    (:func:`code_stand`) — beim tatsaechlichen Eintritt eines Eingangs
+    gegen seine Zugangsabnahme gehalten.
+    """
     betriebsbeginn = config.tagesbetrieb.betriebsbeginn
     assert betriebsbeginn is not None
     # Kein gezogener Anfangsbestand mehr (ADR-020): Der Stand beginnt leer,
@@ -1382,6 +1534,7 @@ def _stand_bauen(
         ablage.uebernahme, config, schluesselring=zeichner.ring,
         ordnung=zeichner.ordnung,
         bezeugt=set(bezeugte_eingaenge(zeilen, aufschalten=aufschalten).values()))
+    alle_uebernahmen = list(uebernahmen)
     # Ein vorausdatierter Eingang RUHT bis zu seinem Stichtag (Angriffsrunde
     # nach T27): Gebucht wird, was geschehen ist. Vorher brach jeder Lauf
     # davor rot ab, und der ganze Betrieb stand bis zum Stichtag still —
@@ -1471,6 +1624,45 @@ def _stand_bauen(
             )
         eingaben[f"uebernahme:{ueb.fall}"] = ueb.manifest_pfad
 
+    # Ohne A-B2 kein Eintritt (ADR-022, Entscheid des Maintainers
+    # 2026-09-30): Ein Eingang, den noch kein gruener Lauf aufgenommen hat,
+    # tritt nur ein, wenn seine Zugangsabnahme DIESEN Eingang und DIESEN
+    # gefuehrten Stand bindet — den, auf dem die Probe lief. Ein spaeterer
+    # Lauf fragt nicht mehr: Der Stand ist dann weitergelaufen, weil der
+    # Eingang gefuehrt wird. Gerechnet wird der Stand VOR diesem Lauf, auf
+    # der eingefrorenen Config, die er benutzt. Gefragt wird NACH den Regeln
+    # der gefuehrten Zeit oben: Ein Eingang, der ohnehin nie eintreten kann,
+    # bekommt deren Meldung, nicht die der Abnahme — und fuer JEDEN neuen
+    # Eingang, auch einen wartenden: Seine Aufnahme ist sein Eintritt.
+    gesichtet = gesichtete_eingaenge(zeilen, aufschalten=aufschalten)
+    stand_sha: Optional[str] = None
+    for ueb in alle_uebernahmen:
+        if ueb.eingang_sha256 in gesichtet or ueb.fall == zugangsprobe_fall:
+            continue
+        if stand_sha is None:
+            from rechner_pipeline.models.zugangsprobe import stand_sha256
+
+            stand_sha = stand_sha256(ablage_stand(ablage, config_pfad=config_pfad))
+        pruefe_zugangsabnahme(ueb, stand_sha, schluesselring=zeichner.ring,
+                              ordnung=zeichner.ordnung)
+    # Der TATSAECHLICHE Eintritt (Block F, Nachbesserung, Pruefer-Befund 2):
+    # Ein vorausdatierter Eingang wird wartend aufgenommen und tritt erst an
+    # seinem Stichtag in die Buecher. Die Stand-Bindung oben galt der
+    # Aufnahme; bis zum Eintritt laeuft die Ablage weiter — das ist Betrieb.
+    # Was sich durch den Betrieb NICHT aendert, darf sich bis dahin auch
+    # sonst nicht geaendert haben: Config, Kern und Code. Sonst traete der
+    # Zugang auf einem Stand ein, auf dem niemand ihn geprobt hat (Config
+    # nach der wartenden Aufnahme getauscht: Exit 0). Gefragt wird jeder
+    # Eingang, den dieser Lauf zum ersten Mal FUEHRT — auch einer, der ohne
+    # Wartezeit eintritt (dann ist es die zweite Haelfte derselben Frage).
+    gefuehrt_vorher = gesichtete_eingaenge(zeilen, aufschalten=aufschalten, wartende=False)
+    for ueb in uebernahmen:
+        if ueb.eingang_sha256 in gefuehrt_vorher or ueb.fall == zugangsprobe_fall:
+            continue
+        pruefe_eintritt(ueb, config_sha256=_datei_hash(config_pfad),
+                        kern_version=kern_version, code=code or {},
+                        schluesselring=zeichner.ring, ordnung=zeichner.ordnung)
+
     zugaenge = neugeschaeft_zwischen(config, betriebsbeginn, heute)
     ergebnis = fortschreiben(
         basis, config, heute, zugaenge=zugaenge, merkmale=merkmale,
@@ -1543,8 +1735,11 @@ def _stand_bauen(
             schichten is not None),
         # Fall-Bezug jeder Uebernahme (Konzept, Abschnitt 6): Der Zugang
         # ist als datierter Eingang nachweisbar, nicht als anonyme Zeile.
+        # Mit Hash (ADR-022): Die Aufnahme als wartender Eingang ist sein
+        # Eintritt; ein spaeterer Lauf erkennt ihn daran wieder.
         "wartende_uebernahmen": [
-            {"fall": u.fall, "stichtag": u.stichtag.isoformat()} for u in wartend],
+            {"fall": u.fall, "stichtag": u.stichtag.isoformat(),
+             "eingang_sha256": u.eingang_sha256} for u in wartend],
         "uebernahmen": [
             {"fall": u.fall, "stichtag": u.stichtag.isoformat(),
              "vertraege": int(len(u.bestand)), "snapshot_sha256": u.snapshot_sha256,
@@ -2192,9 +2387,16 @@ def tageslauf(
     zeichnungsordnung: Optional[Path] = None,
     image_digest: Optional[str] = None,
     aufschalten: bool = False,
+    zugangsprobe_fall: Optional[str] = None,
 ) -> Tuple[int, Dict[str, Any]]:
     """Den Tag ``heute`` fuehren — unter der Prozess-Sperre der Ablage
     (Review T22-03); siehe :func:`_tageslauf`.
+
+    ``zugangsprobe_fall``: NUR fuer ``betrieb.zugangsprobe`` auf ihrer
+    gekennzeichneten Kopie (:data:`ZUGANGSPROBE_KOPIE_DATEI`) — der Eingang
+    dieses Falls tritt dort ohne Zugangsabnahme ein. Kein Kommandozeilen-
+    Schalter: Der naechtliche Lauf kennt ihn nicht, und auf einer echten
+    Ablage verweigert er.
 
     ``schluessel``/``zeichnungsordnung``: der Betriebsschluessel, mit dem
     jede Protokollzeile gezeichnet und die Kette geprueft wird
@@ -2209,6 +2411,17 @@ def tageslauf(
     nicht an.
     """
     zeichner = betriebszeichner(ablage, schluessel, zeichnungsordnung)
+    kopie = ablage.wurzel / ZUGANGSPROBE_KOPIE_DATEI
+    if zugangsprobe_fall is None and kopie.exists():
+        raise TageslaufError(
+            f"{ablage.wurzel}: die Ablage ist die Kopie einer Zugangsprobe "
+            f"({kopie.name}) — auf ihr laeuft kein Betrieb. Ausweg: den Tageslauf "
+            "auf der produktiven Ablage fahren; die Kopie gehoert der Probe")
+    if zugangsprobe_fall is not None and not kopie.is_file():
+        raise TageslaufError(
+            f"{ablage.wurzel}: ein Probelauf ohne Zugangsabnahme nur auf der "
+            f"gekennzeichneten Kopie einer Zugangsprobe ({kopie.name} fehlt) — auf "
+            "einer echten Ablage tritt kein Eingang ohne A-B2 ein (ADR-022)")
     with lauf_sperre(ablage):
         # Eine angefangene Protokollzeile ist nie eine Zeile geworden —
         # sie faellt VOR allem anderen, sonst stirbt jeder Leser des
@@ -2227,7 +2440,7 @@ def tageslauf(
         _verwaiste_staende_entfernen(ablage)
         _raeume_schreibreste(ablage)
         return _tageslauf(ablage, heute, zeichner, image_digest=image_digest,
-                          aufschalten=aufschalten)
+                          aufschalten=aufschalten, zugangsprobe_fall=zugangsprobe_fall)
 
 
 def _tageslauf(
@@ -2237,6 +2450,7 @@ def _tageslauf(
     *,
     image_digest: Optional[str] = None,
     aufschalten: bool = False,
+    zugangsprobe_fall: Optional[str] = None,
 ) -> Tuple[int, Dict[str, Any]]:
     """Den Tag ``heute`` fuehren (Bibliotheksform des Kommandos).
 
@@ -2271,7 +2485,7 @@ def _tageslauf(
         eingefroren.write_bytes(config_pfad.read_bytes())
         return _tageslauf_mit_config(
             ablage, heute, eingefroren, zeichner, image_digest=image_digest,
-            aufschalten=aufschalten)
+            aufschalten=aufschalten, zugangsprobe_fall=zugangsprobe_fall)
 
 
 def _tageslauf_mit_config(
@@ -2282,6 +2496,7 @@ def _tageslauf_mit_config(
     *,
     image_digest: Optional[str],
     aufschalten: bool = False,
+    zugangsprobe_fall: Optional[str] = None,
 ) -> Tuple[int, Dict[str, Any]]:
     """Der Lauf auf der eingefrorenen Config (siehe :func:`_tageslauf`)."""
     from rechner_pipeline.kern import __version__ as kern_version
@@ -2329,21 +2544,19 @@ def _tageslauf_mit_config(
         "nachgeholt": nachgeholt,
         "config_sha256": _datei_hash(config_pfad),
         "kern_version": kern_version,
-        # Drei Angaben zum Image, jede mit dem benannten Zustand NICHT_ERFASST
-        # statt eines leeren Felds (ein leeres Feld liest sich wie ein
-        # Fehler): der Digest kommt aus .env, vom Menschen nach dem Pull
-        # eingetragen — der Container kennt ihn selbst nicht (kein Netz,
-        # kein Docker-Socket); Revision (Commit des Baus) und Tag traegt
-        # das Image bzw. compose.yml. Ausserhalb des Containers fehlen alle.
-        "image_digest": image_digest or NICHT_ERFASST,
-        "image_revision": os.environ.get("PLV_IMAGE_REVISION") or NICHT_ERFASST,
-        "image_tag": os.environ.get("PLV_IMAGE_TAG") or NICHT_ERFASST,
+        # Image-Angaben und Hash des Pakets (code_stand, Block F,
+        # Nachbesserung): Die Zugangsprobe haelt ihren eigenen Code-Stand
+        # gegen die letzte gruene Zeile, der Eintritt eines Eingangs den
+        # des Laufs gegen die Zugangsabnahme.
+        **code_stand(image_digest),
         "uebernommen": False,
     }
+    code = {f: zeile[f] for f in ("image_digest", "image_revision", "quellcode_sha256")}
     exit_code = EXIT_OK
     try:
         arbeit, zahlen = _stand_bauen(
-            config, config_pfad, ablage, heute, zeichner, aufschalten=aufschalten)
+            config, config_pfad, ablage, heute, zeichner, aufschalten=aufschalten,
+            zugangsprobe_fall=zugangsprobe_fall, kern_version=kern_version, code=code)
         zeile.update(zahlen)
         tabellen, geprueft, befunde = _wache(arbeit, config_pfad, heute)
         zeile["pb1"] = {
