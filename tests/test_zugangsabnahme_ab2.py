@@ -53,7 +53,7 @@ from rechner_pipeline.betrieb import uebernahme as ueb
 from rechner_pipeline.betrieb import zugangsprobe as zpb
 from rechner_pipeline.betrieb.tageslauf import EXIT_OK, Ablage, tageslauf
 from rechner_pipeline.models import zugangsprobe as zp
-from tests.freigabe_testschluessel import TESTKEY
+from tests.freigabe_testschluessel import BETRIEB_FREIGABEKEY, TESTKEY
 from tests.test_betrieb_uebernahme import PLV, STICHTAG, _fall, _mit_config
 from tests.zugangsabnahme_testhelfer import ab2_snapshot
 
@@ -230,7 +230,10 @@ def probe(tmp_path_factory):
 def _soll(fall: Path, arbeit: Path) -> zpb.Soll:
     eingang = arbeit / zpb.KOPIE_MIT / "uebernahme" / "probe-uebernahme"
     am4 = json.loads((eingang / "eingang.json").read_text(encoding="utf-8"))["snapshot_sha256"]
-    return zpb.lies_soll(fall, STICHTAG, ueb.zielnummern(eingang), am4_snapshot_sha256=am4)
+    from tests.freigabe_testschluessel import betriebsordnung
+
+    return zpb.lies_soll(fall, STICHTAG, ueb.zielnummern(eingang), am4_snapshot_sha256=am4,
+                         ordnung=betriebsordnung())
 
 
 # --------------------------------------------------------------------------- #
@@ -582,7 +585,7 @@ def test_ein_soll_ohne_werte_ist_kein_gruener_vergleich(probe, tmp_path):
 
 
 def _ab2_aus_beleg(fall: Path, beleg: dict, *, eingang_sha: "str | None" = None,
-                   am4_sha: "str | None" = None, schluessel: bytes = TESTKEY,
+                   am4_sha: "str | None" = None, schluessel: bytes = BETRIEB_FREIGABEKEY,
                    roh: "bytes | None" = None) -> str:
     """Den echten Beleg ablegen und einen A-B2-Snapshot, der ihn pinnt —
     ``eingang_sha``/``am4_sha`` setzen fremde Pins, ``schluessel`` zeichnet
@@ -846,7 +849,12 @@ def gatefall(tmp_path):
     der Betriebsrolle, deren Schluessel den Beleg zeichnet."""
     from rechner_pipeline.gates.abox_validate import main as pq3
     from tests.e2e_fixture import bereite_pk1_fall
-    from tests.freigabe_testschluessel import BETRIEBSKEY, BETRIEBSROLLE
+    from tests.freigabe_testschluessel import (
+        AKTUARIAT_GATES,
+        AKTUARIAT_ROLLE,
+        BETRIEBSKEY,
+        BETRIEBSROLLE,
+    )
     from tests.test_betrieb_uebernahme import am1_snapshot, am4_snapshot
     from tests.zeichnung_fixture import ordnung_schreiben, schluessel_anlegen
     from tests.zugangsabnahme_testhelfer import abnahmen_aus_fall, probenbeleg
@@ -891,6 +899,10 @@ def gatefall(tmp_path):
                           "schluesselklasse": "agent", "gates": []},
         BETRIEBSROLLE: {"schluessel_sha256": hashlib.sha256(BETRIEBSKEY).hexdigest(),
                         "schluesselklasse": "betrieb", "gates": []},
+        # Wer A-M1 und A-M4 gezeichnet hat: Das Gate haelt beide gegen
+        # DIESE Ordnung (Entscheid 2026-10-01).
+        AKTUARIAT_ROLLE: {"schluessel_sha256": hashlib.sha256(TESTKEY).hexdigest(),
+                          "schluesselklasse": "mensch", "gates": list(AKTUARIAT_GATES)},
     })
     return fall, am4, beleg, schluessel, testkey, ordnung
 
@@ -928,7 +940,8 @@ def test_mensch_betrieb_zeichnet_die_zugangsabnahme_mit_ihren_drei_belegen(gatef
     assert ledger["summary"]["snapshot_sha256"] == snapshot["snapshot_sha256"]
     ring = {hashlib.sha256(schluessel["mensch"].read_bytes()).hexdigest(): schluessel["mensch"].read_bytes()}
     daten, _, verifiziert = ueb.lies_abnahme_snapshot(
-        fall, "A-B2", snapshot["snapshot_sha256"], schluesselring=ring)
+        fall, "A-B2", snapshot["snapshot_sha256"], schluesselring=ring,
+        ordnung=json.loads(Path(ordnung).read_text(encoding="utf-8")))
     assert verifiziert is True and daten["gate"] == "A-B2"
 
 
@@ -1449,8 +1462,9 @@ def test_die_a_b2_freigabe_braucht_eine_rolle_mit_a_b2(tmp_path, ohne_naht, prob
     den sie keiner Rolle mit A-B2 zuordnet, zeichnet keine Zugangsabnahme,
     auch wenn seine Signatur stimmt.
 
-    Mutationsprobe: die Rollenpruefung in _zugangsabnahme_binden entfernen
-    -> die Registrierung geht durch -> rot."""
+    Mutationsprobe: uebernahme.zeichnende_rolle verweigert nie (die eine
+    Regel fuer A-M1, A-M4 und A-B2, Entscheid 2026-10-01; gerufen im Leser
+    und in _zugangsabnahme_binden) -> die Registrierung geht durch -> rot."""
     from tests.freigabe_testschluessel import FREMDER_SCHLUESSEL, TESTRING
 
     fall, stand, beleg = _welt_kopie(probe_mit_ab2, tmp_path / "w")

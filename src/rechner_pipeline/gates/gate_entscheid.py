@@ -133,6 +133,7 @@ from rechner_pipeline.models.zeichnung import (
     lade_zeichnungsordnung as _models_lade_zeichnungsordnung,
     zeichnungsrolle as _models_zeichnungsrolle,
     gueltige_rollenkennung,
+    zeichnende_rolle_fehler,
     zeichnung_fuer,
 )
 #: Die drei aktuariellen Abnahmen desselben migrierten Bestands. Sie
@@ -2025,6 +2026,16 @@ def main(argv: Optional[List[str]] = None):
             am1_daten = am1_kette[am1_pin][1] if am1_pin in am1_kette else None
             soll_fehler = zp_mod.soll_bindung_fehler(
                 probe.get("abnahmen"), am4=am4_daten, am1=am1_daten)
+            # Wer A-M4 und A-M1 gezeichnet hat, gegen die Ordnung DIESER
+            # Zeichnung (Entscheid 2026-10-01): dieselbe Regel wie die
+            # Vorbedingungen von A-M4 und wie Registrierung und Probe.
+            for abnahme_gate, abnahme_daten in (("A-M4", am4_daten), ("A-M1", am1_daten)):
+                if abnahme_daten is None:
+                    continue
+                _, rollen_fehler = zeichnende_rolle_fehler(
+                    abnahme_daten, abnahme_gate, zeichnungsordnung)
+                if rollen_fehler:
+                    soll_fehler.append(f"{abnahme_gate}-Snapshot: {rollen_fehler}")
             if am1_fehler or am1_spitzen != [am1_pin] or (
                     am1_daten is not None and am1_daten.get("entscheid") != "angenommen"):
                 soll_fehler.append(
@@ -2424,10 +2435,10 @@ def main(argv: Optional[List[str]] = None):
                     "--freigabe-schluessel <externe-datei>)",
                 )
             assert aq1_spitze is not None
-            zf = _zeichnungsfehler(
-                zeichnungsordnung, "A-Q1",
-                aq1_spitze.get("freigabe", {}).get("schluessel_sha256", ""),
-            )
+            # Die eine Regel der Leser (models.zeichnung, Entscheid
+            # 2026-10-01): Rolle aus dem Schluessel, Gate erlaubt, und das
+            # Rollenfeld des Snapshots ist genau diese Rolle.
+            _, zf = zeichnende_rolle_fehler(aq1_spitze, "A-Q1", zeichnungsordnung)
             if zf:
                 return _sperre(
                     "vorbedingung",
@@ -2493,10 +2504,7 @@ def main(argv: Optional[List[str]] = None):
                         "<text> --freigabe-schluessel <externe-datei>)",
                     )
                 assert spitze_a is not None
-                zf = _zeichnungsfehler(
-                    zeichnungsordnung, abnahme_gate,
-                    spitze_a.get("freigabe", {}).get("schluessel_sha256", ""),
-                )
+                _, zf = zeichnende_rolle_fehler(spitze_a, abnahme_gate, zeichnungsordnung)
                 if zf:
                     return _sperre(
                         "vorbedingung",

@@ -138,11 +138,14 @@ ein Eingang ohne sie tritt nicht ein.
 ```
 python -m rechner_pipeline.betrieb.zugangsprobe --stand ~/apps/plv/daten \
     --fall faelle/<fall> --stichtag 2026-01-01 [--bis <ISO>] \
-    --freigabe-schluessel <pfad-zum-freigabeschluessel> \
+    --freigabe-schluessel <schluessel-mensch-aktuariat> \
     --schluessel ~/apps/plv/schluessel/betrieb.key \
     --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json \
     [--arbeit <leeres-verzeichnis-ausserhalb-von-daten>]
 ```
+
+   Die Probe liest A-M4 und den A-M1, den A-M4 pinnt; sie braucht den
+   Schluessel der Rolle, die beide signiert hat (`mensch/aktuariat`).
 
 2. **Zugangsabnahme A-B2** — `mensch/betrieb` zeichnet (in der Vorfuehrung
    mit Schluesselklasse `simulation` unter Mandat); `agent/betrieb` legt
@@ -158,9 +161,19 @@ python -m rechner_pipeline.betrieb.zugangsprobe --stand ~/apps/plv/daten \
 ```
 python -m rechner_pipeline.gates.gate_entscheid --fall faelle/<fall> \
     --gate A-B2 --entscheid angenommen --entscheider "<Name>" \
-    --begruendung "..." --freigabe-schluessel <schluessel-mensch-betrieb> \
+    --begruendung "..." --freigabe-schluessel <schluessel-mensch-aktuariat> \
+    --freigabe-schluessel <schluessel-mensch-betrieb> \
     --zeichnungsordnung <ordnung> [--mandat <mandat>]
 ```
+
+   Der Schalter steht zweifach: Das Gate prueft die Signaturen der A-M4-
+   und A-M1-Snapshots, auf denen das Soll der Probe steht (Schluessel von
+   `mensch/aktuariat`), und zeichnet selbst mit dem zuletzt genannten
+   (`mensch/betrieb`). Die Ordnung DIESES Aufrufs nennt auch
+   `mensch/aktuariat` mit A-M1 und A-M4, unter demselben Namen wie die
+   Ordnung, unter der A-M1 und A-M4 gezeichnet wurden — das Gate haelt die
+   Rolle und Schluesselklasse beider Snapshots gegen sie (ADR-022,
+   Nachtrag 2026-10-01).
 
 3. **Registrierung** — auf DERSELBEN Ablage, ohne dass dazwischen ein
    Tageslauf den gefuehrten Stand bewegt oder die Config getauscht wird,
@@ -169,9 +182,18 @@ python -m rechner_pipeline.gates.gate_entscheid --fall faelle/<fall> \
    und den Stand der Ablage gegen die Hashes, die A-B2 bindet, und legt die
    gepruefte Abnahme als `zugangsabnahme.json` (gezeichnet) neben den
    Eingang. Den A-B2-Snapshot liest sie aus dem Gate-Beleg des Falls oder
-   aus `--zugangsabnahme <sha256>`; seine Freigabe muss von einem
-   Schluessel stammen, dessen Rolle die Zeichnungsordnung fuer A-B2
-   berechtigt. Tritt der Eingang erst spaeter ein (Stichtag in der
+   aus `--zugangsabnahme <sha256>`. Dieselbe Regel gilt fuer jede Abnahme,
+   auf der der Zugang steht (A-M1, A-M4, A-B2; ADR-022, Nachtrag
+   2026-10-01): Die Freigabe des Snapshots muss von einem Schluessel
+   stammen, dessen Rolle die Zeichnungsordnung fuer genau dieses Gate
+   berechtigt, und der Snapshot muss genau diese Rolle tragen (die Rolle
+   ist die des Schluessels, nicht die behauptete) — Registrierung und
+   Zugangsprobe verweigern sonst. Die Ordnung unter `--zeichnungsordnung`
+   nennt deshalb neben `betrieb/tageslauf` auch die Rolle mit A-B2 und die
+   Rolle(n), deren Schluessel A-M1 und A-M4 signiert haben, jeweils mit
+   diesen Gates und unter demselben Namen wie die Ordnung, unter der
+   gezeichnet wurde. Massgeblich ist die Ordnung zum Zeitpunkt der
+   Registrierung; der Eintritt prueft die Rollen nicht neu. Tritt der Eingang erst spaeter ein (Stichtag in der
    Zukunft), haelt der Tageslauf am Stichtag Config, Kern-Version und
    Code-Stand gegen die Abnahme: Wer dazwischen Config oder Image tauscht,
    braucht Probe und A-B2 neu.
@@ -179,10 +201,18 @@ python -m rechner_pipeline.gates.gate_entscheid --fall faelle/<fall> \
 ```
 python -m rechner_pipeline.betrieb.uebernahme --stand ~/apps/plv/daten \
     --fall faelle/<fall> --stichtag 2026-01-01 \
-    --freigabe-schluessel <pfad-zum-freigabeschluessel> \
+    --freigabe-schluessel <schluessel-mensch-aktuariat> \
+    --freigabe-schluessel <schluessel-mensch-betrieb> \
     --betriebsschluessel ~/apps/plv/schluessel/betrieb.key \
     --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json
 ```
+
+Der Schalter steht zweifach, weil die Registrierung die Signaturen aller
+drei Abnahmen prueft: A-M1 und A-M4 (Schluessel von `mensch/aktuariat`)
+und A-B2 (Schluessel von `mensch/betrieb`). Mit nur einem verweigert sie
+am anderen Snapshot ("nicht bereitgestellter Schluessel"). Auch die
+Schluesselklasse ist die der Ordnung: Gibt sie einer Rolle `simulation`,
+muss der Snapshot das sagen und sein Mandat tragen.
 
 Beim Eintritt — dem ersten gruenen Lauf, der den Eingang aufnimmt, gefuehrt
 oder (bei einem Stichtag in der Zukunft) wartend — haelt der Tageslauf
@@ -270,7 +300,8 @@ uebergeben. Ohne A-B2 baut die Routine nichts auf.
 systemctl --user stop tageslauf.timer
 python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
     --fall faelle/<fall> --stichtag 2026-01-01 \
-    --freigabe-schluessel <pfad-zum-freigabeschluessel> \
+    --freigabe-schluessel <schluessel-mensch-aktuariat> \
+    --freigabe-schluessel <schluessel-mensch-betrieb> \
     --betriebsschluessel ~/apps/plv/schluessel/betrieb.key \
     --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json \
     --zugangsabnahme <sha256-des-a-b2-snapshots>

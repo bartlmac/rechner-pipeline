@@ -207,7 +207,8 @@ offenliess und hier festgelegt wurde — jeweils mit Grund:
 10. **Wer A-B2 zeichnet, prueft die Registrierung.** Sie haelt den
     Fingerabdruck der Freigabe gegen die Zeichnungsordnung des Betriebs
     (``--zeichnungsordnung``): Die Rolle muss A-B2 in ihrer gates-Liste
-    tragen. Das Gate A-B2 dagegen haelt den Betriebsschluessel nicht; es
+    tragen (seit dem Nachtrag 2026-10-01 dieselbe Regel fuer A-M4 und
+    A-M1). Das Gate A-B2 dagegen haelt den Betriebsschluessel nicht; es
     prueft Form und Rolle der Betriebszeichnung der Probe und sagt in
     seiner Ausgabe, dass es die Signatur nicht verifiziert hat
     (``betriebssignatur``) — die Registrierung rechnet sie nach.
@@ -227,8 +228,153 @@ Zugang verglichen wird, ist vorbereitet
 Ob Abschluss oder Abnahme die Konvention wechselt, entscheidet das
 Aktuariat, nicht die Probe.
 
-**Offen, gleiches Muster fuer A-M4 (nicht gebaut):** Die Registrierung
-prueft Signatur, Kette und exakte Rollenmenge des A-M4-Snapshots, aber
-nicht, ob der Fingerabdruck seiner Freigabe in der Zeichnungsordnung einer
-Rolle mit A-M4 gehoert. Fuer A-B2 tut sie es; fuer A-M4 ist es derselbe
-Schritt und steht aus.
+## Nachtrag 2026-10-01: eine Rollenregel fuer jede Abnahme, auf der etwas gruendet
+
+Entscheid des Maintainers: Die Rollenpruefung der A-M4-Freigabe wird an
+die der A-B2-Freigabe angeglichen, als Klasse. Die Invariante: **Wer einen
+Abnahme-Snapshot liest, um darauf etwas zu gruenden, haelt die ZEICHNENDE
+Rolle gegen die Ordnung — und die Rolle ist die des Schluessels, nicht die
+behauptete.**
+
+Vorher hielt nur die Registrierung den Fingerabdruck der A-B2-Freigabe
+gegen die Zeichnungsordnung (Punkt 10). A-M4 und den A-M1-Snapshot, den
+A-M4 pinnt, las der Betrieb mit Schema, Kette, Belegrollenmenge und
+Freigabesignatur — aber nicht mit der Frage, ob der signierende Schluessel
+einer Rolle gehoert, die das Gate zeichnen darf. Ein gueltig signierter
+A-M4-Snapshot eines Schluessels, dem die Ordnung nur A-B2 gibt,
+begruendete eine Uebernahme. Das Gate A-B2 las A-M4 und A-M1 fuer die
+Soll-Bindung der Probe ganz ohne Rollenpruefung, das Gate A-M4 seine
+Vorbedingungen (A-Q1, A-M1, im Bestands-Scope A-M2, A-M3) mit Rollen-,
+aber ohne Rollenfeldpruefung. Und kein Leser verglich das Rollenfeld eines
+Snapshots mit der Rolle seines Schluessels.
+
+Die Menge (Gate x Lesestelle):
+
+| Lesestelle | A-Q1 | A-M1 | A-M2/A-M3 | A-M4 | A-B2 |
+|---|---|---|---|---|---|
+| Registrierung (``uebernahme.eingang_anlegen``) | — | ja (Soll-Bindung, unter der Sperre) | — | ja | ja |
+| Registrierung in der Probenkopie (``probe_kopie``) | — | — | — | ja | — |
+| Zugangsprobe (``zugangsprobe.lies_soll``) | — | ja | — | ja | — |
+| Neuaufsetzen, vor dem Anlegen (``registrierung_vorbedingungen``) | — | — | — | ja | ja (``--zugangsabnahme`` oder Gate-Ledger) |
+| Gate A-B2 (``gates.gate_entscheid``, Soll-Bindung der Probe) | — | ja | — | ja | — |
+| Gate A-M4 (Vorbedingungen) | ja | ja | ja (Bestand) | — | — |
+| Eintritt im Tageslauf | — | — | — | — | — |
+
+In der Probenkopie gibt es noch keine A-B2 und keine Soll-Bindung; A-M1
+liest dort erst ``lies_soll``. Nach der Vorpruefung registriert das
+Neuaufsetzen wie jede Registrierung (erste Zeile).
+
+**Die Regel** ist EINE Funktion, ``models.zeichnung.zeichnende_rolle_fehler``
+— in ``models``, weil zwei Schichten sie lesen (Gates und Betrieb; keine
+neue Kante, ``code_karte`` befundfrei). Vier Fragen: Gibt die Ordnung dem
+Fingerabdruck der Freigabe eine Rolle (ohne Ordnung: keine Antwort, keine
+Abnahme)? Darf die Rolle das Gate zeichnen? Tragen ``rolle`` und
+``zeichnung.rolle`` des Snapshots genau diese Rolle? Ist
+``zeichnung.schluesselklasse`` die Klasse, die die Ordnung der Rolle gibt,
+und traegt eine laut Ordnung simulierte Rolle ihr Mandat? Verstoss ist
+Verweigerung mit Meldung (beide Rollen bzw. Klassen, die laut Ordnung
+berechtigten Rollen) und Ausweg. Die vierte Frage kam in der Angriffsrunde
+desselben Tages dazu: Vorher kam die Klasse aus dem Snapshot. Gab die
+Ordnung ``simulation`` und behauptete der Snapshot ``mensch`` ohne Mandat,
+wurde registriert, die Mandatspflicht griff nie, und Eingang und Seite
+meldeten eine menschliche Zeichnung. Das Gate schreibt beim Zeichnen die
+Klasse der Ordnung (``zeichnung_fuer``); der Leser ist auch hier die
+zweite Haelfte. Der Betrieb ruft sie ueber
+``uebernahme.zeichnende_rolle`` in seinem einen Leser
+``lies_abnahme_snapshot`` (``ordnung`` Pflicht ohne Default), das Gate an
+jeder fremden Abnahme, auf die es gruendet.
+
+**Die dritte Frage ist die zweite Haelfte einer Regel, die es schon gab.**
+Beim Zeichnen bestimmt das Gate die Rolle aus dem Schluessel und schreibt
+sie in beide Felder (``gates.gate_entscheid``: ``rolle = bestimmt``;
+``zeichnung_fuer``; ein widersprechendes ``--rolle`` ist ein
+Bedienfehler). Jeder echte Produzent erfuellt die Gleichheit also. Der
+Leser haelt sie gegen SEINE Ordnung — und das ist nicht immer dieselbe:
+
+* Das Gate haelt gegen die Ordnung, unter der es gerade zeichnet
+  (``--zeichnungsordnung`` des Gate-Aufrufs: bei A-B2 die Ordnung der
+  zeichnenden Rolle ``mensch/betrieb``, bei A-M4 die des Aktuars).
+* Der Betrieb haelt gegen die Ordnung, die dem Betriebsschluessel seine
+  Rolle gibt (``--zeichnungsordnung`` von Registrierung und Probe).
+
+Eine Abnahme muss also unter JEDER Ordnung, die auf ihr gruendet, von
+einer berechtigten Rolle mit demselben Namen stammen. Nennen zwei
+Ordnungen dieselbe Rolle verschieden, verweigert der Leser — er kann
+nicht wissen, welche recht hat. Fuer den Betrieb heisst das: Seine Ordnung
+nennt neben ``betrieb/tageslauf`` und ``mensch/betrieb`` (A-B2) auch die
+Rolle(n), deren Schluessel A-M1 und A-M4 signiert haben, unter demselben
+Namen wie die Ordnung des Falls. Bereits registrierte Eingaenge sind nicht
+betroffen; Neuregistrierung und Neuaufsetzen schon.
+
+**Konvention fuer den Eintritt (entschieden, nicht gebaut).** Massgeblich
+ist die Ordnung zum Zeitpunkt der Registrierung. Die Registrierung haelt
+die Rolle jeder Abnahme gegen die Ordnung, schreibt das Ergebnis in
+``eingang.json`` (A-M4: Rolle, die nach der Regel die des Schluessels IST,
+und Praefix des Fingerabdrucks) und ``zugangsabnahme.json`` (A-B2:
+``freigabe_rolle``) und zeichnet beides mit dem Betriebsschluessel. Ein
+spaeterer Entzug der Berechtigung wirkt nicht zurueck — wie bei jeder
+Zeichnung. Der Eintritt liest keinen Snapshot; eine Ratsche haelt das.
+*Verworfen:* die Neupruefung beim Eintritt gegen die dann geltende Ordnung.
+Sie machte einen bereits gezeichneten Satz von einer spaeter geaenderten
+Datei abhaengig: Derselbe Eingang traete je nach Tag ein oder nicht, und
+der Betrieb haette zwei Wahrheiten ueber dieselbe Registrierung.
+
+*Der 16-Zeichen-Praefix* (``eingang.json``, ``zeichnung.schluessel_sha256``)
+ist dabei keine Schwaeche: Er ist Anzeige, kein Pruefanker. Gebunden ist
+der volle Fingerabdruck ueber den vollen Snapshot-Hash im gezeichneten
+Eingang — der Snapshot traegt ihn in seiner signierten Freigabe. Eine
+Verwechslung zweier Schluessel ueber 64 Bit setzte voraus, dass jemand
+einen zweiten Schluessel mit gleichem Praefix erzeugt UND der Leser den
+Praefix als Anker nimmt; keiner tut das. Ein Feld mit dem vollen
+Fingerabdruck waere eine zusaetzliche Angabe im Eingang (ohne Schemabruch
+moeglich), wird aber erst gebraucht, wenn jemand aus der Ablage allein
+ohne den Fall pruefen soll — dann als eigener Vorschlag.
+
+**Test-Schluessel.** Die Suite bildet die produktive Lage ab: getrennte
+Schluessel fuer ``mensch/aktuariat`` (A-M1 bis A-M4) und ``mensch/betrieb``
+(A-B2), die Snapshots tragen das Rollenfeld ihres Schluessels
+(``tests/freigabe_testschluessel.py``). Die Standardrolle der Gate-Tests
+zeichnet die Gates des Falls, nicht A-B1/A-B2.
+
+Kein Vertrag aendert sich: Snapshot, ``eingang.json`` und
+``zugangsabnahme.json`` behalten Form und Schema-Version; verschaerft ist,
+welche Snapshots Gate und Betrieb als Grundlage annehmen. Die Felder
+``rolle`` und ``schluesselklasse`` im Eingang behalten Form und
+Wertebereich; fuer neu registrierte Eingaenge sind sie zusaetzlich die der
+Ordnung zum Zeitpunkt der Registrierung. Ein Eingang aus der Zeit davor
+traegt die Angabe seines Snapshots; kein Leser behandelt beide
+verschieden, deshalb keine neue Schema-Version.
+
+**Neuaufsetzen.** Die Vorbedingungen der Registrierung, die keinen Ort
+brauchen (``uebernahme.registrierung_vorbedingungen``: A-M4 und A-B2 samt
+Regel, Schema, Tabellen und Uebernahmebeleg gegen den Beleggraphen), prueft
+``betrieb.neuaufsetzen`` VOR dem Anlegen der neuen Ablage — dieselbe
+Funktion, die ``eingang_anlegen`` ruft. Was nur gegen die neue Ablage
+pruefbar ist (Bindung der A-B2 an Eingang und Stand, A-M1 der
+Soll-Bindung, Nebentabellen, P-B1, Lesbarkeit), scheitert danach; dann
+entfernt die Routine ihre eigene, nie veroeffentlichte Vorbereitung
+(``betrieb._loeschen``, Name dieses Aufrufs, ohne Provenienz). Vorher blieb
+``<stand>.neu-<stempel>`` liegen, und der naechste Aufruf verweigerte mit
+"Rest eines abgebrochenen Aufbaus". ``tageslauf.SCHREIBZIELE`` deckt dieses
+Staging nicht ab: Die Tabelle gilt den atomaren Schreibern UNTER der
+Ablage; die Vorbereitung liegt daneben und gehoert keinem Lauf.
+
+**Grenze der Aussage.** Die Freigabe ist ein HMAC. Wer registriert und den
+Ring haelt, kann jedes Rollenfeld und jede Klasse gueltig neu signieren:
+Die Regel schuetzt gegen abweichende Ordnungen und fremde Snapshots, nicht
+gegen den Inhaber des Rings.
+
+Instrumente (``tests/test_abnahme_rolle_klasse.py``,
+``tests/test_neuaufsetzen_vorbedingungen_klasse.py``): je Gate und
+Lesestelle Angriffe (Ordnung ohne das Gate; gefaelschtes, neu signiertes
+Rollenfeld oder Klasse; eine Ordnung, die die Rolle anders nennt oder ihr
+eine andere Klasse gibt; Schluessel ohne Rolle) mit Positivkontrollen; ein
+Zaehltest, der Registrierung, Probe, Eintritt, Export und Neuaufsetzen
+faehrt und jedes lesende Oeffnen unter ``entscheide/`` seinem Aufrufer
+zuschreibt (``==`` gegen die erlaubten Leser; Positivkontrolle: ein
+kuenstlicher Leser mit Konkatenation und glob); Ratschen mit ``==`` ueber
+die Leseraufrufe des Betriebs, die Regel- und Kettenaufrufe im Gate, jede
+Erwaehnung von ``entscheide`` im Betrieb und die Test-Ordnungen (kein
+Schluessel fuer Fall- und Betriebsabnahmen zugleich, kein neuer ``'*'``),
+je mit Positivkontrolle; je Verweigerungsursache des Neuaufsetzens ein
+Zaehltest der Reste (``==``); Mutationsproben je Regelstelle.

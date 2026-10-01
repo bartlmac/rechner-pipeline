@@ -185,11 +185,20 @@ def test_der_betriebseingang_verifiziert_die_signatur_und_der_tageslauf_verlangt
 def test_ein_altsnapshot_ohne_schluesselklasse_tritt_nicht_ein(tmp_path):
     """Schema 6 traegt keine Schluesselklasse. Lesen (Seite) geht weiter —
     registriert wird nur Schema 7: die Zeichnung ist Teil des Vertrags.
-    Mutationsprobe: die Schema-Pruefung in eingang_anlegen entfernen -> rot."""
+
+    Seit dem Entscheid 2026-10-01 faellt ein Altsnapshot schon an der
+    Rollenregel: Schema 6 erlaubt als Rollenfeld nur die Altform ohne Ebene
+    ('mensch'/'agent'), und das ist nie die Rolle eines Schluessels nach
+    Ordnung Schema 2. Die Schema-Sperre in eingang_anlegen bleibt als
+    zweite Sicherung stehen; erreichbar ist sie fuer Schema 6 nicht mehr.
+    Mutationsprobe: in models.zeichnung.zeichnende_rolle_fehler den
+    Vergleich der Rollenfelder entfernen -> rot."""
     alt = _fall_mit_snapshot(tmp_path / "alt", "alt", schema=6)
-    z = ueb.pruefe_am4_snapshot(alt, json.loads((alt / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").read_text())["summary"]["snapshot_sha256"])
+    sha = json.loads((alt / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json")
+                     .read_text())["summary"]["snapshot_sha256"]
+    z = ueb.zeichnung_aus_snapshot(alt, sha)      # der Leseweg der Seite
     assert z["schema_version"] == 6 and z["schluesselklasse"] == "nicht ausgewiesen"
-    with pytest.raises(ueb.UebernahmeError, match="Schema 6.*Schema 7"):
+    with pytest.raises(ueb.UebernahmeError, match="behauptet als Rolle.*'mensch'.*mensch/aktuariat"):
         ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), alt, STICHTAG)
 
 
@@ -202,4 +211,5 @@ def test_der_schluesselring_weist_schluessel_im_vertrauensraum_ab(tmp_path):
     assert ring == {} and any("innerhalb des Vertrauensraums" in f for f in fehler)
     aussen = tmp_path / "p9.key"; aussen.write_bytes(TESTKEY); aussen.chmod(0o600)
     ring, fehler, aktiv = fg.lade_schluesselring([str(aussen)], ausserhalb=fall)
-    assert fehler == [] and ring == TESTRING and aktiv == next(iter(TESTRING))
+    fp = hashlib.sha256(TESTKEY).hexdigest()
+    assert fehler == [] and ring == {fp: TESTKEY} and aktiv == fp

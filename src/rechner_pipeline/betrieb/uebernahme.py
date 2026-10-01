@@ -522,10 +522,12 @@ def naechstes_band(uebernahme: Path, anzahl: int) -> Tuple[int, int]:
     return von, bis
 
 
-def pruefe_am4_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[str, Any]:
+def pruefe_am4_snapshot(
+    fall: Path, snapshot_sha256: Optional[str], *, ordnung: Optional[Mapping[str, Any]],
+) -> Dict[str, Any]:
     """Die Zeichnungsangaben des geprueften Snapshots (siehe
     :func:`lies_am4_snapshot`)."""
-    daten, name, verifiziert = lies_am4_snapshot(fall, snapshot_sha256)
+    daten, name, verifiziert = lies_am4_snapshot(fall, snapshot_sha256, ordnung=ordnung)
     return _zeichnung_aus_daten(daten, name, verifiziert=verifiziert)
 
 
@@ -553,22 +555,53 @@ _ABNAHME = {
 def lies_am4_snapshot(
     fall: Path, snapshot_sha256: Optional[str], *,
     schluesselring: Optional[Mapping[str, bytes]] = None,
+    ordnung: Optional[Mapping[str, Any]],
 ) -> Tuple[Dict[str, Any], str, bool]:
     """Den A-M4-Snapshot einer Uebernahme pruefen (siehe :func:`lies_abnahme_snapshot`)."""
-    return lies_abnahme_snapshot(fall, "A-M4", snapshot_sha256, schluesselring=schluesselring)
+    return lies_abnahme_snapshot(fall, "A-M4", snapshot_sha256, schluesselring=schluesselring,
+                                 ordnung=ordnung)
+
+
+def zeichnende_rolle(
+    daten: Mapping[str, Any], gate: str, ordnung: Optional[Mapping[str, Any]], name: str,
+) -> str:
+    """Die Rolle, die einen Abnahme-Snapshot gezeichnet hat — oder Verweigerung.
+
+    Der Betriebsweg der EINEN Regel ``models.zeichnung.zeichnende_rolle_fehler``
+    (Entscheid des Maintainers 2026-10-01; dieselbe Funktion haelt das Gate
+    fuer seine Vorbedingungen): Die Rolle kommt aus dem Fingerabdruck der
+    Freigabe ueber die Zeichnungsordnung des Betriebs, sie muss ``gate``
+    zeichnen duerfen, und der Snapshot muss genau sie als Rolle tragen. Bis
+    zum Entscheid hielt der Betrieb nur die A-B2-Freigabe gegen die Ordnung;
+    ein gueltig signierter A-M4-Snapshot eines Schluessels ohne A-M4
+    begruendete eine Uebernahme. Die Signatur sagt, WELCHER Schluessel
+    gezeichnet hat; erst die Ordnung sagt, wer das ist und ob er es darf.
+    """
+    from rechner_pipeline.models.zeichnung import zeichnende_rolle_fehler
+
+    rolle, fehler = zeichnende_rolle_fehler(
+        dict(daten), gate, dict(ordnung) if isinstance(ordnung, Mapping) else None)
+    if fehler is not None or rolle is None:
+        raise UebernahmeError(f"{name}: {_ABNAHME[gate][0]}: {fehler}")
+    return rolle
 
 
 def lies_abnahme_snapshot(
     fall: Path, gate: str, snapshot_sha256: Optional[str], *,
     schluesselring: Optional[Mapping[str, bytes]] = None,
+    ordnung: Optional[Mapping[str, Any]],
 ) -> Tuple[Dict[str, Any], str, bool]:
-    """Den Abnahme-Snapshot (A-M4 oder A-B2) einer Uebernahme pruefen.
+    """Den Abnahme-Snapshot (A-M1, A-M4 oder A-B2) einer Uebernahme pruefen.
 
-    Eine Pruefung fuer beide Abnahmen, die eine Registrierung verlangt
+    Eine Pruefung fuer alle Abnahmen, auf denen ein Zugang steht
     (ADR-022): Schema, Selbstadressierung, Gate, Entscheid, Fall, exakte
-    Rollenmenge, geltende Spitze der Kette dieses Gates, Freigabesignatur.
+    Belegrollenmenge (``models.belegrollen``: welche Pflichtbelege der
+    Snapshot pinnt), geltende Spitze der Kette dieses Gates,
+    Freigabesignatur — und die zeichnende Rolle gegen die Zeichnungsordnung
+    des Betriebs (:func:`zeichnende_rolle`). ``ordnung`` ist deshalb
+    Pflicht: Ein Leser ohne Ordnung waere ein Leseweg ohne Rollenpruefung.
     Die Zugangsabnahme wird nicht schwaecher gelesen als die
-    Migrationsabnahme — zwei Lesewege waeren zwei Regeln.
+    Migrationsabnahme, und umgekehrt — zwei Lesewege waeren zwei Regeln.
 
     Review T22-06: ``eingang_anlegen`` las irgendeinen 64-stelligen Wert aus
     der editierbaren Gate-Summary, der Snapshot war optional, und
@@ -659,6 +692,10 @@ def lies_abnahme_snapshot(
         if sig_fehler:
             raise UebernahmeError(f"{pfad.name}: " + "; ".join(sig_fehler))
         verifiziert = True
+    # Der dritte Zeuge: Wer gezeichnet hat, muss das Gate zeichnen duerfen
+    # (Entscheid 2026-10-01). Nach der Signatur — eine Rolle aus einem
+    # Fingerabdruck, dessen Signatur nicht stimmt, sagte nichts.
+    zeichnende_rolle(daten, gate, ordnung, pfad.name)
     return daten, pfad.name, verifiziert
 
 
@@ -1012,22 +1049,13 @@ def _zugangsabnahme_binden(
 
     ausweg = ("Ausweg: Zugangsprobe auf dem heutigen Stand neu fahren, A-B2 neu "
               "zeichnen, dann registrieren")
-    # Wer A-B2 gezeichnet hat — zuerst, vor jedem Inhalt: Die Freigabe muss
-    # von einem Schluessel stammen, dessen Rolle die Ordnung des Betriebs
-    # fuer A-B2 berechtigt.
-    from rechner_pipeline.models.zeichnung import rolle_darf_gate, zeichnungsrolle
-
-    fingerabdruck = str((ab2.get("freigabe") or {}).get("schluessel_sha256") or "")
+    # Wer A-B2 gezeichnet hat — zuerst, vor jedem Inhalt, mit derselben Regel
+    # wie fuer A-M4 und A-M1 (zeichnende_rolle). Der Leser hat sie schon
+    # angewandt; hier wird die Rolle fuer die zugangsabnahme.json gebraucht,
+    # und wer _zugangsabnahme_binden mit anders gelesenen Daten ruft,
+    # bekommt dieselbe Pruefung.
     ordnung = zeichner.ordnung if isinstance(getattr(zeichner, "ordnung", None), dict) else None
-    rolle = zeichnungsrolle(ordnung, fingerabdruck) if ordnung and ordnung.get("rollen") else None
-    if rolle is None or not rolle_darf_gate(ordnung, rolle, "A-B2"):
-        raise UebernahmeError(
-            f"{ab2_name}: die Freigabe stammt vom Schluessel {fingerabdruck[:16]}…, "
-            + (f"dessen Rolle {rolle!r} die Zeichnungsordnung nicht fuer A-B2 berechtigt"
-               if rolle else "den die Zeichnungsordnung des Betriebs keiner Rolle zuordnet")
-            + " — die Zugangsabnahme zeichnet eine Rolle mit A-B2 (mensch/betrieb). "
-            "Ausweg: A-B2 mit dem Schluessel dieser Rolle zeichnen, oder die Ordnung "
-            "(--zeichnungsordnung) nennt sie")
+    rolle = zeichnende_rolle(ab2, "A-B2", ordnung, ab2_name)
     eingang_sha = sha256_bytes(_eingang_bytes(eingang))
     belege = ab2.get("pflichtbelege") or {}
     if belege.get("am4_snapshot") != [am4_sha256]:
@@ -1091,7 +1119,8 @@ def _zugangsabnahme_binden(
     am1_pin = (am4.get("pflichtbelege") or {}).get("am1_snapshot") or [None]
     am1: Optional[Dict[str, Any]] = None
     if _ist_sha256(am1_pin[0]):
-        am1, _, _ = lies_abnahme_snapshot(fall, "A-M1", am1_pin[0], schluesselring=schluesselring)
+        am1, _, _ = lies_abnahme_snapshot(fall, "A-M1", am1_pin[0], schluesselring=schluesselring,
+                                          ordnung=ordnung)
     soll_fehler = zp.soll_bindung_fehler(beleg.get("abnahmen"), am4=am4, am1=am1)
     if soll_fehler:
         raise UebernahmeError(
@@ -1716,6 +1745,217 @@ def _pruefe_tarifwerk_gegen_ablage(stand: Path, roh: Dict[str, bytes], quelle: P
             + "; ".join(fehler + [bauauftrag_text(*l) for l in luecken]))
 
 
+@dataclasses.dataclass
+class Vorbedingungen:
+    """Was die Registrierung vor jedem Seiteneffekt geprueft und gelesen hat."""
+    fall: Path
+    fallname: str
+    quelle: Path
+    ring: Mapping[str, bytes]
+    snapshot_sha256: str
+    snapshot: Dict[str, Any]
+    zeichnung: Dict[str, Any]
+    ab2: Optional[Tuple[Dict[str, Any], str]]
+    ab2_verifiziert: bool
+    roh: Dict[str, bytes]
+
+
+def registrierung_vorbedingungen(
+    fall: Path,
+    *,
+    ordnung: Optional[Mapping[str, Any]],
+    schluesselring: Optional[Mapping[str, bytes]] = None,
+    snapshot_sha256: Optional[str] = None,
+    zugangsabnahme_sha256: Optional[str] = None,
+    quelle: Optional[Path] = None,
+    probe_kopie: bool = False,
+) -> Vorbedingungen:
+    """Die Vorbedingungen der Registrierung, die KEINEN Ort brauchen: Fall,
+    Zugangsstand, A-M4 (Rollenregel, Schema), A-B2 (Rollenregel; seine
+    Bindung an Eingang und Stand erst unter der Sperre), Tabellen und
+    Belege gegen den Beleggraphen der Abnahme.
+
+    EINE Funktion, zwei Aufrufer (Angriffsrunde 2026-10-01):
+    :func:`eingang_anlegen` vor ihrem ersten Seiteneffekt und
+    ``betrieb.neuaufsetzen`` bevor es die neue Ablage anlegt. Vorher liefen
+    diese Pruefungen erst in der Registrierung — nachdem das Neuaufsetzen
+    ``<stand>.neu-<stempel>`` angelegt hatte, und eine Verweigerung liess
+    den Rest liegen.
+    """
+    fall = Path(fall)
+    fall_json = fall / "fall.json"
+    if not fall_json.is_file():
+        raise UebernahmeError(
+            f"{fall}: kein Fall-Arbeitsbereich (fall.json fehlt) — der Eingang "
+            "kommt aus einem Fall, nicht aus einem beliebigen Verzeichnis"
+        )
+    try:
+        fall_daten = json.loads(fall_json.read_text(encoding="utf-8"))
+        fallname = str(fall_daten["name"])
+    except (OSError, json.JSONDecodeError, KeyError) as exc:
+        raise UebernahmeError(f"{fall_json}: nicht lesbar oder ohne name: {exc}") from exc
+    if not fallname or "/" in fallname or fallname in (".", ".."):
+        raise UebernahmeError(f"{fall_json}: name {fallname!r} taugt nicht als Verzeichnisname")
+    # Kein Steuer-, Format- oder Trennzeichen (Angriffsrunde nach T27): Der
+    # Name steht roh in jeder Protokollzeile; ein U+2028 darin machte das
+    # Protokoll fuer jeden Leser mit anderer Zeilengrenze unlesbar.
+    import unicodedata
+
+    if any(unicodedata.category(z) in ("Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp") for z in fallname):
+        raise UebernahmeError(
+            f"{fall_json}: name {fallname!r} traegt ein Steuer- oder Trennzeichen — "
+            "als Fallname im Protokoll nicht zulaessig")
+    quelle = Path(quelle) if quelle is not None else fall / "abgeleitet" / "bestand"
+    fehlend = [f"{n}.parquet" for n in PFLICHT if not (quelle / f"{n}.parquet").is_file()]
+    if fehlend:
+        raise UebernahmeError(
+            f"{quelle}: {fehlend} fehlen — erwartet wird das Erzeugnis von "
+            "gates.bestand_uebernehmen (bestand/historie/ledger.parquet)"
+        )
+    if snapshot_sha256 is None:
+        beleg = fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json"
+        if beleg.is_file():
+            try:
+                snapshot_sha256 = json.loads(beleg.read_text(encoding="utf-8"))["summary"]["snapshot_sha256"]
+            except (OSError, json.JSONDecodeError, KeyError, TypeError):
+                snapshot_sha256 = None
+    # Der Snapshot ist Pflicht und wird geprueft (T22-06), BEVOR irgendetwas
+    # angelegt wird.
+    ring = schluesselring if schluesselring is not None else _STANDARD_SCHLUESSELRING
+    if not ring:
+        # Registriert wird nur, was der Tagesbetrieb annimmt (Angriffsrunde
+        # nach T27): Ohne Schluessel entstand ein Eingang mit
+        # signatur_verifiziert = false, den jeder Tageslauf verweigerte —
+        # und neu registrieren ging nicht, weil ein Eingang nie
+        # ueberschrieben wird. Der Betrieb stand.
+        raise UebernahmeError(
+            "ohne Freigabeschluessel wird nichts registriert — der Tagesbetrieb "
+            "nimmt nur einen Eingang mit verifizierter Signatur an; "
+            "--freigabe-schluessel angeben")
+    snapshot, snapshot_name, verifiziert = lies_am4_snapshot(
+        fall, snapshot_sha256, schluesselring=ring, ordnung=ordnung)
+    # Zeichnungsschicht zu Ende (Entscheid 2026-09-22): Registriert wird
+    # nur ein Snapshot des aktuellen Schemas — mit Schluesselklasse und
+    # Rolle aus der Zeichnungsordnung. Ein Altsnapshot (Schema 6) traegt
+    # beides nicht; lesen laesst er sich weiter (Seite), eintreten nicht.
+    from rechner_pipeline.models.schemas import P9_SNAPSHOT_SCHEMA_VERSION
+    if snapshot.get("schema_version") != P9_SNAPSHOT_SCHEMA_VERSION:
+        raise UebernahmeError(
+            f"{snapshot_name}: Schema {snapshot.get('schema_version')!r} — ein "
+            f"Eingang braucht eine Zeichnung mit Schluesselklasse (Schema "
+            f"{P9_SNAPSHOT_SCHEMA_VERSION}); den Fall neu zeichnen"
+        )
+    zeichnung = _zeichnung_aus_daten(snapshot, snapshot_name, verifiziert=verifiziert)
+    # Die Zugangsabnahme A-B2 (ADR-022, Entscheid des Maintainers
+    # 2026-09-30): Ohne sie wird nichts registriert. Geprueft wird der
+    # Snapshot HIER, vor dem ersten Seiteneffekt (Schema, Kette, Signatur);
+    # seine Bindung an den Eingang und den Stand der Ablage erst unter der
+    # Sperre, wenn beide feststehen. Die Probe selbst registriert in ihrer
+    # Kopie ohne — sie erzeugt erst, was A-B2 abnimmt.
+    ab2: Optional[Tuple[Dict[str, Any], str]] = None
+    ab2_verifiziert = False
+    if not probe_kopie:
+        if zugangsabnahme_sha256 is None:
+            ledger_ab2 = fall / "abgeleitet" / "diagnostics" / "gate_entscheid_ab2.gate.json"
+            if ledger_ab2.is_file():
+                try:
+                    zugangsabnahme_sha256 = json.loads(ledger_ab2.read_text(
+                        encoding="utf-8"))["summary"]["snapshot_sha256"]
+                except (OSError, json.JSONDecodeError, KeyError, TypeError):
+                    zugangsabnahme_sha256 = None
+        if zugangsabnahme_sha256 is not None:
+            ab2_daten, ab2_name, ab2_verifiziert = lies_abnahme_snapshot(
+                fall, "A-B2", zugangsabnahme_sha256, schluesselring=ring,
+                ordnung=ordnung)
+            ab2 = (ab2_daten, ab2_name)
+        elif _STANDARD_ZUGANGSABNAHME is None:
+            raise UebernahmeError(
+                f"{fall}: kein A-B2-Snapshot — ohne Zugangsabnahme wird nichts "
+                "registriert, ohne A-B2 kein Eintritt (ADR-022). Ausweg: "
+                + _ABNAHME["A-B2"][1])
+    # Was uebernommen wird, muss das sein, was die Abnahme gesehen hat
+    # (Befund T26-03). Geprueft VOR dem ersten Seiteneffekt: Ein Eingang,
+    # dessen Tabellen die Migrationsabnahme nicht bezeugt, entsteht nicht.
+    belegt = belegte_tabellen(fall, snapshot)
+    unbelegt: List[str] = []
+    # EINMAL lesen, dann nur noch diese Bytes verwenden (Pruefrunde T27,
+    # Befund 04): Die erste Fassung hashte die Quelldateien hier und las
+    # sie nach dem Eintritt in die Sperre ein zweites Mal von der Platte.
+    # Wer die Quelle dazwischen tauschte, bekam andere Tabellen in den
+    # Eingang als die, die die Abnahme bezeugt — mit gruener Hashpruefung
+    # und verifizierter Signatur. Die Sperre schuetzt konkurrierende
+    # Eingangsschreiber, nicht den Produzenten der Quelle; nur die Bytes
+    # selbst tun das.
+    roh: Dict[str, bytes] = {}
+    for datei in [f"{n}.parquet" for n in list(PFLICHT) + list(OPTIONAL)] + list(BELEGE):
+        if (quelle / datei).is_file():
+            roh[datei] = (quelle / datei).read_bytes()
+    # Gebunden wird JEDE Tabelle, die der Graph bezeugt — auch Scheiben,
+    # Schichten, Verankerung und Merkmale (Angriffsrunde 2 Betrieb, Fund
+    # N21: die Schleife lief nur ueber die Pflichttabellen, obwohl
+    # belegte_tabellen die Hashes der Nebentabellen laengst gesammelt
+    # hatte; eine getauschte Scheibentabelle ging ungeprueft ein). Und eine
+    # mitgebrachte Nebentabelle, die der Graph NICHT nennt, ist ebenso eine
+    # Luecke wie eine Pflichttabelle (Angriffsrunde nach T27: eine nach der
+    # Abnahme hinzugelegte Korrekturschicht hob den Rueckkaufswert auf das
+    # Zwanzigfache). Die Fuehrungsprobe bindet jede Tabelle, die sie liest.
+    for datei in (f"{name}.parquet" for name in list(PFLICHT) + list(OPTIONAL)):
+        quell_pfad = quelle / datei
+        if datei not in roh:
+            continue
+        ist = sha256_bytes(roh[datei])
+        soll = bezeugter_hash(belegt, fall, quell_pfad, datei)
+        if soll is None:
+            # JEDE mitgebrachte Tabelle, nicht nur die drei Pflichttabellen
+            # (Angriffsrunde nach T27): Eine nach der Abnahme hinzugelegte
+            # Korrekturschicht ging ungeprueft in Storno und Bewertung ein.
+            unbelegt.append(datei)
+        elif soll != ist:
+            raise UebernahmeError(
+                f"{quell_pfad}: die Tabelle ist nicht die, die der "
+                f"A-M4-Snapshot bezeugt ({ist[:16]}… statt {soll[:16]}…) — "
+                "die Abnahme galt einem anderen Stand. Entweder die "
+                "abgenommenen Tabellen uebernehmen oder den Fall neu "
+                "abnehmen"
+            )
+    if unbelegt:
+        # Annahme 5, ENTSCHIEDEN STRENG (Maintainer 2026-09-22): Jede der drei
+        # Pflichttabellen muss vom Beleggraphen der Abnahme bezeugt sein — ein
+        # unbezeugter Ledger ist eine Luecke, keine Warnung. Vorher wurde nur
+        # bestand.parquet verlangt und der Rest auf stderr benannt; ein
+        # aelterer P-B1-Ledger reicht damit nicht mehr, der Fall ist neu
+        # abzunehmen (Befund T26-03).
+        raise UebernahmeError(
+            f"{fall}: der Beleggraph des A-M4-Snapshots nennt keinen Hash "
+            f"fuer {', '.join(sorted(unbelegt))} — die Abnahme bezeugt diese "
+            "Tabelle(n) nicht. Ohne diesen Bezug ist der Eingang eine "
+            "Behauptung (Befund T26-03; Annahme 5 streng)"
+        )
+    # Der Uebernahmebeleg ist Pflicht und muss der bezeugte sein
+    # (Angriffsrunde nach T27): Er traegt die Tarifwerk-Schalter, gegen die
+    # der Tageslauf die Config haelt. Nur die Tabellen wurden gegen den
+    # Graphen gehalten; ein geaenderter oder entfernter Beleg liess den
+    # Betrieb mit anderen Schaltern fuehren, als abgenommen war.
+    for datei in BELEGE:
+        if datei not in roh:
+            raise UebernahmeError(
+                f"{quelle / datei}: der Uebernahmebeleg fehlt — ohne ihn ist nicht "
+                "ablesbar, unter welchem Tarifwerk die Abnahmen bestanden wurden")
+        soll = bezeugter_hash(belegt, fall, quelle / datei, datei)
+        ist = sha256_bytes(roh[datei])
+        if soll != ist:
+            raise UebernahmeError(
+                f"{quelle / datei}: der Uebernahmebeleg ist nicht der, den der "
+                "A-M4-Snapshot bezeugt"
+                + (" (der Beleggraph nennt ihn nicht)" if soll is None
+                   else f" ({ist[:16]}… statt {soll[:16]}…)")
+                + " — den abgenommenen Beleg uebernehmen oder den Fall neu abnehmen")
+    return Vorbedingungen(
+        fall=fall, fallname=fallname, quelle=quelle, ring=ring,
+        snapshot_sha256=str(snapshot_sha256), snapshot=snapshot, zeichnung=zeichnung,
+        ab2=ab2, ab2_verifiziert=ab2_verifiziert, roh=roh)
+
+
 def eingang_anlegen(
     stand: Path,
     fall: Path,
@@ -1802,173 +2042,13 @@ def eingang_anlegen(
             flag="--betriebsschluessel")
     except _TageslaufError as exc:
         raise UebernahmeError(str(exc)) from exc
-    fall = Path(fall)
-    fall_json = fall / "fall.json"
-    if not fall_json.is_file():
-        raise UebernahmeError(
-            f"{fall}: kein Fall-Arbeitsbereich (fall.json fehlt) — der Eingang "
-            "kommt aus einem Fall, nicht aus einem beliebigen Verzeichnis"
-        )
-    try:
-        fall_daten = json.loads(fall_json.read_text(encoding="utf-8"))
-        fallname = str(fall_daten["name"])
-    except (OSError, json.JSONDecodeError, KeyError) as exc:
-        raise UebernahmeError(f"{fall_json}: nicht lesbar oder ohne name: {exc}") from exc
-    if not fallname or "/" in fallname or fallname in (".", ".."):
-        raise UebernahmeError(f"{fall_json}: name {fallname!r} taugt nicht als Verzeichnisname")
-    # Kein Steuer-, Format- oder Trennzeichen (Angriffsrunde nach T27): Der
-    # Name steht roh in jeder Protokollzeile; ein U+2028 darin machte das
-    # Protokoll fuer jeden Leser mit anderer Zeilengrenze unlesbar.
-    import unicodedata
-
-    if any(unicodedata.category(z) in ("Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp") for z in fallname):
-        raise UebernahmeError(
-            f"{fall_json}: name {fallname!r} traegt ein Steuer- oder Trennzeichen — "
-            "als Fallname im Protokoll nicht zulaessig")
-    quelle = Path(quelle) if quelle is not None else fall / "abgeleitet" / "bestand"
-    fehlend = [f"{n}.parquet" for n in PFLICHT if not (quelle / f"{n}.parquet").is_file()]
-    if fehlend:
-        raise UebernahmeError(
-            f"{quelle}: {fehlend} fehlen — erwartet wird das Erzeugnis von "
-            "gates.bestand_uebernehmen (bestand/historie/ledger.parquet)"
-        )
-    if snapshot_sha256 is None:
-        beleg = fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json"
-        if beleg.is_file():
-            try:
-                snapshot_sha256 = json.loads(beleg.read_text(encoding="utf-8"))["summary"]["snapshot_sha256"]
-            except (OSError, json.JSONDecodeError, KeyError, TypeError):
-                snapshot_sha256 = None
-    # Der Snapshot ist Pflicht und wird geprueft (T22-06), BEVOR irgendetwas
-    # angelegt wird.
-    ring = schluesselring if schluesselring is not None else _STANDARD_SCHLUESSELRING
-    if not ring:
-        # Registriert wird nur, was der Tagesbetrieb annimmt (Angriffsrunde
-        # nach T27): Ohne Schluessel entstand ein Eingang mit
-        # signatur_verifiziert = false, den jeder Tageslauf verweigerte —
-        # und neu registrieren ging nicht, weil ein Eingang nie
-        # ueberschrieben wird. Der Betrieb stand.
-        raise UebernahmeError(
-            "ohne Freigabeschluessel wird nichts registriert — der Tagesbetrieb "
-            "nimmt nur einen Eingang mit verifizierter Signatur an; "
-            "--freigabe-schluessel angeben")
-    snapshot, snapshot_name, verifiziert = lies_am4_snapshot(
-        fall, snapshot_sha256, schluesselring=ring)
-    # Zeichnungsschicht zu Ende (Entscheid 2026-09-22): Registriert wird
-    # nur ein Snapshot des aktuellen Schemas — mit Schluesselklasse und
-    # Rolle aus der Zeichnungsordnung. Ein Altsnapshot (Schema 6) traegt
-    # beides nicht; lesen laesst er sich weiter (Seite), eintreten nicht.
-    from rechner_pipeline.models.schemas import P9_SNAPSHOT_SCHEMA_VERSION
-    if snapshot.get("schema_version") != P9_SNAPSHOT_SCHEMA_VERSION:
-        raise UebernahmeError(
-            f"{snapshot_name}: Schema {snapshot.get('schema_version')!r} — ein "
-            f"Eingang braucht eine Zeichnung mit Schluesselklasse (Schema "
-            f"{P9_SNAPSHOT_SCHEMA_VERSION}); den Fall neu zeichnen"
-        )
-    zeichnung = _zeichnung_aus_daten(snapshot, snapshot_name, verifiziert=verifiziert)
-    # Die Zugangsabnahme A-B2 (ADR-022, Entscheid des Maintainers
-    # 2026-09-30): Ohne sie wird nichts registriert. Geprueft wird der
-    # Snapshot HIER, vor dem ersten Seiteneffekt (Schema, Kette, Signatur);
-    # seine Bindung an den Eingang und den Stand der Ablage erst unter der
-    # Sperre, wenn beide feststehen. Die Probe selbst registriert in ihrer
-    # Kopie ohne — sie erzeugt erst, was A-B2 abnimmt.
-    ab2: Optional[Tuple[Dict[str, Any], str]] = None
-    ab2_verifiziert = False
-    if not probe_kopie:
-        if zugangsabnahme_sha256 is None:
-            ledger_ab2 = fall / "abgeleitet" / "diagnostics" / "gate_entscheid_ab2.gate.json"
-            if ledger_ab2.is_file():
-                try:
-                    zugangsabnahme_sha256 = json.loads(ledger_ab2.read_text(
-                        encoding="utf-8"))["summary"]["snapshot_sha256"]
-                except (OSError, json.JSONDecodeError, KeyError, TypeError):
-                    zugangsabnahme_sha256 = None
-        if zugangsabnahme_sha256 is not None:
-            ab2_daten, ab2_name, ab2_verifiziert = lies_abnahme_snapshot(
-                fall, "A-B2", zugangsabnahme_sha256, schluesselring=ring)
-            ab2 = (ab2_daten, ab2_name)
-        elif _STANDARD_ZUGANGSABNAHME is None:
-            raise UebernahmeError(
-                f"{fall}: kein A-B2-Snapshot — ohne Zugangsabnahme wird nichts "
-                "registriert, ohne A-B2 kein Eintritt (ADR-022). Ausweg: "
-                + _ABNAHME["A-B2"][1])
-    # Was uebernommen wird, muss das sein, was die Abnahme gesehen hat
-    # (Befund T26-03). Geprueft VOR dem ersten Seiteneffekt: Ein Eingang,
-    # dessen Tabellen die Migrationsabnahme nicht bezeugt, entsteht nicht.
-    belegt = belegte_tabellen(fall, snapshot)
-    unbelegt: List[str] = []
-    # EINMAL lesen, dann nur noch diese Bytes verwenden (Pruefrunde T27,
-    # Befund 04): Die erste Fassung hashte die Quelldateien hier und las
-    # sie nach dem Eintritt in die Sperre ein zweites Mal von der Platte.
-    # Wer die Quelle dazwischen tauschte, bekam andere Tabellen in den
-    # Eingang als die, die die Abnahme bezeugt — mit gruener Hashpruefung
-    # und verifizierter Signatur. Die Sperre schuetzt konkurrierende
-    # Eingangsschreiber, nicht den Produzenten der Quelle; nur die Bytes
-    # selbst tun das.
-    roh: Dict[str, bytes] = {}
-    for datei in [f"{n}.parquet" for n in list(PFLICHT) + list(OPTIONAL)] + list(BELEGE):
-        if (quelle / datei).is_file():
-            roh[datei] = (quelle / datei).read_bytes()
-    # Gebunden wird JEDE Tabelle, die der Graph bezeugt — auch Scheiben,
-    # Schichten, Verankerung und Merkmale (Angriffsrunde 2 Betrieb, Fund
-    # N21: die Schleife lief nur ueber die Pflichttabellen, obwohl
-    # belegte_tabellen die Hashes der Nebentabellen laengst gesammelt
-    # hatte; eine getauschte Scheibentabelle ging ungeprueft ein). Und eine
-    # mitgebrachte Nebentabelle, die der Graph NICHT nennt, ist ebenso eine
-    # Luecke wie eine Pflichttabelle (Angriffsrunde nach T27: eine nach der
-    # Abnahme hinzugelegte Korrekturschicht hob den Rueckkaufswert auf das
-    # Zwanzigfache). Die Fuehrungsprobe bindet jede Tabelle, die sie liest.
-    for datei in (f"{name}.parquet" for name in list(PFLICHT) + list(OPTIONAL)):
-        quell_pfad = quelle / datei
-        if datei not in roh:
-            continue
-        ist = sha256_bytes(roh[datei])
-        soll = bezeugter_hash(belegt, fall, quell_pfad, datei)
-        if soll is None:
-            # JEDE mitgebrachte Tabelle, nicht nur die drei Pflichttabellen
-            # (Angriffsrunde nach T27): Eine nach der Abnahme hinzugelegte
-            # Korrekturschicht ging ungeprueft in Storno und Bewertung ein.
-            unbelegt.append(datei)
-        elif soll != ist:
-            raise UebernahmeError(
-                f"{quell_pfad}: die Tabelle ist nicht die, die der "
-                f"A-M4-Snapshot bezeugt ({ist[:16]}… statt {soll[:16]}…) — "
-                "die Abnahme galt einem anderen Stand. Entweder die "
-                "abgenommenen Tabellen uebernehmen oder den Fall neu "
-                "abnehmen"
-            )
-    if unbelegt:
-        # Annahme 5, ENTSCHIEDEN STRENG (Maintainer 2026-09-22): Jede der drei
-        # Pflichttabellen muss vom Beleggraphen der Abnahme bezeugt sein — ein
-        # unbezeugter Ledger ist eine Luecke, keine Warnung. Vorher wurde nur
-        # bestand.parquet verlangt und der Rest auf stderr benannt; ein
-        # aelterer P-B1-Ledger reicht damit nicht mehr, der Fall ist neu
-        # abzunehmen (Befund T26-03).
-        raise UebernahmeError(
-            f"{fall}: der Beleggraph des A-M4-Snapshots nennt keinen Hash "
-            f"fuer {', '.join(sorted(unbelegt))} — die Abnahme bezeugt diese "
-            "Tabelle(n) nicht. Ohne diesen Bezug ist der Eingang eine "
-            "Behauptung (Befund T26-03; Annahme 5 streng)"
-        )
-    # Der Uebernahmebeleg ist Pflicht und muss der bezeugte sein
-    # (Angriffsrunde nach T27): Er traegt die Tarifwerk-Schalter, gegen die
-    # der Tageslauf die Config haelt. Nur die Tabellen wurden gegen den
-    # Graphen gehalten; ein geaenderter oder entfernter Beleg liess den
-    # Betrieb mit anderen Schaltern fuehren, als abgenommen war.
-    for datei in BELEGE:
-        if datei not in roh:
-            raise UebernahmeError(
-                f"{quelle / datei}: der Uebernahmebeleg fehlt — ohne ihn ist nicht "
-                "ablesbar, unter welchem Tarifwerk die Abnahmen bestanden wurden")
-        soll = bezeugter_hash(belegt, fall, quelle / datei, datei)
-        ist = sha256_bytes(roh[datei])
-        if soll != ist:
-            raise UebernahmeError(
-                f"{quelle / datei}: der Uebernahmebeleg ist nicht der, den der "
-                "A-M4-Snapshot bezeugt"
-                + (" (der Beleggraph nennt ihn nicht)" if soll is None
-                   else f" ({ist[:16]}… statt {soll[:16]}…)")
-                + " — den abgenommenen Beleg uebernehmen oder den Fall neu abnehmen")
+    vor = registrierung_vorbedingungen(
+        fall, ordnung=zeichner.ordnung, schluesselring=schluesselring,
+        snapshot_sha256=snapshot_sha256, zugangsabnahme_sha256=zugangsabnahme_sha256,
+        quelle=quelle, probe_kopie=probe_kopie)
+    fall, fallname, quelle, ring = vor.fall, vor.fallname, vor.quelle, vor.ring
+    snapshot_sha256, snapshot, zeichnung = vor.snapshot_sha256, vor.snapshot, vor.zeichnung
+    ab2, ab2_verifiziert, roh = vor.ab2, vor.ab2_verifiziert, vor.roh
     _pruefe_tarifwerk_gegen_ablage(Path(stand), roh, quelle)
     ziel = Path(stand) / UEBERNAHME_DIR / fallname
     if ziel.exists():
@@ -2154,7 +2234,7 @@ def eingang_anlegen(
                     am4_snapshot_sha256=snapshot_sha256, zeichner=zeichner,
                     schluesselring=ring)
                 ab2_daten, ab2_name, ab2_verifiziert = lies_abnahme_snapshot(
-                    fall, "A-B2", sha, schluesselring=ring)
+                    fall, "A-B2", sha, schluesselring=ring, ordnung=zeichner.ordnung)
                 ab2 = (ab2_daten, ab2_name)
             abnahme = _zugangsabnahme_binden(
                 fall, fallname, ab2[0], ab2[1], stand_sha256=stand_sha,

@@ -270,7 +270,14 @@ schon fest (ADR-022). Seitdem hat der Zugang drei Schritte:
 3. **Registrierung** (`betrieb.uebernahme`): nur mit angenommener A-B2, die
    genau den Eingang bindet, den sie schreibt, und den geführten Stand,
    auf dem sie ihn schreibt. Die geprüfte Abnahme liegt als
-   `zugangsabnahme.json` neben dem Eingang.
+   `zugangsabnahme.json` neben dem Eingang. Registrierung und Probe halten
+   jede Abnahme, auf der der Zugang steht (A-M1, A-M4, A-B2), gegen die
+   Zeichnungsordnung des Betriebs: Der Schlüssel, der sie signiert hat,
+   muss einer Rolle gehören, die dieses Gate zeichnen darf, und der
+   Snapshot muss genau diese Rolle tragen. Dieselbe Regel hält das Gate
+   A-B2 für A-M4 und A-M1 (ADR-022, Nachtrag 2026-10-01). Maßgeblich ist
+   die Ordnung zum Zeitpunkt der Registrierung; der Eintritt prüft die
+   Rollen nicht neu.
 
 Der **geführte Stand** ist die letzte grüne Protokollzeile, das Manifest
 des Stands und die Config — ein roter Lauf bewegt ihn nicht, ein grüner
@@ -571,21 +578,29 @@ Findet sich nach der Abnahme, dass der Betrieb den übernommenen Bestand
 in einer anderen Welt führt als die Abnahmen (Abschnitt 6.1, Betriebsfund
 vom 2026-09-07), wird der Fall auf dem Entwicklerweg korrigiert und der
 Betrieb aus der neuen Übernahme neu aufgesetzt. Dafür gibt es eine
-Routine, die nichts löscht:
+Routine, die nichts Bestehendes löscht:
 
 ```
 python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
     --fall faelle/<fall> --stichtag 2026-01-01 [--config configs/bestand_gesamt.toml] \
-    --freigabe-schluessel <freigabeschlüssel> \
+    --freigabe-schluessel <schlüssel-mensch-aktuariat> \
+    --freigabe-schluessel <schlüssel-mensch-betrieb> \
     --betriebsschluessel <betriebsschlüssel> --zeichnungsordnung <ordnung>
 ```
 
-Sie prüft, bevor sie etwas bewegt (keine Lauf-Sperre; die Tarifwerk-
+(Zwei Freigabeschlüssel, weil die Registrierung des neuen Eingangs die
+Signaturen von A-M1/A-M4 und von A-B2 prüft.)
+
+Sie prüft, bevor sie etwas anlegt (keine Lauf-Sperre; die Tarifwerk-
 Schalter der Config stimmen mit dem Übernahmebeleg des Falls überein; eine
 Zugangsabnahme A-B2 liegt vor — gerechnet auf einer leeren Ablage mit der
 neuen Config, denn das ist der geführte Stand der neuen Ablage, Abschnitt
-6.2, `--zugangsabnahme`),
-baut die neue Ablage vollständig neben der alten auf (Config, Übernahme-
+6.2, `--zugangsabnahme`; A-M4 und A-B2 samt Rolle und Schlüsselklasse
+gegen die Ordnung, Tabellen und Beleg gegen die Abnahme). Was sich nur
+gegen die neue Ablage prüfen lässt, scheitert nach dem Anlegen; dann
+entfernt sie ihre eigene, nie veröffentlichte Vorbereitung wieder — eine
+Verweigerung hinterlässt nichts neben der Ablage. Danach
+baut sie die neue Ablage vollständig neben der alten auf (Config, Übernahme-
 Eingang mit Stamm, Journal, Ledger, Merkmalen, Bausteinen, Korrektur-
 schicht, Verankerung und Übernahmebeleg, dazu `neuaufsetzen.json` als
 Provenienz), archiviert die alte Ablage durch eine Umbenennung

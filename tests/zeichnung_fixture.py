@@ -2,9 +2,14 @@
 
 Eine Annahme braucht seit ADR-018 eine Zeichnungsordnung (Schema 2) und
 einen Schluessel, aus dem die Rolle BESTIMMT wird. Dieser Helfer legt
-beides je Testfall an: eine simulierte Rolle ``mensch/verantwortlicher-
-aktuar`` (Schluesselklasse ``simulation``, zeichnet alle Gates) und
-optional weitere Rollen.
+beides je Testfall an: eine simulierte Rolle ``mensch/aktuariat``
+(Schluesselklasse ``simulation``) und optional weitere Rollen.
+
+Die Rolle zeichnet die Gates des Falls (:data:`FALL_GATES`), NICHT die des
+Betriebs (A-B1, A-B2): Ein Schluessel, der Migrations- und Betriebsabnahmen
+zugleich zeichnet, verdeckte genau den Fall, den die Rollenregel der Leser
+prueft (Entscheid 2026-10-01; Ratsche in tests/test_abnahme_rolle_klasse.py).
+Wer A-B1 zeichnet, legt die Ordnung mit ``rolle="mensch/betrieb"`` an.
 
 Knoten: system/entscheid
 """
@@ -21,6 +26,16 @@ QUELLE = "mensch/quell-aktuar"
 AGENT = "agent/programmleitung"
 
 _STANDARD_SCHLUESSEL = b"test-only-p9-authorization-key!" * 2
+
+
+def _fall_gates() -> List[str]:
+    from rechner_pipeline.models.zeichnung import GUELTIGE_GATES
+
+    return [g for g in GUELTIGE_GATES if g not in ("A-B1", "A-B2")]
+
+
+#: Die Gates der Standardrolle: alle zeichenbaren ausser denen des Betriebs.
+FALL_GATES: List[str] = _fall_gates()
 
 
 def schluessel_anlegen(pfad: Path, inhalt: bytes = _STANDARD_SCHLUESSEL) -> str:
@@ -49,7 +64,7 @@ def standard_ordnung(
     """Ordnung mit einer zeichnenden Rolle fuer diesen Schluessel."""
     fp = schluessel_anlegen(schluessel)
     rollen = {rolle: {"schluessel_sha256": fp, "schluesselklasse": klasse,
-                      "gates": gates if gates is not None else ["*"]}}
+                      "gates": gates if gates is not None else list(FALL_GATES)}}
     rollen.update(weitere or {})
     return ordnung_schreiben(verzeichnis / "zeichnungsordnung.json", rollen)
 

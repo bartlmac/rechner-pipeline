@@ -157,7 +157,7 @@ def test_uebernahme_traegt_rolle_und_schluesselklasse_der_zeichnung(tmp_path):
     ziel = ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, dt.date(2026, 1, 1))
     eingang = json.loads((ziel / "eingang.json").read_text("utf-8"))
     z = eingang["zeichnung"]
-    assert z["rolle"] == "mensch/aktuar" and z["entscheider"] == "Verantwortlicher Aktuar"
+    assert z["rolle"] == "mensch/aktuariat" and z["entscheider"] == "Verantwortlicher Aktuar"
     assert z["schluesselklasse"] == "mensch" and z["schema_version"] == 7
     assert len(z["schluessel_sha256"]) == 16 and z["signatur_verifiziert"] is True
     gelesen = ueb.lies_uebernahmen(tmp_path / "daten" / "uebernahme",
@@ -176,7 +176,7 @@ def test_uebernahme_traegt_rolle_und_schluesselklasse_der_zeichnung(tmp_path):
         "uebernahmen": [{"fall": "probe", "stichtag": "2026-01-01", "vertraege": 3,
                          "snapshot_sha256": eingang["snapshot_sha256"], "zeichnung": z}],
     })
-    assert "<td>mensch/aktuar</td><td>Verantwortlicher Aktuar</td><td>mensch</td>" in html
+    assert "<td>mensch/aktuariat</td><td>Verantwortlicher Aktuar</td><td>mensch</td>" in html
     assert "Signatur hier nicht verifiziert" in html
 
 

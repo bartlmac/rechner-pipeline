@@ -23,8 +23,9 @@ Was die Routine tut, in dieser Reihenfolge — und was sie NICHT tut:
    (``<daten>.archiv-<zeit>``) und setzt die neue mit einer zweiten an ihre
    Stelle. Nichts wird geloescht — Journal, Protokollkette, Abschluesse und
    Berichte der alten Ablage bleiben vollstaendig erhalten (T24-07: ein
-   Produzent loescht nur, was er selbst erzeugt hat; hier loescht er gar
-   nichts). Ehrlich benannt: Zwischen den zwei Umbenennungen gibt es einen
+   Produzent loescht nur, was er selbst erzeugt hat; hier nur die eigene,
+   nie veroeffentlichte Vorbereitung aus Schritt 2, wenn er verweigert —
+   Angriffsrunde 2026-10-01). Ehrlich benannt: Zwischen den zwei Umbenennungen gibt es einen
    Moment OHNE Ablage — die Wurzel ist ein echtes Verzeichnis, kein
    Symlink wie ``stand`` (T22-03), ein atomarer Tausch zweier Verzeichnisse
    ist mit Bordmitteln nicht moeglich. Endet der Prozess in diesem Moment,
@@ -64,7 +65,7 @@ from rechner_pipeline.betrieb.tageslauf import (
 )
 from rechner_pipeline.betrieb.uebernahme import (
     UEBERNAHME_DIR, UebernahmeError, eingang_anlegen, lies_uebernahme,
-    tarifwerk_fehler,
+    registrierung_vorbedingungen, tarifwerk_fehler,
 )
 
 #: Provenienz des Neuaufbaus in der neuen Ablage.
@@ -113,7 +114,10 @@ def neu_aufsetzen(
 
     Rueckgabe: die Provenienz (auch als ``neuaufsetzen.json`` in der neuen
     Ablage). Wirft NeuaufsetzenError/UebernahmeError, BEVOR etwas bewegt
-    wurde, wann immer das moeglich ist.
+    wurde, wann immer das moeglich ist — und hinterlaesst dann auch keine
+    vorbereitete Ablage (Angriffsrunde 2026-10-01): Was keinen Ort braucht,
+    wird vor dem Anlegen geprueft, was nur gegen die neue Ablage pruefbar
+    ist, raeumt seine Vorbereitung bei Verweigerung selbst ab.
     """
     stand = Path(stand)
     fall = Path(fall)
@@ -166,6 +170,24 @@ def neu_aufsetzen(
             f"Sperre: {exc} — Timer anhalten, laufenden Prozess enden lassen, dann "
             "neu aufsetzen"
         ) from exc
+
+
+def _verwirf_vorbereitung(neu_pfad: Path, stand: Path) -> None:
+    """Die eigene, nie veroeffentlichte Vorbereitung entfernen (ueber
+    ``betrieb._loeschen``: nur dieses Verzeichnis, neben der Ablage, ohne
+    Provenienz). Scheitert das Entfernen, bleibt der Rest benannt liegen —
+    die urspruengliche Verweigerung geht vor."""
+    from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
+
+    if not neu_pfad.exists():
+        return
+    try:
+        entferne_verzeichnis(
+            neu_pfad, innerhalb=stand.parent, name_ok=lambda n: n == neu_pfad.name,
+            ohne_marker=PROVENIENZ_DATEI,
+            grund="Vorbereitung eines verweigerten Neuaufsetzens")
+    except (LoeschFehler, OSError) as exc:  # pragma: no cover - benannter Rest
+        print(f"neuaufsetzen: Vorbereitung {neu_pfad} nicht entfernt: {exc}", file=sys.stderr)
 
 
 def _protokollzeilen_formlos(pfad: Path) -> List[Dict[str, Any]]:
@@ -261,25 +283,41 @@ def _neu_aufsetzen_unter_sperre(
     neu_pfad = stand.with_name(f"{stand.name}.neu-{zeit}")
     if neu_pfad.exists():
         raise NeuaufsetzenError(f"{neu_pfad} existiert bereits — Rest eines abgebrochenen Aufbaus, von Hand klaeren")
+    # Die Vorbedingungen der Registrierung, die keinen Ort brauchen, VOR dem
+    # Anlegen (Angriffsrunde 2026-10-01): A-M4 und A-B2 samt Rollenregel,
+    # Tabellen und Belege gegen den Beleggraphen — dieselbe Funktion, die
+    # eingang_anlegen ruft. Vorher verweigerte erst die Registrierung, und
+    # die angelegte neue Ablage blieb liegen.
+    registrierung_vorbedingungen(
+        fall, ordnung=zeichner.ordnung if zeichner is not None else None,
+        schluesselring=schluesselring, zugangsabnahme_sha256=zugangsabnahme_sha256)
 
-    # 2. Neue Ablage vollstaendig NEBEN der alten aufbauen.
+    # 2. Neue Ablage vollstaendig NEBEN der alten aufbauen. Was nur gegen
+    # sie pruefbar ist (Bindung der A-B2 an Eingang und Stand, A-M1 der
+    # Soll-Bindung, Nebentabellen, P-B1, Lesbarkeit), scheitert danach; dann
+    # wird die eigene, nie veroeffentlichte Vorbereitung entfernt — ihre
+    # Identitaet steht fest: Name dieses Aufrufs, noch ohne Provenienz.
     neu = Ablage(neu_pfad)
-    neu.configs.mkdir(parents=True)
-    neu.config_pfad.write_bytes(config_bytes)
-    eingang = eingang_anlegen(
-        neu_pfad, fall, stichtag, schluesselring=schluesselring,
-        betriebsschluessel=betriebsschluessel, zeichnungsordnung=zeichnungsordnung,
-        zugangsabnahme_sha256=zugangsabnahme_sha256)
-    # Der neue Eingang muss lesbar sein, BEVOR die alte Ablage bewegt wird:
-    # dieselbe Pruefung, die der Tageslauf bei der Erstbefuellung macht —
-    # samt der Betriebszeichnung, die er gerade bekommen hat.
+    angelegt = False
     try:
-        lies_uebernahme(eingang, cfg, schluesselring=zeichner.ring, ordnung=zeichner.ordnung)
-    except UebernahmeError as exc:
-        raise NeuaufsetzenError(
-            f"Eingang nicht lesbar, nichts bewegt: {exc} — die vorbereitete Ablage "
-            f"liegt unter {neu_pfad} und kann nach der Korrektur von Hand entfernt werden"
-        ) from exc
+        neu.configs.mkdir(parents=True)
+        angelegt = True
+        neu.config_pfad.write_bytes(config_bytes)
+        eingang = eingang_anlegen(
+            neu_pfad, fall, stichtag, schluesselring=schluesselring,
+            betriebsschluessel=betriebsschluessel, zeichnungsordnung=zeichnungsordnung,
+            zugangsabnahme_sha256=zugangsabnahme_sha256)
+        # Der neue Eingang muss lesbar sein, BEVOR die alte Ablage bewegt
+        # wird: dieselbe Pruefung, die der Tageslauf bei der Erstbefuellung
+        # macht — samt der Betriebszeichnung, die er gerade bekommen hat.
+        try:
+            lies_uebernahme(eingang, cfg, schluesselring=zeichner.ring, ordnung=zeichner.ordnung)
+        except UebernahmeError as exc:
+            raise NeuaufsetzenError(f"Eingang nicht lesbar, nichts bewegt: {exc}") from exc
+    except Exception:
+        if angelegt:
+            _verwirf_vorbereitung(neu_pfad, stand)
+        raise
     provenienz: Dict[str, Any] = {
         "schema_version": PROVENIENZ_SCHEMA_VERSION,
         "neu_aufgesetzt_am": (jetzt or _dt.datetime.now(_dt.timezone.utc)).astimezone(_dt.timezone.utc).isoformat(),

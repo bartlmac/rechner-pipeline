@@ -448,6 +448,105 @@ def rolle_darf_gate(ordnung: dict, rolle: str, gate: str) -> bool:
     return "*" in gates or gate in gates
 
 
+def zeichnende_rolle_fehler(
+    daten: object, gate: str, ordnung: Optional[dict],
+) -> Tuple[Optional[str], Optional[str]]:
+    """Die EINE Regel fuer jeden Leser, der auf einem Abnahme-Snapshot etwas
+    gruendet: ``(rolle, None)`` oder ``(None, meldung)``.
+
+    Invariante (Entscheid des Maintainers 2026-10-01): Wer einen
+    Abnahme-Snapshot liest, um darauf etwas zu gruenden, haelt die
+    ZEICHNENDE Rolle gegen die Ordnung — und die Rolle ist die des
+    Schluessels, nicht die behauptete. Vier Fragen, in dieser Reihenfolge:
+
+    1. Gibt die Ordnung dem Fingerabdruck der Freigabe eine Rolle? Ohne
+       Ordnung gibt es keine Antwort und damit keine Abnahme.
+    2. Darf diese Rolle das Gate zeichnen (:func:`rolle_darf_gate`)?
+    3. Sind die Rollenfelder des Snapshots (``rolle``, ``zeichnung.rolle``)
+       genau diese Rolle? Das Gate schreibt beim Zeichnen die aus dem
+       Schluessel bestimmte Rolle in beide Felder
+       (``gates.gate_entscheid``: ``rolle = bestimmt``, ``zeichnung_fuer``)
+       — der Leser ist die zweite Haelfte derselben Regel. Ein Snapshot,
+       der eine andere Rolle behauptet, als sein Schluessel hat, ist
+       entweder unter einer anderen Ordnung gezeichnet oder nicht vom Gate
+       geschrieben; in beiden Faellen weiss der Leser nicht, wer
+       eingestanden ist.
+    4. Ist ``zeichnung.schluesselklasse`` die Klasse, die die Ordnung der
+       Rolle gibt — und traegt eine laut Ordnung simulierte Rolle ihr
+       Mandat? Auch die Klasse ist eine Eigenschaft des Schluessels.
+
+    Grenze der Aussage: Die Freigabe ist ein HMAC. Wer den Ring haelt, kann
+    jeden Inhalt gueltig neu signieren — die Regel schuetzt gegen
+    abweichende Ordnungen und fremde Snapshots, nicht gegen den Inhaber des
+    Rings.
+
+    Lebt in ``models``, weil zwei Schichten sie lesen: die Gates (A-M4 haelt
+    seine Vorbedingungen, A-B2 die Abnahmen, auf denen das Soll der Probe
+    steht) und der Betrieb (Registrierung, Zugangsprobe). Die Meldung nennt
+    den Ausweg; der Aufrufer stellt den Dateinamen voran.
+    """
+    daten = daten if isinstance(daten, dict) else {}
+    fingerabdruck = str((daten.get("freigabe") or {}).get("schluessel_sha256") or "")
+    kurz = f"{fingerabdruck[:16]}…"
+    ausweg = (f"Ausweg: {gate} mit dem Schluessel einer berechtigten Rolle neu zeichnen, "
+              f"oder die Ordnung (--zeichnungsordnung) gibt der zeichnenden Rolle {gate}")
+    if not (isinstance(ordnung, dict) and isinstance(ordnung.get("rollen"), dict)):
+        return None, (
+            f"ohne Zeichnungsordnung ist nicht pruefbar, welcher Rolle der Schluessel "
+            f"{kurz} gehoert und ob sie {gate} zeichnen darf — die Abnahme begruendet so "
+            "nichts. Ausweg: --zeichnungsordnung angeben")
+    rolle = zeichnungsrolle(ordnung, fingerabdruck)
+    berechtigt = sorted(r for r in ordnung["rollen"] if rolle_darf_gate(ordnung, r, gate))
+    liste = ", ".join(berechtigt) or "keine"
+    if rolle is None:
+        return None, (
+            f"die Freigabe stammt vom Schluessel {kurz}, den die Zeichnungsordnung keiner "
+            f"Rolle zuordnet — {gate} zeichnet eine Rolle mit {gate} (laut Ordnung: "
+            f"{liste}). {ausweg}")
+    if not rolle_darf_gate(ordnung, rolle, gate):
+        return None, (
+            f"die Freigabe stammt vom Schluessel {kurz}, dessen Rolle {rolle!r} die "
+            f"Zeichnungsordnung nicht fuer {gate} berechtigt — {gate} zeichnet eine Rolle "
+            f"mit {gate} (laut Ordnung: {liste}). {ausweg}")
+    zeichnung = daten.get("zeichnung") if isinstance(daten.get("zeichnung"), dict) else {}
+    behauptet = {feld: wert for feld, wert in (("rolle", daten.get("rolle")),
+                                                ("zeichnung.rolle", zeichnung.get("rolle")))
+                 if wert is not None}
+    abweichend = {feld: wert for feld, wert in behauptet.items() if wert != rolle}
+    if abweichend or not behauptet:
+        return None, (
+            f"der Snapshot behauptet als Rolle "
+            + (", ".join(f"{f}={w!r}" for f, w in sorted(abweichend.items()))
+               or "nichts")
+            + f", die Ordnung gibt seinem Schluessel {kurz} die Rolle {rolle!r} — die "
+            "zeichnende Rolle ist die des Schluessels, nicht die behauptete (ADR-018). "
+            f"Ausweg: {gate} unter der Ordnung neu zeichnen, die diese Rolle so nennt, "
+            "oder die Ordnung (--zeichnungsordnung) des Lesers an die des Zeichnens "
+            "angleichen")
+    # 4. Die Schluesselklasse ist die, die die Ordnung der Rolle gibt — nicht
+    # die behauptete (Angriffsrunde 2026-10-01): Kam sie aus dem Snapshot,
+    # wurde eine laut Ordnung simulierte Rolle als ``mensch`` gefuehrt, die
+    # Mandatspflicht griff nie, und Eingang und Seite meldeten eine
+    # menschliche Zeichnung. Das Gate schreibt beim Zeichnen die Klasse der
+    # Ordnung (``zeichnung_fuer``); auch hier ist der Leser die zweite Haelfte.
+    klasse = schluesselklasse(ordnung, rolle)
+    behauptete_klasse = zeichnung.get("schluesselklasse")
+    if behauptete_klasse != klasse:
+        return None, (
+            f"der Snapshot behauptet die Schluesselklasse {behauptete_klasse!r}, die "
+            f"Ordnung gibt der Rolle {rolle!r} die Klasse {klasse!r} — die Klasse ist die "
+            "der Ordnung, nicht die behauptete (ADR-018). Ausweg: "
+            f"{gate} unter dieser Ordnung neu zeichnen (bei simulation mit --mandat), "
+            "oder die Ordnung des Lesers an die des Zeichnens angleichen")
+    # Die Mandatspflicht rechnet auf der Klasse der ORDNUNG (ADR-018).
+    if klasse == "simulation" and not _SHA256.match(str(zeichnung.get("mandat_sha256") or "")):
+        return None, (
+            f"die Rolle {rolle!r} ist laut Ordnung simuliert, der Snapshot traegt aber "
+            "kein Mandat (mandat_sha256) — eine simulierte Rolle handelt ohne Mandat "
+            f"nicht (ADR-018). Ausweg: {gate} mit --mandat <datei> neu zeichnen")
+    return rolle, None
+
+
 def schluesselklasse(ordnung: dict, rolle: str) -> Optional[str]:
     """Die Schluesselklasse einer Rolle der Ordnung (None = unbekannte Rolle)."""
     eintrag = ordnung["rollen"].get(rolle)

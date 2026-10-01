@@ -250,10 +250,11 @@ def test_neuaufsetzen_verweigert_unter_lauf_sperre_und_bei_falscher_config(gefue
     with pytest.raises(na.NeuaufsetzenError, match="nichts bewegt") as info:
         na.neu_aufsetzen(ablage.wurzel, _fall_mit_nebentabellen(tmp_path / "c"), dt.date(2026, 3, 1))
     assert ablage.stand.exists() and not list(tmp_path.glob("daten.archiv-*"))
-    # Die vorbereitete Ablage bleibt als benannter Rest liegen (die Routine
-    # loescht nichts) und wird in der Meldung genannt.
-    [rest] = list(tmp_path.glob("daten.neu-*"))
-    assert str(rest) in str(info.value)
+    # Die eigene, nie veroeffentlichte Vorbereitung bleibt NICHT liegen
+    # (Angriffsrunde 2026-10-01; vorher blieb sie als benannter Rest, und der
+    # naechste Aufruf verweigerte "Rest eines abgebrochenen Aufbaus").
+    assert "bestandszugang" in str(info.value)
+    assert not list(tmp_path.glob("daten.neu-*"))
     # Ein anderer Prozess haelt die Sperre (flock, wie der Tageslauf).
     import fcntl
     halter = open(ablage.sperre, "a+", encoding="utf-8")

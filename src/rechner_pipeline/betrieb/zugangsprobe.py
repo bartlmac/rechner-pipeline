@@ -151,6 +151,7 @@ def lies_soll(
     am4_snapshot_sha256: str,
     quelle: Optional[Path] = None,
     schluesselring: Optional[Mapping[str, bytes]] = None,
+    ordnung: Optional[Mapping[str, Any]],
 ) -> Soll:
     """Das Soll aus dem Fall: Uebernahme, aktuarieller Test, Migrationssuite.
 
@@ -166,7 +167,11 @@ def lies_soll(
     geltende, angenommene Snapshot pinnt — ``migrationssuite`` im
     A-M4-Snapshot ``am4_snapshot_sha256``, ``aktuartest`` im A-M1-Snapshot,
     den dieser als ``am1_snapshot`` pinnt (Kette, Entscheid und
-    Freigabesignatur wie bei der Registrierung). Abweichung ist
+    Freigabesignatur wie bei der Registrierung, und die zeichnende Rolle
+    gegen die Zeichnungsordnung ``ordnung`` des Betriebs: Ein Soll aus einer
+    Abnahme, die eine dafuer nicht berechtigte Rolle gezeichnet hat, ist so
+    wenig das Soll der Abnahme wie ein ausgetauschter Beleg; Entscheid
+    2026-10-01). Abweichung ist
     Verweigerung, kein Befund: Gegen ein fremdes Soll gibt es nichts zu
     rechnen. (Pruefer-Befunde 3 und 4): Jahresbeitrag und Deckungskapital
     je Vertrag ueber den GANZEN Zugang aus der Migrationssuite, nicht auf
@@ -220,13 +225,14 @@ def lies_soll(
     # Die Belege der Abnahmen — gelesen, gehasht und gegen die Pins gehalten.
     roh: Dict[str, bytes] = {rolle: lies(fall / datei) for rolle, (_, datei) in SOLL_BELEGE.items()}
     try:
-        am4, _, _ = ueb.lies_am4_snapshot(fall, am4_snapshot_sha256, schluesselring=ring)
+        am4, _, _ = ueb.lies_am4_snapshot(fall, am4_snapshot_sha256, schluesselring=ring,
+                                          ordnung=ordnung)
         am1_pin = (am4.get("pflichtbelege") or {}).get("am1_snapshot") or [None]
         am1: Optional[Dict[str, Any]] = None
         am1_verifiziert = False
         if isinstance(am1_pin[0], str):
             am1, _, am1_verifiziert = ueb.lies_abnahme_snapshot(
-                fall, "A-M1", am1_pin[0], schluesselring=ring)
+                fall, "A-M1", am1_pin[0], schluesselring=ring, ordnung=ordnung)
     except ueb.UebernahmeError as exc:
         raise ZugangsprobeError(
             f"die Abnahmen, auf denen das Soll steht, sind nicht lesbar oder nicht "
@@ -701,7 +707,7 @@ def zugangsprobe(
         uebersetzung = ueb.zielnummern(eingang_dir)
         soll = lies_soll(fall, stichtag, uebersetzung, quelle=quelle,
                          am4_snapshot_sha256=str(eingang.get("snapshot_sha256")),
-                         schluesselring=schluesselring)
+                         schluesselring=schluesselring, ordnung=zeichner.ordnung)
 
         # 3. Beide Laeufe bis zum Ziel (verpasste Tage holt der Lauf nach;
         #    der Stand ist derselbe, als liefe er jede Nacht).

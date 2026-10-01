@@ -132,7 +132,8 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
                  rollen: "tuple[str, ...] | None" = None,
                  schema: int = 7,
                  schluessel: "bytes | None" = None,
-                 pins: "dict | None" = None) -> dict:
+                 pins: "dict | None" = None,
+                 rolle_id: "str | None" = None) -> dict:
     """Ein gueltiger P9-Snapshot, wie ihn das Gate schreibt — Schema 7 mit
     Zeichnung (Rolle, Schluesselklasse), EXAKT den Pflichtrollen seines
     Scopes und einer ECHTEN Freigabesignatur (Testschluessel; conftest
@@ -152,7 +153,7 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
     from rechner_pipeline.models.belegrollen import am4_belegrollen
     from rechner_pipeline.models.freigabe import freigabe_fuer
     from rechner_pipeline.models.schemas import P9_GATE_VERSION, p9_snapshot_sha256
-    from tests.freigabe_testschluessel import TESTKEY
+    from tests.freigabe_testschluessel import AKTUARIAT_ROLLE, TESTKEY
 
     scope = "bestand"
     alle = list(rollen) if rollen is not None else (am4_belegrollen(scope) if gate == "A-M4" else ["pb1_ledger"])
@@ -172,7 +173,10 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
     for rolle, wert in (pins or {}).items():
         assert rolle in pflichtbelege, (rolle, sorted(pflichtbelege))
         pflichtbelege[rolle] = [wert]
-    rolle_id = "mensch" if schema == 6 else "mensch/aktuar"
+    # Das Rollenfeld ist die Rolle des Schluessels (TESTKEY: mensch/aktuariat),
+    # wie das Gate es schreibt; ein Altsnapshot traegt die Altform ohne Ebene.
+    if rolle_id is None:
+        rolle_id = "mensch" if schema == 6 else AKTUARIAT_ROLLE
     daten = {
         "schema_version": schema, "command": "gate_entscheid",
         "gate_version": "0.6.0" if schema == 6 else P9_GATE_VERSION,
@@ -198,7 +202,7 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
 
 
 def am1_snapshot(fall_name: str, *, aktuartest_sha: "str | None" = None,
-                 schluessel: "bytes | None" = None) -> dict:
+                 schluessel: "bytes | None" = None, rolle_id: "str | None" = None) -> dict:
     """Ein angenommener A-M1-Snapshot (Bestands-Scope) — ``aktuartest``
     pinnt ``aktuartest_sha`` (Default: Platzhalter), der Bericht einen
     Platzhalter. Deterministisch: Derselbe Fall ergibt denselben Hash, den
@@ -207,7 +211,7 @@ def am1_snapshot(fall_name: str, *, aktuartest_sha: "str | None" = None,
 
     return am4_snapshot(
         fall_name, gate="A-M1", rollen=tuple(belegrollen("A-M1", "bestand")),
-        schluessel=schluessel,
+        schluessel=schluessel, rolle_id=rolle_id,
         pins={"aktuartest": aktuartest_sha} if aktuartest_sha else None)
 
 
@@ -308,7 +312,7 @@ def test_eingang_wird_registriert_und_ist_unantastbar(eingang):
     assert daten["snapshot_sha256"] == _snapshot_sha(fall)
     # Schema 6 fuehrt keine Schluesselklasse — das steht dann so da.
     assert daten["zeichnung"]["schluesselklasse"] == "mensch"   # Schema 7
-    assert daten["zeichnung"]["rolle"] == "mensch/aktuar"   # Rollen-Id mit Ebene (ADR-018)
+    assert daten["zeichnung"]["rolle"] == "mensch/aktuariat"   # Rollen-Id mit Ebene (ADR-018)
     assert daten["zeichnung"]["signatur_verifiziert"] is True   # mit dem Testring geprueft
     # Seit Review T24-08 traegt der Eingang die Uebersetzungstabelle mit:
     # Das Zielsystem vergibt eigene Policennummern, und ohne die Tabelle
@@ -487,7 +491,7 @@ def test_uebernahme_faehrt_im_tagesbetrieb_mit(eingang):
     # Der Fall des Fixtures traegt einen strukturell geprueften A-M4-Snapshot
     # (T22-06): Rolle aus dem Snapshot, Schluesselklasse in Schema 6 nicht
     # gefuehrt — benannt, nicht leer (B8); die Signatur prueft niemand.
-    assert u["zeichnung"]["rolle"] == "mensch/aktuar"
+    assert u["zeichnung"]["rolle"] == "mensch/aktuariat"
     assert u["zeichnung"]["schluesselklasse"] == "mensch"
     assert u["zeichnung"]["signatur_verifiziert"] is True
     gesamt = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
@@ -725,7 +729,9 @@ def test_die_gepruefte_zeichnung_stammt_aus_den_gepruefte_bytes(tmp_path, monkey
         return inhalt
 
     monkeypatch.setattr(pathlib.Path, "read_text", zaehlend)
-    zeichnung = ueb.pruefe_am4_snapshot(fall, sha)
+    from tests.freigabe_testschluessel import betriebsordnung
+
+    zeichnung = ueb.pruefe_am4_snapshot(fall, sha, ordnung=betriebsordnung())
     monkeypatch.undo()
 
     assert len(gelesen) == 1, f"der Snapshot wurde {len(gelesen)}-mal gelesen"
@@ -1207,7 +1213,10 @@ def test_gleichnamige_tabellen_an_zwei_orten_sind_kein_widerspruch(tmp_path):
     # Eingang entsteht, gebunden an den Stand SEINES Pfades.
     ziel = ueb.eingang_anlegen(_mit_config(stand := tmp_path / "daten"), fall, STICHTAG)
     assert ziel.is_dir()
-    snapshot, _, _verifiziert = ueb.lies_am4_snapshot(fall, _snapshot_sha(fall))
+    from tests.freigabe_testschluessel import betriebsordnung
+
+    snapshot, _, _verifiziert = ueb.lies_am4_snapshot(fall, _snapshot_sha(fall),
+                                                      ordnung=betriebsordnung())
     belegt = ueb.belegte_tabellen(fall, snapshot)
     quelle = fall / "abgeleitet" / "bestand"
     for datei in ("historie.parquet", "bestand.parquet", "ledger.parquet"):

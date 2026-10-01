@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
 from rechner_pipeline.models import zugangsprobe as zp
+from tests.freigabe_testschluessel import BETRIEB_FREIGABEKEY
 
 
 def abnahmen_aus_fall(fall: Path, am4_snapshot_sha256: str) -> Dict[str, Dict[str, str]]:
@@ -139,8 +140,13 @@ def ab2_snapshot(
 def schreibe_zugangsabnahme(
     fall: Path, *, ablage_stand: Mapping[str, Any], eingang_roh: bytes,
     am4_snapshot_sha256: str, zeichner: Any, schluesselring: Mapping[str, bytes],
+    rolle: str = "mensch/betrieb",
 ) -> str:
     """Die Naht: Beleg und A-B2-Snapshot im Fall anlegen, Hash des Snapshots liefern.
+
+    Signiert mit dem Freigabeschluessel von ``mensch/betrieb``
+    (``BETRIEB_FREIGABEKEY``); ``rolle`` setzt das Rollenfeld (ein Angriff
+    behauptet eine andere Rolle als die des Schluessels).
 
     Der neue Snapshot pinnt alle vorhandenen A-B2-Snapshots des Falls als
     Vorgaenger — so ist er die geltende Spitze, auch wenn ein Test denselben
@@ -163,7 +169,7 @@ def schreibe_zugangsabnahme(
         "zugangsprobe": [hashlib.sha256(roh).hexdigest()],
         "am4_snapshot": [am4_snapshot_sha256],
         "eingang": [hashlib.sha256(eingang_roh).hexdigest()],
-    }, vorgaenger=vorher, schluessel=next(iter(schluesselring.values())))
+    }, vorgaenger=vorher, schluessel=BETRIEB_FREIGABEKEY, rolle=rolle)
     (entscheide / f"A-B2-{daten['snapshot_sha256']}.json").write_text(
         json.dumps(daten, ensure_ascii=False), encoding="utf-8")
     return str(daten["snapshot_sha256"])
