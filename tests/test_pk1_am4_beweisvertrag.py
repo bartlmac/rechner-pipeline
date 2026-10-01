@@ -335,6 +335,7 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
             dk_erwartet_1=round(kern.monatsreserve(s1).vx_mrv, 2),
             bjb_erwartet_1=round(kern.gross_annual_premium(), 2),
             dk_erwartet_2=round(kern.monatsreserve(s2).vx_mrv, 2),
+            scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
         )],
         erwartete_anzahl=1,
         stichtag_1="2026-01-01",
@@ -343,7 +344,7 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
         system=gate_entscheid.systemstand(REPO_ROOT),
         fuehrungswert=kopf(fw_konvention, bestand_sha256=ziel_hash,
                            config_sha256=sha256(Path(config).read_bytes()).hexdigest()),
-        fuehrungswerte=fw_werte,
+        fuehrungswerte=fw_werte, red_verfahren="prospektiv",
     )
     suite["eingaben"] = bindung.als_beleg()
     suite["tarifregeln"] = regeln.als_beleg()
@@ -497,11 +498,11 @@ def _aktuartest_belege(
                     kern.verlaufszeile(monate // 12).vx_mrv + drift, 2
                 )},
                 anlass,
-            ),),
+            ),), scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None,
         )],
         ziehe("vollbestand", ["7000001"]),
         profil,
-        system=gate_entscheid.systemstand(REPO_ROOT),
+        system=gate_entscheid.systemstand(REPO_ROOT), red_verfahren="prospektiv",
     )
     berichte = fall / "abgeleitet" / "berichte"
     berichte.mkdir(parents=True, exist_ok=True)
@@ -1838,12 +1839,13 @@ def test_am1_rechnet_das_testverdikt_statt_dem_ledger_zu_glauben(
                 12 * 9,
                 {"kVx_MRV": round(kern.verlaufszeile(9).vx_mrv, 2)},
                 ANLASS_UEBERNAHME,
-            ),),
+            ),), scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None,
         )],
         _ziehe("vollbestand", ["7000001"]),
         _am1_profil(),
         system={"commit": "0" * 40, "branch": "erfunden",
                 "dirty": "false", "quellcode_sha256": "1" * 64},
+        red_verfahren="prospektiv",
     )
     test_pfad = fall / "abgeleitet" / "berichte" / "aktuartest.json"
     test_pfad.write_text(json.dumps(erfunden, sort_keys=True),

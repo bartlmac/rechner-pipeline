@@ -350,7 +350,8 @@ def test_migrationssuite_und_a_m3_lesen_dieselbe_folge(welt):
             beitragsfrei_seit_jahr=pex if pex is not None and 12 * pex <= s1 else None,
             vorgaenge=tuple(x for x in vorgaenge if 12 * x[0] <= s1),
             stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]),
-            tku_umfang=str(tarifwerk["tku_umfang"]))
+            tku_umfang=str(tarifwerk["tku_umfang"]),
+            scheiben_mit_gamma1=False, dk_am_jahrestag=False)
         urteil = pruefe_vertrag(auftrag, red_verfahren=str(tarifwerk["red_verfahren"]))
         assert urteil["bestanden"], (pid, folge, urteil["befunde"],
                                      [p for p in urteil["pruefungen"] if not p["ok"]])
@@ -376,7 +377,7 @@ def test_migrationssuite_und_a_m3_lesen_dieselbe_folge(welt):
             police_id=str(pid), model_point=dict(dataclasses.asdict(mp)), historientyp="folge",
             punkte=tuple(punkte), scheiben=tuple((e, k.mp.sum_insured) for e, k in scheiben),
             stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]),
-            tku_umfang=str(tarifwerk["tku_umfang"]))
+            tku_umfang=str(tarifwerk["tku_umfang"]), scheiben_mit_gamma1=False)
         a_m3 = at.pruefe_vertrag(v, profil, red_verfahren=str(tarifwerk["red_verfahren"]))
         assert a_m3["bestanden"], (pid, folge, a_m3["befunde"])
         at_geprueft += 1

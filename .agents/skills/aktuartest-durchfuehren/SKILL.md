@@ -63,11 +63,14 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 
 ## Nicht verhandelbar
 
-- Werte rechnet NUR die Engine. Du baust die Prüfaufträge
+- Werte rechnet NUR die Engine, und sie läuft NUR über das Kommando
+  `gates.aktuartest_lauf`: Es baut die Prüfaufträge
   (`Vertragspruefung` mit ihren `Pruefpunkt`en) aus den Fall-Artefakten
-  — transformierter Bestand, Lesart der Rechnungsgrundlagen aus der
-  Spez, gelieferte Erwartungswerte, Historie je Vertrag — und
-  interpretierst Urteile.
+  — transformierter Bestand, Tarifregeln aus der Spez der Generation,
+  gelieferte Erwartungswerte, Historie je Vertrag. Die Engine hat für
+  keine Tarifregel eine Vorgabe (Prüfrunde H); ein selbst gebauter
+  Auftrag rechnet nicht mit den belegten Regeln, und A-M4 verweigert
+  seinen Beleg. Du interpretierst Urteile.
 - Der Zeitpunkt ist ein VERTRAGSATTRIBUT, kein Suite-Parameter. Stichtags-
   und Verlaufspunkte liegen auf dem Vertragsjahrestag; ein Wert dazwischen
   wäre interpoliert und die Engine lehnt ihn hart ab. Unterjährig ist
@@ -138,7 +141,8 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    Abweichung der Sachverhalt, den die Abnahme sehen soll. Sie gehört
    in die Abnahmeentscheidung, belegt durch die Beschreibung des
    Quellverfahrens, nicht in eine stillere Grenze.
-5. Je Vertrag der Stichprobe die `Vertragspruefung` bauen:
+5. Je Vertrag der Stichprobe entsteht eine `Vertragspruefung` (zum
+   Lesen der Urteile; gebaut vom Kommando unten):
    - `punkte`: die `Pruefpunkt`e der gewählten Abnahme, je mit
      `monate` (volle Vertragsmonate seit Beginn), `erwartet` und
      `anlass`.
@@ -165,6 +169,7 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    ```
 
    Es baut die `Vertragspruefung`-Auftraege aus den Fall-Artefakten,
+   nimmt die Tarifregeln aus der Spez (keine Tarifregel am Aufruf),
    laesst `qa.aktuarieller_test.pruefe_stichprobe` rechnen und schreibt
    das Dict unveraendert dorthin, wo das Gate es erwartet
    (`abgeleitet/berichte/aktuartest.json` fuer A-M1, mit Abnahme-Suffix

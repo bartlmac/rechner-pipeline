@@ -381,10 +381,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                 if merkmale_gelesen is not None else None)
 
     spez_gelesen = bindung.binde(spez_pfad(fall, args.generation))
-    spez = lade_spez_aus_bytes(spez_gelesen.roh)
+    # Laden und Regeln in EINEM Fang (Pruefrunde H): Auch der Lader verweigert
+    # benannt (Version, Regelwert); ein Traceback waere ein Fehler ohne Ausweg.
     try:
+        spez = lade_spez_aus_bytes(spez_gelesen.roh)
         regeln = tarifregeln_des_falls(fall, spez)
-    except TarifregelnFehler as exc:
+    except ValueError as exc:
         print(f"verankerung_belegen: {exc}", file=sys.stderr)
         return 2
     bestand_gelesen = bindung.binde(pfade["bestand"])

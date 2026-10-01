@@ -61,7 +61,11 @@ def _vertrag(*punkte, police_id="P1", **kwargs):
     return Vertragspruefung(
         police_id=police_id, model_point=dict(MP),
         historientyp=kwargs.pop("historientyp", "ohne_gevo"),
-        punkte=tuple(punkte), **kwargs,
+        punkte=tuple(punkte),
+        # Die Regeln des EIGENEN Geschaefts, ausdruecklich: Die Engine hat
+        # fuer keine Tarifregel eine Vorgabe (Pruefrunde H, H12).
+        **{"scheiben_mit_gamma1": False, "stoab_je_baustein": False,
+           "tku_umfang": None, **kwargs},
     )
 
 
@@ -83,13 +87,13 @@ def test_vertrag_besteht_nur_wenn_jeder_pruefpunkt_besteht():
         Pruefpunkt(TA, {"kVx_MRV": uebernahme}, ANLASS_UEBERNAHME),
         Pruefpunkt(TA + 12, {"kVx_MRV": fort}, ANLASS_FORTSCHREIBUNG),
     )
-    assert pruefe_vertrag(gut, _profil())["bestanden"] is True
+    assert pruefe_vertrag(gut, _profil(), red_verfahren="prospektiv")["bestanden"] is True
 
     nur_zweiter_falsch = _vertrag(
         Pruefpunkt(TA, {"kVx_MRV": uebernahme}, ANLASS_UEBERNAHME),
         Pruefpunkt(TA + 12, {"kVx_MRV": fort + 5.0}, ANLASS_FORTSCHREIBUNG),
     )
-    ergebnis = pruefe_vertrag(nur_zweiter_falsch, _profil())
+    ergebnis = pruefe_vertrag(nur_zweiter_falsch, _profil(), red_verfahren="prospektiv")
     assert ergebnis["bestanden"] is False
     # Der Befund benennt den Anlass — sonst weiss der Aktuar nicht, WO.
     assert "fortschreibung" in ergebnis["befunde"][0]
@@ -100,12 +104,12 @@ def test_derselbe_zeitpunkt_mit_demselben_anlass_faellt_hart_aus():
     """Doppelte Punkte zaehlten doppelt in die Verteilung."""
     p = Pruefpunkt(TA, {"kVx_MRV": 1.0}, ANLASS_UEBERNAHME)
     with pytest.raises(AktuartestFehler, match="mehrfacher Pruefpunkt"):
-        pruefe_vertrag(_vertrag(p, p), _profil())
+        pruefe_vertrag(_vertrag(p, p), _profil(), red_verfahren="prospektiv")
 
 
 def test_vertrag_ohne_pruefpunkt_ist_kein_testauftrag():
     with pytest.raises(AktuartestFehler, match="kein Pruefpunkt"):
-        pruefe_vertrag(_vertrag(), _profil())
+        pruefe_vertrag(_vertrag(), _profil(), red_verfahren="prospektiv")
 
 
 # --------------------------------------------------------------------------- #
@@ -117,7 +121,7 @@ def test_ddk_bei_storno_ist_der_negative_bestandswert():
     """Der Vertrag endet: das Deckungskapital geht auf null."""
     dk = KERN.zustand_am(TA).vx_mrv
     v = _vertrag(Pruefpunkt(TA, {"dDK": -dk}, "STO"))
-    ergebnis = pruefe_vertrag(v, _profil("A-M3"))
+    ergebnis = pruefe_vertrag(v, _profil("A-M3"), red_verfahren="prospektiv")
     assert ergebnis["bestanden"] is True
     assert ergebnis["pruefungen"][0]["system"] == pytest.approx(-dk)
 
@@ -131,7 +135,7 @@ def test_ddk_bei_beitragsfreistellung_ist_die_umwandlungsdifferenz():
         Pruefpunkt(TA, {"dDK": bfr - bpfl}, "PEX"),
         beitragsfrei_seit_jahr=a0,
     )
-    ergebnis = pruefe_vertrag(v, _profil("A-M3"))
+    ergebnis = pruefe_vertrag(v, _profil("A-M3"), red_verfahren="prospektiv")
     assert ergebnis["bestanden"] is True
     assert ergebnis["pruefungen"][0]["system"] == pytest.approx(bfr - bpfl)
 
@@ -139,10 +143,11 @@ def test_ddk_bei_beitragsfreistellung_ist_die_umwandlungsdifferenz():
 def test_ddk_bei_erhoehung_ist_null():
     """Die neue Scheibe beginnt bei null — ein anderer Wert ist ein Befund."""
     v = _vertrag(Pruefpunkt(TA, {"dDK": 0.0}, "ERH"))
-    assert pruefe_vertrag(v, _profil("A-M3"))["bestanden"] is True
+    assert pruefe_vertrag(v, _profil("A-M3"), red_verfahren="prospektiv")["bestanden"] is True
 
     falsch = _vertrag(Pruefpunkt(TA, {"dDK": 250.0}, "ERH"))
-    assert pruefe_vertrag(falsch, _profil("A-M3"))["bestanden"] is False
+    assert pruefe_vertrag(falsch, _profil("A-M3"),
+        red_verfahren="prospektiv")["bestanden"] is False
 
 
 @pytest.mark.parametrize("art", ["INV", "REA"])
@@ -150,14 +155,14 @@ def test_ddk_bei_bu_zustandswechsel_faellt_hart_aus(art: str):
     """Lieber kein Wert als ein KLV-Wert, der wie ein BU-Wert aussieht."""
     v = _vertrag(Pruefpunkt(TA, {"dDK": 0.0}, art))
     with pytest.raises(AktuartestFehler, match="BU-Zustandsbewertung"):
-        pruefe_vertrag(v, _profil("A-M3"))
+        pruefe_vertrag(v, _profil("A-M3"), red_verfahren="prospektiv")
 
 
 def test_ddk_ohne_geschaeftsvorfall_faellt_hart_aus():
     """Ohne Vorfall gibt es keine Veraenderung, die dDK messen koennte."""
     v = _vertrag(Pruefpunkt(TA, {"dDK": 0.0}, ANLASS_UEBERNAHME))
     with pytest.raises(AktuartestFehler, match="DURCH einen Geschaeftsvorfall"):
-        pruefe_vertrag(v, _profil())
+        pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
 
 
 def test_jede_gevo_art_ist_in_der_wirkungstabelle_erfasst():
@@ -183,12 +188,13 @@ def test_unterjaehrig_ist_nur_mit_geschaeftsvorfall_zulaessig():
     erlaubt = _vertrag(
         Pruefpunkt(monat, {"dDK": -KERN.monatsreserve(monat).vx_mrv}, "STO")
     )
-    assert pruefe_vertrag(erlaubt, _profil("A-M3"))["bestanden"] is True
+    assert pruefe_vertrag(erlaubt, _profil("A-M3"),
+        red_verfahren="prospektiv")["bestanden"] is True
 
     for anlass in (ANLASS_UEBERNAHME, ANLASS_FORTSCHREIBUNG, ANLASS_VERLAUF):
         verboten = _vertrag(Pruefpunkt(monat, {"kVx_MRV": 1.0}, anlass))
         with pytest.raises(AktuartestFehler, match="kein Rechenpunkt"):
-            pruefe_vertrag(verboten, _profil())
+            pruefe_vertrag(verboten, _profil(), red_verfahren="prospektiv")
 
 
 def test_unterjaehriger_wert_folgt_der_zinsfreien_konvention_des_systems():
@@ -206,7 +212,7 @@ def test_unterjaehriger_wert_folgt_der_zinsfreien_konvention_des_systems():
     monat = TA + 7
     m = KERN.monatsreserve(monat)
     v = _vertrag(Pruefpunkt(monat, {"kVx_MRV": m.vx_mrv, "RKW": m.rkw}, "STO"))
-    assert pruefe_vertrag(v, _profil("A-M3"))["bestanden"] is True
+    assert pruefe_vertrag(v, _profil("A-M3"), red_verfahren="prospektiv")["bestanden"] is True
 
     jahr_a = KERN.zustand_am(TA).vx_mrv
     jahr_b = KERN.zustand_am(TA + 12).vx_mrv
@@ -221,7 +227,7 @@ def test_unterjaehriger_wert_folgt_der_zinsfreien_konvention_des_systems():
 def test_unbekannter_anlass_faellt_hart_aus():
     v = _vertrag(Pruefpunkt(TA, {"kVx_MRV": 1.0}, "XYZ"))
     with pytest.raises(AktuartestFehler, match="unbekannter Anlass"):
-        pruefe_vertrag(v, _profil())
+        pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
 
 
 # --------------------------------------------------------------------------- #
@@ -233,9 +239,9 @@ def test_toleranz_kommt_aus_dem_profil_nicht_aus_einer_konstante():
     """Dieselbe Abweichung, zwei Profile, zwei Urteile."""
     dk = KERN.zustand_am(TA).vx_mrv
     v = _vertrag(Pruefpunkt(TA, {"kVx_MRV": dk + 0.5}, ANLASS_UEBERNAHME))
-    assert pruefe_vertrag(v, _profil())["bestanden"] is False
+    assert pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")["bestanden"] is False
     weit = _profil(grund=Kriterium(abs_tol=1.0, rel_tol=1e-9))
-    assert pruefe_vertrag(v, weit)["bestanden"] is True
+    assert pruefe_vertrag(v, weit, red_verfahren="prospektiv")["bestanden"] is True
 
 
 def test_kriterium_je_gevo_art_schlaegt_die_grundtoleranz():
@@ -243,9 +249,9 @@ def test_kriterium_je_gevo_art_schlaegt_die_grundtoleranz():
     dk = KERN.zustand_am(TA).vx_mrv
     v = _vertrag(Pruefpunkt(TA, {"dDK": -dk + 0.5}, "STO"))
     profil = _profil("A-M3", kriterien={"STO": Kriterium(abs_tol=1.0, rel_tol=1e-9)})
-    assert pruefe_vertrag(v, profil)["bestanden"] is True
+    assert pruefe_vertrag(v, profil, red_verfahren="prospektiv")["bestanden"] is True
     # ohne die Ausnahme greift die enge Grundtoleranz
-    assert pruefe_vertrag(v, _profil("A-M3"))["bestanden"] is False
+    assert pruefe_vertrag(v, _profil("A-M3"), red_verfahren="prospektiv")["bestanden"] is False
 
 
 def test_verteilungsgrenze_kippt_den_test_trotz_gruener_einzelwerte():
@@ -265,12 +271,13 @@ def test_verteilungsgrenze_kippt_den_test_trotz_gruener_einzelwerte():
     sp = ziehe("vollbestand", ["P1", "P2"])
     locker = Kriterium(abs_tol=1.0, rel_tol=1e-9)
     ohne_grenze = _profil(grund=locker)
-    assert pruefe_stichprobe(vertraege, sp, ohne_grenze)["test_bestanden"] is True
+    assert pruefe_stichprobe(vertraege, sp, ohne_grenze,
+        red_verfahren="prospektiv")["test_bestanden"] is True
 
     mit_grenze = _profil(
         grund=Kriterium(abs_tol=1.0, rel_tol=1e-9, max_abs_residuum=0.1)
     )
-    ergebnis = pruefe_stichprobe(vertraege, sp, mit_grenze)
+    ergebnis = pruefe_stichprobe(vertraege, sp, mit_grenze, red_verfahren="prospektiv")
     assert ergebnis["test_bestanden"] is False
     assert ergebnis["fehlgeschlagen"] == 0, "die Einzelwerte sind gruen"
     assert ergebnis["grenzbefunde"], "die Verteilung reisst die Grenze"
@@ -315,7 +322,8 @@ def test_residuen_werden_nach_anlass_getrennt_ausgewiesen():
         Pruefpunkt(TA + 12, {"kVx_MRV": f - 0.3}, ANLASS_FORTSCHREIBUNG),
     )
     profil = _profil(grund=Kriterium(abs_tol=1.0, rel_tol=1e-9))
-    ergebnis = pruefe_stichprobe([v], ziehe("vollbestand", ["P1"]), profil)
+    ergebnis = pruefe_stichprobe([v], ziehe("vollbestand", ["P1"]), profil,
+        red_verfahren="prospektiv")
     nach = ergebnis["nach_anlass"]
     assert set(nach) == {"uebernahme", "fortschreibung"}
     assert nach["uebernahme"]["max_abs_residuum"] == pytest.approx(0.0)
@@ -329,7 +337,8 @@ def test_profil_steht_im_ergebnis_und_traegt_den_beleg():
     v = _vertrag(Pruefpunkt(TA, {"kVx_MRV": KERN.zustand_am(TA).vx_mrv},
                             ANLASS_UEBERNAHME))
     profil = _profil(weite="1 Fall je Vorfallart")
-    ergebnis = pruefe_stichprobe([v], ziehe("vollbestand", ["P1"]), profil)
+    ergebnis = pruefe_stichprobe([v], ziehe("vollbestand", ["P1"]), profil,
+        red_verfahren="prospektiv")
     assert ergebnis["profil"]["weite"] == "1 Fall je Vorfallart"
     assert ergebnis["profil"]["kennung"] == "A-M1"
     assert ergebnis["profil"]["grundtoleranz"]["abs_tol"] == ENG.abs_tol
@@ -356,7 +365,7 @@ def test_ohne_schicht_meldet_der_test_die_uebernahmedifferenz_als_fehler():
     """Der rohe Wertvergleich kann nicht anders — er kennt die Methode nicht."""
     _, geliefert, ta = _uebernommen()
     v = _vertrag(Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME))
-    ergebnis = pruefe_vertrag(v, _profil())
+    ergebnis = pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
     assert ergebnis["bestanden"] is False
     assert ergebnis["pruefungen"][0]["residuum"] == pytest.approx(850.0)
 
@@ -372,7 +381,7 @@ def test_mit_schicht_ist_die_uebernahmedifferenz_konstruktionsbedingt_null():
         Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME),
         schicht=e.parameter, monate_ta=ta,
     )
-    ergebnis = pruefe_vertrag(v, _profil())
+    ergebnis = pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
     assert ergebnis["bestanden"] is True
     assert ergebnis["pruefungen"][0]["residuum"] == pytest.approx(0.0, abs=1e-9)
 
@@ -390,7 +399,7 @@ def test_die_schicht_wirkt_auch_am_naechsten_stichtag():
         Pruefpunkt(ta + 12, {"kVx_MRV": fort_basis}, ANLASS_FORTSCHREIBUNG),
         schicht=e.parameter, monate_ta=ta,
     )
-    ergebnis = pruefe_vertrag(v, _profil())
+    ergebnis = pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
     zweiter = ergebnis["pruefungen"][1]
     assert zweiter["system"] < fort_basis, "die Schicht ist negativ, senkt also"
     assert zweiter["system"] > fort_basis - 850.0, "sie ist teilweise abgebaut"
@@ -413,7 +422,7 @@ def test_schicht_ist_am_ablauf_exakt_null():
                    ANLASS_VERLAUF),
         schicht=e.parameter, monate_ta=ta,
     )
-    ergebnis = pruefe_vertrag(v, _profil())
+    ergebnis = pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
     assert ergebnis["bestanden"], ergebnis["befunde"]
     am_ablauf = next(p for p in ergebnis["pruefungen"]
                      if p["monate"] == ablauf)
@@ -427,7 +436,7 @@ def test_schicht_ist_am_ablauf_exakt_null():
                    ANLASS_VERLAUF),
         schicht=e.parameter, monate_ta=ta,
     )
-    p_vor = next(p for p in pruefe_vertrag(v2, _profil())["pruefungen"]
+    p_vor = next(p for p in pruefe_vertrag(v2, _profil(), red_verfahren="prospektiv")["pruefungen"]
                  if p["monate"] == vor_ablauf)
     assert abs(p_vor["system"] - basis_vor) > 1.0
 
@@ -440,7 +449,7 @@ def test_schicht_ohne_verankerungszeitpunkt_faellt_hart_aus():
         schicht=e.parameter,
     )
     with pytest.raises(AktuartestFehler, match="ohne monate_ta"):
-        pruefe_vertrag(v, _profil())
+        pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
 
 
 def test_pruefpunkt_vor_der_verankerung_faellt_hart_aus():
@@ -451,7 +460,7 @@ def test_pruefpunkt_vor_der_verankerung_faellt_hart_aus():
         schicht=e.parameter, monate_ta=ta,
     )
     with pytest.raises(AktuartestFehler, match="VOR dem Verankerungszeitpunkt"):
-        pruefe_vertrag(v, _profil())
+        pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
 
 
 def test_beitrag_bleibt_von_der_schicht_unberuehrt():
@@ -464,8 +473,8 @@ def test_beitrag_bleibt_von_der_schicht_unberuehrt():
     ohne = _vertrag(
         Pruefpunkt(ta, {"BJB": KERN.gross_annual_premium()}, ANLASS_UEBERNAHME)
     )
-    assert pruefe_vertrag(mit, _profil())["bestanden"]
-    assert pruefe_vertrag(ohne, _profil())["bestanden"]
+    assert pruefe_vertrag(mit, _profil(), red_verfahren="prospektiv")["bestanden"]
+    assert pruefe_vertrag(ohne, _profil(), red_verfahren="prospektiv")["bestanden"]
 
 
 # --------------------------------------------------------------------------- #
@@ -486,14 +495,15 @@ def test_red_rechnet_dDK_aus_dem_anteil():
     vertrag = _vertrag(
         Pruefpunkt(12 * jahr, {"dDK": erwartet}, "RED", {"anteil": 0.6})
     )
-    assert pruefe_vertrag(vertrag, _profil("A-M3"))["bestanden"] is True
+    assert pruefe_vertrag(vertrag, _profil("A-M3"),
+        red_verfahren="prospektiv")["bestanden"] is True
 
 
 def test_red_ohne_anteil_ist_harter_fehler():
     """Ein geratener Anteil waere eine erfundene Vergleichsgroesse."""
     vertrag = _vertrag(Pruefpunkt(12 * 9, {"dDK": -100.0}, "RED"))
     with pytest.raises(AktuartestFehler, match="parameter\\['anteil'\\]"):
-        pruefe_vertrag(vertrag, _profil("A-M3"))
+        pruefe_vertrag(vertrag, _profil("A-M3"), red_verfahren="prospektiv")
 
 
 @pytest.mark.parametrize("anteil", [-0.1, 1.5, float("nan")])
@@ -502,7 +512,7 @@ def test_red_anteil_ausserhalb_null_bis_eins_faellt_aus(anteil):
         Pruefpunkt(12 * 9, {"dDK": -100.0}, "RED", {"anteil": anteil})
     )
     with pytest.raises(AktuartestFehler, match="liegt nicht in"):
-        pruefe_vertrag(vertrag, _profil("A-M3"))
+        pruefe_vertrag(vertrag, _profil("A-M3"), red_verfahren="prospektiv")
 
 
 def test_red_unterjaehrig_faellt_aus_solange_das_rumpfjahr_offen_ist():
@@ -515,7 +525,7 @@ def test_red_unterjaehrig_faellt_aus_solange_das_rumpfjahr_offen_ist():
         Pruefpunkt(12 * 9 + 3, {"dDK": -100.0}, "RED", {"anteil": 0.6})
     )
     with pytest.raises(AktuartestFehler, match="nur am Vertragsstichtag"):
-        pruefe_vertrag(vertrag, _profil("A-M3"))
+        pruefe_vertrag(vertrag, _profil("A-M3"), red_verfahren="prospektiv")
 
 
 def test_anteil_eins_aendert_das_deckungskapital_nicht():
@@ -523,7 +533,8 @@ def test_anteil_eins_aendert_das_deckungskapital_nicht():
     vertrag = _vertrag(
         Pruefpunkt(12 * 9, {"dDK": 0.0}, "RED", {"anteil": 1.0})
     )
-    assert pruefe_vertrag(vertrag, _profil("A-M3"))["bestanden"] is True
+    assert pruefe_vertrag(vertrag, _profil("A-M3"),
+        red_verfahren="prospektiv")["bestanden"] is True
 
 
 def test_teilkuendigung_zahlt_den_gekuendigten_grundanteil_aus():
@@ -630,7 +641,7 @@ def test_reduzierter_anfangszustand_bewertet_den_geteilten_vertrag():
         reduktion=(8, 0.6),
     )
     urteil = pruefe_vertrag(v, _profil(grund=Kriterium(abs_tol=0.01,
-                                                       rel_tol=1e-9)))
+                                                       rel_tol=1e-9)), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
 
 
@@ -643,7 +654,7 @@ def test_reduzierter_anfangszustand_faellt_nicht_auf_den_unreduzierten_wert():
                    anlass="uebernahme"),
         reduktion=(8, 0.6),
     )
-    urteil = pruefe_vertrag(v, _profil())
+    urteil = pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
 
 
@@ -654,7 +665,7 @@ def test_ddk_der_beitragsfreistellung_eines_reduzierten_vertrags():
         Pruefpunkt(monate=monate, erwartet={"dDK": 0.0}, anlass="PEX"),
         reduktion=(8, 0.6),
     )
-    urteil = pruefe_vertrag(v, _profil(kennung="A-M3"))
+    urteil = pruefe_vertrag(v, _profil(kennung="A-M3"), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
 
 
@@ -673,13 +684,13 @@ def test_reduktion_mit_scheiben_oder_pex_zustand_wird_als_folge_gerechnet():
     urteil = pruefe_vertrag(_vertrag(
         Pruefpunkt(monate=120, erwartet={"kVx_MRV": round(soll, 2)}, anlass="uebernahme"),
         reduktion=(8, 0.6), scheiben=((9, 5000.0),),
-    ), _profil())
+    ), _profil(), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
     soll_bfr = rv.reserve_beitragsfrei(9, 120)
     urteil = pruefe_vertrag(_vertrag(
         Pruefpunkt(monate=120, erwartet={"kVx_MRV": round(soll_bfr, 2)}, anlass="uebernahme"),
         reduktion=(8, 0.6), beitragsfrei_seit_jahr=9,
-    ), _profil())
+    ), _profil(), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
 
 
@@ -702,7 +713,7 @@ def test_reduktion_mit_schicht_rechnet_die_schicht_mit():
         Pruefpunkt(monate=120, erwartet={"kVx_MRV": round(soll, 2)},
                    anlass="uebernahme"),
         reduktion=(8, 0.6), schicht=e.parameter, monate_ta=ta,
-    ), _profil())
+    ), _profil(), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
     conv = dataclasses.replace(e.parameter, schichttyp="conv")
     with pytest.raises(AktuartestFehler, match="Konventionsschicht"):
@@ -710,7 +721,7 @@ def test_reduktion_mit_schicht_rechnet_die_schicht_mit():
             Pruefpunkt(monate=120, erwartet={"kVx_MRV": 1.0},
                        anlass="uebernahme"),
             reduktion=(8, 0.6), schicht_conv=conv, monate_t0=ta,
-        ), _profil())
+        ), _profil(), red_verfahren="prospektiv")
 
 
 def test_pruefpunkt_vor_der_reduktion_ist_widerspruechlich():
@@ -719,7 +730,7 @@ def test_pruefpunkt_vor_der_reduktion_ist_widerspruechlich():
             Pruefpunkt(monate=12 * 5, erwartet={"kVx_MRV": 1.0},
                        anlass="uebernahme"),
             reduktion=(8, 0.6),
-        ), _profil())
+        ), _profil(), red_verfahren="prospektiv")
 
 
 def test_scheiben_vertrag_traegt_den_beitrag_beider_teile():
@@ -739,7 +750,7 @@ def test_scheiben_vertrag_traegt_den_beitrag_beider_teile():
         scheiben=((erh_jahr, erh_summe),),
     )
     urteil = pruefe_vertrag(v, _profil(grund=Kriterium(abs_tol=0.01,
-                                                       rel_tol=1e-9)))
+                                                       rel_tol=1e-9)), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
 
     # Mutationsfaenger: der Grundbeitrag allein darf NICHT bestehen.
@@ -749,7 +760,7 @@ def test_scheiben_vertrag_traegt_den_beitrag_beider_teile():
                    anlass="uebernahme"),
         scheiben=((erh_jahr, erh_summe),),
     )
-    assert not pruefe_vertrag(v2, _profil())["bestanden"]
+    assert not pruefe_vertrag(v2, _profil(), red_verfahren="prospektiv")["bestanden"]
 
 
 def test_red_ddk_folgt_dem_verfahren_des_falls():
@@ -761,7 +772,8 @@ def test_red_ddk_folgt_dem_verfahren_des_falls():
     punkt = Pruefpunkt(monate=12 * jahr, erwartet={"dDK": 0.0},
                        anlass="RED", parameter={"anteil": f})
 
-    prospektiv = pruefe_vertrag(_vertrag(punkt), _profil(kennung="A-M3"))
+    prospektiv = pruefe_vertrag(_vertrag(punkt), _profil(kennung="A-M3"),
+        red_verfahren="prospektiv")
     assert prospektiv["bestanden"], prospektiv["befunde"]
 
     erwartet_abzug = -stoab * (1 - f)
@@ -819,7 +831,7 @@ def test_plausibilitaet_ersetzt_den_wertvergleich_im_korridor():
     zeile = KERN.zustand_am(120)
     daneben = round(zeile.rkw + 50.0, 2)       # 50 EUR mehr, im Korridor
     v = _vertrag(_rkw_punkt(rkw=daneben), plausibilitaet={"RKW": GRUND})
-    urteil = pruefe_vertrag(v, _profil())
+    urteil = pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
     rkw = next(p for p in urteil["pruefungen"] if p["groesse"] == "RKW")
     assert rkw["kriterium"] == KRITERIUM_PLAUSIBILITAET
@@ -834,7 +846,7 @@ def test_plausibilitaet_faengt_einen_unmoeglichen_systemwert():
     """Kein Freibrief: ein Systemwert ausserhalb des Korridors faellt."""
     zeile = KERN.zustand_am(120)
     v = _vertrag(_rkw_punkt(), plausibilitaet={"RKW": GRUND})
-    urteil = pruefe_vertrag(v, _profil())
+    urteil = pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
     assert urteil["bestanden"]
     # Korridor ist [DK - stoab_max, DK]; ein Systemwert darunter faellt.
     korridor = next(p for p in urteil["pruefungen"]
@@ -850,7 +862,7 @@ def test_plausibilitaet_prueft_auch_den_gelieferten_wert():
     zeile = KERN.zustand_am(120)
     unmoeglich = round(zeile.vx_mrv - 5 * KLV_DEFAULT.stoab_max, 2)
     v = _vertrag(_rkw_punkt(rkw=unmoeglich), plausibilitaet={"RKW": GRUND})
-    urteil = pruefe_vertrag(v, _profil())
+    urteil = pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
     assert any("GELIEFERTER Wert" in b for b in urteil["befunde"]), urteil
 
@@ -862,7 +874,7 @@ def test_groesse_ohne_plausibilitaetsregel_faellt_hart():
     assert "dDK" not in PLAUSIBILITAET
     v = _vertrag(_rkw_punkt(), plausibilitaet={"dDK": GRUND})
     with pytest.raises(AktuartestFehler, match="keine Plausibilitaetsregel"):
-        pruefe_vertrag(v, _profil())
+        pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
 
 
 def test_kvx_mrv_plausibilitaet_ohne_kandidaten_faellt_hart():
@@ -873,13 +885,13 @@ def test_kvx_mrv_plausibilitaet_ohne_kandidaten_faellt_hart():
     assert "kVx_MRV" in PLAUSIBILITAET and "BJB" in PLAUSIBILITAET
     v = _vertrag(_rkw_punkt(), plausibilitaet={"kVx_MRV": GRUND})
     with pytest.raises(AktuartestFehler, match="bleibt im Wertvergleich"):
-        pruefe_vertrag(v, _profil())
+        pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
 
 
 def test_plausibilitaet_ohne_begruendung_faellt_hart():
     v = _vertrag(_rkw_punkt(), plausibilitaet={"RKW": "   "})
     with pytest.raises(AktuartestFehler, match="ohne Begruendung"):
-        pruefe_vertrag(v, _profil())
+        pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
 
 
 def test_ersetzte_vergleiche_verzerren_die_residuum_verteilung_nicht():
@@ -893,7 +905,7 @@ def test_ersetzte_vergleiche_verzerren_die_residuum_verteilung_nicht():
                  plausibilitaet={"RKW": GRUND})
     probe = Stichprobe(profil="vollbestand", parameter={},
                        police_ids=("P1",), grundgesamtheit=1)
-    ergebnis = pruefe_stichprobe([v], probe, _profil())
+    ergebnis = pruefe_stichprobe([v], probe, _profil(), red_verfahren="prospektiv")
     assert ergebnis["test_bestanden"], ergebnis["grenzbefunde"]
     assert ergebnis["verteilung"]["max_abs_residuum"] < 0.02
     assert ergebnis["plausibilitaets_pruefungen"] == 1
@@ -910,7 +922,7 @@ def test_gate_rechnet_die_plausibilitaet_nach_und_faengt_manipulation():
     v = _vertrag(_rkw_punkt(rkw=unmoeglich), plausibilitaet={"RKW": GRUND})
     probe = Stichprobe(profil="vollbestand", parameter={},
                        police_ids=("P1",), grundgesamtheit=1)
-    ergebnis = pruefe_stichprobe([v], probe, _profil())
+    ergebnis = pruefe_stichprobe([v], probe, _profil(), red_verfahren="prospektiv")
     assert not ergebnis["test_bestanden"]
     assert test_fehler(ergebnis) == []
 
@@ -980,7 +992,7 @@ class TestKandidatenKorridor:
             korridore[groesse] = (min(werte), max(werte))
             erwartet[groesse] = round(werte[0], 2)  # Kandidat 0.50
         urteil = pruefe_vertrag(
-            self._vertrag_mit_kandidaten(erwartet), _profil())
+            self._vertrag_mit_kandidaten(erwartet), _profil(), red_verfahren="prospektiv")
         assert urteil["bestanden"], urteil["befunde"]
         for p in urteil["pruefungen"]:
             assert p["kriterium"] == KRITERIUM_PLAUSIBILITAET
@@ -995,7 +1007,7 @@ class TestKandidatenKorridor:
         werte = self._kandidaten_werte("RKW")
         daneben = round(min(werte) - 500.0, 2)
         urteil = pruefe_vertrag(
-            self._vertrag_mit_kandidaten({"RKW": daneben}), _profil())
+            self._vertrag_mit_kandidaten({"RKW": daneben}), _profil(), red_verfahren="prospektiv")
         assert not urteil["bestanden"]
         assert any("GELIEFERTER Wert" in b for b in urteil["befunde"])
 
@@ -1004,7 +1016,7 @@ class TestKandidatenKorridor:
                      reduktion_kandidaten=self.KANDIDATEN)
         with pytest.raises(AktuartestFehler,
                            match="ohne Herabsetzungs-Anfangszustand"):
-            pruefe_vertrag(v, _profil())
+            pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
 
     def test_ein_kandidat_spannt_keinen_korridor(self):
         v = _vertrag(
@@ -1015,7 +1027,7 @@ class TestKandidatenKorridor:
             plausibilitaet={"RKW": GRUND},
         )
         with pytest.raises(AktuartestFehler, match="kein Korridor"):
-            pruefe_vertrag(v, _profil())
+            pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
 
     def test_rkw_ohne_kandidaten_behaelt_den_tarifwerks_bound(self):
         """Der Lauf-1-Tatbestand bleibt: Zustand bekannt, nur die
@@ -1023,7 +1035,7 @@ class TestKandidatenKorridor:
         [kVx_MRV - stoab_max, kVx_MRV]."""
         zeile = KERN.zustand_am(120)
         v = _vertrag(_rkw_punkt(), plausibilitaet={"RKW": GRUND})
-        urteil = pruefe_vertrag(v, _profil())
+        urteil = pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
         korridor = next(p for p in urteil["pruefungen"]
                         if p["groesse"] == "RKW")["korridor"]
         assert korridor[0] == pytest.approx(
@@ -1049,7 +1061,7 @@ def test_die_zweitverankerung_traegt_das_konventionsresiduum_getrennt():
     hist_wert_t0 = pruefe_vertrag(_vertrag(
         Pruefpunkt(t0, {"kVx_MRV": basis_t0}, ANLASS_FORTSCHREIBUNG),
         schicht=e.parameter, monate_ta=ta,
-    ), _profil())["pruefungen"][0]["system"]
+    ), _profil(), red_verfahren="prospektiv")["pruefungen"][0]["system"]
 
     delta_conv = 12.5
     geliefert_t0 = hist_wert_t0 + delta_conv
@@ -1068,7 +1080,7 @@ def test_die_zweitverankerung_traegt_das_konventionsresiduum_getrennt():
     ohne = pruefe_vertrag(_vertrag(
         Pruefpunkt(t0, {"kVx_MRV": geliefert_t0}, ANLASS_FORTSCHREIBUNG),
         schicht=e.parameter, monate_ta=ta,
-    ), _profil())
+    ), _profil(), red_verfahren="prospektiv")
     # Residuum = System - erwartet: das System liegt um die
     # Konventionsdifferenz UNTER dem gelieferten Wert.
     assert ohne["pruefungen"][0]["residuum"] == pytest.approx(-delta_conv)
@@ -1077,7 +1089,7 @@ def test_die_zweitverankerung_traegt_das_konventionsresiduum_getrennt():
         Pruefpunkt(t0, {"kVx_MRV": geliefert_t0}, ANLASS_FORTSCHREIBUNG),
         schicht=e.parameter, monate_ta=ta,
         schicht_conv=conv, monate_t0=t0,
-    ), _profil())
+    ), _profil(), red_verfahren="prospektiv")
     assert mit["pruefungen"][0]["residuum"] == pytest.approx(0.0, abs=1e-9)
 
 
@@ -1097,7 +1109,7 @@ def test_vertauschte_schichttypen_fallen_hart():
         pruefe_vertrag(_vertrag(
             Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME),
             schicht=conv, monate_ta=ta,
-        ), _profil())
+        ), _profil(), red_verfahren="prospektiv")
     assert "R_hist" in str(exc.value)
 
     with pytest.raises(AktuartestFehler) as exc:
@@ -1105,7 +1117,7 @@ def test_vertauschte_schichttypen_fallen_hart():
             Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME),
             schicht=e.parameter, monate_ta=ta,
             schicht_conv=e.parameter, monate_t0=ta,
-        ), _profil())
+        ), _profil(), red_verfahren="prospektiv")
     assert "'conv'" in str(exc.value)
 
 
@@ -1119,7 +1131,7 @@ def test_zweitverankerung_ohne_t0_faellt_hart():
             Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME),
             schicht=e.parameter, monate_ta=ta,
             schicht_conv=conv,
-        ), _profil())
+        ), _profil(), red_verfahren="prospektiv")
     assert "monate_t0" in str(exc.value)
 
 
@@ -1135,7 +1147,7 @@ def test_das_ergebnis_traegt_den_pruefauftrag_zum_nachrechnen():
 
     v = _vertrag(Pruefpunkt(TA, {"kVx_MRV": KERN.zustand_am(TA).vx_mrv},
                             ANLASS_UEBERNAHME))
-    ergebnis = pruefe_vertrag(v, _profil())
+    ergebnis = pruefe_vertrag(v, _profil(), red_verfahren="prospektiv")
     auftrag = ergebnis["auftrag"]
 
     nachgebaut = Rechenkern(ModelPoint(**auftrag["model_point"]))
@@ -1153,7 +1165,7 @@ def test_das_ergebnis_traegt_den_pruefauftrag_zum_nachrechnen():
     mit = pruefe_vertrag(_vertrag(
         Pruefpunkt(ta, {"kVx_MRV": geliefert}, ANLASS_UEBERNAHME),
         schicht=e.parameter, monate_ta=ta,
-    ), _profil())
+    ), _profil(), red_verfahren="prospektiv")
     assert mit["auftrag"]["monate_ta"] == ta
     assert mit["auftrag"]["schicht"]["rho"] == e.parameter.rho
 
@@ -1212,8 +1224,9 @@ class TestScheibenGamma1Regel:
                                anlass="uebernahme"),),
             scheiben=((5, 4000.0),),
         )
-        ohne = Vertragspruefung(**basis)
-        mit = Vertragspruefung(**basis, scheiben_mit_gamma1=True)
+        regeln = dict(stoab_je_baustein=False, tku_umfang=None)
+        ohne = Vertragspruefung(**basis, **regeln, scheiben_mit_gamma1=False)
+        mit = Vertragspruefung(**basis, **regeln, scheiben_mit_gamma1=True)
         g0, s0 = _kerne(ohne, mp)
         g1, s1 = _kerne(mit, mp)
         bjb_ohne = g0.gross_annual_premium() + s0[0][1].gross_annual_premium()
@@ -1266,9 +1279,13 @@ class TestStoabJeBausteinRegel:
             scheiben=((8, 5000.0),),
         )
         p = basis["punkte"][0]
-        je_vertrag = _system_werte(Vertragspruefung(**basis), mp, p)
+        regeln = dict(scheiben_mit_gamma1=False, tku_umfang=None)
+        je_vertrag = _system_werte(
+            Vertragspruefung(**basis, **regeln, stoab_je_baustein=False), mp, p,
+            red_verfahren="prospektiv")
         je_baustein = _system_werte(
-            Vertragspruefung(**basis, stoab_je_baustein=True), mp, p)
+            Vertragspruefung(**basis, **regeln, stoab_je_baustein=True), mp, p,
+            red_verfahren="prospektiv")
 
         grund = Rechenkern(mp).monatsreserve(monate)
         scheibe = Rechenkern(
@@ -1329,23 +1346,23 @@ def test_quell_komponenten_skalieren_die_rundungstoleranz():
     basis = dict(beitragsfrei_seit_jahr=a0)
     probe = pruefe_vertrag(_vertrag(
         Pruefpunkt(monate=monate, erwartet={"kVx_MRV": 1.0},
-                   anlass="uebernahme"), **basis), _profil())
+                   anlass="uebernahme"), **basis), _profil(), red_verfahren="prospektiv")
     system = next(p["system"] for p in probe["pruefungen"])
     # Residuum sicher ueber der Grundtoleranz (0,01) und unter der
     # 5-Komponenten-Toleranz (0,01 + 4 x 0,005 = 0,03).
     erwartet = round(system, 2) + 0.02
     punkt = Pruefpunkt(monate=monate, erwartet={"kVx_MRV": erwartet},
                        anlass="uebernahme")
-    ohne = pruefe_vertrag(_vertrag(punkt, **basis), _profil())
+    ohne = pruefe_vertrag(_vertrag(punkt, **basis), _profil(), red_verfahren="prospektiv")
     assert not ohne["bestanden"]
     mit = pruefe_vertrag(
-        _vertrag(punkt, **basis, quell_komponenten=5), _profil())
+        _vertrag(punkt, **basis, quell_komponenten=5), _profil(), red_verfahren="prospektiv")
     assert mit["bestanden"], mit["befunde"]
     assert mit["komponenten"] == 5
     assert mit["auftrag"]["quell_komponenten"] == 5
     with pytest.raises(AktuartestFehler, match="mindestens einer"):
         pruefe_vertrag(_vertrag(punkt, **basis, quell_komponenten=0),
-                       _profil())
+                       _profil(), red_verfahren="prospektiv")
 
 
 def test_auftragsbau_weist_vorgeschichte_ohne_zustand_aus():
@@ -1396,7 +1413,7 @@ def test_auftragsbau_verwirft_plausibilitaet_ohne_zustand_ausgewiesen():
     # Der Auftrag ist engine-vertraeglich: kein AktuartestFehler, die
     # Police faellt im Wertvergleich sichtbar rot statt den Lauf zu
     # brechen.
-    urteil = pruefe_vertrag(auftraege[0], _profil())
+    urteil = pruefe_vertrag(auftraege[0], _profil(), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
     assert all(p["kriterium"] == KRITERIUM_VERGLEICH
                for p in urteil["pruefungen"])
@@ -1426,7 +1443,7 @@ def test_auftragsbau_verwirft_plausibilitaet_bei_serien_ist_struktur():
     assert auftraege[0].plausibilitaet == {}
     assert auftraege[0].reduktion_kandidaten == ()
     # Engine-vertraeglich: der Wertvergleich urteilt, keine Wache.
-    urteil = pruefe_vertrag(auftraege[0], _profil())
+    urteil = pruefe_vertrag(auftraege[0], _profil(), red_verfahren="prospektiv")
     assert all(p["kriterium"] == KRITERIUM_VERGLEICH
                for p in urteil["pruefungen"])
 

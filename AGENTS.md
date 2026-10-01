@@ -144,10 +144,13 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   roles `mensch/<funktion>` sign, `agent/<name>` roles only prepare and
   may reject; the key class `mensch`/`simulation`/`agent` is recorded
   in every snapshot).
-- Migration controlling: the two-reporting-date suite
-  (`rechner_pipeline.qa.migrationssuite`) and the HTML acceptance
-  report (`rechner_pipeline.gates.abnahmebericht`) are libraries driven
-  by the `pruefe-migrationscontrolling` skill (gate A-M4).
+- Migration controlling: the two-reporting-date suite engine
+  (`rechner_pipeline.qa.migrationssuite`) runs only through
+  `python -m rechner_pipeline.gates.migrationssuite_lauf`, which takes the
+  tariff rules from the case's Spez (ADR-024 addendum; the engines of the
+  suite and of the actuarial test carry no default for any tariff rule);
+  the HTML acceptance report is `rechner_pipeline.gates.abnahmebericht`;
+  both are driven by the `pruefe-migrationscontrolling` skill (gate A-M4).
 - Actuarial test (precedes A-M4): THREE separately signed acceptances —
   `A-M1` Stichtagstest, `A-M2` Verlaufstest, `A-M3`
   Geschaeftsvorfalltest. Per contract a LIST of check points
@@ -155,7 +158,8 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   criteria (`rechner_pipeline.qa.testprofil`); no interpolated
   comparison, no summation. Sub-annual points are admissible only with a
   business event as the occasion — there the mixing convention IS the
-  subject of the check. Rendered by
+  subject of the check. Run by `rechner_pipeline.gates.aktuartest_lauf`
+  (rules from the Spez), rendered by
   `python -m rechner_pipeline.gates.aktuartest --abnahme A-M1|A-M2|A-M3`,
   driven by the `aktuartest-durchfuehren` skill.
 - Migration entry (ADR-012, Grundsatzdokumentation section 9): the
@@ -178,13 +182,18 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   signed with the operations key, role `betrieb/tageslauf`, key class
   `betrieb`, ADR-018 addendum 2026-09-30); `python -m
   rechner_pipeline.betrieb.uebernahme --stand <daten> --fall <faelle/name>
-  --stichtag <ISO> --freigabe-schluessel <key> --betriebsschluessel <key>
-  --zeichnungsordnung <ordnung>` registers a migrated portfolio as a
+  --stichtag <ISO> --freigabe-schluessel <vorstand-key>
+  --freigabe-schluessel <aktuariat-key> --freigabe-schluessel <betrieb-key>
+  --betriebsschluessel <key> --zeichnungsordnung <ordnung> --linie <linie>`
+  registers a migrated portfolio as a
   dated, signed intake — only with an accepted intake acceptance A-B2
-  (ADR-022): the intake has three steps, `python -m
+  (ADR-022; the key ring holds the board's key for the links of the line,
+  that of `mensch/aktuariat` for A-M1/A-M4 and that of `mensch/betrieb` for
+  A-B2): the intake has three steps, `python -m
   rechner_pipeline.betrieb.zugangsprobe --stand <daten> --fall
   <faelle/name> --stichtag <ISO> [--bis <ISO>] --schluessel <key>
-  --zeichnungsordnung <ordnung> --freigabe-schluessel <key>` (two
+  --zeichnungsordnung <ordnung> --freigabe-schluessel <vorstand-key>
+  --freigabe-schluessel <aktuariat-key> --linie <linie>` (two
   deterministic runs on a copy of the store, with and without the intake;
   their difference against the accepted portfolio is the evidence
   `abgeleitet/berichte/zugangsprobe.json`), then `gates.gate_entscheid
@@ -207,7 +216,7 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `git diff --name-only | python -m rechner_pipeline.ontologie.impact`
   (informational — CI and the pre-commit rule still run the FULL
   suite), `python -m rechner_pipeline.ontologie.landkarte
-  --format mermaid|dot|graphml --umfang schichten|knoten|modul`.
+  --format mermaid|dot|graphml --umfang schichten|knoten|modul --out <datei>`.
 
 ## Codex Entry Points
 

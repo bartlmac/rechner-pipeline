@@ -79,6 +79,17 @@ def lade_spez_aus_bytes(roh: bytes) -> TarifSpez:
             "erzeugen (spez.erzeugen) oder ueber einen deklarierten Uebergang "
             "heben (spez.validierung.hebe_spez_auf_geltende_version)"
         )
+    befunde = regelwert_befunde(daten)
+    if befunde:
+        raise SpezRegelwertFehler(
+            "Spez " + repr(daten.get("generation")) + ": " + "; ".join(befunde)
+            + ". Die Spez fuehrt jede Tarifregel als Wert ihres Wertebereichs "
+            "oder — fuer ein Merkmal, das nur erhoben sein muss — als "
+            "ausdrueckliche Feststellung 'nicht_belegt'; null ist weder das "
+            "eine noch das andere. Ausweg: die Spez aus der A-Box neu erzeugen "
+            "(spez.erzeugen) bzw. fuer eine Spez ohne A-Box die Feststellung mit "
+            "Fundstelle eintragen (spez.validierung.ergaenze_tarifregeln); "
+            "dass es keinen Wert gibt, heisst 'nicht_belegt'.")
     return TarifSpez.model_validate_json(roh)
 
 
@@ -86,15 +97,90 @@ class SpezVersionFehler(ValueError):
     """Die Spez spricht ein anderes Vokabular als der Code."""
 
 
+class SpezRegelwertFehler(ValueError):
+    """Ein Wert in ``tarifwerk``/``quellverfahren`` liegt ausserhalb des
+    Vokabulars der T-Box (falscher Typ, ausserhalb des Bereichs, null,
+    unbekanntes Merkmal)."""
+
+
+def regelwert_befunde(daten: dict) -> List[str]:
+    """Jeder Wert der Bloecke ``tarifwerk`` und ``quellverfahren`` gegen den
+    Wertebereich der T-Box — mit Merkmal und erlaubtem Bereich je Befund.
+
+    Vorher (Pruefrunde H, bekannter Punkt a) verweigerte der Lader einen
+    Dynamiksatz ``null`` mit einem rohen Pydantic-Fehler ohne Ausweg, und ein
+    Wert ausserhalb des Bereichs ging durch den Lader und fiel erst an der
+    Tuer der Bestandsstrecke (``spez.tarifregeln.tarifregeln_der_spez``) —
+    im Scope ``tarif`` nie. Dieselbe Regel wie dort (``tbox.wert_im_bereich``,
+    typstreng), jetzt fuer JEDEN Leser.
+    """
+    from rechner_pipeline.ontologie.tbox import (
+        BESTAND_ERHOBEN,
+        BLOCK_TITEL,
+        bereich_text,
+        wert_im_bereich,
+    )
+    from rechner_pipeline.spez.tarifregeln import (
+        NICHT_BELEGT,
+        ist_feststellung_nicht_belegt,
+    )
+
+    befunde: List[str] = []
+    for block, bereiche in GENERATIONS_BLOECKE.items():
+        werte = daten.get(block, {})
+        if not isinstance(werte, dict):
+            befunde.append(f"{block} ist kein Objekt (Merkmal -> Wert), sondern {werte!r}")
+            continue
+        for merkmal, wert in sorted(werte.items()):
+            if merkmal not in bereiche:
+                befunde.append(f"{block}.{merkmal} ist kein Merkmal des "
+                               f"{BLOCK_TITEL[block]}s (bekannt: {sorted(bereiche)})")
+            elif ist_feststellung_nicht_belegt(block, merkmal, wert):
+                continue
+            elif wert is None or not wert_im_bereich(wert, bereiche[merkmal]):
+                erlaubt = bereich_text(bereiche[merkmal])
+                if merkmal in BESTAND_ERHOBEN.get(block, ()):
+                    erlaubt += f" oder die Feststellung {NICHT_BELEGT!r}"
+                befunde.append(f"{block}.{merkmal} = {json.dumps(wert)} liegt nicht im "
+                               f"Wertebereich {erlaubt}")
+    return befunde
+
+
 def lade_spez(fall: Path, generation: str) -> TarifSpez:
     return lade_spez_aus_bytes(spez_pfad(fall, generation).read_bytes())
+
+
+class SpezHebungFehler(ValueError):
+    """Die Datei traegt, was ihre Version nicht kennen kann — keine Hebung."""
 
 
 def _hebe_spez_0_1_0_auf_0_2_0(daten: dict) -> dict:
     """T-Box 0.1.0 -> 0.2.0 ist fuer die Spez additiv: ``tarifwerk``,
     ``quellverfahren`` und ``urteil.geaenderte_tarifwerksmerkmale`` sind
     optional und bleiben leer (nicht erhoben — wie bei der gehobenen A-Box).
-    Nur die Version wandert; das Spez-Schema bleibt."""
+    Nur die Version wandert; das Spez-Schema bleibt.
+
+    EINE HEBUNG TRAEGT NUR, WAS IM ALTEN ARTEFAKT STEHEN KANN (Pruefrunde H,
+    H13; ADR-024, Nachtrag "Regel der Hebung"). Vorher uebernahm die Regel
+    Bloecke aus dem 0.2.0-Vokabular aus einer Datei, die sich 0.1.0 nannte:
+    Tarifregeln ohne Fundstelle und ohne A-Box standen danach in einer
+    geltenden Spez, und der Weg ueber die Feststellung mit Fundstelle
+    (:func:`ergaenze_tarifregeln`) war versperrt ("bereits Tarifregeln").
+    Eine solche Datei ist keine 0.1.0-Datei; sie wird benannt verweigert —
+    auch mit leerem Block, denn schon der Schluessel gehoert nicht zu 0.1.0.
+    """
+    fremd = [k for k in GENERATIONS_BLOECKE if k in daten]
+    if "geaenderte_tarifwerksmerkmale" in (daten.get("urteil") or {}):
+        fremd.append("urteil.geaenderte_tarifwerksmerkmale")
+    if fremd:
+        raise SpezHebungFehler(
+            f"Spez nennt T-Box '0.1.0', traegt aber {fremd} aus dem Vokabular "
+            "von 0.2.0 — das kann eine 0.1.0-Datei nicht tragen; eine Hebung "
+            "traegt nur, was im alten Artefakt steht, und erfindet keine "
+            "Tarifregeln ohne Beleg. Ausweg: die Regeln ueber die A-Box bringen "
+            "(P-Q3, spez.erzeugen) oder — fuer eine Spez ohne A-Box — die "
+            "Bloecke entfernen, heben und die Feststellung mit Fundstelle "
+            "eintragen (spez.validierung.ergaenze_tarifregeln).")
     return {**daten, "tbox_version": "0.2.0"}
 
 

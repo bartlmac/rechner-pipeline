@@ -41,13 +41,14 @@ def _testergebnis(*, drift: float = 0.0, profil: Testprofil = PROFIL) -> Dict[st
         Vertragspruefung(
             police_id="P1", model_point=dict(MP), historientyp="ohne_gevo",
             punkte=(Pruefpunkt(TA, {"kVx_MRV": erwartet}, ANLASS_UEBERNAHME),),
+            scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None,
         )
     ]
     return pruefe_stichprobe(
         auftraege, ziehe("vollbestand", ["P1"]), profil,
         transportsicherung={"bestand_sha256": "ab" * 32},
         system={"commit": "deadbeef", "branch": "x", "dirty": "false",
-                "quellcode_sha256": "cd" * 32},
+                "quellcode_sha256": "cd" * 32}, red_verfahren="prospektiv",
     )
 
 

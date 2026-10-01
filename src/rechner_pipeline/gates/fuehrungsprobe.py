@@ -1528,10 +1528,12 @@ def fuehre_probe(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
     # Die Spez war ueberhaupt nicht gebunden (Review T25-05): Die Probe
     # rechnete gegen die Zellen einer Datei, die ihr Beleg nicht nannte.
     spez_datei = spez_pfad(fall, args.generation)
-    spez = lade_spez_aus_bytes(binde(spez_datei).roh)
+    # Laden und Regeln in EINEM Fang (Pruefrunde H): Auch der Lader verweigert
+    # benannt (Version, Regelwert); ein Traceback waere ein Fehler ohne Ausweg.
     try:
+        spez = lade_spez_aus_bytes(binde(spez_datei).roh)
         regeln = tarifregeln_des_falls(fall, spez)
-    except TarifregelnFehler as exc:
+    except ValueError as exc:
         print(f"fuehrungsprobe: {exc}", file=sys.stderr)
         return 2, None
     zeilen_pfad = Path(args.zeilen).resolve()

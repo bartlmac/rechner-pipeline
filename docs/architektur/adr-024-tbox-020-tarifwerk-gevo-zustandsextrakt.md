@@ -394,3 +394,66 @@ Generator neu erzeugt.
 Instrumente: `tests/test_am4_fuehrungswert_und_tarifregeln.py` (eigene,
 abnahmereife Kette des zweiten Laufs, A-M4 ueber das Kommando),
 `tests/test_tarifregeln_aus_spez.py` (Abschnitte Pruefrunde G).
+
+## Nachtrag 2026-10-01 (fuenfter): Pruefrunde H — Regel der Hebung, Engines ohne Vorgabe
+
+**1. Regel der Hebung (H13).** Eine Hebung darf nur tragen, was im alten
+Artefakt steht; wo sie unterscheiden muesste, was dort nicht unterschieden
+war, ist die benannte Verweigerung die ehrliche Antwort.
+Regel: `spez.validierung._hebe_spez_0_1_0_auf_0_2_0` verweigert
+(`SpezHebungFehler`) eine Datei, die sich T-Box 0.1.0 nennt und einen
+Schluessel aus dem Vokabular von 0.2.0 traegt (`tarifwerk`, `quellverfahren`,
+`urteil.geaenderte_tarifwerksmerkmale`, auch leer): Sie ist keine
+0.1.0-Datei. Ausweg: die Regeln ueber die A-Box bringen (P-Q3,
+`spez.erzeugen`) oder fuer eine Spez ohne A-Box die Bloecke entfernen, heben
+und die Feststellung mit Fundstelle eintragen (`ergaenze_tarifregeln`).
+Dieselbe Bauform hatte die Hebung der A-Box (`ontologie.abox`, Regel 0.1.0 ->
+0.2.0): Eine 0.1.0-A-Box mit Aussagen in einem Block von 0.2.0 wurde
+mitgehoben (gemessen: alle acht Tarifregel-Aussagen eines Falls), entgegen
+ihrer Zusage "leere Bloecke"; sie wird jetzt ebenso verweigert (Ausweg:
+Neu-Merge aus den Fragmenten).
+Grund: Die Hebung der Spez trug Tarifregeln ohne Fundstelle und ohne A-Box in
+eine geltende Spez, die jedes Kommando der Bestandsstrecke annahm, und
+versperrte danach den Weg ueber die Feststellung ("bereits Tarifregeln").
+Verworfen: *die Bloecke bei der Hebung leeren* — die Hebung verwuerfe still
+Inhalt einer Datei, statt zu sagen, dass die Datei nicht ist, was sie
+vorgibt.
+Dieselbe Regel erklaert, warum es fuer die Schaerfung des vierten Nachtrags
+("nicht belegt" muss ausdruecklich sein) KEINE Hebung gibt: Sie muesste
+entscheiden, ob ein fehlender Dynamiksatz "nicht belegt" oder "nie erhoben"
+hiess, und das steht in der alten Datei nicht. Die Antwort ist die benannte
+Verweigerung an der Tuer (`spez.tarifregeln.tarifregeln_der_spez`, "nicht
+erhoben") mit dem Weg ueber A-Box bzw. Feststellung.
+
+**2. Der Lader nennt jeden Regelwert (bekannter Punkt a).** Regel: Der eine
+Lader (`spez.validierung.lade_spez_aus_bytes`) haelt jeden Wert der Bloecke
+`tarifwerk` und `quellverfahren` gegen den Wertebereich der T-Box
+(`regelwert_befunde`, dieselbe typstrenge Regel wie
+`tarifregeln_der_spez`) und verweigert (`SpezRegelwertFehler`) mit Merkmal,
+erlaubtem Bereich und Ausweg (Spez neu erzeugen; "nicht_belegt" ist die
+ausdrueckliche Feststellung). Grund: Ein Dynamiksatz `null` endete in einem
+rohen Pydantic-Fehler ohne Ausweg, und ein Wert ausserhalb des Bereichs ging
+durch den Lader und fiel erst an der Tuer der Bestandsstrecke — im Scope
+`tarif` nie.
+
+**3. Die Engines tragen keine Vorgabe fuer eine Tarifregel (H12).** Regel:
+In `qa.migrationssuite` und `qa.aktuarieller_test` hat kein Argument und
+kein Feld eines Pruefauftrags, das eine Tarifregel traegt (Merkmale aus
+`tbox.TARIFWERK_MERKMALE` und dem Quellverfahren, dazu `dk_am_jahrestag`),
+eine Vorgabe (18 Stellen, Ratsche mit `==`); die Felder der Pruefauftraege
+sind Pflicht nur als Schluesselwort. Der einzige Weg zu den belegten Regeln
+sind die Kommandos (`gates.migrationssuite_lauf`, `gates.aktuartest_lauf`),
+die sie aus der Spez nennen; die Skills beschreiben genau diesen Weg.
+Grund: Der Skill des Migrationscontrollings beschrieb "Auftraege selbst
+bauen, `pruefe_bestand` rufen"; das lief ohne Fehler mit der Regel des
+eigenen Geschaefts (2 von 29 statt 29 von 29 bestanden), und A-M4
+verweigerte den Beleg erst am Ende.
+Benannte Grenze: Weitere Funktionen mit einer Vorgabe fuer eine Tarifregel
+stehen ausserhalb der beiden Engines (gemessen: 6 in `gates/`, 8 in
+`bestand/`, 5 in `kern/`); jede Aufrufstelle in den Kommandos setzt die
+Regel ausdruecklich.
+
+Instrumente: `tests/test_spez_hebung_und_regelwerte.py`,
+`tests/test_engine_tarifregel_ohne_vorgabe.py`,
+`tests/test_dokumentierte_kommandos.py` (jedes woertliche Kommando der Skills
+und Dokumente besteht den Parser seines Moduls, H14).

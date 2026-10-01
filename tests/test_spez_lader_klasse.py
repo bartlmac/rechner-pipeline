@@ -242,6 +242,18 @@ def _verweigert(aufruf, capsys) -> str:
     return text + capsys.readouterr().err
 
 
+def _verweigert_benannt(aufruf, capsys) -> str:
+    """Die fuenf Kommandos der Bestandsstrecke verweigern einen Fehler des
+    Laders BENANNT: Exit 2 mit der Meldung des Laders auf stderr, keine
+    Ausnahme (Pruefrunde H: ein Traceback ist ein Fehler ohne Ausweg).
+
+    Mutationsprobe: das Laden wieder vor den Fang ziehen -> rot."""
+    ergebnis = aufruf()   # eine Ausnahme hier ist der Befund
+    code = ergebnis[0] if isinstance(ergebnis, tuple) else getattr(ergebnis, "exit_code", ergebnis)
+    assert code == 2, f"erwartet Exit 2, erhalten {code!r}"
+    return capsys.readouterr().err
+
+
 def _alte_spez_in(fall: Path, generation: str) -> None:
     pfad = sv.spez_pfad(fall, generation)
     daten = json.loads(pfad.read_bytes())
@@ -301,7 +313,7 @@ def test_die_uebernahme_verweigert_eine_spez_fremder_version(kopie_mit_alter_spe
     from rechner_pipeline.gates import bestand_uebernehmen
 
     e2e, fall = _e2e(), kopie_mit_alter_spez
-    meldung = _verweigert(lambda: bestand_uebernehmen.main([
+    meldung = _verweigert_benannt(lambda: bestand_uebernehmen.main([
         "--fall", str(fall),
         "--zeilen", str(fall / "abgeleitet" / "transformation" / "zeilen.json"),
         "--tarif-generation", e2e.TARIF_GENERATION, "--stichtag", e2e.STICHTAG_1,
@@ -316,7 +328,7 @@ def test_die_verankerung_verweigert_eine_spez_fremder_version(kopie_mit_alter_sp
     from rechner_pipeline.gates import verankerung_belegen
 
     e2e, fall = _e2e(), kopie_mit_alter_spez
-    meldung = _verweigert(lambda: verankerung_belegen.main([
+    meldung = _verweigert_benannt(lambda: verankerung_belegen.main([
         "--fall", str(fall), "--repo-root", str(REPO), "--generation", e2e.GENERATION,
         "--zeilen", str(fall / "abgeleitet" / "transformation" / "zeilen.json"),
         "--vorgeschichte", e2e.METADATEN, "--anker-erwartungswerte", e2e.ANKER,
@@ -332,7 +344,7 @@ def test_der_aktuarielle_test_verweigert_eine_spez_fremder_version(kopie_mit_alt
     e2e, fall = _e2e(), kopie_mit_alter_spez
     bestand = fall / "abgeleitet" / "bestand"
     abnahme, erwartung = e2e.ABNAHMEN[0]
-    meldung = _verweigert(lambda: aktuartest_lauf.main([
+    meldung = _verweigert_benannt(lambda: aktuartest_lauf.main([
         "--fall", str(fall), "--abnahme", abnahme, "--generation", e2e.GENERATION,
         "--erwartungswerte", erwartung, "--stichprobe", e2e.STICHPROBE,
         "--bestand", str(bestand / "bestand.parquet"),
@@ -348,7 +360,7 @@ def test_das_migrationscontrolling_verweigert_eine_spez_fremder_version(kopie_mi
     from rechner_pipeline.gates import migrationssuite_lauf
 
     e2e, fall = _e2e(), kopie_mit_alter_spez
-    meldung = _verweigert(lambda: migrationssuite_lauf.main([
+    meldung = _verweigert_benannt(lambda: migrationssuite_lauf.main([
         "--fall", str(fall), "--generation", e2e.GENERATION,
         "--abzug-1", e2e.ABZUG_1, "--abzug-2", e2e.ABZUG_2,
         "--gevo-protokoll", e2e.PROTOKOLL,
@@ -367,7 +379,7 @@ def test_die_fuehrungsprobe_verweigert_eine_spez_fremder_version(kopie_mit_alter
     from rechner_pipeline.gates import fuehrungsprobe
 
     e2e, fall = _e2e(), kopie_mit_alter_spez
-    meldung = _verweigert(lambda: fuehrungsprobe.main([
+    meldung = _verweigert_benannt(lambda: fuehrungsprobe.main([
         "--fall", str(fall), "--repo-root", str(REPO), "--generation", e2e.GENERATION,
         "--uebernahme", str(fall / "abgeleitet" / "bestand"),
         "--fortschreibung", str(fall / "abgeleitet" / "bestand-nach"),

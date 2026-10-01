@@ -110,14 +110,16 @@ def _suite(**ueber):
         police_id="1", model_point=asdict(KLV_DEFAULT), monate_stichtag_1=s1,
         monate_stichtag_2=s2, dk_erwartet_1=round(kern.monatsreserve(s1).vx_mrv, 2),
         bjb_erwartet_1=round(kern.gross_annual_premium(), 2),
-        dk_erwartet_2=round(kern.monatsreserve(s2).vx_mrv, 2))
+        dk_erwartet_2=round(kern.monatsreserve(s2).vx_mrv, 2),
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False)
     eintrag = {"stichtag": S1.isoformat(), "status_code": "POL", "deckungskapital": 1.0,
                "rueckkaufswert": 0.5, "korrekturschicht": 0.0}
     kw = dict(erwartete_anzahl=1, stichtag_1=S1.isoformat(), stichtag_2=S2.isoformat(),
               bestand_sha256="ab" * 32,
               fuehrungswert=fwv.kopf(FUEHRUNGSKONVENTION, bestand_sha256="ab" * 32,
                                      config_sha256="cd" * 32),
-              fuehrungswerte={"1": {"stichtag_1": eintrag, "stichtag_2": None}})
+              fuehrungswerte={"1": {"stichtag_1": eintrag, "stichtag_2": None}},
+              red_verfahren="prospektiv")
     kw.update(ueber)
     return pruefe_bestand([auftrag], **kw)
 

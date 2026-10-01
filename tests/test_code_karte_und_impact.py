@@ -354,7 +354,10 @@ def test_impact_skill_aenderung_trifft_workflow_doku_test():
     ergebnis = berechne_impact(
         [".claude/skills/entwickle-im-zielsystem/SKILL.md"], *_repo_args())
     assert ergebnis["knoten"] == ["system/skills"]
-    assert ergebnis["tests"] == ["test_agent_workflow_docs.py"]
+    # Zwei Tests lesen die Skills: Workflow-Doku und die woertlichen
+    # Kommandos (Pruefrunde H, H14).
+    assert ergebnis["tests"] == ["test_agent_workflow_docs.py",
+                                 "test_dokumentierte_kommandos.py"]
 
 
 def test_impact_tarifplan_ist_test_tragend():
@@ -535,7 +538,8 @@ def test_skill_katalog_ist_an_system_skills_gebunden():
     (test_agent_workflow_docs prueft den Katalog)."""
     ergebnis = berechne_impact(
         ["docs/architektur/skill-architektur.md"], *_repo_args())
-    assert ergebnis["tests"] == ["test_agent_workflow_docs.py"]
+    assert ergebnis["tests"] == ["test_agent_workflow_docs.py",
+                                 "test_dokumentierte_kommandos.py"]
 
 
 def test_karte_faengt_dynamischen_import(tmp_path: Path):

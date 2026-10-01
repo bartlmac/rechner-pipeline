@@ -697,6 +697,7 @@ def test_migrationssuite_rechnet_die_teilkuendigung_des_pruefzeitraums(art, quel
         dk_erwartet_2=round(_folgekern().monatsreserve(s2).vx_mrv, 2),
         bjb_erwartet_1=(round(Rechenkern(MP).gross_annual_premium(), 2) if s1 < 12 * T else 0.0),
         gevos=(GeVoErwartung(art=art, monate=12 * jahr, betrag_erwartet=None, anteil=F),),
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
     ), red_verfahren=quelle)
     assert urteil["bestanden"], urteil["befunde"]
 
@@ -713,7 +714,8 @@ def test_a_m3_misst_den_ddk_der_teilkuendigung(anlass, quelle, jahr):
     punkt = Pruefpunkt(monate=12 * jahr, erwartet={"dDK": round(soll, 2)},
                        anlass=anlass, parameter={"anteil": F})
     v = Vertragspruefung(police_id="P1", model_point=dict(FELDER),
-                         historientyp="ohne_gevo", punkte=(punkt,))
+                         historientyp="ohne_gevo", punkte=(punkt,),
+                         scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None)
     profil = Testprofil(kennung="A-M3", weite="vollbestand", kriterien={},
                         grundtoleranz=Kriterium(abs_tol=0.005, rel_tol=1e-9))
     urteil = pruefe_vertrag(v, profil, red_verfahren=quelle)

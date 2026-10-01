@@ -174,9 +174,11 @@ def _producer_belege(fall: Path) -> None:
         auftraege.append(at.Vertragspruefung(
             police_id=str(p), model_point=dict(mp), historientyp=typ[str(p)],
             punkte=(at.verankerungspunkt(ta, {"kVx_MRV": round(float(erwartet), 2)}),),
-            beitragsfrei_seit_jahr=pex))
+            beitragsfrei_seit_jahr=pex,
+            scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None))
     aktuartest = at.pruefe_stichprobe(
-        auftraege, stichprobe, vorlage("A-M1", weite="je Historientyp ein Vertrag"))
+        auftraege, stichprobe, vorlage("A-M1", weite="je Historientyp ein Vertrag"),
+        red_verfahren="prospektiv")
     bestand = fall / "abgeleitet" / "bestand" / "bestand.parquet"
     # Der Fuehrungswert, wie gates.migrationssuite_lauf ihn liefert: ueber die
     # Bewertungsstrecke des Abschlusses, aus dem Bestand des Falls, mit der
@@ -196,14 +198,15 @@ def _producer_belege(fall: Path) -> None:
             monate_stichtag_2=_monate(beginn, FOLGETERMIN),
             dk_erwartet_1=round(_lieferung_dk(p, STICHTAG), 2),
             dk_erwartet_2=round(_lieferung_dk(p, FOLGETERMIN), 2),
-            bjb_erwartet_1=round(_jb(p), 2), beitragsfrei_seit_jahr=pex)
+            bjb_erwartet_1=round(_jb(p), 2), beitragsfrei_seit_jahr=pex,
+            scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False)
         for p, (beginn, pex) in VERTRAEGE.items()],
         erwartete_anzahl=len(VERTRAEGE), stichtag_1=STICHTAG.isoformat(),
         stichtag_2=FOLGETERMIN.isoformat(),
         bestand_sha256=hashlib.sha256(bestand.read_bytes()).hexdigest(),
         fuehrungswert=kopf(konvention, bestand_sha256=hashlib.sha256(bestand.read_bytes()).hexdigest(),
                            config_sha256=hashlib.sha256(config_text.encode("utf-8")).hexdigest()),
-        fuehrungswerte=fw)
+        fuehrungswerte=fw, red_verfahren="prospektiv")
     berichte = fall / "abgeleitet" / "berichte"
     berichte.mkdir(parents=True, exist_ok=True)
     (berichte / "aktuartest.json").write_text(json.dumps(aktuartest, sort_keys=True), encoding="utf-8")

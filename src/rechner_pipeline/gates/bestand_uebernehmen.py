@@ -1009,13 +1009,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     # entstanden ist, bindet die Uebernahme an nichts.
     bindung = Eingangsbindung(fall)
     generationsfelder = None
-    spez = lade_spez_aus_bytes(
-        bindung.binde(spez_pfad(fall, args.generation_spez)).roh)
     # Die Tarifregeln der Generation — aus der Spez, EINE Tuer fuer alle
-    # Kommandos der Bestandsstrecke; ohne sie keine Uebernahme.
+    # Kommandos der Bestandsstrecke; ohne sie keine Uebernahme. Laden und
+    # Regeln in EINEM Fang (Pruefrunde H): Auch der Lader verweigert benannt
+    # (Version, Regelwert); ein Traceback waere ein Fehler ohne Ausweg.
     try:
+        spez = lade_spez_aus_bytes(
+            bindung.binde(spez_pfad(fall, args.generation_spez)).roh)
         regeln = tarifregeln_des_falls(fall, spez)
-    except TarifregelnFehler as exc:
+    except ValueError as exc:
         print(f"bestand_uebernehmen: {exc}", file=sys.stderr)
         return 2
     if len(spez.zellen) == 1:

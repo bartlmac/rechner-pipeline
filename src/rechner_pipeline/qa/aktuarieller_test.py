@@ -87,10 +87,7 @@ from rechner_pipeline.kern import (
     vorgang,
 )
 from rechner_pipeline.models.bestand import zielverfahren
-from rechner_pipeline.kern.beitragsreduktion import (
-    PROSPEKTIV,
-    TEILKUENDIGUNG,
-)
+from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
 from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
     erhoehungs_scheibe,
@@ -334,17 +331,23 @@ class Vertragspruefung:
     #: Ob die Erhoehungsscheiben die VOLLE Beitragsformel (mit gamma1)
     #: rechnen — Tarifwerks-Eigenschaft der jeweiligen Lieferung
     #: (Lieferung 2: volle Formel je Baustein laut Bedingungswerk;
-    #: Lieferung 1 und PLV-Eigengeschaeft: ohne gamma1). Kommt vom
-    #: Lauf-Flag, wird nie geraten.
-    scheiben_mit_gamma1: bool = False
+    #: Lieferung 1 und PLV-Eigengeschaeft: ohne gamma1). Kommt aus der
+    #: Spez, wird nie geraten.
+    #:
+    #: DIE TARIFREGELN DES AUFTRAGS HABEN KEINE VORGABE (Pruefrunde H,
+    #: H12): ``scheiben_mit_gamma1``, ``stoab_je_baustein`` und
+    #: ``tku_umfang`` sind Pflicht (nur als Schluesselwort) — vorher stand
+    #: hier die Regel des eigenen Geschaefts, und ein Auftrag an der Spez
+    #: vorbei rechnete still mit ihr.
+    scheiben_mit_gamma1: bool = field(kw_only=True)
     #: Ob die Stornoabschlag-Grenzen JE BAUSTEIN greifen statt je
     #: Vertrag — ebenfalls Tarifwerks-Eigenschaft der jeweiligen
     #: Lieferung (Lieferung 2: Abzug je Baustein gesondert erhoben,
     #: der Rueckkaufswert des Vertrags ist die Summe der
     #: Baustein-Rueckkaufswerte, Bedingungswerk Ziffer 4; Lieferung 1
-    #: und PLV-Eigengeschaeft: vertragsweit, Tarifplan 6). Kommt vom
-    #: Lauf-Flag, wird nie geraten.
-    stoab_je_baustein: bool = False
+    #: und PLV-Eigengeschaeft: vertragsweit, Tarifplan 6). Kommt aus der
+    #: Spez, wird nie geraten; Pflicht.
+    stoab_je_baustein: bool = field(kw_only=True)
     beitragsfrei_seit_jahr: Optional[int] = None
     #: Schichtparameter des Migrationszugangs (Grundsatzdokumentation 9.11).
     #: Sind sie gesetzt, vergleicht die Engine den Wert EINSCHLIESSLICH
@@ -398,9 +401,10 @@ class Vertragspruefung:
     #: der Sonderfall einer Herabsetzung; beide faltet die Vorgangsfolge des
     #: Kerns (:func:`_system_werte_folge`).
     vorgaenge: Tuple[Tuple[int, float, str], ...] = field(default_factory=tuple)
-    #: Umfang der Teilkuendigung des Tarifs; ``None``: der des
-    #: Bedingungswerks, das das Verfahren nennt (Entscheid B1 vom 2026-10-01).
-    tku_umfang: Optional[str] = None
+    #: Umfang der Teilkuendigung des Tarifs; ``None`` ausdruecklich: der des
+    #: Bedingungswerks, das das Verfahren nennt (Entscheid B1 vom
+    #: 2026-10-01). Pflicht wie die Regeln oben.
+    tku_umfang: Optional[str] = field(kw_only=True)
     #: Komponentenzahl der QUELL-Buchfuehrung, wenn der Ziel-Rechenweg
     #: sie kollabiert: Die Ein-Punkt-Inversion beitragsfrei
     #: uebernommener Serien (Faktorgleichheit) ist WERT-aequivalent,
@@ -737,7 +741,8 @@ def _deckungskapital(
     monate: int,
     zustand: str,
     parameter: Mapping[str, float] = MappingProxyType({}),
-    red_verfahren: str = PROSPEKTIV,
+    *,
+    red_verfahren: str,
     pex_jahr: Optional[int] = None,
 ) -> float:
     """Deckungskapital in einem benannten Zustand — ohne Interpolation.
@@ -969,7 +974,7 @@ def _system_werte_folge(
 
 def _system_werte(
     v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt,
-    red_verfahren: str = PROSPEKTIV,
+    *, red_verfahren: str,
 ) -> Dict[str, float]:
     """Die angeforderten Groessen am Pruefpunkt — ohne Interpolation."""
     if _mit_folge(v):
@@ -1018,8 +1023,8 @@ def _system_werte(
         a0 = v.beitragsfrei_seit_jahr
         if "kVx_MRV" in gefragt:
             werte["kVx_MRV"] = _deckungskapital(
-                v, mp, kern, scheiben, p.monate, "beitragsfrei"
-            )
+                v, mp, kern, scheiben, p.monate, "beitragsfrei",
+                red_verfahren=red_verfahren)
         if "VS_bfr" in gefragt:
             werte["VS_bfr"] = kern.beitragsfreie_summe(a0) + sum(
                 s.beitragsfreie_summe(a0 - erh_jahr)
@@ -1149,9 +1154,14 @@ def _ok(ist: float, soll: float, k: Kriterium, komponenten: int = 1) -> bool:
 
 def pruefe_vertrag(
     v: Vertragspruefung, profil: Testprofil, *,
-    red_verfahren: str = PROSPEKTIV,
+    red_verfahren: str,
 ) -> Dict[str, Any]:
     """Einen Vertrag an allen seinen Pruefpunkten pruefen (deterministisch).
+
+    ``red_verfahren`` (das Verfahren der Quelle) hat KEINE Vorgabe
+    (Pruefrunde H, H12): vorher galt still ``prospektiv``, die Regel des
+    eigenen Geschaefts. Das Kommando ``gates.aktuartest_lauf`` nennt es aus
+    der Spez.
 
     Auftrags-Verletzungen (falscher Rechenpunkt, unbekannte Groessen) sind
     harte Fehler; kranke LIEFERDATEN (kaputter Modellpunkt, unzulaessige
@@ -1326,7 +1336,7 @@ def pruefe_stichprobe(
     *,
     transportsicherung: Optional[Mapping[str, Any]] = None,
     system: Optional[Mapping[str, str]] = None,
-    red_verfahren: str = PROSPEKTIV,
+    red_verfahren: str,
 ) -> Dict[str, Any]:
     """Einen der drei Tests ueber eine belegte Stichprobe fahren.
 

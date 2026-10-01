@@ -155,8 +155,10 @@ python -m rechner_pipeline.gates.fall_belegen auftrag --fall faelle/<fall> \
     --linie linie --zeichnungsordnung <ordnung> \
     --programmleitung-schluessel <schluessel der programmleitung> \
     --programmleitung-klasse mensch|simulation \
-    [--mandat <rolle>=<mandat> je simulierter Rolle] --auftrag "<Auftrag>"
+    [--mandat <rolle>=<mandat> ...] --auftrag "<Auftrag>"
 ```
+
+(`--mandat` einmal je simulierter Rolle.)
 
 Der Vorstand prueft `abgeleitet/auftrag/fallauftrag.md` und zeichnet
 `A-M6` (`gates.gate_entscheid --gate A-M6`). Erst dann beginnt Stufe 1. Jede
@@ -684,13 +686,15 @@ das GeVo-Protokoll der Lieferung. Uebergib an die beiden Skills, statt
 die Schritte selbst zu improvisieren:
 
 1. Gate P-B1 auf den uebernommenen Bestand:
-   `python -m rechner_pipeline.gates.bestand_validate --portfolio <bestand>.parquet --config <config>.toml --repo-root . --diagnostics-dir faelle/<fall>/abgeleitet/diagnostics
+   `python -m rechner_pipeline.gates.bestand_validate --portfolio <bestand>.parquet --config <config>.toml --repo-root . --diagnostics-dir faelle/<fall>/abgeleitet/diagnostics`
    (trägt der Bestand Folgezustände — `status_id > 1` —, zusätzlich
    `--historie <journal>.parquet`: P-B1 prüft den Stammzustand gegen den
-   jüngsten Journalstand, ADR-011)`
+   jüngsten Journalstand, ADR-011)
    (Schema und Invarianten; Historie/Scheiben/Ledger optional
    mitgeben, wenn der Fall sie fuehrt.)
-2. Abnahmesuite je Vertrag: `qa.migrationssuite.pruefe_bestand` —
+2. Abnahmesuite je Vertrag (Engine `qa.migrationssuite`, gefahren NUR
+   ueber das Kommando unten, das die Tarifregeln aus der Spez nimmt; die
+   Engine hat fuer keine Tarifregel eine Vorgabe) —
    Deckungskapital am Migrationsstichtag, Bruttojahresbeitrag am
    Migrationsstichtag (`bjb_erwartet_1`, zweite Pruefachse gegen
    Parametrierungsfehler), GeVo-Betraege zwischen den Stichtagen,
@@ -775,15 +779,18 @@ ein, und der mittlere gehoert dem Menschen: (1) die Zugangsprobe
 `python -m rechner_pipeline.betrieb.zugangsprobe --stand <ablage> --fall
 faelle/<fall> --stichtag <iso> [--bis <iso>] --schluessel
 <betriebsschluessel> --zeichnungsordnung <ordnung> --freigabe-schluessel
-<schluessel>` — zwei Laeufe auf einer Kopie der Ablage, mit und ohne den
+<schluessel-vorstand> --freigabe-schluessel <schluessel-mensch-aktuariat>
+--linie <linie>` — zwei Laeufe auf einer Kopie der Ablage, mit und ohne den
 Eingang, Beleg `abgeleitet/berichte/zugangsprobe.json`; (2) die
 Zugangsabnahme `gate_entscheid --gate A-B2` (zeichnet `mensch/betrieb`;
 `agent/betrieb` legt vor und kann nur ablehnen — hier STOPPST du); (3) die
 Registrierung `python -m rechner_pipeline.betrieb.uebernahme` auf
-derselben, unbewegten Ablage mit denselben Angaben wie die Probe. Probe,
-Zugangsabnahme und Registrierung lesen die Linie (`--linie <linie>`) mit dem
-Schluessel des Vorstands: Er steht als weiterer `--freigabe-schluessel` im
-Ring, sobald die Linie mehr als ein Glied hat (Pruefrunde G). Eine rote
+derselben, unbewegten Ablage mit denselben Angaben wie die Probe, dazu dem
+Schluessel von `mensch/betrieb` (A-B2) im Ring. Probe, Zugangsabnahme und
+Registrierung lesen die Linie (`--linie <linie>`, Pflicht) und brauchen den
+Schluessel des Vorstands im Ring (die Glieder der Linie); die Probe liest
+dazu A-M4 und den A-M1, den A-M4 pinnt, und braucht deshalb den Schluessel
+von `mensch/aktuariat` (Pruefrunde G, `deploy/plv/README.md`). Eine rote
 Probe ist ein Befund fuer den Menschen, kein Auftrag, die Abnahme
 nachzubessern (`deploy/plv/README.md`).
 

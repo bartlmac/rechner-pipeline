@@ -88,10 +88,7 @@ from rechner_pipeline.kern import (
     vertrags_monatsreserve,
     vorgang,
 )
-from rechner_pipeline.kern.beitragsreduktion import (
-    PROSPEKTIV,
-    TEILKUENDIGUNG,
-)
+from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
 from rechner_pipeline.models.bestand import zielverfahren
 from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
 
@@ -200,11 +197,19 @@ class VertragsPruefung:
     #: Volle Beitragsformel (mit gamma1) fuer die Scheiben —
     #: Tarifwerks-Eigenschaft der Lieferung, siehe
     #: kern.rechenkern.erhoehungs_scheibe.
-    scheiben_mit_gamma1: bool = False
+    #:
+    #: DIE TARIFREGELN DES AUFTRAGS HABEN KEINE VORGABE (Pruefrunde H,
+    #: H12; ADR-024, Nachtrag): ``scheiben_mit_gamma1``,
+    #: ``stoab_je_baustein``, ``tku_umfang`` und ``dk_am_jahrestag`` sind
+    #: Pflicht (nur als Schluesselwort). Vorher stand hier die Regel des
+    #: eigenen Geschaefts; wer Auftraege an der Spez vorbei baute, rechnete
+    #: still mit ihr (2 von 29 statt 29 von 29 bestanden). Der Weg zu den
+    #: belegten Regeln ist das Kommando ``gates.migrationssuite_lauf``.
+    scheiben_mit_gamma1: bool = field(kw_only=True)
     #: Stornoabschlag-Grenzen je Baustein statt je Vertrag —
     #: Tarifwerks-Eigenschaft der Lieferung, siehe
     #: kern.rechenkern.vertrags_monatsreserve.
-    stoab_je_baustein: bool = False
+    stoab_je_baustein: bool = field(kw_only=True)
     reduktion: Optional[Tuple[int, float]] = None
     #: Die Vorgaenge der Vorgeschichte im Vokabular des Zielsystems
     #: (Vertragsjahr, fortgefuehrter Anteil, Verfahren) — der Anfangszustand
@@ -214,9 +219,10 @@ class VertragsPruefung:
     #: Kerns.
     vorgaenge: Tuple[Tuple[int, float, str], ...] = field(default_factory=tuple)
     #: Umfang der Teilkuendigung des Tarifs (``alle_bausteine`` /
-    #: ``grundversicherung``); ``None``: der des Bedingungswerks, das das
-    #: Verfahren nennt (Entscheid B1 vom 2026-10-01, ``kern.tku_umfang_fuer``).
-    tku_umfang: Optional[str] = None
+    #: ``grundversicherung``); ``None`` ausdruecklich: der des
+    #: Bedingungswerks, das das Verfahren nennt (Entscheid B1 vom
+    #: 2026-10-01, ``kern.tku_umfang_fuer``). Pflicht wie die Regeln oben.
+    tku_umfang: Optional[str] = field(kw_only=True)
     #: Korrekturschicht des Migrationszugangs (9.11) — Nachzug des
     #: zweiten Laufs: Ohne sie zeigt jeder Vertrag eines Falls, der
     #: Schichten fuehrt, an den Stichtagen sein rohes, unabsorbiertes
@@ -235,9 +241,9 @@ class VertragsPruefung:
     #: Abzugsstichtag, nicht kalendertaeglich interpoliert. Auf dem
     #: falschen Zeitpunkt misst der Vergleich bis zu elf Monate
     #: Reservezuwachs als Phantom-Residuum (im Lauf: vierstellig, alle
-    #: Vertraege mit unterjaehrigem Beginn). Kommt vom Lauf-Flag, wird
-    #: nie geraten.
-    dk_am_jahrestag: bool = False
+    #: Vertraege mit unterjaehrigem Beginn). Kommt aus der Spez
+    #: (``quellverfahren.dk_stichtag``), wird nie geraten; Pflicht.
+    dk_am_jahrestag: bool = field(kw_only=True)
     #: Komponentenzahl der QUELL-Buchfuehrung, wo der Ziel-Rechenweg
     #: sie kollabiert (Ein-Punkt-Inversion beitragsfreier Serien) —
     #: dieselbe Groesse wie im aktuariellen Test (Korrektur 14): der
@@ -641,7 +647,7 @@ def _pruefe_ueber_vorgangsfolge(
 
 
 def pruefe_vertrag(
-    v: VertragsPruefung, *, red_verfahren: str = PROSPEKTIV
+    v: VertragsPruefung, *, red_verfahren: str
 ) -> Dict[str, Any]:
     """Zwei-Stichtags-Urteil für einen Vertrag.
 
@@ -679,12 +685,14 @@ def pruefe_vertrag(
     die Rechnung fehlte, sondern weil die Herabsetzung unbestimmt ist.
 
     ``red_verfahren`` ist eine Eigenschaft des QUELLSYSTEMS und damit des
-    Migrationsfalls, nicht des Vertrags (kern.beitragsreduktion): das
-    Zielverfahren ``prospektiv`` ist der Default; ein Fall, dessen
-    Quelle die Absetzung als Teilkündigung mit anteiligem Stornoabschlag
-    rechnet (Baldrian, Aktuarielle Notiz 2026/04), übergibt
-    ``mit_abzug`` — sonst misst das Controlling die Verfahrensdifferenz
-    statt der Migration.
+    Migrationsfalls, nicht des Vertrags (kern.beitragsreduktion), und
+    hat KEINE Vorgabe (Pruefrunde H, H12): Ein Fall, dessen Quelle die
+    Absetzung als Teilkündigung mit anteiligem Stornoabschlag rechnet
+    (Baldrian, Aktuarielle Notiz 2026/04), übergibt ``mit_abzug`` bzw.
+    ``teilkuendigung`` — vorher galt still ``prospektiv``, und das
+    Controlling mass die Verfahrensdifferenz statt der Migration. Das
+    Kommando ``gates.migrationssuite_lauf`` nennt es aus der Spez
+    (``quellverfahren.red_verfahren``).
     """
     if v.monate_stichtag_2 <= v.monate_stichtag_1:
         raise ValueError(
@@ -1017,7 +1025,7 @@ def pruefe_bestand(
     vertraege: List[VertragsPruefung],
     *,
     erwartete_anzahl: Optional[int] = None,
-    red_verfahren: str = PROSPEKTIV,
+    red_verfahren: str,
     stichtag_1: Optional[str] = None,
     stichtag_2: Optional[str] = None,
     bestand_sha256: Optional[str] = None,

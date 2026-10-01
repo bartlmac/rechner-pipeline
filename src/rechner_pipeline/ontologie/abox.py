@@ -260,7 +260,24 @@ def _hebe_0_1_0_auf_0_2_0(abox: ABox) -> ABox:
     """0.1.0 -> 0.2.0 ist rein ADDITIV: Tarifwerk und Quellverfahren kommen
     als leere Bloecke hinzu (nicht erhoben, die Coverage zeigt es), kein
     vorhandener Begriff aendert Namen, Typ oder Wertebereich. Der Inhalt
-    bleibt deshalb byte-gleich; nur die Version wandert."""
+    bleibt deshalb byte-gleich; nur die Version wandert.
+
+    Eine Hebung traegt nur, was im alten Artefakt stehen kann (Pruefrunde H,
+    H13; ADR-024, Nachtrag "Regel der Hebung"): Eine A-Box, die sich 0.1.0
+    nennt und Aussagen in einem Block von 0.2.0 fuehrt, ist keine 0.1.0-A-Box.
+    Vorher wurden solche Aussagen still mitgehoben (gemessen: alle acht
+    Tarifregeln eines Falls), entgegen der Zusage "leere Bloecke"; ihre
+    Provenienz trugen sie zwar, aber aus einem Artefakt, das sie nicht tragen
+    kann. Verweigert, mit Ausweg."""
+    fremd = sorted(f"{gen.id}/{block}" for gen in abox.generationen
+                   for block in GENERATIONS_BLOECKE if gen.block(block))
+    if fremd:
+        raise ValueError(
+            f"A-Box nennt T-Box '0.1.0', fuehrt aber Aussagen in {fremd} aus dem "
+            "Vokabular von 0.2.0 — das kann eine 0.1.0-A-Box nicht tragen; eine "
+            "Hebung traegt nur, was im alten Artefakt steht. Ausweg: aus den "
+            "Fragmenten neu erzeugen (gates.abox_merge) und die Tarifregeln "
+            "dort belegen (Skill extrahiere-quellfragment, P-Q3).")
     return abox.model_copy(update={"tbox_version": "0.2.0"})
 
 

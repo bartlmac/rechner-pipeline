@@ -90,9 +90,16 @@ rechner_pipeline.gates.fall_belegen abbruch --fall <fall> --repo-root .
 --grund ... --bestand ... --uebergabe ...`` (woran der Fall scheitert, was
 mit dem Bestand geschieht, wohin die Uebergabe geht; die gezeichneten Gates
 und den Stand rechnet das Werkzeug). Zeichnen tut ``mensch/programmleitung``
-mit dem Schluessel, den der Auftrag ihr gibt; danach ist im Fall nichts mehr
-zeichenbar. Ist die Migration schon abgenommen (A-M4), gibt es keinen
-Abbruch ohne vorherige Ablehnung von A-M4 — das entscheidest nicht du.
+mit dem Schluessel, den der Auftrag ihr gibt, unter der Linie des Auftrags
+(`--linie`); danach ist im Fall nichts mehr zeichenbar. Der Ring des
+Abbruchs traegt neben dem Schluessel der Programmleitung den Schluessel jeder
+Rolle, deren Kette das Gate lesen muss (ADR-026, Nachtrag Runde G, c): immer
+den des Vorstands (Auftrag, Glieder der Linie), und liegt eine A-M4 im Fall —
+auch eine abgelehnte — den von ``mensch/aktuariat``. Fehlt einer, nennt die
+Meldung Rolle und Fingerabdruck; nenne das dem Menschen in der Vorlage, statt
+den Abbruch anders zu versuchen. Ist die Migration schon abgenommen (A-M4),
+gibt es keinen Abbruch ohne vorherige Ablehnung von A-M4 — das entscheidest
+nicht du.
 
 ## Was fuer alle Agentenrollen gilt (ADR-017, ADR-018)
 
@@ -103,6 +110,15 @@ Abbruch ohne vorherige Ablehnung von A-M4 — das entscheidest nicht du.
   Vorfuehrung ist das eine simulierte Rolle, und jeder Beleg sagt es.
   Ein Gate kannst du nur ABLEHNEN (``--entscheid abgelehnt --rolle
   agent/<name>``), um einen Zwischenstand zu dokumentieren.
+- Jede Annahme nennt die Linie (`--linie`, Pflicht seit ADR-025,
+  Nachtrag 2026-10-01) und braucht im Ring (`--freigabe-schluessel`)
+  neben dem Schluessel der zeichnenden Rolle den des Vorstands (Auftrag
+  A-M6, Glieder der Linie) und den jeder Rolle, deren Kette das Gate liest
+  (ADR-026, Nachtrag Runde G, c) — so auch Registrierung, Zugangsprobe,
+  Neuaufsetzen und Bindung des Anfangsbestands. `--repo-root` ist der
+  Baum des Pakets, das gerade rechnet (Pruefrunde G, G12). Ein Verweis
+  ("keine Aenderung") zeigt nur auf die geltende Abnahme der Linie
+  (`stand_belegen verweisen --linie`); `--snapshot` ist entfallen.
 - Du liest und schreibst im Fall nur unter ``abgeleitet/``. ``eingang/``
   und ``entscheide/`` sind unantastbar (ADR-002). Schluesselmaterial
   und Zeichnungsordnungen liest du nicht.
