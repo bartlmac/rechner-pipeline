@@ -397,7 +397,8 @@ def test_der_produzent_nennt_die_folge_von_verfallen(tmp_path):
     folge = ergebnis.summary["fruehere_zeichnungen"]
     assert set(folge) == {ol.WURZELROLLE, VA}
     assert folge[ol.WURZELROLLE].startswith("verfallen: jede fruehere Abnahme ['A-M6']")
-    assert "jeder Fallauftrag (A-M6) und alles, was darauf gruendet" in folge[ol.WURZELROLLE]
+    assert "jeder so gezeichnete Fallauftrag (A-M6" in folge[ol.WURZELROLLE]
+    assert "alles, was darauf gruendet, faellt" in folge[ol.WURZELROLLE]
     assert "die Glieder der Linie bleiben gueltig" in folge[ol.WURZELROLLE]
     assert folge[VA].startswith("gueltig: Abnahmen ['A-T1']"), folge[VA]
     sicht = (linie / "abgeleitet" / "ordnung" / "linie.md").read_text(encoding="utf-8")

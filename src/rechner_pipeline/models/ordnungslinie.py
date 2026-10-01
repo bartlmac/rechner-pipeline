@@ -440,7 +440,12 @@ def getroffene_abnahmen(glieder: List[Dict[str, Any]], j: int) -> Dict[str, Dict
     aufgezaehlt ueber jede Stelle, an der vor Glied j eine Abnahme gezeichnet
     sein kann: jedes fruehere Glied, jede Rolle, jedes Gate, das sie dort
     zeichnen durfte (ohne ``A-Z1``: ein Glied ist keine Abnahme). Damit IST die
-    Folge, die der Produzent nennt, die Wirkung beim Lesen (Pruefrunde I, I02)."""
+    Folge, die der Produzent nennt, die Wirkung beim Lesen (Pruefrunde I, I02).
+
+    Eine Abnahme, die ein FRUEHERES Glied schon fuer verfallen erklaert hat,
+    zaehlt nicht mehr (Pruefrunde J, J01): Sie traegt nichts, was Glied j ihr
+    noch nehmen oder lassen koennte. Vorher nannte die Folge eines ``gueltig``
+    sie unter "tragen weiter", waehrend der Leser sie verweigerte."""
     erklaerungen = glieder[j].get("fruehere_zeichnungen") or {}
     aus = {r: {"erklaerung": e, "gates": set(), "rollen": set(), "schluessel": set(),
                "glieder": set()} for r, e in erklaerungen.items()}
@@ -451,9 +456,12 @@ def getroffene_abnahmen(glieder: List[Dict[str, Any]], j: int) -> Dict[str, Dict
             for gate in sorted({g for g in (e.get("gates") or []) if isinstance(g, str)}):
                 if gate in (ORDNUNGS_GATE, "*"):
                     continue
-                for jj, r, art in treffer_der_erklaerungen(
-                        bis, k, rolle=name, schluessel_sha256=fp, gate=gate,
-                        klasse=e.get("schluesselklasse")):
+                treffer = treffer_der_erklaerungen(
+                    bis, k, rolle=name, schluessel_sha256=fp, gate=gate,
+                    klasse=e.get("schluesselklasse"))
+                if any(jj < j and art == "verfallen" for jj, _r, art in treffer):
+                    continue
+                for jj, r, art in treffer:
                     if jj == j and r in aus and art == aus[r]["erklaerung"]:
                         aus[r]["gates"].add(gate)
                         aus[r]["rollen"].add(name)
@@ -485,7 +493,8 @@ def folge_der_erklaerung(glieder: List[Dict[str, Any]], j: int) -> Dict[str, str
                 continue
             folgen[rolle] = (
                 f"gueltig: Abnahmen {t['gates']} dieser Rolle, gezeichnet VOR diesem Glied, "
-                "tragen weiter; eine danach unter einem frueheren Glied gezeichnete traegt "
+                "tragen weiter, soweit kein frueheres Glied sie fuer verfallen erklaert hat; "
+                "eine danach unter einem frueheren Glied gezeichnete traegt "
                 f"nicht (Zeitregel) — betroffen: {wer}")
             continue
         if not t["gates"]:
@@ -498,9 +507,10 @@ def folge_der_erklaerung(glieder: List[Dict[str, Any]], j: int) -> Dict[str, str
                 "gueltig erklaert hat; neu zu zeichnen unter der Spitze, auch die Erstabnahmen "
                 "im Linienbereich")
         if "A-M6" in t["gates"]:
-            text += (". Darunter der Fallauftrag: jeder Fallauftrag (A-M6) und alles, was "
-                     "darauf gruendet, faellt — jede Annahme jedes Falls, der unter einem "
-                     "dieser Auftraege beauftragt ist, auch beim Betrieb (Registrierung, "
+            text += (". Darunter der Fallauftrag: jeder so gezeichnete Fallauftrag (A-M6; "
+                     "unter den genannten Gliedern, mit einem der genannten Schluessel) und "
+                     "alles, was darauf gruendet, faellt — jede Annahme jedes Falls, der unter "
+                     "einem dieser Auftraege beauftragt ist, auch beim Betrieb (Registrierung, "
                      "Zugangsprobe, Neuaufsetzen); ein Zugang, der vorher schon registriert "
                      "wurde, bleibt registriert; die Glieder der Linie bleiben gueltig")
         folgen[rolle] = text

@@ -270,7 +270,8 @@ def test_verfallen_trifft_den_fallauftrag_der_vorstandslinie(tmp_path, monkeypat
     assert "Glied 3" in meldung and "verfallen erklaert" in meldung, meldung
     # Die Folge, die der Produzent zu Glied 3 nannte, IST diese Wirkung.
     assert folge.startswith("verfallen: jede fruehere Abnahme ['A-M6']"), folge
-    assert "jeder Fallauftrag (A-M6) und alles, was darauf gruendet" in folge, folge
+    assert "jeder so gezeichnete Fallauftrag (A-M6" in folge, folge
+    assert "alles, was darauf gruendet, faellt" in folge, folge
 
 
 @pytest.mark.parametrize("wanderung", [True, False], ids=["wanderung", "zweimaliger_wechsel"])
@@ -395,7 +396,10 @@ def test_eigenschaft_wirkung_und_folge_sind_die_regel(glieder, zeitpunkte):
                     ist = ol.abloesung_fehler(snapshot, glieder, glieder[i], gate=gate)
                     assert (ist is None) == traegt, (i, name, gate, zeit, ist, ereignisse)
                 for j, r, art in ereignisse:
-                    if art == erkl[j][r]:
+                    # Eine schon fuer verfallen erklaerte Abnahme zaehlt in der
+                    # Folge eines spaeteren Glieds nicht mehr (Pruefrunde J, J01).
+                    tot = any(j2 < j and a2 == "verfallen" for j2, _r2, a2 in ereignisse)
+                    if art == erkl[j][r] and not tot:
                         soll_folge.setdefault((j, r), set()).add(gate)
     for j in range(1, len(glieder)):
         getroffen = ol.getroffene_abnahmen(glieder, j)
@@ -553,3 +557,50 @@ def test_ruecknahme_eines_gueltig_was_ein_spaeteres_verfallen_erreicht(name):
     assert ol.treffer_der_erklaerungen(
         _kette(*stufen), 0, rolle="akt", schluessel_sha256="K1", gate=gate,
         klasse="produktion") == erwartet
+
+
+# --- Pruefrunde J, J01: die Folge nennt nur, was noch traegt --------------------
+#
+# Gemessen vom blinden Pruefer: Glied 2 entzieht dem Vorstand A-M6 mit
+# "verfallen", Glied 3 gibt es zurueck, Glied 4 wechselt den Vorstandsschluessel
+# mit "gueltig". Die Folge von Glied 4 nannte die Fallauftraege unter Glied 1
+# UND 3 als "tragen weiter"; der Leser verweigerte den unter Glied 1 (Glied 2
+# hat ihn entwertet). Der Vorstand las vor der Wahl, fruehere Auftraege truegen
+# weiter, und liess sie nicht neu zeichnen. Der Eigenschaftstest oben war dafuer
+# blind: Er bildete die Folge aus denselben Ereignissen wie der Code.
+
+def _linie_j01() -> list:
+    v = lambda schluessel, gates: {"mensch/vorstand": _r(schluessel, gates)}  # noqa: E731
+    return _kette(
+        (v("KV", ["A-Z1", "A-M6"]), {}),
+        (v("KV", ["A-Z1"]), {"mensch/vorstand": "verfallen"}),
+        (v("KV", ["A-Z1", "A-M6"]), {}),
+        (v("KV2", ["A-Z1", "A-M6"]), {"mensch/vorstand": "gueltig"}))
+
+
+def test_die_folge_eines_gueltig_nennt_keine_schon_verfallene_abnahme():
+    glieder = _linie_j01()
+    folge = ol.getroffene_abnahmen(glieder, 3)["mensch/vorstand"]
+    assert (folge["erklaerung"], folge["gates"], folge["glieder"]) == ("gueltig", ["A-M6"], [3])
+    assert "soweit kein frueheres Glied" in ol.folge_der_erklaerung(glieder, 3)["mensch/vorstand"]
+
+
+def test_was_die_folge_eines_gueltig_nennt_traegt_beim_leser():
+    """Folge gegen Wirkung, je genanntem Glied: Was "traegt weiter" heisst,
+    nimmt die eine Bestimmung des Lesers an; was die Folge nicht nennt, hat
+    ein frueheres Glied entwertet."""
+    glieder = _linie_j01()
+    genannt = set(ol.getroffene_abnahmen(glieder, 3)["mensch/vorstand"]["glieder"])
+    for k in (0, 2):
+        arten = [art for _j, _r, art in ol.treffer_der_erklaerungen(
+            glieder, k, rolle="mensch/vorstand", schluessel_sha256="KV", gate="A-M6",
+            klasse="produktion")]
+        assert ("verfallen" not in arten) == (glieder[k]["nummer"] in genannt), (k, arten)
+
+
+def test_der_fallauftrag_der_folge_ist_an_die_genannten_schluessel_gebunden():
+    glieder = _kette(
+        ({"mensch/vorstand": _r("KV", ["A-Z1", "A-M6"])}, {}),
+        ({"mensch/vorstand": _r("KV2", ["A-Z1", "A-M6"])}, {"mensch/vorstand": "verfallen"}))
+    text = ol.folge_der_erklaerung(glieder, 1)["mensch/vorstand"]
+    assert "jeder so gezeichnete Fallauftrag" in text and "die Glieder der Linie bleiben gueltig" in text

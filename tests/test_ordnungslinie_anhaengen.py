@@ -104,7 +104,7 @@ def test_vorschau_schreibt_nichts_und_nennt_dieselbe_folge_wie_das_anhaengen(tmp
     assert s["erklaerung_fehlt"] == s["geminderte_rollen"]
     assert "fruehere_zeichnungen" not in s
     assert set(s["folgen"][ol.WURZELROLLE]) == set(s["folgen"][VA]) == set(ol.ERKLAERUNGEN)
-    assert "jeder Fallauftrag (A-M6)" in s["folgen"][ol.WURZELROLLE]["verfallen"]
+    assert "jeder so gezeichnete Fallauftrag (A-M6" in s["folgen"][ol.WURZELROLLE]["verfallen"]
     assert s["folgen"][VA]["gueltig"].startswith("gueltig: Abnahmen ['A-T1']")
     wahl = {ol.WURZELROLLE: "verfallen", VA: "gueltig"}
     mit = stand_belegen.main(_ordnung_args(linie, datei, wahl, "--vorschau"))

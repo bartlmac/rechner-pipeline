@@ -1315,3 +1315,44 @@ des frueheren Halters (Ueberentwertung, die sichere Richtung). (iii) Die Sperre
 wirkt zwischen Prozessen, die dieselbe Sperrdatei mit `flock` sperren koennen
 (dieselbe Maschine, ein Dateisystem mit `flock`); darueber hinaus bleibt die
 Exklusivitaet je Nummer.
+
+## Nachtrag 2026-10-02: Pruefrunde J — die Folge nennt nur, was noch traegt
+
+Die vierte blinde Runde (Stand 90ee7e9) hat die Leseregel dieses Bausteins
+gegen eine unabhaengig aus dem Text dieses ADR formulierte Regel gehalten:
+rund 540.000 Abnahmen auf Zufallslinien mit drei bis sieben Gliedern, in
+denen dieselbe Rollenlinie mehrfach in Folge gemindert wird (Umbenennung,
+Schluesselwechsel, beides im selben Glied, Wanderung vom und zum Vorstand,
+Tausch, Wegfall und Wiederkehr, Gate-Entzug und Wiedergabe), ohne Abweichung
+in der WIRKUNG; die Probe sah verstuemmelte Regeln (Linie nicht
+fortgeschrieben: 475 Abweichungen). Bestaetigt wurde ein Fund im TEXT der
+Folge, ein zweiter zum Wortlaut wurde widerlegt und trotzdem umgesetzt.
+
+**J01, bestaetigt.** Die Folge einer Erklaerung `gueltig` nannte Abnahmen als
+"tragen weiter", die ein frueheres Glied derselben Linie schon fuer
+`verfallen` erklaert hatte. Gemessen: Glied 2 entzieht dem Vorstand A-M6 mit
+`verfallen`, Glied 3 gibt es zurueck, Glied 4 wechselt den Vorstandsschluessel
+mit `gueltig`; die Folge von Glied 4 nannte die Fallauftraege unter Glied 1
+und 3, der Leser verweigert den unter Glied 1. Der Vorstand las vor der Wahl,
+fruehere Auftraege truegen weiter. *Regel:* Eine Abnahme, die ein frueheres
+Glied fuer verfallen erklaert hat, zaehlt in der Folge keines spaeteren Glieds
+mehr (`getroffene_abnahmen`), gleich ob es `gueltig` oder `verfallen`
+erklaert: Sie traegt nichts, was ihr noch genommen oder gelassen werden
+koennte. *Verworfen:* sie bei einem spaeteren `verfallen` weiter zu nennen —
+das waere nicht falsch, aber die Folge soll nennen, was DIESE Erklaerung
+kostet. Der Eigenschaftstest dieser Regel war fuer den Fund blind, weil er die
+Folge aus denselben Ereignissen bildete wie der Code; er zaehlt jetzt
+ebenfalls nur, was noch traegt, und ein eigener Test haelt die Folge je
+genanntem Glied gegen die Bestimmung des Lesers.
+
+**Wortlaut, nicht bestaetigt.** "jeder Fallauftrag (A-M6) ... faellt" liess
+sich weiter lesen als die Menge, die der Satz davor aufzaehlt (Glieder, Namen,
+Schluessel). Die Menge stimmte mit der Wirkung. Der Satz heisst jetzt "jeder so
+gezeichnete Fallauftrag (A-M6; unter den genannten Gliedern, mit einem der
+genannten Schluessel)": Wer bei einem unsicher gewordenen alten Schluessel
+eine teurere Folge liest als die wirkliche, wird zu `gueltig` gedraengt.
+
+**Stand.** Diese Leseregel ist die dritte Reparatur derselben Stelle (Runden
+G, H, I). Runde J ist die erste, in der die Folgerunde die Reparatur der
+Vorrunde in ihrer Wirkung nicht gebrochen hat. Geschlossen heisst sie damit
+nicht: Dafuer verlangt die Methode zwei leere Runden.
