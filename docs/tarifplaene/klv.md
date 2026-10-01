@@ -884,7 +884,7 @@ Tarifzellen der übernommenen Generation **TG2015** (`klv/tg2015`, Rechnungszins
 | raucher/haus | DAV2008_T_R_U70 | 0.0 | 0.01 | 0.0008/0.001 | 0 | 0.0/0/0 | 0.0/0.0/0.0 |
 | raucher/kollektiv | DAV2008_T_R_U70 | 0.015 | 0.015 | 0.0008/0.001 | 12 | 0.005/50.0/200.0 | 0.01/0.015/0.025 |
 
-Tarifwerk der Generation **TG2015** (Ausgestaltung, Grundsatzdokumentation 10 Nr. 9): Erhöhungsscheiben mit $\gamma_1$: ja; Stornoabzug je Baustein: ja; Herabsetzungsverfahren: `teilkuendigung`.
+Tarifwerk der Generation **TG2015** (Ausgestaltung, Grundsatzdokumentation 10 Nr. 9): Erhöhungsscheiben mit $\gamma_1$: ja; Stornoabzug je Baustein: ja; Herabsetzungsverfahren: `teilkuendigung`; Umfang der Teilkündigung: `grundversicherung`.
 
 Was sich von Generation zu Generation ändert (verkaufende Generationen in Verkaufsreihenfolge; leer heißt: nur das Fenster):
 

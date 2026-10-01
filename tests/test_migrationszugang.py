@@ -648,8 +648,18 @@ def test_pex_ursprungssumme_ohne_umkehrung_waere_zu_klein():
 
 
 def test_pex_ursprungssumme_weist_unmoegliche_jahre_zurueck():
-    with _pytest.raises(_MZFehler, match="nicht in der Laufzeit"):
-        leite_pex_ursprungssumme_ab(_mp_felder(), pex_jahr=0, vs_bfr=1000.0)
+    """Die Grenzen sind die des Kerns (Tarifplan KLV 7.3, Pruefrunde G, G02):
+    eine Beitragsfreistellung gibt es nur fuer 0 < jahr < t — in beide
+    Richtungen gehalten. Bis dahin liess diese Stelle ein Jahr bis n zu.
+
+    Mutationsprobe: die alte Grenze (0 < jahr <= n) zuruecksetzen -> rot."""
+    t = _KLV_DEFAULT.t
+    assert 0 < t < _KLV_DEFAULT.n  # sonst unterscheidet der Test t nicht von n
+    for jahr in (0, t, _KLV_DEFAULT.n):
+        with _pytest.raises(_MZFehler, match=f"Beitragsfreistellungsjahr {jahr}"):
+            leite_pex_ursprungssumme_ab(_mp_felder(), pex_jahr=jahr, vs_bfr=1000.0)
+    for jahr in (1, t - 1):
+        assert leite_pex_ursprungssumme_ab(_mp_felder(), pex_jahr=jahr, vs_bfr=1000.0) > 0.0
 
 
 # --------------------------------------------------------------------------- #

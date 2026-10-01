@@ -78,6 +78,9 @@ def _messen(quelle: str):
 #: Zugriff auf eine Spez-Datei oder eine Validierung am Lader vorbei ist ein
 #: Befund — der Leser muss den Lader rufen und hier eingetragen werden.
 INVENTAR = {
+    # A-M4 bindet seit Pruefrunde G (G04) die Spez der Generation und haelt
+    # jeden Beleg an ihre Regeln — ueber den Lader und die Tuer der Strecke.
+    "gates/abnahmebericht.py": (1, 1, 0),
     "gates/aktuartest_lauf.py": (1, 1, 0),
     "gates/bestand_uebernehmen.py": (1, 1, 0),
     "gates/fuehrungsprobe.py": (1, 1, 0),
@@ -377,6 +380,19 @@ def test_die_fuehrungsprobe_verweigert_eine_spez_fremder_version(kopie_mit_alter
     assert "geltend sind" in meldung, meldung
 
 
+def test_a_m4_verweigert_eine_spez_fremder_version(kopie_mit_alter_spez):
+    """A-M4 bindet die Spez der Generation, die die Suite nennt (Pruefrunde
+    G, G04) — ueber den Lader: eine Spez fremder Version ist kein Soll."""
+    from rechner_pipeline.gates import abnahmebericht
+
+    fall = kopie_mit_alter_spez
+    suite = json.loads((fall / "abgeleitet" / "berichte" / "migrationssuite.json")
+                       .read_text(encoding="utf-8"))
+    regeln, bindung, fehler = abnahmebericht._tarifregeln_soll(fall, suite)
+    assert regeln is None and bindung is None
+    assert any("geltend sind" in f for f in fehler), fehler
+
+
 def test_jeder_leser_hat_seinen_verhaltenstest():
     """Die Menge der Leser (Ratsche) und die Menge der Verhaltenstests sind
     dieselbe: ein neuer Leser ohne Verhaltenstest ist rot."""
@@ -388,6 +404,7 @@ def test_jeder_leser_hat_seinen_verhaltenstest():
 
 
 VERHALTENSTESTS = {
+    "gates/abnahmebericht.py": "test_a_m4_verweigert_eine_spez_fremder_version",
     "gates/generation_golden.py": "test_p_k1_verweigert_eine_spez_fremder_version",
     "quellen/tafel_import.py": "test_der_tafelimport_verweigert_eine_spez_fremder_version",
     "gates/bestand_uebernehmen.py": "test_die_uebernahme_verweigert_eine_spez_fremder_version",

@@ -70,9 +70,11 @@ from rechner_pipeline.qa.stichprobe import Stichprobe
 from rechner_pipeline.qa.testprofil import vorlage
 from rechner_pipeline.spez.tarifregeln import (
     TarifregelnFehler,
-    tarifregeln_der_spez,
     verweigere_entfallene_schalter,
 )
+# Die eine Stelle, an der die Kommandos der Bestandsstrecke ihre Regeln
+# beziehen: Scope des Falls und Spez (Pruefrunde G).
+from rechner_pipeline.gates.migrationssuite_lauf import tarifregeln_des_falls
 from rechner_pipeline.spez.validierung import (
     lade_spez,
     lade_spez_aus_bytes,
@@ -736,7 +738,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Die Tarifregeln der Generation aus der Spez — dieselbe Fassung, mit
     # der Uebernahme, Verankerung, Suite und Fuehrungsprobe rechnen.
     try:
-        regeln = tarifregeln_der_spez(spez)
+        regeln = tarifregeln_des_falls(fall, spez)
     except TarifregelnFehler as exc:
         print(f"aktuartest_lauf: {exc}", file=sys.stderr)
         return 2

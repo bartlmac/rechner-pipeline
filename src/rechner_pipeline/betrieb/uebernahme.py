@@ -1311,7 +1311,13 @@ def tarifwerk_fehler(config: BestandConfig, generationen: Iterable[str], beleg: 
         if gen is None:
             continue
         ist = gen.tarifwerk()
-        abweichend = {k: (ist.get(k), v) for k, v in soll.items() if ist.get(k) != v}
+        # Ueber ALLE Merkmale beider Seiten (Pruefrunde G, Nachbarfall zu G04):
+        # Verglichen wurden nur die Schluessel, die der Beleg nennt — ein
+        # leeres oder halbes Tarifwerk ging durch. Der Beleg nennt genau das
+        # Tarifwerk, mit dem die Abnahmen bestanden wurden, oder er bezeugt es
+        # nicht; dieselbe Regel wie A-M4 (``abnahmebericht.tarifregeln_beleg_fehler``).
+        abweichend = {k: (ist.get(k), soll.get(k)) for k in set(ist) | set(soll)
+                      if k not in ist or k not in soll or ist[k] != soll[k]}
         if abweichend:
             fehler.append(
                 f"Generation {name}: Tarifwerk der Config weicht vom Uebernahmebeleg ab — "

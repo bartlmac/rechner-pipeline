@@ -33,6 +33,7 @@ from rechner_pipeline.spez.schema import (
     TarifSpez,
     ZellSpez,
 )
+from rechner_pipeline.spez.tarifregeln import spez_block
 
 
 class SpezFehler(ValueError):
@@ -85,7 +86,9 @@ def _pruefe_vorbedingungen(abox: ABox, gen: Tarifgeneration) -> None:
     if gen.unisex is not None and gen.unisex.zustand is not Zustand.BELEGT:
         probleme.append(f"{gen.id}/unisex: {gen.unisex.zustand.value}")
     # Tarifwerk und Quellverfahren: belegt wird projiziert, nicht_belegt
-    # entfaellt (und bleibt in der Coverage sichtbar); ein Widerspruch oder
+    # entfaellt (und bleibt in der Coverage sichtbar) — ausser fuer ein
+    # Merkmal, das nur erhoben sein muss (Dynamiksatz): Dort traegt die Spez
+    # die Feststellung (spez.tarifregeln.spez_block); ein Widerspruch oder
     # eine Mehrdeutigkeit still zu verwerfen waere eine stille Entscheidung.
     for block in GENERATIONS_BLOECKE:
         for merkmal, aussage in sorted(gen.block(block).items()):
@@ -262,11 +265,10 @@ def baue_spez(
         Erweiterungsstelle(id=e, beschreibung=e)
         for e in urteil.formel_erweiterungen
     ]
-    bloecke = {
-        block: {m: a.wert for m, a in sorted(gen.block(block).items())
-                if a.zustand is Zustand.BELEGT}
-        for block in GENERATIONS_BLOECKE
-    }
+    # Belegt mit Wert; "ausdruecklich nicht belegt" eines zu erhebenden
+    # Merkmals (Dynamiksatz) als Feststellung — die EINE Projektion, die P-K1
+    # zurueckhaelt (spez.tarifregeln.spez_block; Pruefrunde G).
+    bloecke = {block: spez_block(block, gen.block(block)) for block in GENERATIONS_BLOECKE}
     return TarifSpez(
         generation=gen.id,
         familie=gen.familie,

@@ -52,7 +52,7 @@ flowchart TD
     gates -- 13 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
-    gates -- 11 --> spez
+    gates -- 13 --> spez
     kommutationskern -- 2 --> kern
     models -- 1 --> gates
     models -- 1 --> kern
@@ -65,7 +65,7 @@ flowchart TD
     quellen -- 4 --> ontologie
     quellen -- 1 --> spez
     spez -- 1 --> kern
-    spez -- 12 --> ontologie
+    spez -- 13 --> ontologie
 ```
 
 ## 2 Fachknoten — die Sicht der Ontologie

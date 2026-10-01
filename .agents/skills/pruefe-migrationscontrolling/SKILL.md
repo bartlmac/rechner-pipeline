@@ -147,6 +147,15 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    vollständig ausgewiesen (keine Stichproben-Beschönigung); ein
    roter Bericht wird geschrieben wie ein grüner — er IST das
    Beweisstück.
+
+   Im Bestands-Scope rechnet das Kommando den Führungswert der Suite
+   auf den gebundenen Bytes nach (Bestand, Nebentabellen, Config,
+   Tarifwerk der Spez) und weist ihn aus (Summary `fuehrungswert`,
+   HTML je Vertrag); es bindet die Spez der Generation (Summary
+   `tarifregeln`) und verweigert jeden Beleg der Bestandsstrecke
+   (Übernahme, Schicht, aktuarieller Test, Suite, Führungsprobe), der
+   andere Regeln nennt oder eine andere Spez gelesen hat. Weicht etwas
+   ab, wird der Lauf neu gefahren — nie der Beleg nachgebessert.
 5. Ergebnis dem Menschen zur A-M4-Entscheidung vorlegen, STOPP.
 
 ## Abbruchkriterien (STOPP und Mensch fragen)

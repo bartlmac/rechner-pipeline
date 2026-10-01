@@ -185,7 +185,15 @@ GATE = "A-M4.migrationscontrolling"
 #: Tarifschalter mehr. Ein Beleg der Fassung 4 war gueltig und wird jetzt
 #: abgewiesen (sein Aufruf ist mit den verweigerten Schaltern nicht
 #: nachrechenbar).
-GATE_VERSION = "9.0.0"
+#: 10.0.0 (Pruefrunde G, G03 und G04, 2026-10-01): Der Fuehrungswert der
+#: Suite wird auf den gebundenen Bytes nachgerechnet (Bestand, Nebentabellen,
+#: Config, Tarifwerk der Spez) und ausgewiesen (Summary ``fuehrungswert``,
+#: HTML je Vertrag); A-M4 bindet die Spez der Generation (Summary
+#: ``tarifregeln``), und jeder Beleg der Bestandsstrecke
+#: (:data:`TARIFREGEL_BELEGE`) muss genau ihre Regeln nennen und sie gelesen
+#: haben. Eine Suite mit einem nicht nachrechenbaren Fuehrungswert oder ein
+#: Beleg mit anderer oder fehlender Regelangabe war vorher gueltig.
+GATE_VERSION = "10.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -668,7 +676,7 @@ def _abnahme_zusammenfassung(
         bestandsbericht_nach=bestandsbericht_nach,
         fall=fall,
     )
-    return {
+    zusammenfassung: Dict[str, Any] = {
         "bericht_bestanden": (
             suite["suite_bestanden"]
             and not any(urteil["befunde"] for urteil in suite["vertraege"])
@@ -676,6 +684,54 @@ def _abnahme_zusammenfassung(
         ),
         "abnahmehindernisse": hindernisse,
     }
+    fuehrungswert = _fuehrungswert_zusammenfassung(suite)
+    if fuehrungswert is not None:
+        zusammenfassung["fuehrungswert"] = fuehrungswert
+    return zusammenfassung
+
+
+def _fuehrungswert_zusammenfassung(suite: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Was A-M4 vom Fuehrungswert AUSWEIST (Pruefrunde G, G03; ADR-022,
+    Nachtrag): Art, Konvention, Bindungen und je Termin Stichtag, Anzahl der
+    Vertraege in Kraft und nicht in Kraft und die Summen der drei Groessen.
+    Abgeleitet aus den Zeilen des Belegs (deren Werte ``_bestands_suite_fehler``
+    nachgerechnet hat), nicht aus frei editierbaren Zaehlern; ``None`` fuer
+    eine Suite ohne Fuehrungswert in Vertragsform (Tarif-Scope, Fassung 1).
+
+    Verlangt wird hier nur die FORM, die die Darstellung braucht; Bindungen
+    und Werte prueft ``_bestands_suite_fehler``. So haengt der Bericht nicht
+    an einer Pruefaussage, und ein Befund der Bindung bleibt ein Befund der
+    Bindung (nicht zusaetzlich ein abweichender Bericht)."""
+    from rechner_pipeline.models.fuehrungswert import (
+        FELDER,
+        GROESSEN,
+        KOPF_FELDER,
+        TERMINE,
+    )
+
+    kopf = suite.get("fuehrungswert")
+    if not isinstance(kopf, dict) or set(kopf) != set(KOPF_FELDER):
+        return None
+    for u in suite["vertraege"]:
+        fw = u.get("fuehrungswert")
+        if not isinstance(fw, dict) or set(fw) != set(TERMINE):
+            return None
+        for t in fw.values():
+            if t is not None and (not isinstance(t, dict) or set(t) != set(FELDER)
+                                  or not all(_ist_endliche_zahl(t[g]) for g in GROESSEN)):
+                return None
+    aus: Dict[str, Any] = {k: kopf[k] for k in ("art", "konvention", "bestand_sha256",
+                                                 "config_sha256")}
+    for termin in TERMINE:
+        zeilen = [u["fuehrungswert"][termin] for u in suite["vertraege"]
+                  if u["fuehrungswert"][termin] is not None]
+        aus[termin] = {
+            "stichtag": suite[termin],
+            "in_kraft": len(zeilen),
+            "nicht_in_kraft": len(suite["vertraege"]) - len(zeilen),
+            "summen": {g: math.fsum(z[g] for z in zeilen) for g in GROESSEN},
+        }
+    return aus
 
 
 def baue_bericht(
@@ -802,6 +858,50 @@ def baue_bericht(
                  "<th>max. |Residuum|</th></tr>")
     teile.extend(_pruefgroessen_zeilen(suite))
     teile.append("</table>")
+
+    # Der Fuehrungswert (Pruefrunde G, G03): Die Migrationsabnahme WEIST aus,
+    # womit das Zielsystem den Vertrag ab dem Zugang fuehrt — und pinnt damit
+    # das Soll der Zugangsprobe (ADR-022). Vorher stand er nur im Beleg.
+    fuehrungswert = abnahme.get("fuehrungswert")
+    if fuehrungswert is not None:
+        teile.append("<h2>Führungswert (Systemwert der Bestandsführung)</h2>")
+        teile.append(
+            f"<p class='hinweis'>{_e(suite['fuehrungswert']['hinweis'])}. "
+            f"Konvention: <b>{_e(fuehrungswert['konvention'])}</b> — Bestand "
+            f"SHA-256 {_e(str(fuehrungswert['bestand_sha256'])[:16])}…, Config "
+            f"SHA-256 {_e(str(fuehrungswert['config_sha256'])[:16])}… — von A-M4 "
+            "auf diesen Bytes nachgerechnet.</p>")
+        teile.append("<table><tr><th>Termin</th><th>Stichtag</th><th>in Kraft</th>"
+                     "<th>nicht in Kraft</th><th>Σ Deckungskapital</th>"
+                     "<th>Σ Rückkaufswert</th><th>Σ Korrekturschicht</th></tr>")
+        for termin in ("stichtag_1", "stichtag_2"):
+            t = fuehrungswert[termin]
+            teile.append(
+                f"<tr><td>{_e(termin)}</td><td>{_e(t['stichtag'])}</td>"
+                f"<td class='zahl'>{t['in_kraft']}</td>"
+                f"<td class='zahl'>{t['nicht_in_kraft']}</td>"
+                + "".join(f"<td class='zahl'>{t['summen'][g]:.2f}</td>"
+                          for g in ("deckungskapital", "rueckkaufswert",
+                                    "korrekturschicht")) + "</tr>")
+        teile.append("</table>")
+        teile.append("<table><tr><th>Police</th><th>Termin</th><th>Status</th>"
+                     "<th>Deckungskapital</th><th>Rückkaufswert</th>"
+                     "<th>Korrekturschicht</th></tr>")
+        for urteil in suite["vertraege"]:
+            for termin in ("stichtag_1", "stichtag_2"):
+                t = urteil["fuehrungswert"][termin]
+                if t is None:
+                    teile.append(
+                        f"<tr><td>{_e(urteil['police_id'])}</td><td>{_e(termin)}</td>"
+                        "<td colspan='4'>nicht mehr in Kraft</td></tr>")
+                    continue
+                teile.append(
+                    f"<tr><td>{_e(urteil['police_id'])}</td><td>{_e(termin)}</td>"
+                    f"<td>{_e(t['status_code'])}</td>"
+                    f"<td class='zahl'>{t['deckungskapital']:.2f}</td>"
+                    f"<td class='zahl'>{t['rueckkaufswert']:.2f}</td>"
+                    f"<td class='zahl'>{t['korrekturschicht']:.2f}</td></tr>")
+        teile.append("</table>")
 
     teile.append("<h2>Einzelvergleiche (alle Werte)</h2>")
     teile.append(
@@ -1342,14 +1442,161 @@ def _suite_zusammenfassung(suite: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+#: Die Belege der Bestandsstrecke, die mit Tarifregeln gerechnet haben und die
+#: A-M4 an die Spez haelt (Pruefrunde G, G04) — Pfad im Fall -> wo der Beleg
+#: seine Regeln nennt. Gemessen am Lauf (Ratsche mit ``==`` in
+#: tests/test_am4_fuehrungswert_und_tarifregeln.py); P-B1 und der
+#: Transformationsbeleg rechnen ohne Tarifregeln (P-B1 liest die Config, die
+#: die Suite ueber den Fuehrungswert an das Tarifwerk der Spez haelt).
+TARIFREGEL_BELEGE: Dict[str, str] = {
+    "abgeleitet/bestand/uebernahme.json": "tarifwerk/quellverfahren",
+    "abgeleitet/schichten/verankerung_schichten.json": "provenienz.parameter.tarifregeln",
+    "abgeleitet/berichte/aktuartest.json": "tarifregeln",
+    "abgeleitet/berichte/aktuartest-A-M2.json": "tarifregeln",
+    "abgeleitet/berichte/aktuartest-A-M3.json": "tarifregeln",
+    "abgeleitet/berichte/migrationssuite.json": "tarifregeln",
+    "abgeleitet/berichte/fuehrungsprobe.json": "provenienz.parameter.tarifregeln",
+}
+#: Diese Belege muss ein Fall im Bestands-Scope tragen; die uebrigen haelt
+#: A-M4, wenn sie vorliegen (wie die Pflichtschicht, ``_pflichtschicht_fehler``).
+TARIFREGEL_PFLICHTBELEGE = ("abgeleitet/bestand/uebernahme.json",
+                            "abgeleitet/berichte/migrationssuite.json",
+                            "abgeleitet/berichte/fuehrungsprobe.json")
+
+
+def _tarifregeln_soll(fall: Path, suite: Dict[str, Any]):
+    """Die Spez, die A-M4 bindet, und ihre Regeln: ``(regeln, bindung, fehler)``.
+
+    Die Generation nennt die Suite (``tarifregeln.generation``); gelesen wird
+    die Spez des Falls zu dieser Generation auf ihren AKTUELLEN Bytes, ueber
+    dieselbe Tuer wie jedes Kommando der Bestandsstrecke
+    (``migrationssuite_lauf.tarifregeln_des_falls``: Scope und Pflicht). Dass
+    die Generation der Suite die richtige ist, haelt der Vergleich: Jeder
+    Beleg muss genau diese Regeln nennen und diese Bytes gelesen haben, auch
+    die nachgerechnete Fuehrungsprobe.
+    """
+    from rechner_pipeline.gates.migrationssuite_lauf import tarifregeln_des_falls
+    from rechner_pipeline.spez.tarifregeln import TarifregelnFehler
+    from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
+
+    angabe = suite.get("tarifregeln")
+    generation = angabe.get("generation") if isinstance(angabe, dict) else None
+    if not isinstance(generation, str) or not generation:
+        return None, None, [
+            "migrationssuite.json nennt keine Tarifregeln (tarifregeln.generation) — "
+            "welche Spez gilt, ist nicht ablesbar; die Suite neu ausfuehren"]
+    pfad = spez_pfad(Path(fall), generation)
+    if not pfad.is_file():
+        return None, None, [f"Tarifregeln: die Spez der Generation {generation} fehlt im "
+                            f"Fall ({pfad})"]
+    roh = pfad.read_bytes()
+    try:
+        regeln = tarifregeln_des_falls(Path(fall), lade_spez_aus_bytes(roh))
+    except (TarifregelnFehler, ValueError) as exc:
+        return None, None, [f"Tarifregeln: {exc}"]
+    bindung = {"spez": str(pfad.resolve().relative_to(Path(fall).resolve())),
+               "spez_sha256": sha256(roh).hexdigest(),
+               "regeln": regeln.als_beleg()}
+    return regeln, bindung, []
+
+
+def _regelangabe(rel: str, beleg: Dict[str, Any]):
+    """(Regelangabe, Eingaben) eines Belegs nach seiner Form (:data:`TARIFREGEL_BELEGE`)."""
+    form = TARIFREGEL_BELEGE[rel]
+    if form == "tarifwerk/quellverfahren":
+        angabe = ({k: beleg[k] for k in ("tarifwerk", "quellverfahren")}
+                  if "tarifwerk" in beleg and "quellverfahren" in beleg else None)
+        return angabe, beleg.get("eingaben")
+    if form == "tarifregeln":
+        return beleg.get("tarifregeln"), beleg.get("eingaben")
+    provenienz = beleg.get("provenienz") if isinstance(beleg.get("provenienz"), dict) else {}
+    parameter = provenienz.get("parameter") if isinstance(provenienz.get("parameter"), dict) else {}
+    return parameter.get("tarifregeln"), provenienz.get("eingaben")
+
+
+def tarifregeln_beleg_fehler(rel: str, beleg: Any, bindung: Dict[str, Any]) -> List[str]:
+    """EINE Vergleichsfunktion fuer jeden Beleg der Bestandsstrecke (G04).
+
+    Der Beleg nennt GENAU die Tarifregeln der Spez, die A-M4 bindet
+    (``tarifregeln_der_spez(spez).als_beleg()``; der Uebernahmebeleg nennt
+    Tarifwerk und Quellverfahren ohne Generation), und er hat GENAU diese
+    Spez gelesen (ihr Schluessel mit ihrem Hash unter seinen Eingaben). Ein
+    Beleg ohne Regelangabe wird verweigert, nicht uebergangen. Vorher las A-M4
+    die Regelangaben gar nicht: Eine Suite, die andere Regeln behauptete als
+    aktuarieller Test und Probe, wurde gepinnt.
+    """
+    name = Path(rel).name
+    if not isinstance(beleg, dict) or "_lesefehler" in beleg:
+        return [f"{name}: nicht lesbar — seine Tarifregeln sind nicht ablesbar"]
+    angabe, eingaben = _regelangabe(rel, beleg)
+    if not isinstance(angabe, dict):
+        return [f"{name} nennt keine Tarifregeln — mit welchen Regeln er gerechnet "
+                "hat, ist nicht ablesbar; den Lauf neu fahren"]
+
+    def norm(wert: Any) -> Any:
+        return json.loads(json.dumps(wert, sort_keys=True))
+
+    soll = bindung["regeln"]
+    teile = [t for t in ("generation", "tarifwerk", "quellverfahren")
+             if t in angabe or TARIFREGEL_BELEGE[rel] != "tarifwerk/quellverfahren"]
+    abweichend = [t for t in teile if norm(angabe.get(t)) != norm(soll.get(t))]
+    fehler: List[str] = []
+    if abweichend:
+        fehler.append(
+            f"{name} nennt andere Tarifregeln als die Spez, die A-M4 bindet "
+            f"({bindung['spez']}), in {abweichend} — er rechnete nicht mit der "
+            "belegten Fassung; den Lauf auf dieser Spez neu fahren")
+    gelesen = eingaben.get(bindung["spez"]) if isinstance(eingaben, dict) else None
+    if gelesen != bindung["spez_sha256"]:
+        fehler.append(
+            f"{name} hat nicht die Spez gelesen, die A-M4 bindet ({bindung['spez']}, "
+            f"{bindung['spez_sha256'][:16]}…; gelesen: "
+            f"{str(gelesen)[:16] if gelesen else 'keine'}) — gerechnet auf einer "
+            "anderen Fassung der Tarifregeln; den Lauf neu fahren")
+    return fehler
+
+
+def _bestands_tarifregeln_fehler(fall: Path, suite: Dict[str, Any]) -> List[str]:
+    """Jeder Beleg aus :data:`TARIFREGEL_BELEGE` ausser der Fuehrungsprobe
+    (die haelt ``_fuehrungsprobe_fehler`` an ihrem gepinnten Beleg); die
+    Suite als der Beleg, den A-M4 pinnt (``suite``), nicht als Datei."""
+    regeln, bindung, fehler = _tarifregeln_soll(fall, suite)
+    if fehler:
+        return fehler
+    for rel in TARIFREGEL_BELEGE:
+        if rel == "abgeleitet/berichte/fuehrungsprobe.json":
+            continue
+        if rel == "abgeleitet/berichte/migrationssuite.json":
+            fehler += tarifregeln_beleg_fehler(rel, suite, bindung)
+            continue
+        pfad = Path(fall) / rel
+        if not pfad.is_file():
+            if rel in TARIFREGEL_PFLICHTBELEGE:
+                fehler.append(f"{Path(rel).name} fehlt ({rel}) — seine Tarifregeln "
+                              "sind nicht ablesbar")
+            continue
+        try:
+            beleg = json.loads(pfad.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            beleg = {"_lesefehler": str(exc)}
+        fehler += tarifregeln_beleg_fehler(rel, beleg, bindung)
+    return fehler
+
+
 def _bestands_suite_fehler(
     suite: Dict[str, Any],
     *,
     stichtag_1: str,
     stichtag_2: str,
     erwartetes_system: Dict[str, str],
+    fall: Path,
 ) -> List[str]:
-    """Vollstaendigkeit und Fallstand der Suite im Bestands-Scope."""
+    """Vollstaendigkeit und Fallstand der Suite im Bestands-Scope.
+
+    ``fall`` hat keinen Standardwert (Pruefrunde G): Ohne ihn waere der
+    Fuehrungswert nur der Form nach geprueft, und jeder Aufrufer — Bericht
+    und Entscheid — muss ihn nachrechnen lassen.
+    """
     fehler: List[str] = []
     erwartet = {
         "stichtag_1": stichtag_1,
@@ -1376,9 +1623,20 @@ def _bestands_suite_fehler(
         fehler.append("Migrationssuite bindet nicht den aktuellen Systemstand")
     # Der Fuehrungswert (8.0.0): Pflicht im Bestands-Scope — A-M4 weist aus,
     # was die Bestandsfuehrung fuer den Zugang fuehrt.
+    from rechner_pipeline.gates.migrationssuite_lauf import fuehrungswert_nachgerechnet
     from rechner_pipeline.models.fuehrungswert import fuehrungswert_fehler
 
     fehler.extend(fuehrungswert_fehler(suite))
+    if fehler:
+        return fehler
+    # 10.0.0 (Pruefrunde G): Erst die Form, dann die Regeln jedes Belegs, dann
+    # der Wert selbst — nachgerechnet mit dem Tarifwerk der Spez, die A-M4
+    # bindet. Die Form allein liess jeden endlichen Wert durch.
+    fehler.extend(_bestands_tarifregeln_fehler(fall, suite))
+    if fehler:
+        return fehler
+    regeln, _, _ = _tarifregeln_soll(fall, suite)
+    fehler.extend(fuehrungswert_nachgerechnet(suite, Path(fall), regeln))
     return fehler
 
 
@@ -1841,6 +2099,13 @@ def _fuehrungsprobe_fehler(
             f"{(parameter.get('red_anteile_datei') or {}).get('name')!r}) — die "
             "Fuehrung traegt nicht die Welt, in der die Suite abgenommen "
             "wurde; beide mit derselben --red-anteile-datei neu fahren")
+    # Die Regeln der Probe gegen die Spez, die A-M4 bindet (Pruefrunde G,
+    # G04) — dieselbe Vergleichsfunktion wie fuer jeden anderen Beleg der
+    # Strecke, vor der Nachrechnung: deren Meldung nennt nur das Feld.
+    if not fehler:
+        _, bindung, soll_fehler = _tarifregeln_soll(fall, suite)
+        fehler += soll_fehler or tarifregeln_beleg_fehler(
+            "abgeleitet/berichte/fuehrungsprobe.json", probe, bindung)
     # Erst wenn der Beleg in sich die Form hat, wird er nachgerechnet —
     # die Nachrechnung ist teuer, und ihre Meldung ersetzt die genaueren
     # Formbefunde darueber nicht.
@@ -2553,6 +2818,7 @@ def main(argv: Optional[List[str]] = None):
             stichtag_1=args.stichtag_1,
             stichtag_2=args.stichtag_2,
             erwartetes_system=gemeinsame_bindung["system"],
+            fall=fall,
         ) + _suite_auskunft_fehler(suite)
         if suite_scope_fehler:
             return _contract_fehler(
@@ -2659,6 +2925,9 @@ def main(argv: Optional[List[str]] = None):
         # Die Auskunft, auf der Suite und Fuehrungsprobe gerechnet haben:
         # der Bericht nennt sie mit (Block F, Nachbesserung).
         summary["red_anteile_datei"] = suite.get("red_anteile_datei")
+        # Die Spez, die A-M4 bindet, und ihre Regeln (Pruefrunde G, G04):
+        # jeder Beleg der Strecke ist oben an sie gehalten.
+        _, summary["tarifregeln"], _ = _tarifregeln_soll(fall, suite)
 
     # Welche Tabellen die Bestandspruefung tatsaechlich gesehen hat. Ein
     # gruenes A-M4 sagt sonst nichts darueber, ob das Bewegungskonto

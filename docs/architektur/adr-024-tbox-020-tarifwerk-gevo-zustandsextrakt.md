@@ -261,3 +261,136 @@ Standabnahme gegen Fall UND die Linie, die A-M4 bekommt (ADR-025, Nachtrag
 Pruefrunde G): Wer A-O1 unter einer Kopie der Linie ohne Entscheide
 zeichnete, kam vorher bis zur Annahme der Migration. Die Vergleichsgrundlage der Sicht (`vorher`) liefert der
 Produzent; das Gate prueft an ihr nur die innere Stimmigkeit.
+
+## Nachtrag 2026-10-01 (vierter): Pruefrunde G — Feststellung statt Luecke, Scope, Belege an der Spez
+
+**Anlass.** Die blinde Pruefrunde G fand in diesem Bereich sieben bestaetigte
+Funde (G03, G04, G18 bis G22). Die Regel des zweiten Nachtrags ("was die
+Quellpruefung durchlaesst, rechnet die Strecke, und umgekehrt") galt nur in
+einer Richtung, und A-M4 las die Regelangaben der Belege nicht. Gebaut ist je
+Fund ein roter Test, der Fix an einer Stelle, eine Ratsche und eine
+Mutationsprobe (Stand: "Fix gebaut", nicht "geschlossen").
+
+**1. "Nicht belegt" ist in der Spez ausdruecklich (G18, G19).**
+Regel: Der Block `quellverfahren` fuehrt den Dynamiksatz immer, als Zahl oder
+als Feststellung `"nicht_belegt"` (`spez.tarifregeln.NICHT_BELEGT`, das Wort
+des A-Box-Zustands `Zustand.NICHT_BELEGT`). Die Feststellung ist nur fuer ein
+Merkmal aus `tbox.BESTAND_ERHOBEN` ein Wert; fuer ein Pflichtmerkmal ist sie
+eine Luecke. Ein fehlender Schluessel heisst "nie erhoben":
+`tarifregeln_der_spez` ruft `tbox.tarifregeln_luecken` jetzt mit `erhoben` und
+verweigert ihn wie P-Q3. Die eine Projektion `spez.tarifregeln.spez_block`
+nehmen `spez.erzeugen`, P-K1 (`validate_spez`, beide Richtungen) und der
+Fixture-Weg `ergaenze_tarifregeln` (Eintrag `{"zustand": "nicht_belegt",
+"fundstelle": ...}`; Weglassen, `wert: null`, ein Eintrag ohne Wert und
+Zustand werden benannt verweigert). Die Belege der Laeufe nennen die
+Feststellung (`quellverfahren.erhoehungssatz = "nicht_belegt"`).
+Grund: Vorher war die Spez von "ausdruecklich nicht belegt" und "nie
+erhoben" bytegleich; die Unterscheidung lebte nur in P-Q3, und die
+Uebernahme zerlegte bei nie erhobenem Satz still aus dem Beitrag
+(gemessen: Scheibe 3799,60 statt 3800,00).
+Verworfen: *`null` als Feststellung* — die Spez speichert ohne `None`
+(`exclude_none`), `Wert` kennt kein `None`, und `null` war schon die Lesart
+von "fehlt". *Ein eigenes Feld `nicht_belegt: [...]` im Spez-Schema* — eine
+zweite Stelle fuer denselben Block, Schema-Version heben und jede
+eingefrorene Spez neu erzeugen, fuer ein Merkmal. *`0.0` als Satz* — liegt
+ausserhalb des Wertebereichs (0 < e < 1) und waere eine Behauptung ueber den
+Tarif statt einer Feststellung ueber die Quelle.
+Versionen: T-Box-Vokabular unveraendert (der Abdruck von 0.2.0 hat sich
+nicht bewegt); Spez-Schema (`SPEZ_VERSION`) unveraendert, weil das Modell
+gleich bleibt und nur die Pflicht der Bestandsstrecke schaerfer wird — wie im
+zweiten Nachtrag. Eine Spez eines Bestandsfalls, die vor diesem Nachtrag aus
+einer A-Box mit "nicht belegt" erzeugt wurde, wird verweigert; Ausweg: neu
+erzeugen. Die eingefrorenen Baldrian-Spez fuehren den Satz belegt (0,05) und
+bleiben bytegleich; die P-K1-/A-M4-Fixture erzeugt ihre Spez ueber den
+Produzenten und traegt die Feststellung jetzt von selbst.
+
+**2. Die Bestandsstrecke rechnet nur im Scope bestand (G18).**
+Regel: Die fuenf Kommandos beziehen die Regeln ueber EINE Tuer,
+`gates.migrationssuite_lauf.tarifregeln_des_falls(fall, spez)`: Scope des
+Falls `bestand` (sonst Verweigerung, Exit 2, mit Ausweg), dann
+`tarifregeln_der_spez`. A-M4 bezieht sein Soll ueber dieselbe Tuer.
+Grund: Punkt 2 des zweiten Nachtrags ("ein Tariffall fuehrt keinen Bestand,
+keine seiner Rechnungen liest die Bloecke") war nur behauptet; gemessen lief
+die ganze Strecke im Scope tarif mit Exit 0.
+Verworfen: *die Pruefung in `spez.tarifregeln`* — die Schicht `spez` kennt
+keinen Fall (neue Kante `spez -> fall`, eine Architekturentscheidung);
+*jedes Kommando liest den Scope selbst* — fuenf Abschriften, die sechste
+vergisst sie; *ein Schalter, der die Pruefung abschaltet* — nicht gebaut.
+Benannte Grenze: P-B1 (`gates.bestand_validate`) und die Fortschreibung
+(`bestand.cli_fortschreibung`) lesen die Config, nicht die Spez, und kennen
+keinen Fall; sie liegen ausserhalb dieser Regel. An die Regeln der Spez sind
+sie ueber die Config-Wache des Fuehrungswerts (Punkt 3) und die
+Fuehrungsprobe gebunden.
+
+**3. Die Wache des Fuehrungswerts haelt die Generation, mit der bewertet wird (G20).**
+Regel: `bestand.migrationszugang.fuehrungswerte` loest jede Generation, die
+im Bestand vorkommt, so auf wie die Bewertung (Name aus
+`stamm.tarif_generation`); ihr Knoten muss unter den Knoten der Spez stehen
+und ihr Tarifwerk genau das der Spez sein.
+Grund: Die Wache suchte ueber den Knoten, bewertet wurde ueber den Namen;
+mit einer Attrappe unter dem Knoten der Spez stellte die Suite einen
+Fuehrungswert nach anderem Tarifwerk gruen aus (7 Policen, z. B. RKW
+154.012,66 statt 153.702,08).
+Verworfen: *die Bewertung auf Knoten umstellen* — der Name ist der Schluessel
+des Bestands und der Bestandsfuehrung; die Fuehrung haette einen anderen
+Rechenweg bekommen. Benannte Grenze: Die Bewertung loest an mehreren Stellen
+inline ueber den Namen auf; die Wache nimmt denselben Schluessel, einen
+gemeinsamen Helfer gibt es nicht.
+
+**4. A-M4 rechnet den Fuehrungswert nach und weist ihn aus (G03; ADR-022).**
+Regel: `abnahmebericht._bestands_suite_fehler` (Bericht und Entscheid rufen
+dieselbe Funktion; der Parameter `fall` hat keinen Standardwert) rechnet den
+Fuehrungswert der Suite ueber `migrationssuite_lauf.fuehrungswert_rechnen` —
+denselben Weg wie die Produzentin — auf den GEBUNDENEN Bytes nach: Bestand
+(`bestand_sha256`), jede Nebentabelle neben ihm (liegt sie dort, muss sie
+gebunden sein, und umgekehrt), Config (`config_sha256`), Stichtage der Suite,
+Tarifwerk der Spez, die A-M4 bindet. Abweichung in Konvention, Policenmenge
+oder einem Feld eines Termins verweigert. Die Vorlage weist ihn aus:
+Summary `fuehrungswert` (Art, Konvention, Bindungen, je Stichtag Anzahl in
+Kraft und nicht in Kraft und Summen) und im HTML je Vertrag. Abnahmebericht
+10.0.0.
+Verworfen: *Auftrags-Echo der ganzen Suite und Neulauf in A-M4* (wie beim
+aktuariellen Test) — fuer den Fuehrungswert genuegen die gebundenen
+Eingaben; der Neulauf der ganzen Suite bleibt der offene Punkt der
+AT-Schicht. *Nur ausweisen, nicht nachrechnen* — dann pinnte A-M4 weiter ein
+ungeprueftes Soll der Zugangsprobe.
+
+**5. Jeder Beleg nennt genau die Regeln der Spez, die A-M4 bindet (G04).**
+Regel: A-M4 bindet die Spez der Generation, die die Suite nennt (Summary
+`tarifregeln`: Pfad, SHA-256, Regeln). EINE Vergleichsfunktion
+(`abnahmebericht.tarifregeln_beleg_fehler`) haelt jeden Beleg aus
+`TARIFREGEL_BELEGE`: Uebernahmebeleg, Schichtbeleg, die drei Belege des
+aktuariellen Tests, Suite, Fuehrungsprobe (gemessen, Ratsche mit `==`). Der
+Beleg muss genau diese Regeln nennen und genau diese Spez gelesen haben
+(Schluessel und Hash unter seinen Eingaben); ohne Regelangabe wird er
+verweigert.
+Grund: A-M4 las die Regelangaben nicht; eine Suite mit anderen Regeln als
+aktuarieller Test und Probe wurde gepinnt, und ein alter Beleg auf einer
+frueheren Spez blieb unbemerkt.
+Verworfen: *die Belege nur untereinander vergleichen* — eine in sich
+stimmige Faelschung aller Belege kaeme durch, und die Spez ist die belegte
+Fassung, nicht die Mehrheit der Belege.
+Benannte Grenzen: Die Generation, an der die Spez haengt, nennt die Suite;
+gehalten wird sie durch den Vergleich mit jedem Beleg, auch der
+nachgerechneten Probe. Schichtbeleg und aktuarieller Test werden an ihrem
+Standardort gelesen; ein Beleg unter einem anderen `--out` ist fuer A-M4
+unsichtbar (wie bei der Pflichtschicht). Das Feld `tarifwerk` der Probe auf
+oberster Ebene haelt die Nachrechnung der Probe, nicht die
+Vergleichsfunktion.
+Nachbarfall: `betrieb.uebernahme.tarifwerk_fehler` verglich nur die
+Schluessel, die der Uebernahmebeleg nennt; ein leeres oder halbes Tarifwerk
+ging durch. Jetzt Gleichheit ueber alle Merkmale beider Seiten.
+
+**6. Meldungen und Tarifplan (G21, G22).** Die Meldung bei einer
+unterbestimmten Serie nennt `quellverfahren.erhoehungssatz` und den Weg ueber
+A-Box, P-Q3 und Spez statt des entfallenen Schalters; eine Ratsche haelt, dass
+kein Text in `src` (ausser Docstrings) einen Schalter aus
+`ENTFALLENE_SCHALTER` nennt, ausser `spez/tarifregeln.py`. Der erzeugte
+Tarifplan nennt im "Tarifwerk der Generation" jedes Merkmal aus
+`tarifwerk()` (Text je Merkmal in `bestand.tarifplan_tabellen.TARIFWERK_TEXTE`,
+gegen `tbox.TARIFWERK_MERKMALE` mit `==`); der Block in `klv.md` ist ueber den
+Generator neu erzeugt.
+
+Instrumente: `tests/test_am4_fuehrungswert_und_tarifregeln.py` (eigene,
+abnahmereife Kette des zweiten Laufs, A-M4 ueber das Kommando),
+`tests/test_tarifregeln_aus_spez.py` (Abschnitte Pruefrunde G).

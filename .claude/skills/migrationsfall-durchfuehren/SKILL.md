@@ -318,6 +318,11 @@ derselben Spez. Die frueheren Schalter (`--red-verfahren`,
 `--erhoehungssatz`, `--dk-stichtag`, `--formfunktion`, `--fenster`) werden
 verweigert und nennen den Abschnitt der Spez; eine andere Regel heisst:
 in der A-Box belegen, P-Q3, Spez neu erzeugen — nie am Aufruf ueberstimmen.
+Kennt der Tarif keinen Dynamiksatz, stellst du das ausdruecklich fest
+(`nicht_belegt` mit Fundstelle); die Spez traegt dann
+`quellverfahren.erhoehungssatz = "nicht_belegt"`, ein fehlender Eintrag ist
+"nie erhoben" und wird verweigert. Die Kommandos der Bestandsstrecke laufen
+nur in einem Fall mit Scope `bestand` (ADR-024, vierter Nachtrag).
 Am Aufruf bleiben nur Eingaben (registrierte Auskunft, Ankerquelle) und
 die Arbeitsannahme des Laufs (`--red-anteil-kandidat`). Die Uebernahme
 rechnet den Anfangszustand mit derselben Ableitung wie die Abnahmen und
@@ -699,7 +704,8 @@ die Schritte selbst zu improvisieren:
    (`--config` ist die Bestand-Config der Fuehrung: Mit ihr rechnet die Suite je
    Vertrag den Fuehrungswert — was der Monatsabschluss am Zugangs- und am
    Folgestichtag fuer den Vertrag fuehrt —, aus dem Bestand der Uebernahme
-   neben `--bestand`; A-M4 nimmt im Bestands-Scope keine Suite ohne ihn ab)
+   neben `--bestand`; A-M4 nimmt im Bestands-Scope keine Suite ohne ihn ab,
+   rechnet ihn auf den gebundenen Bytes nach und weist ihn aus)
    aus den Fall-Artefakten; die Spaltennamen der Lieferung sind
    Parameter (`--spalte-*`), keine Systemeigenschaft. Toleranzen kommen
    aus `qa` und werden NIE aufgeweicht. Das persistierte Suite-JSON bindet zusaetzlich

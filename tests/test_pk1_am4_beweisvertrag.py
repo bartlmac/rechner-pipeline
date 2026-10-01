@@ -149,6 +149,17 @@ def _o3_tg2012(fall: Path):
     ])
 
 
+def _b1_fehler_direkt(fall: Path, suite: dict) -> list:
+    """Die P-B1-Bindung von A-M4 (``abnahmebericht._b1_fehler``) auf dem
+    Beleg des Falls, ohne die Stufen davor — fuer Tests, deren Faelschung
+    seit Pruefrunde G schon an der Nachrechnung des Fuehrungswerts faellt."""
+    ledger = fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json"
+    return abnahmebericht._b1_fehler(
+        ledger_pfad=ledger, ledger_text=ledger.read_text(encoding="utf-8"),
+        fall=fall, repo_root=REPO_ROOT, suite=suite,
+        erwartetes_system=gate_entscheid.systemstand(REPO_ROOT))
+
+
 def _abnahmebericht(fall: Path):
     nachweise = fall / "abgeleitet" / "abnahmenachweise"
     return abnahmebericht.main([
@@ -288,16 +299,33 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
     # Der Fuehrungswert (abnahmebericht 8.0.0): was der Abschluss fuer den
     # Vertrag fuehrt, ueber die Strecke des Abschlusses aus dem Bestand, den
     # die Suite bindet, mit der Config der Fuehrung.
+    # Seit Pruefrunde G rechnet A-M4 ihn auf den gebundenen Bytes nach und
+    # haelt die Regelangabe gegen die Spez: Die Suite dieses Tests entsteht
+    # deshalb wie bei der Produzentin (gates.migrationssuite_lauf) — dieselbe
+    # Funktion, jede gelesene Datei gebunden, die Regeln der Spez genannt.
     import datetime as _dt
 
-    from rechner_pipeline.bestand.migrationszugang import fuehrungswerte
+    from rechner_pipeline.gates._common import Eingangsbindung
+    from rechner_pipeline.gates.migrationssuite_lauf import (
+        fuehrungswert_rechnen,
+        tarifregeln_des_falls,
+    )
     from rechner_pipeline.models.fuehrungswert import kopf
+    from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
 
-    fw_konvention, fw_werte = fuehrungswerte(
-        read_portfolio(ziel), read_portfolio(lauf / "historie.parquet"),
-        Path(config).read_text(encoding="utf-8"),
+    bindung = Eingangsbindung(fall)
+    bindung.binde(ziel)
+    regeln = tarifregeln_des_falls(fall, lade_spez_aus_bytes(
+        bindung.binde(spez_pfad(fall, O3_GENERATION)).roh))
+
+    def _neben(name: str):
+        pfad = lauf / name
+        return bindung.binde(pfad).roh if pfad.is_file() else None
+
+    fw_konvention, fw_werte = fuehrungswert_rechnen(
+        read_portfolio(ziel), _neben, bindung.binde(Path(config)).text(),
         {"stichtag_1": _dt.date(2026, 1, 1), "stichtag_2": _dt.date(2027, 1, 1)},
-        scheiben=read_portfolio(lauf / "scheiben.parquet"))
+        tarifwerk_der_spez={regeln.generation: dict(regeln.tarifwerk)})
     suite = pruefe_bestand(
         [VertragsPruefung(
             police_id="7000001",
@@ -317,6 +345,8 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
                            config_sha256=sha256(Path(config).read_bytes()).hexdigest()),
         fuehrungswerte=fw_werte,
     )
+    suite["eingaben"] = bindung.als_beleg()
+    suite["tarifregeln"] = regeln.als_beleg()
     suite_pfad = fall / "abgeleitet" / "suite.json"
     suite_pfad.write_text(json.dumps(suite, sort_keys=True), encoding="utf-8")
     assert fuehrungsprobe.main([
@@ -414,6 +444,25 @@ def _am1_profil():
     )
 
 
+def _regeln_wie_der_produzent(fall: Path, beleg: dict) -> None:
+    """Was ``gates.aktuartest_lauf`` jedem Beleg eines Bestandsfalls mitgibt:
+    die gelesene Spez unter ``eingaben`` und ihre Regeln unter
+    ``tarifregeln`` (A-M4 haelt beides, Pruefrunde G). Im Scope tarif rechnet
+    die Bestandsstrecke nicht — dort bleibt der Beleg, wie er ist."""
+    from rechner_pipeline import fall as fall_mod
+    from rechner_pipeline.gates._common import Eingangsbindung
+    from rechner_pipeline.gates.migrationssuite_lauf import tarifregeln_des_falls
+    from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
+
+    if fall_mod.lade_scope(fall) != "bestand":
+        return
+    bindung = Eingangsbindung(fall)
+    regeln = tarifregeln_des_falls(fall, lade_spez_aus_bytes(
+        bindung.binde(spez_pfad(fall, O3_GENERATION)).roh))
+    beleg["eingaben"] = bindung.als_beleg()
+    beleg["tarifregeln"] = regeln.als_beleg()
+
+
 def _aktuartest_belege(
     fall: Path, *, drift: float = 0.0, erwarteter_exit: int = 0,
     abnahme: str = "A-M1",
@@ -456,6 +505,7 @@ def _aktuartest_belege(
     )
     berichte = fall / "abgeleitet" / "berichte"
     berichte.mkdir(parents=True, exist_ok=True)
+    _regeln_wie_der_produzent(fall, test)
     (berichte / f"{kennung}.json").write_text(
         json.dumps(test, sort_keys=True), encoding="utf-8"
     )
@@ -1461,9 +1511,13 @@ def test_abnahmebericht_verwechselt_portfolio_rolle_nicht_mit_pb1_nebeneingang(
 
     bericht = _abnahmebericht(fall)
 
+    # Seit Pruefrunde G (G03) rechnet A-M4 den Fuehrungswert auf den
+    # gebundenen Bytes nach — die umgehaengte Bestandsbindung faellt dort
+    # zuerst. Die P-B1-Bindung bleibt eigens geprueft, an derselben Engine.
     assert bericht.exit_code == 20
-    assert bericht.errors[0]["code"] == "pb1_contract"
-    assert "verschiedene Bestaende" in bericht.errors[0]["message"]
+    assert bericht.errors[0]["code"] == "suite_scope_contract"
+    assert "nachgerechnet" in bericht.errors[0]["message"]
+    assert any("verschiedene Bestaende" in f for f in _b1_fehler_direkt(fall, suite))
 
 
 def test_abnahmebericht_blockiert_veralteten_suite_systemstand(
@@ -1514,9 +1568,12 @@ def test_abnahmebericht_blockiert_teilpruefung_des_pb1_portfolios(
 
     bericht = _abnahmebericht(fall)
 
+    # Pruefrunde G (G03): der nachgerechnete Fuehrungswert faellt zuerst;
+    # die P-B1-Bindung der Pruefmenge bleibt eigens geprueft.
     assert bericht.exit_code == 20
-    assert bericht.errors[0]["code"] == "pb1_contract"
-    assert "Suite-Pruefmenge" in bericht.errors[0]["message"]
+    assert bericht.errors[0]["code"] == "suite_scope_contract"
+    assert "nachgerechnet" in bericht.errors[0]["message"]
+    assert any("Suite-Pruefmenge" in f for f in _b1_fehler_direkt(fall, suite))
 
 
 def test_pk1_bleibt_bei_gescheitertem_belegschreiben_nicht_gruen(

@@ -54,9 +54,11 @@ from rechner_pipeline.bestand.migrationszugang import (
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.spez.tarifregeln import (
     TarifregelnFehler,
-    tarifregeln_der_spez,
     verweigere_entfallene_schalter,
 )
+# Die eine Stelle, an der die Kommandos der Bestandsstrecke ihre Regeln
+# beziehen: Scope des Falls und Spez (Pruefrunde G).
+from rechner_pipeline.gates.migrationssuite_lauf import tarifregeln_des_falls
 from rechner_pipeline.models.bestand import ZUSTAENDE_TA, model_point_kwargs
 
 #: Zustandsuebersetzung Verankerungstabelle -> Uebernahme-Zustand.
@@ -381,7 +383,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     spez_gelesen = bindung.binde(spez_pfad(fall, args.generation))
     spez = lade_spez_aus_bytes(spez_gelesen.roh)
     try:
-        regeln = tarifregeln_der_spez(spez)
+        regeln = tarifregeln_des_falls(fall, spez)
     except TarifregelnFehler as exc:
         print(f"verankerung_belegen: {exc}", file=sys.stderr)
         return 2

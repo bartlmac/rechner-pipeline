@@ -1407,9 +1407,11 @@ def test_die_version_des_abnahmeberichts_nennt_den_grund():
     zeile = next(z for z in readme.splitlines()
                  if z.startswith("| G2-Vorlage (Version `"))
     # 7.0.0 (Pruefer-Befund B1, 2026-10-01), 8.0.0 (Fuehrungswert,
-    # 2026-10-01) und 9.0.0 (Tarifregeln aus der Spez, ADR-024 Nachtrag)
+    # 2026-10-01), 9.0.0 (Tarifregeln aus der Spez, ADR-024 Nachtrag) und
+    # 10.0.0 (Pruefrunde G: Fuehrungswert nachgerechnet, Belege an der Spez)
     # erweitern dieselbe Zeile; der Grund fuer 6.0.0 steht weiter darin.
-    assert abnahmebericht.GATE_VERSION == "9.0.0"
+    assert abnahmebericht.GATE_VERSION == "10.0.0"
+    assert "`10.0.0`" in zeile and "nachgerechnet" in zeile
     assert "`9.0.0`" in zeile and "Spez" in zeile
     assert "`6.0.0`" in zeile and "red_anteile_datei" in zeile
     assert "`7.0.0`" in zeile and "pflichtschicht" in zeile

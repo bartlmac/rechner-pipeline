@@ -114,6 +114,7 @@ from rechner_pipeline.gates.migrationssuite_lauf import (
     anfangszustaende_je_police,
     auspraegungen_je_police,
     lies_auskuenfte,
+    tarifregeln_des_falls,
 )
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe, vertrags_monatsreserve
 from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
@@ -126,7 +127,6 @@ from rechner_pipeline.kern import (
 from rechner_pipeline.ontologie.tbox import TARIFWERK_MERKMALE
 from rechner_pipeline.spez.tarifregeln import (
     TarifregelnFehler,
-    tarifregeln_der_spez,
     verweigere_entfallene_schalter,
 )
 
@@ -1530,7 +1530,7 @@ def fuehre_probe(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
     spez_datei = spez_pfad(fall, args.generation)
     spez = lade_spez_aus_bytes(binde(spez_datei).roh)
     try:
-        regeln = tarifregeln_der_spez(spez)
+        regeln = tarifregeln_des_falls(fall, spez)
     except TarifregelnFehler as exc:
         print(f"fuehrungsprobe: {exc}", file=sys.stderr)
         return 2, None

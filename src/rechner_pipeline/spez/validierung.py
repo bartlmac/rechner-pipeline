@@ -155,13 +155,24 @@ def ergaenze_tarifregeln(roh: bytes, regeln: dict) -> bytes:
     ``spez.erzeugen``; P-K1 haelt beide Richtungen). Die eingefrorenen Spez
     haben keine; ihre Regeln standen bis hierher als Schalter in den
     Testaufrufen und sind die im Lauf festgestellten (A-Q1). ``regeln`` ist
-    das Dokument dieser Feststellung: je Block und Merkmal ``wert`` und
-    ``fundstelle`` (ohne Fundstelle kein Beleg). Verweigert, wenn die Spez
-    schon Regeln traegt (kein Ueberschreiben), nicht die geltende T-Box
-    spricht oder das Ergebnis die Tarifregeln einer Bestandsmigration nicht
-    vollstaendig traegt. Schreibt nichts.
+    das Dokument dieser Feststellung: je Block und Merkmal ein Eintrag mit
+    ``fundstelle`` (ohne Fundstelle kein Beleg) und ENTWEDER ``wert`` (belegt)
+    ODER ``zustand: "nicht_belegt"`` (ausdruecklich festgestellt, dass es
+    keinen gibt — wie die A-Box es fuehrt; Pruefrunde G). Ein weggelassenes
+    Merkmal ist nicht erhoben. Dieselbe Projektion wie ``spez.erzeugen``
+    (``spez.tarifregeln.spez_block``). Verweigert, wenn die Spez schon Regeln
+    traegt (kein Ueberschreiben), nicht die geltende T-Box spricht, ein
+    Eintrag nicht diese Form hat oder das Ergebnis die Tarifregeln einer
+    Bestandsmigration nicht vollstaendig traegt — jede Verweigerung als
+    ``ValueError`` mit Namen und Ausweg. Schreibt nichts.
     """
-    from rechner_pipeline.spez.tarifregeln import tarifregeln_der_spez
+    from types import SimpleNamespace
+
+    from rechner_pipeline.spez.tarifregeln import (
+        NICHT_BELEGT,
+        spez_block,
+        tarifregeln_der_spez,
+    )
 
     daten = json.loads(roh)
     if not isinstance(daten, dict) or daten.get("tbox_version") != TBOX_VERSION:
@@ -177,18 +188,47 @@ def ergaenze_tarifregeln(roh: bytes, regeln: dict) -> bytes:
             f"Regeln fuer {regeln.get('generation')!r}, Spez ist "
             f"{daten.get('generation')!r}")
     for block in GENERATIONS_BLOECKE:
-        werte = {}
+        feststellungen = {}
         for merkmal, eintrag in sorted((regeln.get(block) or {}).items()):
+            wo = f"{block}.{merkmal}"
             if not isinstance(eintrag, dict) or not str(eintrag.get("fundstelle") or "").strip():
-                raise ValueError(f"{block}.{merkmal}: ohne Fundstelle kein Beleg")
-            werte[merkmal] = eintrag["wert"]
-        daten[block] = werte
+                raise ValueError(f"{wo}: ohne Fundstelle kein Beleg")
+            unbekannt = sorted(set(eintrag) - {"wert", "zustand", "fundstelle"})
+            if unbekannt:
+                raise ValueError(f"{wo}: unbekannte Felder {unbekannt} — ein Eintrag "
+                                 "traegt fundstelle und wert ODER zustand")
+            if "wert" in eintrag and "zustand" in eintrag:
+                raise ValueError(f"{wo}: traegt beides, wert und zustand — belegt "
+                                 "ODER ausdruecklich nicht belegt")
+            if "zustand" in eintrag:
+                if eintrag["zustand"] != NICHT_BELEGT:
+                    raise ValueError(
+                        f"{wo}: zustand {eintrag['zustand']!r} — ausdrueckbar ist nur "
+                        f"{NICHT_BELEGT!r}; was mehrdeutig oder widerspruechlich ist, "
+                        "wird in der A-Box entschieden, nicht hier")
+                feststellungen[merkmal] = SimpleNamespace(
+                    zustand=Zustand.NICHT_BELEGT, wert=None)
+                continue
+            if "wert" not in eintrag:
+                raise ValueError(
+                    f"{wo}: weder wert noch zustand — belegt heisst "
+                    '{"wert": ..., "fundstelle": ...}, ausdruecklich nicht belegt '
+                    f'{{"zustand": "{NICHT_BELEGT}", "fundstelle": ...}}')
+            if eintrag["wert"] is None:
+                raise ValueError(
+                    f"{wo}: wert ist null — null ist kein Beleg; dass es keinen "
+                    f'Wert gibt, heisst {{"zustand": "{NICHT_BELEGT}", "fundstelle": ...}}')
+            feststellungen[merkmal] = SimpleNamespace(
+                zustand=Zustand.BELEGT, wert=eintrag["wert"])
+        daten[block] = spez_block(block, feststellungen)
     neu = spez_bytes(daten)
     tarifregeln_der_spez(lade_spez_aus_bytes(neu))   # Lader und Pflicht
     return neu
 
 
 def validate_spez(spez: TarifSpez, abox: ABox) -> List[str]:
+    from rechner_pipeline.spez.tarifregeln import spez_block as projiziere
+
     fehler: List[str] = []
     # Die Spez-Datei muss das geltende Spez-Schema tragen (Review T23-02:
     # der Default machte "nicht deklariert" und "aktuell" ununterscheidbar,
@@ -226,28 +266,29 @@ def validate_spez(spez: TarifSpez, abox: ABox) -> List[str]:
     # Wert der Spez ist in der A-Box belegt und gleich; jedes belegte
     # Merkmal der A-Box steht in der Spez — fehlt es, rechnete die Fuehrung
     # still mit der Vorgabe des eigenen Geschaefts.
+    # Die Rueckrichtung haelt die EINE Projektion (spez.tarifregeln.spez_block):
+    # auch die Feststellung "nicht belegt" eines zu erhebenden Merkmals
+    # (Pruefrunde G) — fehlt sie in der Spez, wird aus "trifft nicht zu"
+    # still "nie erhoben".
     for block in GENERATIONS_BLOECKE:
-        abox_block = {
-            m: a.wert for m, a in gen.block(block).items()
-            if a.zustand is Zustand.BELEGT
-        }
-        spez_block = getattr(spez, block)
-        for merkmal in sorted(set(abox_block) | set(spez_block)):
+        abox_block = projiziere(block, gen.block(block))
+        spez_werte = getattr(spez, block)
+        for merkmal in sorted(set(abox_block) | set(spez_werte)):
             if merkmal not in abox_block:
                 fehler.append(
                     f"{gen.id}/{block}.{merkmal}: in der Spez gesetzt "
-                    f"({spez_block[merkmal]!r}), in der A-Box nicht belegt — "
+                    f"({spez_werte[merkmal]!r}), in der A-Box nicht belegt — "
                     "die Spez hat eine eigene Wahrheit")
-            elif merkmal not in spez_block:
+            elif merkmal not in spez_werte:
                 fehler.append(
-                    f"{gen.id}/{block}.{merkmal}: in der A-Box belegt "
-                    f"({abox_block[merkmal]!r}), fehlt in der Spez — die "
+                    f"{gen.id}/{block}.{merkmal}: in der A-Box "
+                    f"{abox_block[merkmal]!r}, fehlt in der Spez — die "
                     "Fuehrung rechnete sonst still mit der Vorgabe")
-            elif not (type(spez_block[merkmal]) is type(abox_block[merkmal])
-                      and werte_gleich(spez_block[merkmal], abox_block[merkmal])):
+            elif not (type(spez_werte[merkmal]) is type(abox_block[merkmal])
+                      and werte_gleich(spez_werte[merkmal], abox_block[merkmal])):
                 fehler.append(
                     f"{gen.id}/{block}.{merkmal}: Spez "
-                    f"{spez_block[merkmal]!r} != A-Box {abox_block[merkmal]!r}")
+                    f"{spez_werte[merkmal]!r} != A-Box {abox_block[merkmal]!r}")
 
     abox_zellen = {z.id: z for z in gen.zellen}
     spez_zellen = {s.knoten.rsplit("/", 1)[-1]: s for s in spez.zellen}

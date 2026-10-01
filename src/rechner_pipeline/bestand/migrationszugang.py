@@ -63,6 +63,10 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import pandas as pd
 
 from rechner_pipeline.kern import TKU_UMFAENGE, UMFANG_GRUND, ModelPoint, tku_umfang_fuer
+from rechner_pipeline.kern.beitragsreduktion import (
+    BeitragsreduktionFehler,
+    pruefe_vorgangsjahr,
+)
 from rechner_pipeline.kern.korrekturschicht import (
     Formfunktion,
     Korrekturschicht,
@@ -761,11 +765,15 @@ def leite_pex_ursprungssumme_ab(
     exakt reproduziert.
     """
     einheit = ModelPoint(**{**dict(modellpunkt_felder), "sum_insured": 1.0})
-    if pex_jahr <= 0 or pex_jahr > einheit.n:
+    # Die EINE Regel des Kerns (Tarifplan KLV 7.3, Pruefrunde G, G02): eine
+    # Beitragsfreistellung gibt es nur, solange Beitraege laufen (0 < jahr <
+    # t). Bis dahin liess diese Stelle ein Jahr bis n zu; ein Leser ueber die
+    # Vorgangsfolge verweigerte dann, ein Leser ohne Folge rechnete still.
+    try:
+        pruefe_vorgangsjahr(einheit, pex_jahr, "PEX")
+    except BeitragsreduktionFehler as exc:
         raise MigrationszugangFehler(
-            f"Beitragsfreistellungsjahr {pex_jahr} liegt nicht in der "
-            f"Laufzeit (0 < jahr <= n = {einheit.n})"
-        )
+            f"Beitragsfreistellungsjahr {pex_jahr}: {exc}") from exc
     if vs_bfr <= 0.0:
         raise MigrationszugangFehler(
             f"gelieferte beitragsfreie Summe {vs_bfr!r} unplausibel")
@@ -1972,10 +1980,12 @@ def fuehrungswerte(
     """Der Fuehrungswert des Zugangs: was der Abschluss fuer jeden Vertrag fuehrt.
 
     ``tarifwerk_der_spez`` (Knoten der Generation -> Tarifwerk der Spez,
-    ADR-024, Nachtrag): Die Config muss fuer diese Generation GENAU dieses
-    Tarifwerk fuehren, sonst stuende im Beleg der Suite ein Fuehrungswert
-    nach einer anderen Regel als die Pruefstrecke — verweigert, nicht
-    gerechnet. Die Pruefstrecke uebergibt es immer.
+    ADR-024, Nachtrag): Jede Generation, die im Bestand vorkommt, aufgeloest
+    wie die Bewertung sie aufloest (Name aus ``stamm.tarif_generation``),
+    muss unter einem Knoten der Spez stehen und GENAU dessen Tarifwerk
+    fuehren, sonst stuende im Beleg der Suite ein Fuehrungswert nach einer
+    anderen Regel als die Pruefstrecke — verweigert, nicht gerechnet
+    (Pruefrunde G, G20). Die Pruefstrecke und A-M4 uebergeben es immer.
 
     Entscheid des Maintainers (2026-10-01): Die Migrationsabnahme weist den
     Wert aus, den die Bestandsfuehrung fuehrt — gerechnet ueber DIESELBE
@@ -2009,16 +2019,40 @@ def fuehrungswerte(
     if fehler:
         raise MigrationszugangFehler(
             "Fuehrungswert: die Config der Fuehrung ist ungueltig — " + "; ".join(fehler[:3]))
-    for knoten, soll in (tarifwerk_der_spez or {}).items():
-        ist = [g.tarifwerk() for g in config.generationen if g.knoten == knoten]
-        if ist != [dict(soll)]:
-            raise MigrationszugangFehler(
-                f"Config der Fuehrung: das Tarifwerk der Generation {knoten} "
-                f"{ist or 'fehlt'} ist nicht das der Spez {dict(soll)} — der "
-                "Fuehrungswert rechnete nach einer anderen Regel als die "
-                "Pruefstrecke. Ausweg: den Generationsblock aus "
-                "generation-zellen.toml der Uebernahme uebernehmen (er traegt "
-                "das Tarifwerk der Spez).")
+    # Die Wache haelt GENAU die Generationen, mit denen bewertet wird
+    # (Pruefrunde G, G20): die Bewertung (``einzelwerte_am``) waehlt die
+    # Generation eines Vertrags ueber den NAMEN in ``stamm.tarif_generation``
+    # (``{g.name: ...}``); die Wache suchte sie ueber den KNOTEN der Spez. Mit
+    # einer Attrappe unter dem Knoten der Spez und der echten Generation
+    # unter anderem Knoten stellte die Suite einen Fuehrungswert nach anderem
+    # Tarifwerk gruen aus. Jetzt dieselbe Aufloesung wie die Bewertung, fuer
+    # JEDE Generation, die im Bestand vorkommt: Ihr Knoten muss der der Spez
+    # sein, ihr Tarifwerk das der Spez.
+    if tarifwerk_der_spez is not None:
+        je_name = {g.name: g for g in config.generationen}
+        for name in sorted({str(n) for n in stamm["tarif_generation"]}):
+            gen = je_name.get(name)
+            if gen is None:
+                raise MigrationszugangFehler(
+                    f"Config der Fuehrung: die Generation {name!r} des Bestands fehlt — "
+                    "ohne sie ist kein Fuehrungswert zu rechnen.")
+            soll = tarifwerk_der_spez.get(gen.knoten)
+            if soll is None:
+                raise MigrationszugangFehler(
+                    f"Config der Fuehrung: die Generation {name} des Bestands steht unter "
+                    f"dem Knoten {gen.knoten!r}, die Pruefstrecke prueft mit der Spez von "
+                    f"{sorted(tarifwerk_der_spez)} — bewertet wuerde nach einem Tarifwerk, "
+                    "das keine Spez belegt. Ausweg: den Generationsblock aus "
+                    "generation-zellen.toml der Uebernahme uebernehmen (Name, Knoten und "
+                    "Tarifwerk der Spez).")
+            if gen.tarifwerk() != dict(soll):
+                raise MigrationszugangFehler(
+                    f"Config der Fuehrung: das Tarifwerk der Generation {name} "
+                    f"({gen.knoten}) {gen.tarifwerk()} ist nicht das der Spez "
+                    f"{dict(soll)} — der Fuehrungswert rechnete nach einer anderen "
+                    "Regel als die Pruefstrecke. Ausweg: den Generationsblock aus "
+                    "generation-zellen.toml der Uebernahme uebernehmen (er traegt "
+                    "das Tarifwerk der Spez).")
     policen = [str(p) for p in stamm["police_id"]]
     werte: Dict[str, Dict[str, Optional[Dict[str, Any]]]] = {
         p: {name: None for name in stichtage} for p in policen}

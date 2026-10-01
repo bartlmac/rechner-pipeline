@@ -16,9 +16,15 @@ Instrumente (Skill ``teste-adversarial``, drei Instrumente):
 
 * Ratschen (statisch, ``==`` mit Positivkontrolle): kein Kommando unter
   ``gates/`` deklariert einen Schalter fuer ein Merkmal, das die Spez fuehrt;
-  genau die fuenf Kommandos beziehen die Regeln ueber
-  ``tarifregeln_der_spez`` und verweigern die alten Schalter ueber
-  ``verweigere_entfallene_schalter``; keines nennt die PLV-Vorgabe.
+  genau die fuenf Kommandos beziehen die Regeln ueber die eine Tuer
+  ``migrationssuite_lauf.tarifregeln_des_falls`` (Scope, dann
+  ``tarifregeln_der_spez``) und verweigern die alten Schalter ueber
+  ``verweigere_entfallene_schalter``; keines nennt die PLV-Vorgabe; kein
+  Text in ``src`` schickt zu einem entfallenen Schalter (Pruefrunde G).
+* Pruefrunde G: "nicht belegt" ist in der Spez eine Feststellung, "nie
+  erhoben" eine Luecke (G18, G19); im Scope tarif rechnet kein Kommando der
+  Strecke (G18); die Wache des Fuehrungswerts haelt jede Generation, mit der
+  bewertet wird (G20); der Tarifplan nennt das ganze Tarifwerk (G22).
 * Verhalten je Kommando: dieselbe Lieferung mit zwei belegten Regelwerken
   ergibt die zwei erwarteten Ergebnisse (die Regel WIRKT), eine Spez ohne
   Tarifwerk wird verweigert, ein alter Schalter wird sprechend verweigert.
@@ -31,6 +37,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -143,16 +150,21 @@ def test_ratsche_kein_kommando_deklariert_einen_schalter_fuer_ein_merkmal_der_sp
     assert {k: v for k, v in verstoesse.items() if v} == {}
 
 
-#: Wer die Regeln ueber die EINE Funktion bezieht und die alten Schalter
-#: verweigert — gemessen, ``==``. ``spez/validierung.py`` prueft mit der
-#: Funktion das Ergebnis des Fixture-Wegs (ergaenze_tarifregeln).
+#: Wer die Regeln ueber die EINE Tuer bezieht und die alten Schalter
+#: verweigert — gemessen, ``==``: (Aufrufe von ``tarifregeln_der_spez``,
+#: ``tarifregeln_des_falls``, ``verweigere_entfallene_schalter``). Seit
+#: Pruefrunde G (G18) beziehen die fuenf Kommandos und A-M4 die Regeln ueber
+#: ``migrationssuite_lauf.tarifregeln_des_falls`` (Scope bestand, dann die
+#: Spez); ``tarifregeln_der_spez`` ruft nur diese Tuer und
+#: ``spez/validierung.py`` (Ergebnis des Fixture-Wegs, ergaenze_tarifregeln).
 INVENTAR = {
-    "gates/aktuartest_lauf.py": (1, 1),
-    "gates/bestand_uebernehmen.py": (1, 1),
-    "gates/fuehrungsprobe.py": (1, 1),
-    "gates/migrationssuite_lauf.py": (1, 1),
-    "gates/verankerung_belegen.py": (1, 1),
-    "spez/validierung.py": (1, 0),
+    "gates/abnahmebericht.py": (0, 1, 0),
+    "gates/aktuartest_lauf.py": (0, 1, 1),
+    "gates/bestand_uebernehmen.py": (0, 1, 1),
+    "gates/fuehrungsprobe.py": (0, 1, 1),
+    "gates/migrationssuite_lauf.py": (1, 1, 1),
+    "gates/verankerung_belegen.py": (0, 1, 1),
+    "spez/validierung.py": (1, 0, 0),
 }
 
 
@@ -163,12 +175,13 @@ def test_ratsche_jedes_kommando_bezieht_die_regeln_ueber_dieselbe_funktion():
         if rel == "spez/tarifregeln.py":
             continue
         wert = _aufrufe(p.read_text(encoding="utf-8"),
-                        ("tarifregeln_der_spez", "verweigere_entfallene_schalter"))
+                        ("tarifregeln_der_spez", "tarifregeln_des_falls",
+                         "verweigere_entfallene_schalter"))
         if any(wert):
             gemessen[rel] = wert
     assert gemessen == INVENTAR
     assert {f"gates/{k}.py" for k in KOMMANDOS} == {
-        m for m, (bezug, _) in INVENTAR.items() if m.startswith("gates/") and bezug}
+        m for m, (_, tuer, schalter) in INVENTAR.items() if tuer and schalter}
 
 
 def test_ratsche_kein_kommando_nennt_die_vorgabe_des_eigenen_geschaefts():
@@ -200,9 +213,10 @@ def test_die_funktion_liefert_die_belegten_regeln_ohne_vorgabe():
     assert (regeln.red_verfahren, regeln.quell_red_verfahren) == ("teilkuendigung",) * 2
     assert regeln.dk_stichtag == "jahrestag" and regeln.erhoehungssatz == 0.05
     assert regeln.fenster is None
-    # Ohne Dynamiksatz: None, nicht eine Zahl.
-    ohne = dict(r["quellverfahren"])
-    del ohne["erhoehungssatz"]
+    # Ausdruecklich ohne Dynamiksatz: None, nicht eine Zahl. (Ein FEHLENDER
+    # Schluessel war bis Pruefrunde G dasselbe — jetzt "nie erhoben" und
+    # verweigert, siehe test_g18_nie_erhoben_...)
+    ohne = {**r["quellverfahren"], "erhoehungssatz": "nicht_belegt"}
     assert tr.tarifregeln_der_spez(_Spez(r["tarifwerk"], ohne)).erhoehungssatz is None
 
 
@@ -543,9 +557,18 @@ def test_pq3_und_kommando_sprechen_dieselbe_regel():
     annimmt, rechnet jedes Kommando; die Funktion der Spez ruft dieselbe."""
     belegt = {b: {m: w for m, w in werte.items() if w is not None}
               for b, werte in VOLLSTAENDIG.items()}
-    assert tbox.tarifregeln_luecken(belegt) == []
-    regeln = tr.tarifregeln_der_spez(_Spez(belegt["tarifwerk"], belegt["quellverfahren"]))
+    erhoben = {b: set(werte) for b, werte in VOLLSTAENDIG.items()}
+    assert tbox.tarifregeln_luecken(belegt, erhoben) == []
+    # Die Spez traegt, was P-Q3 als erhoben sah: die Feststellung (Pruefrunde G).
+    spez_werte = {b: {m: ("nicht_belegt" if w is None else w) for m, w in werte.items()}
+                  for b, werte in VOLLSTAENDIG.items()}
+    regeln = tr.tarifregeln_der_spez(
+        _Spez(spez_werte["tarifwerk"], spez_werte["quellverfahren"]))
     assert regeln.erhoehungssatz is None
+    # ... und umgekehrt: was P-Q3 verweigert (nie erhoben), verweigert die Spez.
+    assert tbox.tarifregeln_luecken(belegt, {b: set(w) for b, w in belegt.items()})
+    with pytest.raises(tr.TarifregelnFehler, match="nicht erhoben"):
+        tr.tarifregeln_der_spez(_Spez(belegt["tarifwerk"], belegt["quellverfahren"]))
     quelle = (SRC / "spez" / "tarifregeln.py").read_text(encoding="utf-8")
     assert _aufrufe(quelle, ("tarifregeln_luecken",)) == (1,)
     quelle = (SRC / "ontologie" / "coverage.py").read_text(encoding="utf-8")
@@ -557,3 +580,288 @@ def test_spez_der_fixture_liegt_im_fall(gefahrener_fall):
     Fassung, mit der alle fuenf Kommandos oben gerechnet haben."""
     assert spez_pfad(gefahrener_fall, GENERATION).read_bytes() == (
         FIXTURE / "klv-tg2015.spez.json").read_bytes()
+
+
+# --------------------------------------------------------------------------- #
+# Pruefrunde G (G18, G19): "nicht belegt" ist eine Feststellung, "nie erhoben"
+# eine Luecke — auch in der Spez, auch im Scope
+# --------------------------------------------------------------------------- #
+
+def test_g18_nie_erhoben_wird_verweigert_nicht_belegt_ist_ausdruecklich():
+    """Vorher nahm die Funktion einen fehlenden Dynamiksatz an (None) — die
+    Unterscheidung lebte nur in P-Q3 und ging bei der Projektion verloren.
+    Jetzt fuehrt die Spez die Feststellung ausdruecklich, und ein fehlender
+    Schluessel ist "nie erhoben": verweigert, mit der Regel von P-Q3."""
+    r = _regeln_der_fixture()
+    ohne = {k: v for k, v in r["quellverfahren"].items() if k != "erhoehungssatz"}
+    with pytest.raises(tr.TarifregelnFehler,
+                       match="quellverfahren.erhoehungssatz nicht erhoben"):
+        tr.tarifregeln_der_spez(_Spez(r["tarifwerk"], ohne))
+    regeln = tr.tarifregeln_der_spez(
+        _Spez(r["tarifwerk"], {**ohne, "erhoehungssatz": "nicht_belegt"}))
+    assert regeln.erhoehungssatz is None
+    # Der Beleg eines Laufs unterscheidet beide Faelle: er nennt die Feststellung.
+    assert regeln.als_beleg()["quellverfahren"]["erhoehungssatz"] == "nicht_belegt"
+
+
+@pytest.mark.parametrize("block, merkmal", [
+    ("tarifwerk", "stoab_je_baustein"), ("quellverfahren", "dk_stichtag"),
+    ("quellverfahren", "red_verfahren")])
+def test_g18_nicht_belegt_genuegt_nur_wo_die_erhebung_genuegt(block, merkmal):
+    """Ein Pflichtmerkmal muss BELEGT sein; die Feststellung "nicht belegt"
+    ist dort eine Luecke, kein Wert."""
+    r = _regeln_der_fixture()
+    r[block] = {**r[block], merkmal: "nicht_belegt"}
+    with pytest.raises(tr.TarifregelnFehler, match=f"{block}.{merkmal}"):
+        tr.tarifregeln_der_spez(_Spez(r["tarifwerk"], r["quellverfahren"]))
+
+
+def _abox_und_spez(tmp_path: Path, bloecke: Dict[str, Dict]):
+    from rechner_pipeline.ontologie.abox import abox_pfad, lade_aus_bytes
+    from rechner_pipeline.spez.erzeugen import baue_spez
+
+    fall = _pq3_fall(tmp_path, "bestand", bloecke)
+    abox = lade_aus_bytes(abox_pfad(fall).read_bytes())
+    return abox, baue_spez(abox, abox.generationen[0].id)
+
+
+def test_g18_die_spez_traegt_die_feststellung_aus_der_a_box(tmp_path):
+    """``spez.erzeugen`` projiziert "ausdruecklich nicht belegt" als
+    Feststellung; eine A-Box ohne jede Aussage zum Satz ergibt eine Spez, die
+    jedes Kommando verweigert (vorher: bytegleiche Spez, beide angenommen)."""
+    _, spez_a = _abox_und_spez(tmp_path / "a", VOLLSTAENDIG)
+    assert spez_a.quellverfahren["erhoehungssatz"] == "nicht_belegt"
+    assert tr.tarifregeln_der_spez(spez_a).erhoehungssatz is None
+    nie = {b: dict(w) for b, w in VOLLSTAENDIG.items()}
+    del nie["quellverfahren"]["erhoehungssatz"]
+    _, spez_b = _abox_und_spez(tmp_path / "b", nie)
+    assert "erhoehungssatz" not in spez_b.quellverfahren
+    assert spez_a.model_dump() != spez_b.model_dump()
+    with pytest.raises(tr.TarifregelnFehler, match="erhoehungssatz nicht erhoben"):
+        tr.tarifregeln_der_spez(spez_b)
+
+
+def test_g18_p_k1_haelt_die_feststellung_in_beiden_richtungen(tmp_path):
+    from rechner_pipeline.spez.validierung import validate_spez
+
+    abox, spez = _abox_und_spez(tmp_path, VOLLSTAENDIG)
+    assert validate_spez(spez, abox) == []
+    weg = {k: v for k, v in spez.quellverfahren.items() if k != "erhoehungssatz"}
+    assert any("erhoehungssatz" in f
+               for f in validate_spez(spez.model_copy(update={"quellverfahren": weg}), abox))
+    belegt = {**spez.quellverfahren, "erhoehungssatz": 0.05}
+    assert any("erhoehungssatz" in f
+               for f in validate_spez(spez.model_copy(update={"quellverfahren": belegt}), abox))
+
+
+def _scope(fall: Path, typ: str) -> None:
+    manifest = fall / "fall.json"
+    daten = json.loads(manifest.read_text(encoding="utf-8"))
+    daten["scope"]["typ"] = typ
+    manifest.write_text(json.dumps(daten, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8")
+
+
+@pytest.mark.parametrize("kommando", KOMMANDOS)
+def test_g18_im_scope_tarif_rechnet_kein_kommando_der_bestandsstrecke(kommando, kopie, capsys):
+    """Ein Tariffall fuehrt keinen Bestand (ADR-024, Nachtrag, Punkt 2): Die
+    Kommandos verweigern ihn dort, wo sie die Regeln beziehen. Vorher lief
+    die ganze Strecke im Scope tarif mit Exit 0, ohne jede Regelpflicht."""
+    _scope(kopie, "tarif")
+    capsys.readouterr()
+    assert _fahre(kommando, kopie, "tarif") == 2
+    meldung = capsys.readouterr().err
+    assert "Scope 'tarif'" in meldung and "bestand" in meldung, meldung
+
+
+def test_g18_ohne_fall_manifest_rechnet_kein_kommando(kopie):
+    from rechner_pipeline.gates.migrationssuite_lauf import tarifregeln_des_falls
+
+    (kopie / "fall.json").unlink()
+    with pytest.raises(tr.TarifregelnFehler, match="Scope"):
+        tarifregeln_des_falls(kopie, object())
+
+
+def _fixture_spez_ohne_regeln() -> bytes:
+    from rechner_pipeline.spez.validierung import spez_bytes
+
+    daten = json.loads((FIXTURE / "klv-tg2015.spez.json").read_text(encoding="utf-8"))
+    daten["tarifwerk"], daten["quellverfahren"] = {}, {}
+    return spez_bytes(daten)
+
+
+def _dokument(eintrag) -> dict:
+    doc = json.loads((FIXTURE / "tarifregeln.json").read_text(encoding="utf-8"))
+    if eintrag is None:
+        del doc["quellverfahren"]["erhoehungssatz"]
+    else:
+        doc["quellverfahren"]["erhoehungssatz"] = eintrag
+    return doc
+
+
+def test_g19_die_feststellung_nicht_belegt_ist_mit_fundstelle_ausdrueckbar():
+    from rechner_pipeline.spez.validierung import ergaenze_tarifregeln, lade_spez_aus_bytes
+
+    neu = ergaenze_tarifregeln(_fixture_spez_ohne_regeln(), _dokument(
+        {"zustand": "nicht_belegt",
+         "fundstelle": "Bedingungswerk: keine planmaessige Erhoehung"}))
+    spez = lade_spez_aus_bytes(neu)
+    assert spez.quellverfahren["erhoehungssatz"] == "nicht_belegt"
+    assert tr.tarifregeln_der_spez(spez).erhoehungssatz is None
+    # Der Weg der Fixtures: unveraendert, der belegte Satz.
+    belegt = lade_spez_aus_bytes(ergaenze_tarifregeln(
+        _fixture_spez_ohne_regeln(), _dokument({"wert": 0.05, "fundstelle": "Auskunft 1"})))
+    assert tr.tarifregeln_der_spez(belegt).erhoehungssatz == 0.05
+
+
+@pytest.mark.parametrize("eintrag, text", [
+    (None, "quellverfahren.erhoehungssatz nicht erhoben"),
+    ({"zustand": "nicht_belegt"}, "ohne Fundstelle kein Beleg"),
+    ({"wert": None, "fundstelle": "x"}, "zustand"),
+    ({"fundstelle": "x"}, "weder"),
+    ({"wert": 0.05, "zustand": "nicht_belegt", "fundstelle": "x"}, "beides"),
+    ({"zustand": "mehrdeutig", "fundstelle": "x"}, "nicht_belegt"),
+    ({"wert": 0.05, "fundstelle": "x", "quelle": "y"}, "unbekannt"),
+])
+def test_g19_fehleingaben_werden_sprechend_verweigert(eintrag, text):
+    """Vorher: das Weglassen still angenommen, ``wert: null`` ein
+    pydantic-Fehler, ein fehlender Wert ein nackter KeyError."""
+    from rechner_pipeline.spez.validierung import ergaenze_tarifregeln
+
+    with pytest.raises(ValueError, match=text) as exc:
+        ergaenze_tarifregeln(_fixture_spez_ohne_regeln(), _dokument(eintrag))
+    assert type(exc.value) in (ValueError, tr.TarifregelnFehler), type(exc.value)
+
+
+# --------------------------------------------------------------------------- #
+# G20: die Wache haelt die Generation, mit der bewertet wird
+# --------------------------------------------------------------------------- #
+
+def test_g20_die_wache_haelt_jede_generation_mit_der_bewertet_wird(kopie, capsys):
+    """Die Config-Wache des Migrationscontrollings suchte die Generation ueber
+    den KNOTEN der Spez; bewertet wird ueber den NAMEN aus dem Stamm. Eine
+    Attrappe unter dem Knoten der Spez, die echte Generation unter anderem
+    Knoten und mit anderem Stornoabzug: Die Suite stellte einen Fuehrungswert
+    nach anderer Regel gruen aus. Positivkontrolle: dieselbe Kette mit der
+    unveraenderten Config besteht."""
+    _neu_verankern(kopie)
+    assert _fahre("migrationssuite_lauf", kopie, "basis") == 0
+    config = kopie / "abgeleitet" / "bestand-config.toml"
+    kopf, sep, rest = config.read_text(encoding="utf-8").partition("[[generation]]")
+    gen = sep + rest
+    getrennt = (gen.replace("stoab_je_baustein = true", "stoab_je_baustein = false", 1)
+                .replace('knoten = "klv/tg2015"', 'knoten = "klv/tg2015x"', 1))
+    attrappe = (gen.replace('name = "TG2015"', 'name = "DUMMY"', 1)
+                .replace("gueltig_von = 2015-01-01\ngueltig_bis = 2016-12-31",
+                         "gueltig_von = 2010-01-01\ngueltig_bis = 2011-12-31", 1))
+    assert getrennt.count("klv/tg2015x") == 1 and "DUMMY" in attrappe
+    config.write_text(kopf + getrennt + "\n" + attrappe, encoding="utf-8")
+    _neu_verankern(kopie)
+    capsys.readouterr()
+    assert _fahre("migrationssuite_lauf", kopie, "knoten") == 2
+    meldung = capsys.readouterr().err
+    assert "TG2015" in meldung and "klv/tg2015x" in meldung, meldung
+
+
+# --------------------------------------------------------------------------- #
+# G21: keine Meldung schickt zu einem entfallenen Schalter
+# --------------------------------------------------------------------------- #
+
+def _schalter_in_texten(quelle: str) -> List[str]:
+    """Jede Nennung eines entfallenen Schalters in einem Text des Codes
+    (String-Literal, auch Teil eines f-Strings) — Docstrings ausgenommen:
+    Sie erzaehlen die Geschichte, eine Meldung oder Hilfe schickt jemanden
+    hin. Statische Ratsche; Kommentare sieht sie nicht (nicht im AST)."""
+    baum = ast.parse(quelle)
+    doc = set()
+    for k in ast.walk(baum):
+        if (isinstance(k, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                and k.body and isinstance(k.body[0], ast.Expr)
+                and isinstance(k.body[0].value, ast.Constant)
+                and isinstance(k.body[0].value.value, str)):
+            doc.add(id(k.body[0].value))
+    muster = re.compile(r"(?<![\w-])(" + "|".join(
+        re.escape(s) for s in sorted(tr.ENTFALLENE_SCHALTER)) + r")(?![\w-])")
+    treffer: List[str] = []
+    for k in ast.walk(baum):
+        if isinstance(k, ast.Constant) and isinstance(k.value, str) and id(k) not in doc:
+            treffer += muster.findall(k.value)
+    return treffer
+
+
+def test_g21_ratsche_kein_text_in_src_nennt_einen_entfallenen_schalter():
+    """Die Menge steht in ``spez/tarifregeln.py`` (``ENTFALLENE_SCHALTER``);
+    nur dort, wo sie verweigert werden, duerfen sie stehen. Positivkontrolle:
+    die Suche findet sie in einer Probe und dort, und zwar alle."""
+    probe = ('"""--erhoehungssatz im Docstring zaehlt nicht"""\n'
+             'raise SystemExit("ohne --erhoehungssatz unterbestimmt")\n'
+             'x = f"--fenster {y}"\nz = "--fenster-breite"\n')
+    assert sorted(_schalter_in_texten(probe)) == ["--erhoehungssatz", "--fenster"]
+    eigen = _schalter_in_texten((SRC / "spez" / "tarifregeln.py").read_text(encoding="utf-8"))
+    assert set(eigen) == set(tr.ENTFALLENE_SCHALTER)
+    gefunden = {}
+    for p in sorted(SRC.rglob("*.py")):
+        rel = str(p.relative_to(SRC))
+        if rel != "spez/tarifregeln.py":
+            treffer = _schalter_in_texten(p.read_text(encoding="utf-8"))
+            if treffer:
+                gefunden[rel] = treffer
+    assert gefunden == {}
+
+
+def test_g21_die_meldung_bei_unterbestimmter_serie_nennt_die_spez(kopie, capsys):
+    """Die Spez stellt fest: kein Dynamiksatz. Die Lieferung hat Serien von
+    Alt-Erhoehungen — unterbestimmt. Die Meldung nennt den Ort der Regel
+    (``quellverfahren.erhoehungssatz``), nicht den Schalter, den dasselbe
+    Kommando verweigert."""
+    spez_variante(FIXTURE / "klv-tg2015.spez.json", kopie, GENERATION,
+                  quellverfahren={"erhoehungssatz": "nicht_belegt"}, pruefen=False)
+    capsys.readouterr()
+    assert _fahre("bestand_uebernehmen", kopie, "ohne_satz") == 1
+    meldung = capsys.readouterr().err
+    assert "unterbestimmt" in meldung and "quellverfahren.erhoehungssatz" in meldung, meldung
+    assert "--erhoehungssatz" not in meldung
+
+
+# --------------------------------------------------------------------------- #
+# G22 und der Nachbarfall: das ganze Tarifwerk, nicht drei Viertel
+# --------------------------------------------------------------------------- #
+
+def test_g22_der_tarifplan_nennt_jedes_merkmal_des_tarifwerks():
+    """Zwei Configs, die verschieden rechnen (Umfang der Teilkuendigung),
+    ergaben denselben Tarifplan. Der Block nennt jedes Merkmal aus
+    ``tbox.TARIFWERK_MERKMALE`` — abgeleitet aus ``tarifwerk()``, ``==``."""
+    from rechner_pipeline.bestand import tarifplan_tabellen as tt
+    from rechner_pipeline.bestand.config import config_aus_text
+
+    assert tuple(tt.TARIFWERK_TEXTE) == tbox.TARIFWERK_MERKMALE
+    text = (REPO / "configs" / "bestand_gesamt.toml").read_text(encoding="utf-8")
+    anders = text.replace('tku_umfang = "grundversicherung"', 'tku_umfang = "alle_bausteine"', 1)
+    assert anders != text
+    b0 = tt.erzeuge_block(config_aus_text(text), "klv", "configs/bestand_gesamt.toml")
+    b1 = tt.erzeuge_block(config_aus_text(anders), "klv", "configs/bestand_gesamt.toml")
+    assert b0 != b1
+    uebernommen = [g for g in config_aus_text(text).generationen
+                   if g.zellen and g.produkt == "klv"]
+    assert uebernommen
+    for g in uebernommen:
+        zeile = next(z for z in b0.splitlines()
+                     if z.startswith(f"Tarifwerk der Generation **{g.name}**"))
+        for merkmal in g.tarifwerk():
+            assert tt.TARIFWERK_TEXTE[merkmal] in zeile, (merkmal, zeile)
+
+
+def test_der_uebernahmebeleg_muss_das_ganze_tarifwerk_nennen():
+    """Nachbarfall zu G04 (``betrieb.uebernahme.tarifwerk_fehler``): Verglichen
+    wurden nur die Schluessel, die der Beleg nennt — ein leeres oder halbes
+    Tarifwerk ging durch. Jetzt: genau das Tarifwerk der Config."""
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.betrieb.uebernahme import tarifwerk_fehler
+
+    config = load_config(REPO / "configs" / "bestand_gesamt.toml")
+    g = next(g for g in config.generationen if g.zellen and g.produkt == "klv")
+    voll = g.tarifwerk()
+    assert tarifwerk_fehler(config, [g.name], {"tarifwerk": voll}) == []
+    assert tarifwerk_fehler(config, [g.name], {"tarifwerk": {}})
+    halb = {k: v for k, v in voll.items() if k != "tku_umfang"}
+    assert tarifwerk_fehler(config, [g.name], {"tarifwerk": halb})

@@ -28,6 +28,7 @@ from rechner_pipeline.ontologie.tbox import (
     Tarifgeneration,
 )
 from rechner_pipeline.spez.schema import TarifSpez
+from rechner_pipeline.spez.tarifregeln import NICHT_BELEGT
 
 FACHSPEZ_VERSION = "0.2.0"
 
@@ -334,7 +335,9 @@ def erzeuge_fachspez(spez: TarifSpez, abox: ABox) -> str:
                          "| nicht erhoben | - | - |")
                 continue
             wert = getattr(spez, block).get(merkmal)
-            anzeige = ("—" if wert is None
+            # Die Feststellung "nicht belegt" (Dynamiksatz) ist kein Wert;
+            # die Spalte Zustand nennt sie.
+            anzeige = ("—" if wert is None or wert == NICHT_BELEGT
                        else ("ja" if wert else "nein") if isinstance(wert, bool)
                        else _md(wert))
             z.append(

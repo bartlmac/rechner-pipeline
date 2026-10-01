@@ -120,7 +120,11 @@ class TarifSpez(BaseModel):
     #: fehlendes Merkmal ist nicht erhoben — die Vorgabe des eigenen
     #: Geschaefts gilt dafuer NICHT stillschweigend.
     tarifwerk: Dict[str, Wert] = Field(default_factory=dict)
-    #: Verfahren der Quelle (T-Box 0.2.0), ebenso nur die belegten.
+    #: Verfahren der Quelle (T-Box 0.2.0), ebenso die belegten — dazu fuer
+    #: ein Merkmal, das nur erhoben sein muss (``tbox.BESTAND_ERHOBEN``, der
+    #: Dynamiksatz), die ausdrueckliche Feststellung ``"nicht_belegt"``
+    #: (``spez.tarifregeln.NICHT_BELEGT``); ein fehlender Schluessel heisst
+    #: dort "nie erhoben".
     quellverfahren: Dict[str, Wert] = Field(default_factory=dict)
     zellen: List[ZellSpez] = Field(min_length=1)
     #: Tafeln (xml-Ebene, mit _M/_F), die der Kern noch nicht fuehrt.

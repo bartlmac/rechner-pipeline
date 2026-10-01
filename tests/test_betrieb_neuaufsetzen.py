@@ -158,9 +158,12 @@ def test_tarifwerk_der_config_wird_gegen_den_beleg_gehalten(tmp_path):
     from rechner_pipeline.bestand.config import load_config
     with pytest.raises(ueb.UebernahmeError, match="Tarifwerk"):
         ueb.lies_uebernahme(ziel, load_config(ablage.config_pfad))
-    # Der passende Beleg ist kein Befund.
+    # Der passende Beleg ist kein Befund — er nennt das GANZE Tarifwerk, wie
+    # die Uebernahme es schreibt (Pruefrunde G: ein Beleg mit drei der vier
+    # Merkmalen bezeugt den Umfang der Teilkuendigung nicht).
     passend = ueb.tarifwerk_fehler(load_config(ablage.config_pfad), ["KLV-2017"], {
-        "tarifwerk": {"scheiben_mit_gamma1": False, "stoab_je_baustein": False, "red_verfahren": "prospektiv"},
+        "tarifwerk": {"scheiben_mit_gamma1": False, "stoab_je_baustein": False,
+                      "red_verfahren": "prospektiv", "tku_umfang": "alle_bausteine"},
     })
     assert passend == []
 

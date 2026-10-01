@@ -459,3 +459,35 @@ nicht zurueck, eine spaetere Erweiterung entwertet nichts. Der Leser des
 Betriebs (`uebernahme.lies_abnahme_snapshot`) nimmt die Linie als
 Parameter; Registrierung, Zugangsprobe und Neuaufsetzen reichen sie mit
 `--linie` durch, die Bindung des Anfangsbestands mit `--ordnungslinie`.
+
+## Nachtrag 2026-10-01: A-M4 rechnet den Fuehrungswert nach und weist ihn aus (Pruefrunde G)
+
+Der Nachtrag "die Probe vergleicht das Deckungskapital" stellt fest, dass
+das Soll der Zugangsprobe aus der gepinnten Abnahme kommt und nicht aus der
+Ablage. Geprueft hatte A-M4 den Fuehrungswert aber nur der Form nach
+(Felder, endliche Zahlen, bekannte Konvention, Bindungshashes): Ein
+verdoppeltes Deckungskapital, die Konvention `jahreszeile` bei monatsgenauen
+Werten und ein Vertrag, der am Folgestichtag "nicht mehr in Kraft" sein
+sollte, gingen durch (Fund G03). Die Zugangsprobe haette die Abweichung
+spaeter gesehen; gepinnt und gezeichnet war ein falsches Soll.
+
+**Regel.** A-M4 pinnt nur einen Fuehrungswert, den es selbst nachgerechnet
+hat: ueber denselben Weg wie die Suite
+(`gates.migrationssuite_lauf.fuehrungswert_rechnen` ->
+`bestand.migrationszugang.fuehrungswerte`), auf den gebundenen Bytes
+(Bestand mit `bestand_sha256`, jede Nebentabelle neben ihm, Config mit
+`config_sha256`), mit den Stichtagen der Suite und dem Tarifwerk der Spez,
+die A-M4 bindet; in der Konvention, die der Kopf nennt. Die Vorlage weist ihn
+aus: Summary `fuehrungswert` (Art, Konvention, Bindungen, je Stichtag Anzahl
+in Kraft und nicht in Kraft, Summen von Deckungskapital, Rueckkaufswert und
+Korrekturschicht) und im HTML je Vertrag und Termin. Bericht und Entscheid
+rufen dieselbe Pruefung (`abnahmebericht._bestands_suite_fehler`, der Fall
+ist Pflichtparameter); `abnahmebericht` 10.0.0. Die Zugangsprobe bleibt
+Leser des Solls, nicht Pruefer.
+
+**Verworfen.** *Den Fuehrungswert nur ausweisen*: Die Vorlage zeigte dann
+dem Zeichnenden einen Wert, den niemand nachgerechnet hat. *Die ganze Suite
+in A-M4 neu fahren* (Auftrags-Echo): fuer den Fuehrungswert genuegen die
+gebundenen Eingaben; der Neulauf der Lieferungsvergleiche bleibt der offene
+Punkt der AT-Schicht. Details und die uebrigen Funde der Runde: ADR-024,
+vierter Nachtrag.

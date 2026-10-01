@@ -60,6 +60,7 @@ from rechner_pipeline.qa.migrationssuite import (
     pruefe_bestand,
 )
 from rechner_pipeline.spez.tarifregeln import (
+    Tarifregeln,
     TarifregelnFehler,
     tarifregeln_der_spez,
     verweigere_entfallene_schalter,
@@ -97,6 +98,37 @@ def _lies_csv(fall: Path, name: str, bindung=None) -> List[Dict[str, str]]:
             _io.StringIO(bindung.binde(pfad).text()), delimiter=";"))
     with pfad.open(encoding="utf-8") as datei:
         return list(csv.DictReader(datei, delimiter=";"))
+
+
+def tarifregeln_des_falls(fall: Path, spez: Any) -> Tarifregeln:
+    """Die Tarifregeln, mit denen ein Kommando der Bestandsstrecke rechnet —
+    die EINE Stelle, an der Uebernahme, Verankerung, aktuarieller Test,
+    Migrationscontrolling und Fuehrungsprobe (und A-M4 fuer sein Soll) sie
+    beziehen (Pruefrunde G, ADR-024, vierter Nachtrag).
+
+    Zwei Regeln an einem Ort: Der Fall muss im Scope ``bestand`` stehen (ein
+    Tariffall fuehrt keinen Bestand; ADR-024, zweiter Nachtrag, Punkt 2 —
+    vorher lief die ganze Strecke im Scope ``tarif`` ohne jede Regelpflicht),
+    und die Spez muss die Regeln belegt fuehren
+    (:func:`spez.tarifregeln.tarifregeln_der_spez`, dieselbe Regel wie P-Q3
+    im Scope ``bestand``). Hier und nicht in ``spez``: Die Schicht ``spez``
+    kennt keinen Fall. Kein Schalter schaltet die Regel ab.
+    """
+    try:
+        scope = fall_mod.lade_scope(Path(fall))
+    except (fall_mod.FallFehler, OSError) as exc:
+        raise TarifregelnFehler(
+            f"Fall {fall}: Scope nicht lesbar ({exc}) — die Bestandsstrecke rechnet "
+            "nur in einem Fall mit Scope 'bestand' (fall.json)") from exc
+    if scope != "bestand":
+        raise TarifregelnFehler(
+            f"Fall {fall}: Scope {scope!r} — die Bestandsstrecke (Uebernahme, "
+            "Verankerung, aktuarieller Test, Migrationscontrolling, Fuehrungsprobe) "
+            "rechnet nur in einem Fall mit Scope 'bestand'. Ein Tariffall fuehrt "
+            "keinen Bestand, und seine A-Box muss die Tarifregeln nicht tragen "
+            "(P-Q3 verlangt sie nur im Scope bestand). Ausweg: die Migration eines "
+            "Bestands als eigenen Fall mit --scope bestand anlegen.")
+    return tarifregeln_der_spez(spez)
 
 
 @dataclass(frozen=True)
@@ -426,10 +458,16 @@ def _serienzustand(
                 1 for a, _, _ in folge if a == "ERH"),
         }
     if erhoehungssatz is None:
+        # Pruefrunde G (G21): Die Regel steht in der Spez, nicht am Aufruf —
+        # die Meldung schickte zu einem Schalter, den dasselbe Kommando
+        # verweigert.
         raise SystemExit(
-            f"Police {police}: mehrere Alt-Ereignisse sind ohne "
-            "--erhoehungssatz unterbestimmt — den Dynamiksatz als "
-            "registrierte Auskunft der Quelle beschaffen")
+            f"Police {police}: mehrere Alt-Ereignisse sind ohne Dynamiksatz "
+            "unterbestimmt — die Spez stellt quellverfahren.erhoehungssatz als "
+            "'nicht belegt' fest, die Lieferung traegt aber eine Serie. Ausweg: "
+            "den Dynamiksatz der Quelle in der A-Box belegen (Fundstelle: "
+            "Bedingungswerk oder registrierte Auskunft der Quelle), Gate P-Q3 im "
+            "Scope bestand, Spez neu erzeugen (spez.erzeugen)")
     ereignisse: List[Tuple[str, int, Optional[float]]] = []
     for art, jahr, datum in folge:
         anteil = None
@@ -961,6 +999,158 @@ def baue_auftraege(
     return auftraege
 
 
+#: Die Nebentabellen der Uebernahme, die der Fuehrungswert liest: im
+#: Verzeichnis des Bestands, gelesen, wenn sie dort liegen; die Historie ist
+#: Pflicht (beitragsfreie Vertraege).
+FUEHRUNGSWERT_NEBENTABELLEN = ("historie.parquet", "scheiben.parquet", "merkmale.parquet",
+                               "schichten.parquet", "verankerung.parquet",
+                               "reduktionen.parquet")
+
+
+def fuehrungswert_rechnen(
+    bestand: Any,
+    lies_neben: Any,
+    config_text: str,
+    stichtage: Dict[str, dt.date],
+    *,
+    tarifwerk_der_spez: Dict[str, Dict[str, Any]],
+) -> Tuple[str, Dict[str, Dict[str, Optional[Dict[str, Any]]]]]:
+    """Der Fuehrungswert aus Bestand, Nebentabellen und Config — EIN Weg fuer
+    die Produzentin (diese Suite) und fuer A-M4, das ihn nachrechnet
+    (:func:`fuehrungswert_nachgerechnet`; Pruefrunde G, G03).
+
+    ``lies_neben(name)`` gibt die Bytes einer Nebentabelle oder ``None``, wenn
+    sie nicht neben dem Bestand liegt — die Produzentin bindet sie dabei, A-M4
+    haelt sie gegen die Bindung der Suite. Gerechnet wird in der
+    Bestandsschicht (``bestand.migrationszugang.fuehrungswerte``, die
+    Bewertungsstrecke des Abschlusses; Kante dieses Moduls).
+    """
+    from rechner_pipeline.bestand.migrationszugang import (
+        MigrationszugangFehler,
+        fuehrungswerte,
+    )
+
+    tabellen: Dict[str, Any] = {}
+    for name in FUEHRUNGSWERT_NEBENTABELLEN:
+        roh = lies_neben(name)
+        tabellen[name] = None if roh is None else read_portfolio_aus_bytes(roh)
+    if tabellen["historie.parquet"] is None:
+        raise MigrationszugangFehler(
+            "historie.parquet fehlt neben dem Bestand — ohne die Historie der "
+            "Uebernahme ist der Fuehrungswert nicht zu rechnen (beitragsfreie Vertraege)")
+    return fuehrungswerte(
+        bestand, tabellen["historie.parquet"], config_text, stichtage,
+        scheiben=tabellen["scheiben.parquet"], merkmale=tabellen["merkmale.parquet"],
+        schichten=tabellen["schichten.parquet"], verankerung=tabellen["verankerung.parquet"],
+        reduktionen=tabellen["reduktionen.parquet"],
+        tarifwerk_der_spez=tarifwerk_der_spez)
+
+
+def fuehrungswert_nachgerechnet(suite: Dict[str, Any], fall: Path,
+                                tarifregeln: Tarifregeln) -> List[str]:
+    """Den Fuehrungswert eines Suite-Belegs auf den GEBUNDENEN Bytes nachrechnen
+    und Feld fuer Feld gegen den Beleg halten (leer = derselbe Wert).
+
+    Pruefrunde G, G03: A-M4 sah bisher nur die Form — Felder, endliche
+    Zahlen, eine bekannte Konvention, Bindungshashes. Ein verdoppeltes
+    Deckungskapital, eine falsche Konvention und ein Vertrag, der am
+    Folgestichtag "nicht mehr in Kraft" sein sollte, gingen durch, und A-M4
+    pinnte damit das Soll der Zugangsprobe (ADR-022). Jetzt wird
+    hergeleitet, nicht gelesen — dieselbe Figur wie bei der Fuehrungsprobe
+    und P-B1: der Bestand mit ``bestand_sha256``, jede Nebentabelle, die neben
+    ihm liegt (sie muss gebunden sein, und eine gebundene muss dort liegen),
+    die Config mit ``config_sha256``, die Stichtage der Suite und das
+    Tarifwerk der Spez, die A-M4 bindet. Eine Datei, deren Bytes nicht mehr
+    die gebundenen sind, wird nicht nachgerechnet, sondern genannt.
+    """
+    from rechner_pipeline.bestand.migrationszugang import MigrationszugangFehler
+
+    fall = Path(fall).resolve()
+    eingaben = suite.get("eingaben")
+    kopf = suite.get("fuehrungswert") or {}
+    if not isinstance(eingaben, dict):
+        return ["Fuehrungswert nicht nachgerechnet: die Suite nennt ihre Eingaben nicht"]
+
+    def pfad_von(schluessel: str) -> Path:
+        p = Path(schluessel)
+        return p if p.is_absolute() else fall / p
+
+    def schluessel_von(pfad: Path) -> str:
+        pfad = pfad.resolve()
+        return str(pfad.relative_to(fall)) if fall in pfad.parents else str(pfad)
+
+    def gebunden_lesen(schluessel: str) -> Tuple[Optional[bytes], Optional[str]]:
+        pfad = pfad_von(schluessel)
+        if not pfad.is_file():
+            return None, f"{schluessel} (fehlt)"
+        roh = pfad.read_bytes()
+        if hashlib.sha256(roh).hexdigest() != eingaben.get(schluessel):
+            return None, f"{schluessel} (Bytes nicht die gebundenen)"
+        return roh, None
+
+    bestand_schluessel = sorted(k for k, v in eingaben.items()
+                                if v == suite.get("bestand_sha256") and k.endswith(".parquet"))
+    verzeichnisse = {pfad_von(k).resolve().parent for k in bestand_schluessel}
+    if len(verzeichnisse) != 1:
+        return [f"Fuehrungswert nicht nachgerechnet: der Bestand (bestand_sha256) steht "
+                f"nicht eindeutig unter den Eingaben der Suite ({bestand_schluessel[:3]})"]
+    verzeichnis = verzeichnisse.pop()
+    config_schluessel = sorted(k for k, v in eingaben.items()
+                               if v == kopf.get("config_sha256"))
+    if not config_schluessel:
+        return ["Fuehrungswert nicht nachgerechnet: die Config (config_sha256) steht "
+                "nicht unter den Eingaben der Suite"]
+    befunde: List[str] = []
+    bestand_roh, fehler = gebunden_lesen(bestand_schluessel[0])
+    if fehler:
+        befunde.append(fehler)
+    config_roh, fehler = gebunden_lesen(config_schluessel[0])
+    if fehler:
+        befunde.append(fehler)
+    neben: Dict[str, Optional[bytes]] = {}
+    for name in FUEHRUNGSWERT_NEBENTABELLEN:
+        schluessel = schluessel_von(verzeichnis / name)
+        if (verzeichnis / name).is_file() or schluessel in eingaben:
+            if schluessel not in eingaben:
+                befunde.append(f"{schluessel} (liegt neben dem Bestand, von der Suite "
+                               "nicht gelesen)")
+                continue
+            neben[name], fehler = gebunden_lesen(schluessel)
+            if fehler:
+                befunde.append(fehler)
+        else:
+            neben[name] = None
+    if befunde:
+        return ["Fuehrungswert nicht nachgerechnet — die Eingaben sind nicht die, auf "
+                f"denen die Suite rechnete: {befunde[:5]}; die Suite neu ausfuehren"]
+    try:
+        konvention, werte = fuehrungswert_rechnen(
+            read_portfolio_aus_bytes(bestand_roh), neben.get, config_roh.decode("utf-8"),
+            {t: _parse(str(suite.get(t))) for t in ("stichtag_1", "stichtag_2")},
+            tarifwerk_der_spez={tarifregeln.generation: dict(tarifregeln.tarifwerk)})
+    except (MigrationszugangFehler, ValueError) as exc:
+        return [f"Fuehrungswert nicht nachgerechnet: {exc}"]
+    abweichend: List[str] = []
+    if kopf.get("konvention") != konvention:
+        abweichend.append(f"Konvention {kopf.get('konvention')!r} statt {konvention!r}")
+    beleg = {str(u.get("police_id")): u.get("fuehrungswert")
+             for u in suite.get("vertraege") or [] if isinstance(u, dict)}
+    if set(beleg) != set(werte):
+        abweichend.append(f"Policen {sorted(set(beleg) ^ set(werte))[:5]}")
+    for police in sorted(set(beleg) & set(werte)):
+        gerechnet = json.loads(json.dumps(werte[police], sort_keys=True))
+        if json.loads(json.dumps(beleg[police], sort_keys=True)) != gerechnet:
+            termine = sorted(t for t in gerechnet
+                             if (beleg[police] or {}).get(t) != gerechnet[t])
+            abweichend.append(f"{police} {termine}")
+    if abweichend:
+        return [f"Fuehrungswert weicht vom nachgerechneten ab (Bestand und Config der "
+                f"Suite, Tarifwerk der Spez): {abweichend[:5]}"
+                + (f" und {len(abweichend) - 5} weitere" if len(abweichend) > 5 else "")
+                + " — der Beleg nennt nicht den Wert, den die Fuehrung fuehren wird"]
+    return []
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.gates.migrationssuite_lauf",
@@ -1055,7 +1245,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     spez = lade_spez_aus_bytes(
         bindung.binde(spez_pfad(fall, args.generation)).roh)
     try:
-        regeln = tarifregeln_der_spez(spez)
+        regeln = tarifregeln_des_falls(fall, spez)
     except TarifregelnFehler as exc:
         print(f"migrationssuite_lauf: {exc}", file=sys.stderr)
         return 2
@@ -1168,32 +1358,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     # des Abschlusses, aus dem Bestand der Uebernahme und der Config der
     # Fuehrung, alles gebunden. Gerechnet in der Bestandsschicht
     # (bestand.migrationszugang, eine gemessene Kante), nicht hier.
-    from rechner_pipeline.bestand.migrationszugang import (
-        MigrationszugangFehler,
-        fuehrungswerte as _fuehrungswerte,
-    )
+    from rechner_pipeline.bestand.migrationszugang import MigrationszugangFehler
     from rechner_pipeline.models.fuehrungswert import kopf as _fw_kopf
 
     uebernahme_dir = bestand_pfad.resolve().parent
 
-    def _neben(name: str, pflicht: bool = False):
+    def _neben(name: str) -> Optional[bytes]:
         pfad = uebernahme_dir / name
-        if not pfad.is_file():
-            if pflicht:
-                raise SystemExit(
-                    f"{pfad}: fehlt — ohne die Historie der Uebernahme ist der "
-                    "Fuehrungswert nicht zu rechnen (beitragsfreie Vertraege)")
-            return None
-        return read_portfolio_aus_bytes(bindung.binde(pfad).roh)
+        return bindung.binde(pfad).roh if pfad.is_file() else None
 
     config_gelesen = bindung.binde(Path(args.config))
     try:
-        fw_konvention, fw_werte = _fuehrungswerte(
-            bestand, _neben("historie.parquet", pflicht=True), config_gelesen.text(),
+        fw_konvention, fw_werte = fuehrungswert_rechnen(
+            bestand, _neben, config_gelesen.text(),
             {"stichtag_1": _parse(args.stichtag_1), "stichtag_2": _parse(args.stichtag_2)},
-            scheiben=_neben("scheiben.parquet"), merkmale=_neben("merkmale.parquet"),
-            schichten=_neben("schichten.parquet"), verankerung=_neben("verankerung.parquet"),
-            reduktionen=_neben("reduktionen.parquet"),
             # Der Fuehrungswert rechnet mit dem Tarifwerk der CONFIG; es muss
             # das der Spez sein, mit dem diese Suite prueft (ADR-024,
             # Nachtrag) — sonst stuende im selben Beleg ein Wert nach einer

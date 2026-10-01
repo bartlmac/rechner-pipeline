@@ -25,6 +25,13 @@ Was bewusst Schalter bleibt, ist keine Regel des Tarifs oder der Quelle,
 sondern eine Arbeitsannahme des Laufs (``--red-anteil-kandidat``) oder eine
 registrierte Eingabe (``--red-anteile-datei``, ``--anker-erwartungswerte``).
 
+"Nicht belegt" ist eine Feststellung, "nie erhoben" eine Luecke (Pruefrunde G,
+ADR-024, vierter Nachtrag): Ein Merkmal, das eine Bestandsmigration nur
+ERHEBEN muss (``tbox.BESTAND_ERHOBEN``, der Dynamiksatz), steht in der Spez
+immer — als Wert oder als ausdrueckliche Feststellung :data:`NICHT_BELEGT`.
+Fehlt der Schluessel, ist das Merkmal nie erhoben, und die Funktion
+verweigert mit derselben Regel wie P-Q3 auf der A-Box.
+
 Knoten: klv
 """
 
@@ -32,9 +39,11 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
+from rechner_pipeline.ontologie.aussage import Zustand
 from rechner_pipeline.ontologie.tbox import (
+    BESTAND_ERHOBEN,
     BLOCK_TITEL,
     GENERATIONS_BLOECKE,
     TARIFWERK_MERKMALE,
@@ -42,6 +51,38 @@ from rechner_pipeline.ontologie.tbox import (
     tarifregeln_luecken,
     wert_im_bereich,
 )
+
+#: Die ausdrueckliche Feststellung "erhoben, nicht belegt" in der Spez — das
+#: Wort des A-Box-Zustands (``Zustand.NICHT_BELEGT``), kein zweites
+#: Vokabular. Zulaessig nur fuer die Merkmale aus ``tbox.BESTAND_ERHOBEN``;
+#: fuer ein Pflichtmerkmal ist sie eine Luecke, kein Wert.
+NICHT_BELEGT: str = Zustand.NICHT_BELEGT.value
+
+
+def ist_feststellung_nicht_belegt(block: str, merkmal: str, wert: Any) -> bool:
+    """Steht hier die Feststellung "nicht belegt" fuer ein Merkmal, das nur
+    erhoben sein muss?"""
+    return wert == NICHT_BELEGT and merkmal in BESTAND_ERHOBEN.get(block, ())
+
+
+def spez_block(block: str, aussagen: Mapping[str, Any]) -> Dict[str, Any]:
+    """Ein Block der Spez aus den Aussagen der A-Box — die EINE Projektion,
+    die ``spez.erzeugen`` schreibt und P-K1 (``validate_spez``) zurueckhaelt.
+
+    ``aussagen``: Merkmal -> Aussage (``zustand``, ``wert``). Belegt wird mit
+    seinem Wert projiziert; "ausdruecklich nicht belegt" fuer ein Merkmal aus
+    ``tbox.BESTAND_ERHOBEN`` als :data:`NICHT_BELEGT`; "nicht belegt" eines
+    anderen Merkmals entfaellt (es bleibt in der Coverage sichtbar und ist im
+    Scope bestand eine Luecke).
+    """
+    aus: Dict[str, Any] = {}
+    for merkmal, aussage in sorted(aussagen.items()):
+        if aussage.zustand is Zustand.BELEGT:
+            aus[merkmal] = aussage.wert
+        elif (aussage.zustand is Zustand.NICHT_BELEGT
+              and merkmal in BESTAND_ERHOBEN.get(block, ())):
+            aus[merkmal] = NICHT_BELEGT
+    return aus
 
 
 class TarifregelnFehler(ValueError):
@@ -56,8 +97,9 @@ class Tarifregeln:
     (``bestand.config.TarifGeneration.tarifwerk()``): nach ihnen FUEHRT das
     Ziel den Vertrag. ``quellverfahren`` sagt, wie die Quelle verfuhr: die
     Lesart einer gelieferten Absetzung (``red_verfahren``, nicht dasselbe
-    wie das des Tarifwerks), Dynamiksatz, Stichtag ihres Deckungskapitals
-    und die Ausgestaltung der Korrekturschicht.
+    wie das des Tarifwerks), Dynamiksatz (Zahl oder :data:`NICHT_BELEGT`),
+    Stichtag ihres Deckungskapitals und die Ausgestaltung der
+    Korrekturschicht.
     """
 
     generation: str
@@ -90,11 +132,13 @@ class Tarifregeln:
 
     @property
     def erhoehungssatz(self) -> Optional[float]:
-        """Der belegte Dynamiksatz der Quelle; None = nicht belegt (der Tarif
-        kennt keine planmaessige Erhoehung, P-Q3 hat es als erhoben
-        gesehen) — dann zerlegt die Strecke je Vertrag aus dem Beitrag."""
+        """Der belegte Dynamiksatz der Quelle; None = ausdruecklich nicht
+        belegt (die Spez fuehrt die Feststellung :data:`NICHT_BELEGT`, der
+        Tarif kennt keine planmaessige Erhoehung) — dann zerlegt die Strecke
+        je Vertrag aus dem Beitrag. "Nie erhoben" erreicht diese Stelle nicht:
+        :func:`tarifregeln_der_spez` verweigert es."""
         wert = self.quellverfahren.get("erhoehungssatz")
-        return None if wert is None else float(wert)
+        return None if wert is None or wert == NICHT_BELEGT else float(wert)
 
     @property
     def dk_stichtag(self) -> str:
@@ -120,22 +164,37 @@ def tarifregeln_der_spez(spez: Any) -> Tarifregeln:
     """Die Tarifregeln aus einer (ueber den Lader gelesenen) Spez.
 
     Verweigert (:class:`TarifregelnFehler`), wenn ein Pflichtmerkmal einer
-    Bestandsmigration fehlt (:data:`tbox.BESTAND_PFLICHT`), ein Merkmal
-    unbekannt ist oder ausserhalb seines Wertebereichs liegt — dieselbe
-    Regel, mit der P-Q3 die A-Box im Scope ``bestand`` haelt
-    (:func:`tbox.tarifregeln_luecken`). Eine Vorgabe gibt es nicht.
+    Bestandsmigration fehlt (:data:`tbox.BESTAND_PFLICHT`), ein zu erhebendes
+    Merkmal nie erhoben wurde (:data:`tbox.BESTAND_ERHOBEN`: weder Wert noch
+    die Feststellung :data:`NICHT_BELEGT`), ein Merkmal unbekannt ist oder
+    ausserhalb seines Wertebereichs liegt — dieselbe Regel, mit der P-Q3 die
+    A-Box im Scope ``bestand`` haelt (:func:`tbox.tarifregeln_luecken`, mit
+    ``erhoben``). Eine Vorgabe gibt es nicht.
+
+    Den Scope des Falls sieht diese Funktion nicht (die Schicht ``spez``
+    kennt keinen Fall); die Kommandos der Bestandsstrecke beziehen die Regeln
+    deshalb ueber ``gates.migrationssuite_lauf.tarifregeln_des_falls``.
     """
-    belegt = {block: dict(getattr(spez, block) or {}) for block in GENERATIONS_BLOECKE}
+    angaben = {block: dict(getattr(spez, block) or {}) for block in GENERATIONS_BLOECKE}
+    belegt: Dict[str, Dict[str, Any]] = {block: {} for block in GENERATIONS_BLOECKE}
+    erhoben = {block: set(werte) for block, werte in angaben.items()}
     befunde = []
     for block, bereiche in GENERATIONS_BLOECKE.items():
-        for merkmal, wert in sorted(belegt[block].items()):
+        for merkmal, wert in sorted(angaben[block].items()):
             if merkmal not in bereiche:
                 befunde.append(f"{block}.{merkmal} ist kein Merkmal des "
                                f"{BLOCK_TITEL[block]}s (bekannt: {list(bereiche)})")
+            elif ist_feststellung_nicht_belegt(block, merkmal, wert):
+                continue                     # erhoben, ausdruecklich nicht belegt
+            elif wert == NICHT_BELEGT:
+                befunde.append(f"{block}.{merkmal} ist als {NICHT_BELEGT!r} "
+                               "festgestellt, muss aber belegt sein")
             elif not wert_im_bereich(wert, bereiche[merkmal]):
                 befunde.append(f"{block}.{merkmal} = {wert!r} liegt nicht im "
                                f"Wertebereich {bereich_text(bereiche[merkmal])}")
-    befunde.extend(tarifregeln_luecken(belegt))
+            else:
+                belegt[block][merkmal] = wert
+    befunde.extend(tarifregeln_luecken(belegt, erhoben))
     if befunde:
         raise TarifregelnFehler(
             f"Spez {spez.generation}: Tarifregeln der Bestandsmigration nicht "
@@ -146,10 +205,12 @@ def tarifregeln_der_spez(spez: Any) -> Tarifregeln:
             "der A-Box belegen (aus Bedingungswerk und Tarifmeldung, Skill "
             "extrahiere-quellfragment), Gate P-Q3 im Scope bestand, Spez neu "
             "erzeugen (spez.erzeugen).")
+    # Das Quellverfahren traegt die Feststellung mit: Der Beleg eines Laufs
+    # nennt "nicht_belegt", wo vorher None fuer zwei Faelle stand.
     return Tarifregeln(
         generation=str(spez.generation),
         tarifwerk={m: belegt["tarifwerk"][m] for m in TARIFWERK_MERKMALE},
-        quellverfahren=dict(sorted(belegt["quellverfahren"].items())),
+        quellverfahren=dict(sorted(angaben["quellverfahren"].items())),
     )
 
 

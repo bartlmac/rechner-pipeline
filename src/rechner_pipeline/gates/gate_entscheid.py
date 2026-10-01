@@ -1901,6 +1901,7 @@ def _passende_bestandsbelege(
                         stichtag_1=stichtage[0],
                         stichtag_2=stichtage[1],
                         erwartetes_system=dict(system),
+                        fall=fall,
                     )
                 )
                 if "abnahmebericht" in pfade:
