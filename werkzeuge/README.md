@@ -324,7 +324,7 @@ von Hand (Abschnitt "Je Lauf").
 ## Einen Fall vorfuehren und aufzeichnen
 
 ```
-python werkzeuge/vorfuehrung.py --fall faelle/<fall> --linie <linie> --stand <ablage>
+python werkzeuge/vorfuehrung.py --fall faelle/<fall> --linie <linie> --stand <ablage> --modell <modell>
 tmux attach -t vorfuehrung
 ```
 
@@ -338,9 +338,11 @@ Baut die tmux-Session `vorfuehrung`:
 
 Die Fenster folgen den Agentendateien unter `.claude/agents/`; eine neue
 Rolle bekommt ihr Fenster ohne Aenderung am Werkzeug. Die Chats starten mit
-`claude --agent <rolle>`; `--modell <modell>` setzt das Modell fuer alle
-ausdruecklich. `--ohne-chat` baut nur das Geruest (Probe), `--trocken`
-gibt die tmux-Kommandos aus. Eine Session gleichen Namens wird nie ersetzt.
+`claude --agent <rolle> --model <modell>`; `--modell` ist Pflicht und hat
+keine Vorgabe (sonst erbte jeder der fuenf Chats das Modell des Kontos).
+`--ohne-chat` baut nur das Geruest (Probe) und braucht kein Modell,
+`--trocken` gibt die tmux-Kommandos aus. Eine Session gleichen Namens wird
+nie ersetzt.
 
 Gezeichnet wird im Fenster `mensch`, nie in einem Agentenfenster: Ein Agent
 zeichnet keine Annahme, und die Schluessel liegen ausserhalb des Falls.

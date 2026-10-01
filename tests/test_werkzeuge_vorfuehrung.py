@@ -196,10 +196,26 @@ def test_ohne_programmleitung_wird_benannt_verweigert():
 def test_trocken_gibt_die_kommandos_aus_und_baut_nichts(tmp_path, capsys):
     fall = tmp_path / "fall"
     fall.mkdir()
-    assert vf.main(["--fall", str(fall), "--linie", str(tmp_path / "linie"), "--trocken"]) == 0
+    assert vf.main(["--fall", str(fall), "--linie", str(tmp_path / "linie"), "--trocken",
+                    "--modell", "opus"]) == 0
     aus = capsys.readouterr().out.splitlines()
     assert aus[0].startswith("tmux new-session -d -s vorfuehrung")
-    assert vf.main(["--fall", str(tmp_path / "fehlt"), "--linie", "x", "--trocken"]) == 2
+    assert sum("claude --agent" in z and "--model opus" in z for z in aus) == len(
+        vf.agentenrollen())
+    assert vf.main(["--fall", str(tmp_path / "fehlt"), "--linie", "x", "--trocken",
+                    "--modell", "opus"]) == 2
+
+
+def test_ohne_modell_startet_kein_chat(tmp_path, capsys):
+    """Das Modell der Chats hat keine Vorgabe: Geerbt wuerde das Modell des
+    Kontos, fuenfmal. Das Geruest ohne Chats braucht keines."""
+    fall = tmp_path / "fall"
+    fall.mkdir()
+    basis = ["--fall", str(fall), "--linie", str(tmp_path / "linie"), "--trocken"]
+    assert vf.main(basis) == 2
+    assert "--modell fehlt" in capsys.readouterr().err
+    assert vf.main([*basis, "--ohne-chat"]) == 0
+    assert "claude --agent" not in capsys.readouterr().out
 
 
 # --------------------------------------------------------------------------- #

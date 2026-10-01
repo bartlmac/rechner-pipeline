@@ -15,13 +15,15 @@ wird:
   Annahme, und die Schluessel liegen ausserhalb des Falls.
 
 Die Anzeigen sind ``werkzeuge/lagebild.py`` unter ``watch`` — nur lesend.
-Die Chats starten mit ``claude --agent <rolle>``; ``--modell`` setzt das
-Modell ausdruecklich fuer alle Chats, ``--ohne-chat`` laesst die linken
-Panes als leere Shell (Probe des Aufbaus, ohne eine Sitzung zu oeffnen).
+Die Chats starten mit ``claude --agent <rolle> --model <modell>``. Das Modell
+wird ausdruecklich genannt (``--modell``, keine Vorgabe): Ohne Angabe erbte
+jeder der fuenf Chats das Modell des Kontos — gemessen das groesste, mit
+hohem Aufwand. ``--ohne-chat`` laesst die linken Panes als leere Shell (Probe
+des Aufbaus, ohne eine Sitzung zu oeffnen) und braucht kein Modell.
 
     python werkzeuge/vorfuehrung.py --fall faelle/<fall> --linie <linie> \\
-        [--stand <ablage>] [--modell <modell>] [--session vorfuehrung] \\
-        [--ohne-chat] [--trocken]
+        --modell <modell> [--stand <ablage>] [--session vorfuehrung] [--trocken]
+    python werkzeuge/vorfuehrung.py --fall faelle/<fall> --linie <linie> --ohne-chat
 
 ``--trocken`` gibt die tmux-Kommandos aus, statt sie auszufuehren. Eine
 Session gleichen Namens wird nie ersetzt: Das Werkzeug haelt an und nennt
@@ -145,8 +147,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--stand", type=Path, default=None, help="Ablage der Laufzeit (Anzeige)")
     p.add_argument("--session", default="vorfuehrung", help="Name der tmux-Session")
     p.add_argument("--modell", default=None,
-                   help="Modell fuer alle Chats (claude --model); ohne Angabe gilt, was "
-                        "die Agentendatei bzw. die Einstellung des Kontos vorgibt")
+                   help="Modell fuer alle Chats (claude --model); Pflicht, sobald Chats "
+                        "gestartet werden — es gibt keine Vorgabe")
     p.add_argument("--ohne-chat", action="store_true",
                    help="linke Panes als leere Shell lassen (Probe des Aufbaus)")
     p.add_argument("--trocken", action="store_true",
@@ -156,6 +158,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not args.fall.is_dir():
         print(f"vorfuehrung: Fall {args.fall} nicht gefunden — zuerst den Fall anlegen "
               "(python -m rechner_pipeline.fall)", file=sys.stderr)
+        return 2
+    if not args.ohne_chat and not args.modell:
+        print("vorfuehrung: --modell fehlt — jeder Chat erbte sonst das Modell des Kontos. "
+              "Ausweg: --modell <modell> nennen (z. B. opus oder sonnet), oder --ohne-chat "
+              "fuer das Geruest ohne Chats", file=sys.stderr)
         return 2
     try:
         liste = kommandos(
