@@ -384,7 +384,8 @@ def zeichne_tboxstand(fall: Path, repo_root: Path, **kw):
         f"Aenderungsvermerk der Suite: T-Box {tbox.TBOX_VERSIONEN[-2]} -> "
         f"{tbox.TBOX_VERSION}.\n", encoding="utf-8")
     beleg = stand_belegen.main([
-        "tbox", "--fall", str(fall), "--repo-root", str(repo_root),
+        "tbox", "--fall", str(fall), "--vorher-linie", linie_args(fall)[1],
+        "--repo-root", str(repo_root),
         "--artefakt", "abgeleitet/tbox/vermerk-suite.md",
         "--begruendung", "T-Box-Stand des Falls (Suite)"])
     assert beleg.exit_code == 0, beleg.errors

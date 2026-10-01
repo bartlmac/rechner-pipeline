@@ -1188,7 +1188,8 @@ def standabnahme_pruefen(
         "A-K2": (f"python -m rechner_pipeline.gates.kernstand_belegen --fall {fall} "
                  "--repo-root <repo> --von <zuletzt abgenommener Kernstand> --begruendung <text>"),
         "A-O1": (f"python -m rechner_pipeline.gates.stand_belegen tbox --fall {fall} "
-                 "--repo-root <repo> --artefakt <vermerk> --begruendung <text> und die "
+                 "--vorher-linie <linie> --repo-root <repo> --artefakt <vermerk> "
+                 "--begruendung <text> und die "
                  "aktuarielle Stellungnahme"),
         "A-T1": (f"python -m rechner_pipeline.gates.tarifwerk_belegen --fall {fall} "
                  "--repo-root <repo> --von <zuletzt abgenommener Stand> --begruendung <text>"),
@@ -2397,6 +2398,14 @@ def main(argv: Optional[List[str]] = None):
     # Quellen-Widerspruch oder der Arbeitsstand eines Agenten still zur
     # abgenommenen Wahrheit (P2/P4). Die A-Box ist dafuer PFLICHT: eine
     # Sperre, die per Dateiloeschung abschaltbar waere, ist keine.
+    if args.entscheid == "angenommen" and args.gate == "A-O1":
+        # Eine Version, ein Vokabular (ADR-024, dritter Nachtrag) — EINE
+        # Stelle fuer beide Wege (Linienbereich und Fall). Das Gate rechnet
+        # aus den Ketten der Bereiche und dem lebenden Code; dem Feld
+        # ``vorher`` des Belegs glaubt es dafuer nichts.
+        regel = _stand.tbox_vokabular_fehler([fall] if linie_modus else [fall, linie_pfad])
+        if regel:
+            return _sperre("vorbedingung", "Annahme verweigert: " + "; ".join(regel[:3]))
     if args.entscheid == "angenommen" and linie_modus:
         # Der Linienbereich hat weder Eingang noch A-Box: Seine Abnahmen
         # stuetzen sich allein auf ihre Belege am festen Ort, nachgerechnet

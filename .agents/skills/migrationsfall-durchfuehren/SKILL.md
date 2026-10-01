@@ -615,7 +615,7 @@ gilt genau einer von zwei Wegen:
    Werkzeug die benannte AUSNAHME "Regression: Ausnahme — nicht gefahren,
    Werkzeug noch nicht erstellt"; gib sie genau so weiter, nie als
    bestanden). T-Box: Der Architektur-Agent legt vor mit
-   `python -m rechner_pipeline.gates.stand_belegen tbox --fall faelle/<fall> --repo-root . --artefakt <vermerk> --begruendung "<text>" [--vorher-linie linie]`
+   `python -m rechner_pipeline.gates.stand_belegen tbox --fall faelle/<fall> --repo-root . --artefakt <vermerk> --begruendung "<text>" --vorher-linie linie`
    (Sicht `abgeleitet/tbox/aenderung.md`: Vokabular-Diff), das Aktuariat
    legt `abgeleitet/tbox/stellungnahme.json` daneben. Tarifwerk: Der
    Aktuariats-Agent legt vor mit

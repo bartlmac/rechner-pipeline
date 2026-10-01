@@ -37,7 +37,8 @@ Run via::
         --ordnung <ordnung.json> --vorgaenger keiner|<glied> [--vorstand-schluessel <datei>]
     python -m rechner_pipeline.gates.stand_belegen verweisen --fall faelle/<fall> \\
         --gate A-K2|A-O1|A-T1 (--linie linie | --snapshot <datei>) --repo-root .
-    python -m rechner_pipeline.gates.stand_belegen tbox (--fall faelle/<fall> | --linie linie) \\
+    python -m rechner_pipeline.gates.stand_belegen tbox \\
+        (--fall faelle/<fall> --vorher-linie linie | --linie linie) \\
         --artefakt <adr-oder-vermerk> --begruendung "<text>" --repo-root .
 
 Knoten: system/entscheid
@@ -69,7 +70,11 @@ from rechner_pipeline.models import standabnahme as sa
 from rechner_pipeline.models.schemas import P9Snapshot
 
 COMMAND = "stand_belegen"
-GATE_VERSION = "2.0.0"
+#: 3.0.0 (2026-10-01, ADR-024 dritter Nachtrag; Major: ein vorher gruener
+#: Aufruf wird rot): ``tbox --fall`` verlangt ``--vorher-linie``, ein zweites
+#: Vokabular unter einer abgenommenen Version wird verweigert, der lebende
+#: Stand von A-O1 traegt ``vokabular_sha256``.
+GATE_VERSION = "3.0.0"
 
 #: Fester Ort des T-Box-Aenderungsbelegs (wie bisher von A-O1 gelesen).
 TBOX_AENDERUNG_RELATIV = "abgeleitet/tbox/aenderung.json"
@@ -120,7 +125,14 @@ def lebender_stand(gate: str, repo_root: Optional[Path],
             "kernstand_sha256": _kern.kernstand_hash(repo_root),
         }
     elif gate == "A-O1":
-        stand = {"version": _tbox_modul().TBOX_VERSION, "tbox_sha256": tbox_modul_sha256()}
+        # Drei Felder (ADR-024, dritter Nachtrag): die Bytes des Moduls — es
+        # traegt auch die Pruefregeln, die P-Q3 und P-K1 ausfuehren — UND der
+        # Abdruck des Vokabulars. Der Verweis (Weg b) haelt alle drei mit ==;
+        # der Abdruck im Stand macht die Regel "eine Version, ein Vokabular"
+        # (:func:`tbox_vokabular_fehler`) aus signierten Snapshots pruefbar.
+        tbox = _tbox_modul()
+        stand = {"version": tbox.TBOX_VERSION, "tbox_sha256": tbox_modul_sha256(),
+                 "vokabular_sha256": tbox.vokabular_sha256()}
     elif gate == "A-T1":
         if repo_root is None:
             return None
@@ -196,6 +208,20 @@ def geltende_spitze(bereich: Path, gate: str) -> Tuple[Optional[dict], List[str]
     Kopie im Verweis mit dem Ring. Fuer Produzenten und Sichten."""
     from rechner_pipeline.models.snapshot_kette import pruefe_snapshot_graph
 
+    kette, fehler = _lade_kette(bereich, gate)
+    if fehler:
+        return None, fehler
+    if not kette:
+        return None, [f"keine {gate}-Abnahme in {bereich}"]
+    spitzen, gf = pruefe_snapshot_graph(kette)
+    if gf or len(spitzen) != 1:
+        return None, gf or [f"keine eindeutige Spitze der {gate}-Kette"]
+    return kette[spitzen[0]], []
+
+
+def _lade_kette(bereich: Path, gate: str) -> Tuple[Dict[str, dict], List[str]]:
+    """Alle Snapshots eines Gates in einem Bereich, strukturell gelesen
+    (Schema, Selbstadressierung), OHNE Signatur."""
     kette: Dict[str, dict] = {}
     fehler: List[str] = []
     verzeichnis = Path(bereich) / "entscheide"
@@ -210,14 +236,57 @@ def geltende_spitze(bereich: Path, gate: str) -> Tuple[Optional[dict], List[str]
             fehler.append(f"{pfad.name}: kein gueltiger Snapshot ({'; '.join(sf[:2])})")
             continue
         kette[daten["snapshot_sha256"]] = daten
-    if fehler:
-        return None, fehler
-    if not kette:
-        return None, [f"keine {gate}-Abnahme in {bereich}"]
-    spitzen, gf = pruefe_snapshot_graph(kette)
-    if gf or len(spitzen) != 1:
-        return None, gf or [f"keine eindeutige Spitze der {gate}-Kette"]
-    return kette[spitzen[0]], []
+    return kette, fehler
+
+
+def tbox_vokabular_fehler(bereiche: List[Path]) -> List[str]:
+    """EINE Regel fuer Produzent und Gate (ADR-024, dritter Nachtrag):
+    Innerhalb einer ABGENOMMENEN Version der T-Box gibt es genau ein Vokabular.
+
+    Vor der ersten Zeichnung ist eine Version ein Entwurf: Ihr Vokabular darf
+    sich bewegen, der Abdruck im Test wird nachgezogen. Nach der ersten
+    Zeichnung ist sie ein Vertrag: Eine A-Box oder Spez, die diese Version
+    erklaert, meint das gezeichnete Vokabular. Ein zweites Vokabular unter
+    derselben Nummer liesse P-Q3 und P-K1 beim Versionsvergleich beide
+    durch. Deshalb: Fuehrt IRGENDEINE Annahme in der A-O1-Kette eines der
+    Bereiche (Fall, Linie) die Version des Codes mit einem anderen Abdruck,
+    wird verweigert — Ausweg ist die naechste Version. Derselbe Abdruck
+    bleibt zulaessig (das Modul hat sich bewegt, das Vokabular nicht).
+
+    Jede Annahme zaehlt, nicht nur die geltende Spitze: Auch eine spaeter
+    abgeloeste Annahme war eine Zeichnung, auf der gearbeitet worden sein
+    kann. Gelesen wird strukturell, ohne Signatur — ein untergeschobener
+    Snapshot kann hier nur verweigern, nichts erlauben; die Signatur der
+    geltenden Abnahme prueft A-M4 (Standabnahme). Eine unlesbare Kette
+    verweigert (nicht entscheidbar), ebenso eine Annahme dieser Version, die
+    keinen Abdruck im Stand fuehrt.
+    """
+    tbox = _tbox_modul()
+    version, abdruck = tbox.TBOX_VERSION, tbox.vokabular_sha256()
+    fehler: List[str] = []
+    for bereich in bereiche:
+        kette, kf = _lade_kette(bereich, "A-O1")
+        if kf:
+            fehler.append(
+                f"die A-O1-Kette in {bereich} ist nicht lesbar ({kf[0]}) — ob die T-Box "
+                f"{version} dort schon abgenommen ist, laesst sich nicht entscheiden")
+            continue
+        for sha, snap in sorted(kette.items()):
+            stand = snap.get("stand") or {}
+            if snap.get("entscheid") != "angenommen" or stand.get("version") != version:
+                continue
+            alt = stand.get("vokabular_sha256")
+            if alt == abdruck:
+                continue
+            fehler.append(
+                f"die T-Box {version} ist in {bereich} bereits abgenommen (A-O1-Snapshot "
+                f"{sha[:16]}), "
+                + (f"mit dem Vokabular {str(alt)[:16]}; der Code traegt {abdruck[:16]}"
+                   if alt else "ohne Abdruck des Vokabulars im Stand")
+                + " — innerhalb einer abgenommenen Version gibt es genau ein Vokabular: "
+                "TBOX_VERSION heben und TBOX_VERSIONEN anhaengen (ontologie/tbox.py), die "
+                "Hebungsregel ergaenzen (ontologie.abox.HEBUNGEN), dann den Uebergang vorlegen")
+    return fehler
 
 
 def _vokabular_sha256(vokabular: Any) -> str:
@@ -269,6 +338,10 @@ def tbox_aenderungsbeleg(fall: Path, repo_root: Optional[Path], artefakt: str,
             break
     else:
         raise StandFehler(f"artefakt {artefakt!r} liegt weder im Bereich noch im Repo")
+    bereiche = list(vorher_bereiche or [fall])
+    regel = tbox_vokabular_fehler(bereiche)
+    if regel:
+        raise StandFehler("; ".join(regel[:3]))
     vokabular = json.loads(json.dumps(tbox.vokabular(), sort_keys=True))
     return {
         "schema_version": TBOX_AENDERUNG_SCHEMA_VERSION,
@@ -279,7 +352,7 @@ def tbox_aenderungsbeleg(fall: Path, repo_root: Optional[Path], artefakt: str,
         "begruendung": begruendung,
         "vokabular_sha256": _vokabular_sha256(vokabular),
         "vokabular": vokabular,
-        "vorher": _vorher_tbox(list(vorher_bereiche or [fall])),
+        "vorher": _vorher_tbox(bereiche),
     }
 
 
@@ -327,7 +400,9 @@ def rendere_tbox_sicht(beleg: Dict[str, Any]) -> str:
               f"(Version {_md(vorher.get('version'))}, A-O1-Snapshot "
               f"{_c(str(vorher.get('snapshot_sha256'))[:16])})", ""]
         if not diff:
-            z += ["Keine Aenderung am Vokabular.", ""]
+            z += ["Keine Aenderung am Vokabular. Weicht der Modul-Hash vom abgenommenen "
+                  "ab, haben sich allein Pruefregeln oder Kommentare des Moduls bewegt — zu "
+                  "pruefen ist dann der Code-Diff von ontologie/tbox.py.", ""]
         for d in diff:
             z.append(f"- {_c(d['pfad'])} ({_md(d['zustand'])}): {w(d['vorher'])} -> "
                      f"{w(d['nachher'])}")
@@ -420,7 +495,8 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     ziel.add_argument("--fall", default=None)
     ziel.add_argument("--linie", default=None)
     t.add_argument("--vorher-linie", dest="vorher_linie", default=None,
-                   help="Linienbereich mit der zuletzt abgenommenen T-Box (fuer die Sicht im Fall)")
+                   help="Linienbereich mit der zuletzt abgenommenen T-Box; mit --fall Pflicht: "
+                        "Sicht und Regel 'eine Version, ein Vokabular' halten Fall UND Linie")
     t.add_argument("--repo-root", dest="repo_root", required=True)
     t.add_argument("--artefakt", required=True,
                    help="ADR oder Aenderungsvermerk, relativ zu Bereich oder Repo")
@@ -522,6 +598,16 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     if sa.bereich_art(fall) is None:
         return _fehler(Exit.USAGE, f"kein Fall- oder Linienbereich: {fall}")
     repo = Path(args.repo_root).resolve()
+    if args.fall and not args.vorher_linie:
+        # Was eine Aussage traegt, ist nicht weglassbar (ADR-024, dritter
+        # Nachtrag): Ohne die Linie zeigte die Sicht im Fall "Erstabnahme",
+        # obwohl die Linie die T-Box schon abgenommen hat, und die Regel
+        # saehe die Abnahme der Linie nicht.
+        return _fehler(Exit.USAGE, "tbox --fall braucht --vorher-linie <linie>: die Sicht zeigt "
+                       "die Differenz zur zuletzt abgenommenen T-Box, und die liegt im Fall "
+                       "oder in der Linie")
+    if args.vorher_linie and sa.bereich_art(Path(args.vorher_linie)) != "linie":
+        return _fehler(Exit.USAGE, f"--vorher-linie {args.vorher_linie}: kein Linienbereich")
     vorher = [fall] + ([Path(args.vorher_linie)] if args.vorher_linie else [])
     try:
         beleg = tbox_aenderungsbeleg(fall, repo, args.artefakt, args.begruendung.strip(),

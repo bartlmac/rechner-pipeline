@@ -99,9 +99,14 @@ def test_vokabular_aenderung_ohne_versionssprung_ist_rot():
         "hier mit ihrem Abdruck eintragen")
     assert tbox.vokabular_sha256() == VOKABULAR_ABDRUCK[tbox.TBOX_VERSION], (
         "Das Vokabular der T-Box hat sich bewegt, die Version nicht. "
-        "TBOX_VERSION heben, TBOX_VERSIONEN anhaengen, den neuen Abdruck "
-        f"({tbox.vokabular_sha256()}) hier eintragen — und die Aenderung "
-        "geht ueber A-O1")
+        f"Ist {tbox.TBOX_VERSION} schon GEZEICHNET (A-O1 in der Linie oder in "
+        "einem Fall), ist die Version ein Vertrag: TBOX_VERSION heben, "
+        "TBOX_VERSIONEN anhaengen, den Abdruck der NEUEN Version hier "
+        "eintragen — die Aenderung geht ueber A-O1. Den Abdruck unter der "
+        "alten Nummer nachzuziehen ist nur zulaessig, solange diese Version "
+        f"ein ungezeichneter Entwurf ist (neuer Abdruck: {tbox.vokabular_sha256()}); "
+        "diese Ratsche sieht keine Zeichnung, Produzent und Gate halten die "
+        "Regel gegen die Abnahmen (stand_belegen.tbox_vokabular_fehler)")
 
 
 def test_vokabular_ist_von_beschreibungen_unabhaengig():
@@ -661,7 +666,8 @@ def test_der_erste_echte_uebergang_traegt_auf_der_echten_linie(pk1_fall):
     assert snapshot["rolle"] == "mensch/architektur"
     assert snapshot["stand"] == {"version": "0.2.0",
                                  "tbox_sha256": hashlib.sha256(
-                                     Path(tbox.__file__).read_bytes()).hexdigest()}
+                                     Path(tbox.__file__).read_bytes()).hexdigest(),
+                                 "vokabular_sha256": tbox.vokabular_sha256()}
 
 
 @pytest.mark.parametrize("von", ["0.0.9", "0.2.0", "0.1.1"])

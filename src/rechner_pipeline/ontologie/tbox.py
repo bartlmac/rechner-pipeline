@@ -80,6 +80,14 @@ from rechner_pipeline.ontologie.ids import knoten_id, zellen_segment
 #: Fehler, keine Warnung — vorher war die Version ein ueberschreibbarer
 #: Default, den niemand verglich. Dass das Vokabular sich nicht OHNE
 #: Hebung bewegt, haelt der Abdruck :func:`vokabular_sha256` (Test).
+#:
+#: ENTWURF UND VERTRAG (ADR-024, dritter Nachtrag): Vor der ersten
+#: A-O1-Zeichnung ist eine Version ein Entwurf — ihr Vokabular darf sich
+#: bewegen, der Abdruck im Test wird nachgezogen. Nach der ersten Zeichnung
+#: ist sie ein Vertrag: Innerhalb einer abgenommenen Version gibt es genau
+#: ein Vokabular, jede weitere Aenderung hebt die Version. Den Test kann
+#: nachziehen, wer will; die Regel halten deshalb Produzent und Gate gegen
+#: die Ketten der Abnahmen (``gates.stand_belegen.tbox_vokabular_fehler``).
 TBOX_VERSION = "0.2.0"
 #: Die Versionslinie der T-Box, aelteste zuerst — der im CODE nachweisbare
 #: "alte Stand" fuer A-O1 (Review T23-03): ein Uebergang von_version ->

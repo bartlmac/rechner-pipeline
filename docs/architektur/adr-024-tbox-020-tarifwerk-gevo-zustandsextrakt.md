@@ -200,3 +200,61 @@ Dokument der Feststellung (`tests/fixtures/<lauf>/tarifregeln.json`, je
 Merkmal mit Fundstelle) — der Test haelt die Bytes gegen den Weg
 Hebung + Ergaenzung. Die P-K1-/A-M4-Fixture liefert die Regeln im Scope
 `bestand` ueber ihren Produzenten (`tests/e2e_fixture.py`).
+
+## Nachtrag 2026-10-01 (dritter): eine Version, ein Vokabular — Entwurf und Vertrag
+
+**Anlass.** Der Abdruck des Vokabulars von 0.2.0 hat sich am 01.10. zweimal
+bewegt (erster und zweiter Nachtrag), die Versionsnummer blieb. Das war
+zulaessig, weil noch niemand 0.2.0 gezeichnet hatte. Geregelt war es nicht:
+Die Ratsche im Test haelt den Abdruck gegen ein Literal, und wer das
+Vokabular aendert und das Literal im selben Commit nachzieht, kommt durch
+— vor wie nach einer Zeichnung.
+
+**Gemessen.** Eine Aenderung nach der Zeichnung blieb nicht unbemerkt: Der
+lebende Stand von A-O1 traegt den Hash des Moduls, der Verweis auf die
+fruehere Abnahme scheitert, der naechste Fall braucht eine neue Abnahme.
+Die Luecke lag im Schritt danach: Diese neue Abnahme durfte denselben
+Uebergang 0.1.0 -> 0.2.0 mit einem anderen Vokabular zeichnen. Eine A-Box,
+die 0.2.0 nach dem ersten Vokabular erklaert, bestand danach weiter den
+Versionsvergleich in P-Q3.
+
+**Regel.** Vor der ersten A-O1-Zeichnung ist eine Version ein Entwurf, nach
+ihr ein Vertrag: Innerhalb einer abgenommenen Version gibt es genau ein
+Vokabular; jede weitere Aenderung hebt die Version.
+
+**Gebaut.**
+
+* `gates.stand_belegen.tbox_vokabular_fehler` ist die eine Regel fuer
+  Produzent und Gate. Fuehrt irgendeine Annahme in der A-O1-Kette des Falls
+  oder der Linie die Version des Codes mit einem anderen Abdruck, wird
+  verweigert, mit dem Ausweg "Version heben". Derselbe Abdruck bleibt
+  zulaessig (das Modul hat sich bewegt, das Vokabular nicht). Jede Annahme
+  der Kette zaehlt, nicht nur die geltende Spitze: Auch eine spaeter
+  abgeloeste Annahme war eine Zeichnung.
+* Der lebende Stand von A-O1 traegt drei Felder: `version`, `tbox_sha256`,
+  `vokabular_sha256`. Der Abdruck steht damit im signierten Snapshot jeder
+  Abnahme, und das Gate rechnet die Regel aus den Ketten und dem lebenden
+  Code; dem Feld `vorher` des Belegs glaubt es dafuer nichts.
+* `stand_belegen tbox --fall` verlangt `--vorher-linie`: Ohne die Linie
+  zeigte die Sicht im Fall "Erstabnahme", obwohl die Linie die T-Box schon
+  abgenommen hat.
+* Die Ratsche im Test nennt ihren Gueltigkeitsbereich: Nachziehen ist nur
+  fuer einen ungezeichneten Entwurf zulaessig; eine Zeichnung sieht sie
+  nicht.
+
+**Verworfene Alternative.** *Codepflege ohne Zeichnung:* Bewegt sich nur der
+Modul-Hash und nicht der Abdruck, koennte der Verweis weiter gelten. Nicht
+gebaut: `ontologie/tbox.py` traegt neben dem Vokabular die Pruefregeln, die
+P-Q3 und P-K1 ausfuehren (Validatoren, Pflichtmengen, Wertebereiche). Eine
+geaenderte Pruefregel ginge so ungezeichnet durch, und zwar leise, weil das
+Vokabular beweislich unveraendert ist. Der Verweis haelt deshalb weiter
+alle drei Felder mit `==`; ein Kommentar in dem Modul kostet nach der
+Zeichnung eine Abnahme, deren Sicht "keine Aenderung am Vokabular" sagt.
+Entscheidbar wird die Lockerung erst mit einem Register der oeffentlichen
+Namen des Moduls, zweiklassig (Vokabular oder Regel) und mit `==` gehalten.
+
+**Benannte Grenzen.** Die Regel liest die Ketten strukturell, ohne
+Signatur: Ein untergeschobener Snapshot kann nur verweigern, nichts
+erlauben. Sie sieht die Bereiche, die sie bekommt (Fall und Linie), keine
+fremden Faelle. Die Vergleichsgrundlage der Sicht (`vorher`) liefert der
+Produzent; das Gate prueft an ihr nur die innere Stimmigkeit.

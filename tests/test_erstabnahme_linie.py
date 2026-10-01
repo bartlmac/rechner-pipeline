@@ -527,6 +527,13 @@ def test_die_t_box_sicht_zeigt_den_diff_gegen_das_zuletzt_abgenommene_vokabular(
     geaendert = json.loads(json.dumps(echt))
     geaendert["quelle_arten"] = list(geaendert["quelle_arten"]) + ["neue-art"]
     monkeypatch.setattr(tbox, "vokabular", lambda: geaendert)
+    # Unter der abgenommenen Version ist ein zweites Vokabular nicht vorlegbar
+    # (ADR-024, dritter Nachtrag) ...
+    with pytest.raises(stand_belegen.StandFehler, match="genau ein Vokabular"):
+        stand_belegen.tbox_aenderungsbeleg(linie, REPO, "abgeleitet/tbox/vermerk.md", "x")
+    # ... die Aenderung hebt die Version, und die Sicht zeigt die Differenz.
+    monkeypatch.setattr(tbox, "TBOX_VERSIONEN", tuple(tbox.TBOX_VERSIONEN) + ("9.9.9",))
+    monkeypatch.setattr(tbox, "TBOX_VERSION", "9.9.9")
     beleg = stand_belegen.tbox_aenderungsbeleg(linie, REPO, "abgeleitet/tbox/vermerk.md", "x")
     assert beleg["vorher"] is not None
     sicht = stand_belegen.rendere_tbox_sicht(beleg)

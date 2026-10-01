@@ -80,7 +80,8 @@ def _zeichne_tboxstand(fall: Path, *schluessel_args: str):
     vermerk.parent.mkdir(parents=True, exist_ok=True)
     vermerk.write_text("Aenderungsvermerk: Raucherkennzeichen in der T-Box.\n", encoding="utf-8")
     beleg = stand_belegen.main([
-        "tbox", "--fall", str(fall), "--repo-root", str(REPO),
+        "tbox", "--fall", str(fall), "--vorher-linie", linie_args(fall)[1],
+        "--repo-root", str(REPO),
         "--artefakt", "abgeleitet/tbox/vermerk.md", "--begruendung", "Raucherkennzeichen"])
     assert beleg.exit_code == 0, beleg.errors
     (fall / stand_belegen.TBOX_STELLUNGNAHME_RELATIV).write_text(json.dumps({
@@ -150,7 +151,8 @@ def test_der_lebende_stand_je_gegenstand():
     kern = stand_belegen.lebender_stand("A-K2", REPO)
     assert set(kern) == {"version", "kern_sha256", "referenzwerte_sha256", "kernstand_sha256"}
     t = stand_belegen.lebender_stand("A-O1", REPO)
-    assert t == {"version": tbox.TBOX_VERSION, "tbox_sha256": stand_belegen.tbox_modul_sha256()}
+    assert t == {"version": tbox.TBOX_VERSION, "tbox_sha256": stand_belegen.tbox_modul_sha256(),
+                 "vokabular_sha256": tbox.vokabular_sha256()}
     tw = stand_belegen.lebender_stand("A-T1", REPO)
     assert set(tw) == {"tarifplaene_sha256", "parametrierung_sha256", "tarifwerk_sha256"}
 
