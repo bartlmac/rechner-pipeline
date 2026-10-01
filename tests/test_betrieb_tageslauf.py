@@ -643,6 +643,9 @@ def _gealterte_uebernahme(ablage: Ablage, fall_wurzel: Path,
         json.dumps({"name": name, "schema_version": 1}), encoding="utf-8")
     _gealterter_zugangsstand(fall / "abgeleitet" / "bestand")
     ledger_sha = _pb1_ledger(fall)
+    from tests.test_betrieb_uebernahme import lege_auftrag
+
+    lege_auftrag(fall)   # der Auftrag, den A-M4 nennt (Pruefrunde I, I07)
     daten = am4_snapshot(name, pb1_ledger_sha=ledger_sha, fuehrungsprobe_sha=fuehrungsbeleg(fall))
     (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
         json.dumps(daten, ensure_ascii=False), encoding="utf-8")

@@ -129,7 +129,14 @@ def freigabe_fuer(snapshot_ohne_freigabe: dict, key: bytes) -> Dict[str, str]:
 
 
 def pruefe_freigabe(snapshot: dict, schluesselring: Mapping[str, bytes]) -> List[str]:
-    if snapshot.get("entscheid") != "angenommen":
+    """Die Freigabesignatur eines Snapshots pruefen. Leer = in Ordnung.
+
+    Geprueft wird jede Annahme und jede Ablehnung, die eine Freigabe TRAEGT
+    (gezeichnete Ablehnung, ADR-026, Nachtrag Pruefrunde I): Eine Signatur,
+    die niemand nachrechnet, bezeugte nur sich selbst. Eine Ablehnung ohne
+    Freigabe bleibt ohne Befund (ADR-008, Punkt 6) — was sie bewirken darf,
+    entscheidet der Leser."""
+    if snapshot.get("entscheid") != "angenommen" and "freigabe" not in snapshot:
         return []
     freigabe = snapshot.get("freigabe")
     if not isinstance(freigabe, dict):

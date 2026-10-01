@@ -98,8 +98,14 @@ den des Vorstands (Auftrag, Glieder der Linie), und liegt eine A-M4 im Fall —
 auch eine abgelehnte — den von ``mensch/aktuariat``. Fehlt einer, nennt die
 Meldung Rolle und Fingerabdruck; nenne das dem Menschen in der Vorlage, statt
 den Abbruch anders zu versuchen. Ist die Migration schon abgenommen (A-M4),
-gibt es keinen Abbruch ohne vorherige Ablehnung von A-M4 — das entscheidest
-nicht du.
+gibt es keinen Abbruch ohne vorherigen GEZEICHNETEN Widerruf von A-M4 — das
+entscheidest nicht du: Das Aktuariat lehnt A-M4 mit seinem Schluessel und der
+Ordnung der Spitze ab (ADR-026, Nachtrag Pruefrunde I). Deine eigene
+Ablehnung (``--rolle agent/programmleitung``) bleibt unsigniert; sie
+dokumentiert einen Zwischenstand und gibt den Abbruch nicht frei. Der
+Schluessel der Programmleitung gehoert keiner Rolle der Ordnung; gibt ein
+Glied ihn einer Rolle, verweigert jede Annahme im Fall — dann legst du die
+Vorlage eines neuen Auftrags mit eigenem Schluessel vor.
 
 ## Was fuer alle Agentenrollen gilt (ADR-017, ADR-018)
 

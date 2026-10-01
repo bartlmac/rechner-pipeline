@@ -125,6 +125,81 @@ def fuehrungsbeleg(fall: Path) -> str:
     return hashlib.sha256(roh).hexdigest()
 
 
+def am6_snapshot(fall_name: str) -> dict:
+    """Der Fallauftrag der Suite (A-M6), wie das Gate ihn schreibt —
+    deterministisch je Fallname, signiert mit dem Schluessel des Vorstands
+    (``VORSTANDKEY``, im Testring) unter dem ersten Glied der Test-Linie.
+
+    Seit der Leser des Betriebs den Auftrag liest, den A-M4, A-M1 und A-B2
+    signiert nennen (ADR-026, Nachtrag Pruefrunde I, I07), muss er im Fall
+    liegen: :func:`lege_auftrag`. Die Lieferung ist ein Platzhalter — die
+    Bindung an die Lieferung haelt das Gate beim Zeichnen, nicht der Betrieb."""
+    from rechner_pipeline.models import fallauftrag as fa
+    from rechner_pipeline.models.freigabe import freigabe_fuer
+    from rechner_pipeline.models.schemas import (
+        P9_GATE_VERSION,
+        P9_SNAPSHOT_SCHEMA_VERSION,
+        p9_snapshot_sha256,
+    )
+    from tests.freigabe_testschluessel import VORSTANDKEY, suitelinie_pin
+
+    auftrag = {
+        "schema_version": fa.AUFTRAG_SCHEMA_VERSION, "art": fa.AUFTRAG_ART,
+        "fall": {"name": fall_name, "scope": "bestand"},
+        "lieferung": {"eingang_sha256": "ab" * 32,
+                      "quellen": [{"datei": "lieferung.csv", "sha256": "ef" * 32}]},
+        "programmleitung": {"rolle": "mensch/programmleitung",
+                            "schluessel_sha256": hashlib.sha256(b"programmleitung der suite").hexdigest(),
+                            "schluesselklasse": "mensch", "gates": ["A-M5"]},
+        "mandate": {}, "zielsystem": {"linie": None, "abnahmen": {}},
+        "abgebendes_haus": {"aktuar": None, "vermerk": fa.ABGEBENDES_HAUS_VERMERK},
+        "auftrag": "Fall der Suite: migrieren und abnehmen",
+    }
+    daten = {
+        "schema_version": P9_SNAPSHOT_SCHEMA_VERSION, "command": "gate_entscheid",
+        "gate_version": P9_GATE_VERSION, "gate": "A-M6", "entscheid": "angenommen",
+        "entscheider": "Vorstand", "rolle": "mensch/vorstand",
+        "begruendung": "Fall beauftragt (Suite)", "fall": fall_name,
+        "artefakt_hashes": {"eingang.json": "ab" * 32, "fall.json": "cd" * 32},
+        "system": {"branch": "main", "commit": "abc1234", "dirty": "nein",
+                   "quellcode_sha256": "ef" * 32},
+        "vorgaenger": [], "entschieden_am": "2026-01-01T09:00:00+00:00",
+        "fall_scope": "bestand",
+        "pflichtbelege": {"fallauftrag": [hashlib.sha256(b"vorlage des auftrags").hexdigest()]},
+        "zeichnung": {"rolle": "mensch/vorstand", **suitelinie_pin(), "schluesselklasse": "mensch"},
+        "auftrag": auftrag,
+    }
+    daten["freigabe"] = freigabe_fuer(daten, VORSTANDKEY)
+    daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
+    return daten
+
+
+def auftrag_der_suite(fall_name: str) -> str:
+    """Der Snapshot-Hash des Fallauftrags der Suite fuer diesen Fall."""
+    return am6_snapshot(fall_name)["snapshot_sha256"]
+
+
+def lege_auftrag(fall: Path) -> str:
+    """Den Fallauftrag der Suite in den Fall legen (einmal); Rueckgabe: der
+    Hash der geltenden Spitze der A-M6-Kette. Ein Fall, der schon eine
+    A-M6-Kette traegt (ueber das Gate beauftragt), bleibt unberuehrt."""
+    fall = Path(fall)
+    entscheide = fall / "entscheide"
+    entscheide.mkdir(parents=True, exist_ok=True)
+    kette = [json.loads(p.read_text(encoding="utf-8")) for p in entscheide.glob("A-M6-*.json")]
+    if kette:
+        # Die Spitze: der Snapshot, den kein anderer als Vorgaenger nennt
+        # (strukturell, nur fuer den Aufbau der Testwelt; gelesen wird im Betrieb).
+        genannt = {v for d in kette for v in d.get("vorgaenger") or []}
+        (spitze,) = [d["snapshot_sha256"] for d in kette if d["snapshot_sha256"] not in genannt]
+        return str(spitze)
+    name = json.loads((fall / "fall.json").read_text(encoding="utf-8"))["name"]
+    daten = am6_snapshot(name)
+    (entscheide / f"A-M6-{daten['snapshot_sha256']}.json").write_text(
+        json.dumps(daten, ensure_ascii=False), encoding="utf-8")
+    return daten["snapshot_sha256"]
+
+
 def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
                  entscheid: str = "angenommen",
                  pb1_ledger_sha: str = "ab" * 32,
@@ -219,10 +294,11 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
                 for g in sa.AM4_GEGENSTAENDE if g.rolle in pflichtbelege}
     if entscheid == "angenommen" and schema >= 10:
         # Jede Annahme eines Falls nennt den Auftrag, auf dem sie steht
-        # (ADR-026); hier buergt die Signatur, der Betrieb rechnet ihn nicht nach.
-        # ``fallauftrag``: der Snapshot des geltenden Auftrags, wenn ein Gate
-        # auf dieser Annahme gruendet (ADR-026, Nachtrag Runde G).
-        daten["fallauftrag"] = fallauftrag or hashlib.sha256(b"fallauftrag der Suite").hexdigest()
+        # (ADR-026). ``fallauftrag``: der Snapshot des geltenden Auftrags, wenn
+        # ein Gate auf dieser Annahme gruendet (ADR-026, Nachtrag Runde G); sonst
+        # der Auftrag der Suite (:func:`am6_snapshot`), den der Betrieb seit
+        # Pruefrunde I im Fall liest (:func:`lege_auftrag`).
+        daten["fallauftrag"] = fallauftrag or auftrag_der_suite(fall_name)
     if entscheid == "angenommen":
         daten["freigabe"] = freigabe_fuer(daten, schluessel or TESTKEY)
     daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
@@ -280,6 +356,7 @@ def _beleg_neu(fall: Path, name: str = "probe-uebernahme") -> None:
     der Eingang keinen Bezug zwischen beidem herstellte (T26-03).
     """
     ledger_sha = _pb1_ledger(fall)
+    lege_auftrag(fall)
     daten = am4_snapshot(name, pb1_ledger_sha=ledger_sha, fuehrungsprobe_sha=fuehrungsbeleg(fall))
     for alt in (fall / "entscheide").glob("A-M4-*.json"):
         alt.unlink()
@@ -310,6 +387,9 @@ def _fall(wurzel: Path, name: str = "probe-uebernahme", *, snapshot: "dict | Non
     # nennt — dieselbe Reihenfolge wie im echten Fall.
     _zugangsstand(fall / "abgeleitet" / "bestand")
     ledger_sha = _pb1_ledger(fall)
+    # Der Fall ist beauftragt (ADR-026): Der Betrieb liest den Auftrag, den
+    # die Abnahmen nennen (Pruefrunde I, I07).
+    lege_auftrag(fall)
     if snapshot is not None:
         daten = (am4_snapshot(name, pb1_ledger_sha=ledger_sha, fuehrungsprobe_sha=fuehrungsbeleg(fall))
                  if snapshot == "echt" else snapshot)

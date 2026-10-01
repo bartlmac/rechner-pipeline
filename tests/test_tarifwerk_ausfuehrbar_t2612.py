@@ -171,6 +171,9 @@ def _fall_mit_generation(wurzel: Path, generation: str, name: str, *, tarifwerk:
         write_portfolio(tab, ziel / datei)
     uebernahmebeleg(ziel, 3, generation=generation, tarifwerk=tarifwerk)
     sha = _pb1_ledger(fall)
+    from tests.test_betrieb_uebernahme import lege_auftrag
+
+    lege_auftrag(fall)   # der Auftrag, den A-M4 nennt (Pruefrunde I, I07)
     daten = am4_snapshot(name, pb1_ledger_sha=sha, fuehrungsprobe_sha=fuehrungsbeleg(fall))
     (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
         json.dumps(daten, ensure_ascii=False), encoding="utf-8")

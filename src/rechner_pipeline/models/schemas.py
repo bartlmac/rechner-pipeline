@@ -602,7 +602,13 @@ class P9Snapshot:
             expected_fields.update({"fall_scope", "pflichtbelege"})
         if gate == "A-M4":
             expected_fields.add("pk1_belege")
-        if data.get("entscheid") == "angenommen":
+        # Eine GEZEICHNETE Ablehnung (Pruefrunde I, ADR-026): Wer mit dem
+        # Schluessel einer berechtigten Rolle ablehnt, zeichnet sie; nur sie
+        # widerruft eine Annahme fuer einen Leser, der danach etwas FREIGIBT
+        # (der Abbruch nach A-M4). Eine Ablehnung ohne Schluessel bleibt, wie
+        # sie war (ADR-008, Punkt 6).
+        gezeichnete_ablehnung = data.get("entscheid") == "abgelehnt" and "freigabe" in data
+        if data.get("entscheid") == "angenommen" or gezeichnete_ablehnung:
             expected_fields.add("freigabe")
         version = data.get("schema_version")
         mit_ausnahmen = (gate in P9_GATES_MIT_AUSNAHMEN and type(version) is int
@@ -641,10 +647,13 @@ class P9Snapshot:
         if z is not None:
             errors.extend(validiere_zeichnung(z, form="alt" if legacy else "neu"))
         if not legacy:
-            if data.get("entscheid") == "angenommen" and z is None:
+            if (data.get("entscheid") == "angenommen" or gezeichnete_ablehnung) and z is None:
                 errors.append(
                     "an accepted decision requires zeichnung (Rolle aus der "
                     "Zeichnungsordnung, Schluesselklasse) — ADR-018"
+                    if data.get("entscheid") == "angenommen" else
+                    "a signed rejection requires zeichnung (Rolle aus der "
+                    "Zeichnungsordnung, Schluesselklasse) — ADR-026, Pruefrunde I"
                 )
             if isinstance(z, dict) and z.get("rolle") != data.get("rolle"):
                 errors.append("zeichnung.rolle must equal rolle")
@@ -681,6 +690,8 @@ class P9Snapshot:
                 inhalt = data.get(P9_LEBENSLAUF_FELDER[gate])
                 pruefer = _auftrag_fehler if gate == AUFTRAG_GATE else _abbruch_fehler
                 errors.extend(f"{P9_LEBENSLAUF_FELDER[gate]}: {f}" for f in pruefer(inhalt))
+        if gezeichnete_ablehnung and not ab_schema_10:
+            errors.append("a signed rejection exists only from schema 10 (ADR-026, Pruefrunde I)")
         if mit_fallauftrag and not _is_sha256(data.get("fallauftrag")):
             errors.append(f"fallauftrag must be the SHA-256 of the {AUFTRAG_GATE} snapshot")
         if data.get("entscheid") not in ("angenommen", "abgelehnt"):
@@ -867,7 +878,7 @@ class P9Snapshot:
                                 f"pk1_belege[{generation!r}] contains a non-SHA-256"
                             )
 
-        if data.get("entscheid") == "angenommen":
+        if data.get("entscheid") == "angenommen" or gezeichnete_ablehnung:
             freigabe = data.get("freigabe")
             required = {"verfahren", "schluessel_sha256", "signatur"}
             if not isinstance(freigabe, dict) or set(freigabe) != required:

@@ -203,7 +203,9 @@ def test_ein_altsnapshot_ohne_schluesselklasse_tritt_nicht_ein(tmp_path):
     # Seit die Linie Pflicht ist (ADR-025, Nachtrag 2026-10-01), faellt er
     # schon davor: Ein Altsnapshot pinnt kein Glied der Linie und begruendet
     # nichts Neues (Schnitt der Linie) — lesbar bleibt er fuer die Anzeige.
-    with pytest.raises(ueb.UebernahmeError, match="pinnt kein Glied der Ordnungslinie"):
+    # Seit Pruefrunde I (I08) faellt er an der einen Lesestelle noch frueher:
+    # Der Betrieb gruendet nur auf Snapshots des aktuellen Schemas.
+    with pytest.raises(ueb.UebernahmeError, match="nach Schema 6 — der Betrieb gruendet nur"):
         ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), alt, STICHTAG)
 
 

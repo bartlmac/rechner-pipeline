@@ -206,6 +206,9 @@ def _kurzer_fall(wurzel: Path, *, mit_pex: bool, name: str = "kurz-uebernahme") 
     (fall / "entscheide").mkdir()
     (fall / "fall.json").write_text(json.dumps({"name": name, "schema_version": 1}), encoding="utf-8")
     _kurzer_zugangsstand(fall / "abgeleitet" / "bestand", mit_pex=mit_pex)
+    from tests.test_betrieb_uebernahme import lege_auftrag
+
+    lege_auftrag(fall)   # der Auftrag, den A-M4 nennt (Pruefrunde I, I07)
     daten = am4_snapshot(name, pb1_ledger_sha=_pb1_ledger(fall), fuehrungsprobe_sha=fuehrungsbeleg(fall))
     (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
         json.dumps(daten, ensure_ascii=False), encoding="utf-8")

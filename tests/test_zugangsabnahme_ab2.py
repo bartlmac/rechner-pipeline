@@ -1057,9 +1057,15 @@ def test_die_cli_schreibt_den_beleg_an_den_festen_ort(tmp_path):
     schluessel = tmp_path / "freigabe.key"
     schluessel.write_bytes(TESTKEY)
     schluessel.chmod(0o600)
-    from tests.freigabe_testschluessel import linieargs
+    from tests.freigabe_testschluessel import VORSTANDKEY, linieargs
 
+    # Der Schluessel des Vorstands gehoert in den Ring: Die Probe liest den
+    # Fallauftrag, den A-M4 und A-M1 nennen (ADR-026, Nachtrag Pruefrunde I).
+    vorstand = tmp_path / "vorstand.key"
+    vorstand.write_bytes(VORSTANDKEY)
+    vorstand.chmod(0o600)
     code = zpb.main(["--stand", str(stand), "--fall", str(fall), "--stichtag", STICHTAG.isoformat(),
+                     "--freigabe-schluessel", str(vorstand),
                      "--freigabe-schluessel", str(schluessel), *betriebsargs("--schluessel"),
                      *linieargs()])
     assert code == 0
@@ -1196,9 +1202,13 @@ def test_mensch_betrieb_zeichnet_die_zugangsabnahme_mit_ihren_drei_belegen(gatef
     ledger = json.loads((fall / "abgeleitet" / "diagnostics" / "gate_entscheid_ab2.gate.json")
                         .read_text(encoding="utf-8"))
     assert ledger["summary"]["snapshot_sha256"] == snapshot["snapshot_sha256"]
-    ring = {hashlib.sha256(schluessel["mensch"].read_bytes()).hexdigest(): schluessel["mensch"].read_bytes()}
     from rechner_pipeline.models.ordnungslinie import lade_linie
     from tests.freigabe_testschluessel import VORSTANDRING
+
+    # Mit dem Schluessel des Vorstands: Der Leser liest den Fallauftrag, den
+    # A-B2 nennt (ADR-026, Nachtrag Pruefrunde I).
+    ring = {hashlib.sha256(schluessel["mensch"].read_bytes()).hexdigest(): schluessel["mensch"].read_bytes(),
+            **VORSTANDRING}
 
     daten, _, verifiziert = ueb.lies_abnahme_snapshot(
         fall, "A-B2", snapshot["snapshot_sha256"], schluesselring=ring,
@@ -1215,15 +1225,22 @@ def test_a_b2_gruendet_nicht_auf_einer_am4_unter_abgeloestem_auftrag(gatefall):
     Mutationsprobe: im A-B2-Zweig die Anmeldung von A-M4 und A-M1 entfernen
     -> A-B2 angenommen -> rot."""
     from rechner_pipeline.gates import gate_entscheid
-    from tests.zeichnung_fixture import VORSTAND_SCHLUESSEL_DATEI, fallauftrag_zeichnen
+    from tests.zeichnung_fixture import (
+        VORSTAND_SCHLUESSEL_DATEI,
+        fallauftrag_zeichnen,
+        mandat_datei,
+    )
 
     fall, am4, _, schluessel, testkey, ordnung = gatefall
+    # Der Rueckzug mit dem Schluessel des Vorstands ist seit Pruefrunde I eine
+    # GEZEICHNETE Ablehnung; der simulierte Vorstand handelt unter seinem Mandat.
     zurueck = gate_entscheid.main([
         "--fall", str(fall), "--gate", "A-M6", "--entscheid", "abgelehnt",
         "--entscheider", "vorstand", "--begruendung", "Auftrag zurueckgezogen",
         "--rolle", "mensch/vorstand", "--repo-root", str(REPO_ROOT),
         "--zeichnungsordnung", str(ordnung), "--linie", str(fall.parent / "linie"),
-        "--freigabe-schluessel", str(fall.parent / VORSTAND_SCHLUESSEL_DATEI)])
+        "--freigabe-schluessel", str(fall.parent / VORSTAND_SCHLUESSEL_DATEI),
+        "--mandat", str(mandat_datei(fall))])
     assert zurueck.exit_code == 0, zurueck.errors
     fallauftrag_zeichnen(fall, ordnung_pfad=Path(ordnung))
     ergebnis = _ab2(fall, schluessel=schluessel["mensch"], testkey=testkey, ordnung=ordnung)

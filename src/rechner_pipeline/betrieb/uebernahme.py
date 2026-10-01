@@ -52,7 +52,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 import pandas as pd
 
 from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
-from rechner_pipeline.models.zeichnung import ZEICHNENDE_KLASSEN
+from rechner_pipeline.models.zeichnung import AUFTRAG_GATE, ZEICHNENDE_KLASSEN
 from rechner_pipeline.models.schemas import P9Snapshot, p9_semantik_fehler, p9_snapshot_sha256
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.manifest import sha256_bytes
@@ -554,6 +554,13 @@ _ABNAHME = {
     # A-B3 liest nicht die Registrierung, sondern die Bindung des
     # Anfangsbestands (``betrieb.anfangsbestand binden``, ADR-025) — ueber
     # denselben einen Leser, im Linienbereich statt im Fall.
+    # A-M6 liest der Betrieb nicht fuer sich, sondern als den Auftrag, den
+    # A-M4, A-M1 und A-B2 signiert nennen (ADR-026, Nachtrag Pruefrunde I).
+    "A-M6": ("Fallauftrag",
+             "der Vorstand beauftragt den Fall (neu) — Vorlage mit python -m "
+             "rechner_pipeline.gates.fall_belegen auftrag, Zeichnung A-M6 —, dann A-M1, "
+             "A-M4, Zugangsprobe und A-B2 unter dem geltenden Auftrag neu zeichnen und "
+             "registrieren"),
     "A-B3": ("Abnahme des Anfangsbestands",
              "belegen (python -m rechner_pipeline.betrieb.anfangsbestand belegen), A-B3 "
              "im Linienbereich zeichnen (python -m rechner_pipeline.gates.gate_entscheid "
@@ -652,6 +659,20 @@ def lies_abnahme_snapshot(
     fehler = P9Snapshot.validate_payload(daten)
     if fehler:
         raise UebernahmeError(f"{pfad.name}: Snapshot verletzt sein Schema: " + "; ".join(fehler[:3]))
+    # JEDER Snapshot, auf dem der Betrieb gruendet, traegt das aktuelle Schema
+    # (ADR-026, Folgen; Nachtrag Pruefrunde I, I08) — an DIESER einen
+    # Lesestelle, durch die A-M4, A-M1, A-B2, A-B3 und der Fallauftrag gehen.
+    # Vorher hielt es nur die Registrierung fuer A-M4: Eine A-B2 nach Schema 9
+    # (ohne Fallauftrag) trug den Eintritt. Lesbar bleiben alte Schemata fuer
+    # die Anzeige (Seite), gruenden tut auf ihnen nichts.
+    from rechner_pipeline.models.schemas import P9_SNAPSHOT_SCHEMA_VERSION
+
+    if daten.get("schema_version") != P9_SNAPSHOT_SCHEMA_VERSION:
+        raise UebernahmeError(
+            f"{pfad.name}: {abnahme} nach Schema {daten.get('schema_version')!r} — der Betrieb "
+            f"gruendet nur auf Snapshots des aktuellen Schemas ({P9_SNAPSHOT_SCHEMA_VERSION}: "
+            "Zeichnung mit Schluesselklasse unter der Linie, Fallauftrag); den Fall unter dem "
+            "aktuellen Gate neu beauftragen und neu zeichnen (ADR-026)")
     if daten.get("snapshot_sha256") != p9_snapshot_sha256(daten) or daten["snapshot_sha256"] != snapshot_sha256:
         raise UebernahmeError(
             f"{pfad.name}: Selbstadressierung verletzt — Inhalt, behaupteter Hash und "
@@ -718,6 +739,24 @@ def lies_abnahme_snapshot(
     # (Entscheid 2026-10-01). Nach der Signatur — eine Rolle aus einem
     # Fingerabdruck, dessen Signatur nicht stimmt, sagte nichts.
     zeichnende_rolle(daten, gate, ordnung, pfad.name, ordnungslinie=ordnungslinie)
+    # Der vierte Zeuge: der Fallauftrag, den die Abnahme signiert nennt
+    # (ADR-026, Nachtrag Pruefrunde I, I07). Er muss die GELTENDE, angenommene
+    # Spitze der A-M6-Kette des Falls sein, echt signiert und von einer Rolle
+    # gezeichnet, die unter der Linie des Betriebs A-M6 zeichnen darf —
+    # dieselbe Lesung wie fuer jede Abnahme hier (Gueltigkeit, nicht nur
+    # Echtheit). Damit fallen beim Betrieb der Rueckzug des Auftrags nach der
+    # Zugangsabnahme, ein neuer Auftrag und "verfallen" auf der Wurzel wie im
+    # Gate. Abnahmen der Linie (A-B3) tragen keinen Auftrag.
+    auftrag = daten.get("fallauftrag")
+    if gate != AUFTRAG_GATE and auftrag is not None:
+        try:
+            lies_abnahme_snapshot(fall, AUFTRAG_GATE, str(auftrag), schluesselring=schluesselring,
+                                  ordnung=ordnung, ordnungslinie=ordnungslinie)
+        except UebernahmeError as exc:
+            raise UebernahmeError(
+                f"{pfad.name}: die {abnahme} steht auf dem Fallauftrag {str(auftrag)[:16]}…, und "
+                f"der traegt nicht (mehr): {exc} — ein Zugang steht nur auf Abnahmen unter dem "
+                "geltenden Auftrag (ADR-026). Ausweg: " + _ABNAHME[AUFTRAG_GATE][1]) from exc
     return daten, pfad.name, verifiziert
 
 
@@ -1866,16 +1905,9 @@ def registrierung_vorbedingungen(
         fall, snapshot_sha256, schluesselring=ring, ordnung=ordnung,
         ordnungslinie=ordnungslinie)
     # Zeichnungsschicht zu Ende (Entscheid 2026-09-22): Registriert wird
-    # nur ein Snapshot des aktuellen Schemas — mit Schluesselklasse und
-    # Rolle aus der Zeichnungsordnung. Ein Altsnapshot (Schema 6) traegt
-    # beides nicht; lesen laesst er sich weiter (Seite), eintreten nicht.
-    from rechner_pipeline.models.schemas import P9_SNAPSHOT_SCHEMA_VERSION
-    if snapshot.get("schema_version") != P9_SNAPSHOT_SCHEMA_VERSION:
-        raise UebernahmeError(
-            f"{snapshot_name}: Schema {snapshot.get('schema_version')!r} — ein "
-            f"Eingang braucht eine Zeichnung mit Schluesselklasse (Schema "
-            f"{P9_SNAPSHOT_SCHEMA_VERSION}); den Fall neu zeichnen"
-        )
+    # nur ein Snapshot des aktuellen Schemas — das haelt seit Pruefrunde I
+    # (I08) der eine Leser (lies_abnahme_snapshot) fuer JEDE Abnahme, auf der
+    # der Betrieb gruendet, nicht mehr diese Stelle fuer A-M4 allein.
     zeichnung = _zeichnung_aus_daten(snapshot, snapshot_name, verifiziert=verifiziert)
     # Die Zugangsabnahme A-B2 (ADR-022, Entscheid des Maintainers
     # 2026-09-30): Ohne sie wird nichts registriert. Geprueft wird der

@@ -174,6 +174,7 @@ from rechner_pipeline.models.zeichnung import (
     lade_zeichnungsordnung as _models_lade_zeichnungsordnung,
     zeichnungsrolle as _models_zeichnungsrolle,
     gueltige_rollenkennung,
+    rolle_darf_gate,
     zeichnende_rolle_fehler,
     zeichnung_fuer,
 )
@@ -2062,6 +2063,31 @@ def fallauftrag_pruefen(
     linie_meldung = _linie_des_auftrags_fehler(spitze, linie_pfad)
     if linie_meldung:
         return None, linie_meldung
+    # Die Trennung der Operatoren gilt zu JEDEM Zeitpunkt, an dem im Fall
+    # gezeichnet wird, nicht nur beim Auftrag (ADR-026, Abschnitt 2; Nachtrag
+    # Pruefrunde I, I09): Gibt ein spaeteres Glied den Schluessel der
+    # Programmleitung einer Rolle der Ordnung, zeichnete ein Schluessel im
+    # selben Fall fachlich ab und braeche als Programmleitung ab. Gehalten
+    # gegen die Ordnung der SPITZE der Linie dieses Aufrufs — fuer jede Annahme
+    # des Falls, den Abbruch eingeschlossen; damit auch "der zeichnende
+    # Schluessel ist nicht der der Programmleitung" (er gehoerte sonst einer
+    # Rolle der Ordnung).
+    pl_fp = spitze["auftrag"]["programmleitung"]["schluessel_sha256"]
+    spitzen_ordnung = _ordnungslinie.ordnung_aus(linie[-1]) if linie else ordnung
+    besetzt = {e.get("schluessel_sha256"): r
+               for r, e in ((spitzen_ordnung or {}).get("rollen") or {}).items()}
+    if pl_fp in besetzt:
+        glied = f"Glied {linie[-1]['nummer']}" if linie else "die Ordnung dieses Aufrufs"
+        return None, (
+            f"der Schluessel der Programmleitung des geltenden Fallauftrags "
+            f"{spitze['snapshot_sha256'][:16]}… ({pl_fp[:16]}…) gehoert unter der Spitze der "
+            f"Linie ({glied}) der Rolle {besetzt[pl_fp]!r} — ein Schluessel zeichnete im selben "
+            "Fall fachlich ab und braeche als Programmleitung ab; die Trennung der Operatoren "
+            "waere nur behauptet (ADR-026, Abschnitt 2). Ausweg: den Fall neu beauftragen mit "
+            "einem eigenen Schluessel der Programmleitung, der in keiner Ordnung steht (python "
+            "-m rechner_pipeline.gates.fall_belegen auftrag --programmleitung-schluessel "
+            "<neu> ..., dann zeichnet der Vorstand A-M6), oder der Vorstand gibt der Rolle mit "
+            "einem neuen Glied einen eigenen Schluessel")
     geltend = spitze["snapshot_sha256"]
     abgeloest = [
         f"{gate} {str(snap.get('snapshot_sha256'))[:16]}… steht auf "
@@ -2120,6 +2146,7 @@ def _linie_des_auftrags_fehler(spitze: Mapping[str, object], linie_pfad: Path) -
 
 def _lebenslauf_vorlage(
     gate: str, fall: Path, *, ordnung: Optional[dict], linie_pfad: Optional[Path],
+    linie: Optional[list],
     systemstand: Mapping[str, str],
     schluesselring: Mapping[str, bytes],
     eingang_befund: List[str],
@@ -2212,8 +2239,57 @@ def _lebenslauf_vorlage(
     elif len(am4_spitzen) == 1 and am4[am4_spitzen[0]][1].get("entscheid") == "angenommen":
         fehler.append("die Migration ist abgenommen (geltende A-M4-Annahme "
                       f"{am4_spitzen[0][:16]}…) — ein Abbruch danach widerriefe die Abnahme. "
-                      "Ausweg: A-M4 ablehnen (neue Spitze der Kette), dann abbrechen")
+                      f"Ausweg: {_AUSWEG_WIDERRUF_AM4}, dann abbrechen")
+    elif any(daten.get("entscheid") == "angenommen" for _, daten in am4.values()):
+        # Nach einer Annahme gibt nur ein GEZEICHNETER Widerruf den Abbruch frei
+        # (ADR-026, Nachtrag Pruefrunde I): Eine Ablehnung ist unsigniert
+        # moeglich (ADR-008, Punkt 6) — als Datei in entscheide/ hingelegt oder
+        # von einem Agenten gezeichnet, schaltete sie sonst die Sperre ab.
+        widerruf = gezeichneter_widerruf_fehler(
+            am4[am4_spitzen[0]][1], "A-M4", ordnung=ordnung, linie=linie)
+        if widerruf is not None:
+            fehler.append(
+                f"die Migrationsabnahme ist nicht gezeichnet widerrufen — die Spitze der "
+                f"A-M4-Kette (A-M4-{am4_spitzen[0][:16]}…) {widerruf}; nach einer A-M4-Annahme "
+                "gibt nur eine Ablehnung den Abbruch frei, die eine Rolle mit A-M4 mit ihrem "
+                f"Schluessel gezeichnet hat. Ausweg: {_AUSWEG_WIDERRUF_AM4}, dann abbrechen")
     return (None, None, fehler) if fehler else (beleg, gelesen.sha256, [])
+
+
+#: Der Ausweg, wenn der Abbruch an einer geltenden oder nur unsigniert
+#: widerrufenen Migrationsabnahme scheitert.
+_AUSWEG_WIDERRUF_AM4 = (
+    "das Aktuariat lehnt A-M4 mit seinem Schluessel ab (gate_entscheid --gate A-M4 "
+    "--entscheid abgelehnt --rolle mensch/aktuariat --zeichnungsordnung <ordnung> "
+    "--freigabe-schluessel <vorstand.key> --freigabe-schluessel <aktuariat.key> ...)")
+
+
+def gezeichneter_widerruf_fehler(
+    spitze: Mapping[str, object], gate: str, *, ordnung: Optional[dict],
+    linie: Optional[list],
+) -> Optional[str]:
+    """Ist ``spitze`` ein gezeichneter Widerruf einer ``gate``-Annahme?
+    (None = ja; sonst, woran es fehlt.)
+
+    Die EINE Regel fuer jeden Leser, dem eine Ablehnung als Spitze etwas
+    FREIGIBT (ADR-026, Nachtrag Pruefrunde I; gemessen: heute nur der Abbruch
+    nach A-M4). Verlangt werden eine Ablehnung, die eine Freigabe traegt —
+    ihre Signatur hat der Kettenleser ueber den Ring geprueft
+    (``models.freigabe.pruefe_freigabe`` prueft jede getragene Freigabe) —,
+    und eine zeichnende Rolle, die unter dem gepinnten Glied der Linie
+    ``gate`` zeichnen darf: dieselbe Rollenregel wie fuer jede Annahme
+    (``models.zeichnung.zeichnende_rolle_fehler``, samt Abloesung durch
+    spaetere Glieder). Sperren durch eine Ablehnung bleibt ohne Signatur
+    moeglich; das ist die sichere Richtung."""
+    if spitze.get("entscheid") != "abgelehnt":
+        return "ist keine Ablehnung"
+    if not isinstance(spitze.get("freigabe"), dict):
+        return (f"ist eine unsignierte Ablehnung (Rolle {spitze.get('rolle')!r}, ohne "
+                "Freigabe) — sie kann von jedem stammen, der entscheide/ beschreiben kann")
+    _, zf = zeichnende_rolle_fehler(dict(spitze), gate, ordnung, linie=linie)
+    if zf is not None:
+        return f"ist gezeichnet, aber nicht von einer berechtigten Rolle: {zf}"
+    return None
 
 
 def _ring_luecken(bereich: Path, gate: str, schluesselring: Mapping[str, bytes]) -> List[str]:
@@ -2225,8 +2301,7 @@ def _ring_luecken(bereich: Path, gate: str, schluesselring: Mapping[str, bytes])
     for sha, daten in sorted(kette.items()):
         freigabe = daten.get("freigabe") or {}
         fp = freigabe.get("schluessel_sha256") if isinstance(freigabe, dict) else None
-        if daten.get("entscheid") != "angenommen" or not isinstance(fp, str) \
-                or fp in schluesselring:
+        if not isinstance(fp, str) or fp in schluesselring:
             continue
         rolle = (daten.get("zeichnung") or {}).get("rolle") or daten.get("rolle")
         eintrag = f"die Rolle {rolle} (Schluessel {fp[:16]}…, {gate}-{sha[:16]}…)"
@@ -2571,8 +2646,23 @@ def main(argv: Optional[List[str]] = None):
     # "Annahme" ganz ohne Freigabeschluessel: Sie entsteht nicht (Sperre
     # 'freigabe' vor dem Schreiben, unten mit Waechter), die Linie dient nur
     # den Meldungen davor, die ihre Reihenfolge behalten.
+    # Eine Ablehnung mit dem Schluessel einer Rolle, die das Gate zeichnen
+    # darf, wird GEZEICHNET (ADR-026, Nachtrag Pruefrunde I): Nur ein
+    # gezeichneter Widerruf hebt eine Annahme fuer einen Leser auf, der danach
+    # etwas freigibt (den Abbruch nach A-M4). Eine Ablehnung ohne Schluessel
+    # oder ohne Ordnung bleibt unsigniert und in ihrer Gestalt wie bisher
+    # (ADR-008, Punkt 6: ein Agent darf ablehnen).
+    ablehnung_gezeichnet_von: Optional[str] = None
+    if (args.entscheid == "abgelehnt" and args.freigabe_schluessel
+            and zeichnungsordnung is not None and args.gate not in FALLROLLEN_GATES):
+        _, _, ablehnender = _lade_freigabe_schluessel(args.freigabe_schluessel, fall)
+        kandidat = (_zeichnungsrolle(zeichnungsordnung, ablehnender)
+                    if ablehnender is not None else None)
+        if kandidat is not None and rolle_darf_gate(zeichnungsordnung, kandidat, args.gate):
+            ablehnung_gezeichnet_von = kandidat
+    gezeichnet = args.entscheid == "angenommen" or ablehnung_gezeichnet_von is not None
     linie_geprueft = False
-    if args.entscheid == "angenommen" and args.freigabe_schluessel:
+    if gezeichnet and args.freigabe_schluessel:
         linien_ring, _, _ = _lade_freigabe_schluessel(args.freigabe_schluessel, fall)
         ordnungsglieder, linie_fehler = _ordnungslinie.lade_linie(linie_pfad, ring=linien_ring)
         linie_geprueft = True
@@ -2582,7 +2672,7 @@ def main(argv: Optional[List[str]] = None):
     if linie_fehler:
         return _sperre("ordnungslinie", "Entscheid verweigert: die Ordnungslinie ist "
                        "verletzt: " + "; ".join(linie_fehler[:4]))
-    if not ordnungsglieder and args.entscheid == "angenommen":
+    if not ordnungsglieder and gezeichnet:
         return _sperre(
             "ordnungslinie",
             "Annahme verweigert: die Linie hat noch keine Ordnungslinie — zuerst "
@@ -2635,7 +2725,7 @@ def main(argv: Optional[List[str]] = None):
                            "ungueltig: " + "; ".join(sf[:5]))
         lebenslauf_inhalt, vorlage_sha, vorlage_fehler = _lebenslauf_vorlage(
             args.gate, fall, ordnung=zeichnungsordnung, linie_pfad=linie_pfad,
-            systemstand=entscheid_systemstand,
+            linie=ordnungsglieder, systemstand=entscheid_systemstand,
             schluesselring=schluesselring, eingang_befund=eingangs_fehler)
         if vorlage_fehler:
             return _sperre("vorbedingung", f"Annahme verweigert: {args.gate} braucht seine "
@@ -3640,7 +3730,10 @@ def main(argv: Optional[List[str]] = None):
     # ein Aufruf unter anderer Ordnung, Klasse oder anderem Mandat ist kein
     # identischer Entscheid.
     zeichnung: Optional[Dict[str, str]] = None
-    if args.entscheid == "angenommen":
+    # Gezeichnet wird jede Annahme und jede Ablehnung mit dem Schluessel einer
+    # berechtigten Rolle (ADR-026, Nachtrag Pruefrunde I) — mit denselben
+    # Sperren der Rollenbindung (Spitze der Linie, Klasse, Mandat).
+    if gezeichnet:
         if aktiver_schluessel is None:
             return _sperre(
                 "freigabe",
@@ -3672,7 +3765,9 @@ def main(argv: Optional[List[str]] = None):
             if spitze_glied["ordnung_sha256"] != zeichnungsordnung_sha:
                 return _sperre(
                     "ordnungslinie",
-                    "Annahme verweigert: die Zeichnungsordnung dieses Aufrufs "
+                    ("Annahme verweigert" if args.entscheid == "angenommen" else
+                     "Gezeichnete Ablehnung verweigert")
+                    + ": die Zeichnungsordnung dieses Aufrufs "
                     f"({str(zeichnungsordnung_sha)[:16]}) ist nicht die Spitze der "
                     f"Ordnungslinie (Glied {spitze_glied['nummer']}, "
                     f"{spitze_glied['ordnung_sha256'][:16]}) — gezeichnet wird nur unter "
@@ -3693,7 +3788,9 @@ def main(argv: Optional[List[str]] = None):
         ):
             return _sperre(
                 "mandat",
-                f"Annahme verweigert: die Rolle {zeichnung['rolle']!r} "
+                ("Annahme verweigert" if args.entscheid == "angenommen" else
+                 "Gezeichnete Ablehnung verweigert")
+                + f": die Rolle {zeichnung['rolle']!r} "
                 "ist mit einem Simulationsschluessel besetzt und handelt ohne "
                 "Mandat — --mandat <datei> ist bei Schluesselklasse simulation "
                 "Pflicht (ADR-018)",
@@ -3794,7 +3891,7 @@ def main(argv: Optional[List[str]] = None):
         "vorgaenger": vorgaenger,
         "entschieden_am": utc_now(),
     }
-    if args.entscheid == "angenommen":
+    if zeichnung is not None:
         # Die Rollenbindung steht bereits im Snapshot (ueber kern_inhalt) und
         # wird mitsigniert: Wer spaeter prueft, sieht nicht nur DASS
         # gezeichnet wurde, sondern als welche Rolle, unter welcher Ordnung
@@ -3833,7 +3930,7 @@ def main(argv: Optional[List[str]] = None):
         "system_commit": snapshot["system"]["commit"][:12],
         "system_dirty": snapshot["system"]["dirty"],
     }
-    if args.entscheid == "angenommen":
+    if "freigabe" in snapshot:
         ergebnis_summary["freigabe_schluessel_sha256"] = snapshot["freigabe"][
             "schluessel_sha256"
         ]

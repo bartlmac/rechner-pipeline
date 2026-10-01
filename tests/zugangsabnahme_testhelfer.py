@@ -114,7 +114,7 @@ def probenbeleg(
 def ab2_snapshot(
     fallname: str, *, pflichtbelege: Dict[str, list], vorgaenger: list,
     schluessel: bytes, entscheid: str = "angenommen", rolle: str = "mensch/betrieb",
-    pin: Optional[Mapping[str, str]] = None,
+    pin: Optional[Mapping[str, str]] = None, fallauftrag: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Ein gueltiger A-B2-Snapshot, wie das Gate ihn schreibt — unter dem Glied
     ``pin`` (Default: das erste Glied der Test-Linie)."""
@@ -137,7 +137,9 @@ def ab2_snapshot(
     }
     if entscheid == "angenommen":
         # Der Auftrag, auf dem die Annahme steht (ADR-026); die Signatur buergt.
-        daten["fallauftrag"] = hashlib.sha256(b"fallauftrag der Suite").hexdigest()
+        from tests.test_betrieb_uebernahme import auftrag_der_suite
+
+        daten["fallauftrag"] = fallauftrag or auftrag_der_suite(fallname)
         daten["freigabe"] = freigabe_fuer(daten, schluessel)
     daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
     return daten
@@ -178,6 +180,10 @@ def schreibe_zugangsabnahme(
     pfad.write_bytes(roh)
     entscheide = fall / "entscheide"
     entscheide.mkdir(exist_ok=True)
+    # Der Auftrag, den A-B2 nennt, liegt im Fall (Pruefrunde I, I07).
+    from tests.test_betrieb_uebernahme import lege_auftrag
+
+    auftrag = lege_auftrag(fall)
     vorher = [json.loads(p.read_text(encoding="utf-8"))["snapshot_sha256"]
               for p in sorted(entscheide.glob("A-B2-*.json"))]
     daten = ab2_snapshot(fallname, pflichtbelege={
@@ -185,7 +191,7 @@ def schreibe_zugangsabnahme(
         "am4_snapshot": [am4_snapshot_sha256],
         "eingang": [hashlib.sha256(eingang_roh).hexdigest()],
     }, vorgaenger=vorher, schluessel=BETRIEB_FREIGABEKEY, rolle=rolle,
-       pin=_pin_der_spitze(zeichner))
+       pin=_pin_der_spitze(zeichner), fallauftrag=auftrag)
     (entscheide / f"A-B2-{daten['snapshot_sha256']}.json").write_text(
         json.dumps(daten, ensure_ascii=False), encoding="utf-8")
     return str(daten["snapshot_sha256"])

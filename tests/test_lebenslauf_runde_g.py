@@ -298,12 +298,17 @@ def test_g15_der_abbruch_nach_abgelehnter_am4_nennt_die_rolle_deren_schluessel_f
     aktuar = tmp_path / "aktuar.key"
     aktuar.write_bytes(TESTKEY)
     aktuar.chmod(0o600)
+    # Seit Pruefrunde I gibt nur eine GEZEICHNETE Ablehnung den Abbruch frei:
+    # das Aktuariat der Spitze mit seinem Schluessel (zuletzt im Ring) unter der
+    # Ordnung der Spitze; der Schluessel der Suite-A-M4 liest die Kette.
     abgelehnt = gate_entscheid.main([
         "--fall", str(fall), "--gate", "A-M4", "--entscheid", "abgelehnt",
         "--entscheider", "aktuariat", "--begruendung", "Abnahme zurueckgenommen",
         "--rolle", AKTUARIAT_ROLLE, "--repo-root", str(REPO_ROOT),
-        "--linie", str(fall.parent / "linie"), "--freigabe-schluessel", str(aktuar)])
+        "--freigabe-schluessel", str(aktuar), *annahme_args(fall)])
     assert abgelehnt.exit_code == 0, abgelehnt.errors
+    assert [("freigabe" in s) for s in _snapshots(fall, "A-M4")
+            if s["entscheid"] == "abgelehnt"] == [True]
     assert fall_belegen.main([
         "abbruch", "--fall", str(fall), "--repo-root", str(REPO_ROOT),
         "--grund", "g", "--bestand", "b", "--uebergabe", "u"]).exit_code == 0

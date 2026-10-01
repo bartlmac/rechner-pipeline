@@ -153,6 +153,8 @@ GRUENDENDE_LESER = Counter({
     ("gates/gate_entscheid.py", "standabnahme_pruefen", True): 2,
     ("gates/gate_entscheid.py", "fallauftrag_pruefen", True): 1,
     ("gates/gate_entscheid.py", "main", True): 3,
+    # Der gezeichnete Widerruf vor dem Abbruch (ADR-026, Nachtrag Pruefrunde I).
+    ("gates/gate_entscheid.py", "gezeichneter_widerruf_fehler", True): 1,
 })
 
 

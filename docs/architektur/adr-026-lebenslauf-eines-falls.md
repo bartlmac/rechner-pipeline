@@ -150,7 +150,8 @@ Stand er endet (`stand`: Eingang und Systemstand). Das Gate rechnet
   dem Schluessel, den er ihr gibt. Ohne Auftrag kein Abbruch: Abbrechen kann
   nur, wer den Fall fuehrt, und gefuehrt wird ein Fall nur mit Auftrag.
 * Nach einer geltenden A-M4-Annahme verweigert: Ein Abbruch danach widerriefe
-  die Abnahme. Ausweg: A-M4 ablehnen (neue Spitze), dann abbrechen. Damit
+  die Abnahme. Ausweg: A-M4 GEZEICHNET ablehnen (das Aktuariat mit seinem
+  Schluessel, neue Spitze; Nachtrag Pruefrunde I), dann abbrechen. Damit
   registriert der Betrieb aus einem abgebrochenen Fall nie etwas — die
   Registrierung verlangt die geltende angenommene A-M4.
 * **Danach ist im Fall nichts mehr zeichenbar**, benannt verweigert: keine
@@ -251,10 +252,14 @@ Abbruchkriterium fuehrt zur VORLAGE des Fallabbruchs fuer
   beauftragen. Die Pruefung schliesst den Faelscher aus, der `linie/ordnung/`
   beschreiben kann, ohne den Schluessel zu halten; gegen einen Halter des
   Schluessels schuetzt sie nicht.
-* **Betrieb:** Er rechnet den Auftrag nicht nach. Er gruendet auf A-M4 und
-  A-B2, die ohne geltenden Auftrag nicht zeichenbar sind und ihn signiert
-  nennen; einen abgebrochenen Fall registriert er nicht, weil der Abbruch
-  nach einer geltenden A-M4 verweigert wird.
+* **Betrieb:** Er gruendet auf A-M4 und A-B2, die ohne geltenden Auftrag
+  nicht zeichenbar sind und ihn signiert nennen, und liest seit dem Nachtrag
+  Pruefrunde I (I07) diesen Auftrag selbst: Er muss die geltende, angenommene
+  Spitze der A-M6-Kette sein, echt signiert, von einer Rolle mit A-M6 unter
+  der Linie des Betriebs. Die Bindung des Auftrags an die Lieferung rechnet er
+  nicht nach (das Gate hat sie beim Zeichnen gehalten). Einen abgebrochenen
+  Fall registriert er nicht, weil der Abbruch nach einer geltenden A-M4
+  verweigert wird.
 * **Tests:** Der gemeinsame Weg (`tests/zeichnung_fixture.annahme_args`)
   beauftragt jeden Fall, bevor er zeichnet, mit eigenen Schluesseln fuer
   Vorstand und Programmleitung; Tests mit eigenem Argumentbau holen den
@@ -288,7 +293,12 @@ Bedienfolge Schritt 9); die Programmleitung hat einen eigenen Schluessel
 4. **Danach** traegt jede Zeichnung im Fall den Schluessel des Vorstands im
    Ring (`--freigabe-schluessel <vorstand.key>` vor dem zeichnenden).
    Wird eine Quelle nachgereicht, gilt der Auftrag nicht mehr: Schritte 1 bis 3
-   wiederholen.
+   wiederholen. Gibt ein spaeteres Glied der Linie den Schluessel der
+   Programmleitung einer Rolle der Ordnung, verweigert jede Annahme im Fall
+   (Code `fallauftrag`): Schritte 1 bis 3 mit einem neuen eigenen Schluessel
+   der Programmleitung (Nachtrag Pruefrunde I). Der Betrieb registriert nur
+   auf Abnahmen unter dem GELTENDEN Auftrag; seine Kommandos tragen deshalb
+   den Schluessel des Vorstands im Ring.
 
 ## Bedienfolge: einen Fall abbrechen
 
@@ -316,8 +326,17 @@ Bedienfolge Schritt 9); die Programmleitung hat einen eigenen Schluessel
    Wie beim Auftrag: Code `sicht` heisst Vorlage neu erzeugen, ansehen,
    zeichnen.
 4. **Danach** ist im Fall nichts mehr zeichenbar. Ist die Migration schon
-   abgenommen, zuerst A-M4 ablehnen (das Aktuariat, mit seinem Schluessel),
-   dann Schritt 3 mit dem Schluessel des Aktuariats im Ring. `entscheide/`
+   abgenommen, zuerst A-M4 GEZEICHNET ablehnen — das Aktuariat, mit seinem
+   Schluessel zuletzt im Ring und der Ordnung der Spitze (Nachtrag Pruefrunde
+   I): `python -m rechner_pipeline.gates.gate_entscheid --fall <fall> --linie
+   linie --gate A-M4 --entscheid abgelehnt --rolle mensch/aktuariat
+   --entscheider "<Name>" --begruendung "..." --repo-root .
+   --zeichnungsordnung <ordnung> --freigabe-schluessel <vorstand.key>
+   --freigabe-schluessel <aktuariat.key> [--mandat <mandat>]` — dann
+   Schritte 1 bis 3 mit dem Schluessel des Aktuariats im Ring. Eine Ablehnung
+   ohne Schluessel oder ohne Ordnung (etwa die eines Agenten) bleibt
+   unsigniert und gibt den Abbruch nicht frei; das Gate verweigert mit Code
+   `vorbedingung` und nennt diesen Ausweg. `entscheide/`
    wird nie bereinigt: Ohne die A-M5-Datei traegt der Fall keine Spur des
    Abbruchs (Nachtrag Runde G, e).
 
@@ -364,11 +383,12 @@ den Pin von A-M4) und A-B2. Er rechnet den Auftrag weiter nicht nach, und das
 genuegt: A-B2 ist ohne geltenden Auftrag nicht zeichenbar und haelt jetzt den
 Auftrag von A-M4 und A-M1 gegen den geltenden; A-M4 haelt ihn fuer jede seiner
 Vorbedingungen. Wer registriert, gruendet damit transitiv auf Annahmen unter
-dem Auftrag, unter dem A-B2 gezeichnet wurde. Was das NICHT abdeckt, benannt:
-Zieht der Vorstand den Auftrag erst NACH der Zugangsabnahme zurueck, bleibt
-A-B2 gezeichnet, und der Betrieb registriert (nicht gebaut; eine Ablehnung von
-A-M6 nach einer geltenden A-M4 zu verweigern, waere das Gegenstueck zur Regel
-fuer den Abbruch in Abschnitt 5 und ist offen).
+dem Auftrag, unter dem A-B2 gezeichnet wurde. Was das NICHT abdeckte, benannt:
+Zog der Vorstand den Auftrag erst NACH der Zugangsabnahme zurueck, blieb
+A-B2 gezeichnet, und der Betrieb registrierte. *Berichtigt (Pruefrunde I,
+I07):* Der Betrieb liest jetzt den Auftrag, den A-M4, A-M1 und A-B2 nennen,
+auf Gueltigkeit; ein Rueckzug oder ein neuer Auftrag nach A-B2 verweigert die
+Registrierung (Nachtrag Pruefrunde I, b).
 
 **Verworfen: die Pruefung je Gate.** Jeder Leser haette sein eigenes
 `spitze["fallauftrag"] == ...` getragen; der naechste Leser vergaesse es, und
@@ -436,7 +456,10 @@ faellt mit einem asymmetrischen Verfahren (siehe "Grenze (HMAC)").
 **Verworfen: die A-M4-Kette strukturell lesen.** Ohne Signatur gaebe eine
 untergeschobene Ablehnung (eine Datei in `entscheide/`) den Abbruch nach der
 Abnahme frei — die Sperre "nach einer geltenden A-M4 kein Abbruch" waere per
-Dateiablage abschaltbar.
+Dateiablage abschaltbar. *Berichtigt (Pruefrunde I, I06):* Das Lesen mit
+Signatur allein leistete das nicht, denn Ablehnungen waren unsigniert
+(ADR-008, Punkt 6); geschlossen ist es erst mit dem gezeichneten Widerruf
+(Nachtrag Pruefrunde I, a).
 
 **Die Klasse, gemessen** (`gates.gate_entscheid`, Leser mit Signatur ueber
 den Ring dieses Aufrufs; "eigene Kette" = die Kette des Gates selbst, die
@@ -453,7 +476,9 @@ jeder Aufruf liest, auch eine Ablehnung):
 | Linienbereich (A-K2, A-O1, A-T1, A-B3) | eigene Kette | wer frueher in der Linie gezeichnet hat | ja (ADR-025) |
 
 Ausserhalb der Gates liest die Registrierung (`betrieb.uebernahme`) A-M4,
-A-M1 und A-B2 mit Signatur: Ring mit `mensch/aktuariat` und `mensch/betrieb`.
+A-M1 und A-B2 mit Signatur: Ring mit `mensch/aktuariat` und `mensch/betrieb`,
+seit Pruefrunde I (I07) immer auch mit dem Vorstand (der Fallauftrag, den die
+Abnahmen nennen).
 
 ### d) Der Abbruch geht auch bei verletztem Eingang (G16)
 
@@ -565,3 +590,204 @@ vertrauenswuerdige Zeit). **Nicht gebaut.** Schliessen wuerde es ein Anker
 ausserhalb des Falls (ein Register der Linie, das jede Abnahme und Ablehnung
 fortlaufend fuehrt, oder ein Zeitstempeldienst) — derselbe Anker, den
 Abschnitt e fuer den entfernten Abbruch nennt.
+
+## Nachtrag 2026-10-01: Pruefrunde I — der gezeichnete Widerruf, der Auftrag beim Betrieb, ein Schema, eine Trennung zu jedem Zeitpunkt
+
+Befunde der blinden Pruefrunde I (Linse "Lebenslauf-Beleg"), bestaetigt vom
+Widerleger. Je Entscheid Regel, Grund, verworfene Alternative, Grenze.
+
+### a) Nur ein gezeichneter Widerruf gibt den Abbruch nach A-M4 frei (I06)
+
+**Befund.** Eine von Hand in `entscheide/` gelegte, unsignierte A-M4-Ablehnung
+(Hash nachgefuehrt, kein Schluessel) machte sie zur Spitze der A-M4-Kette;
+die Vorlage und die Zeichnung des Abbruchs nahmen an, die abgenommene
+Migration war tot (ein Abbruch ist nicht rueckholbar). Das Lesen mit
+Signatur (Nachtrag Runde G, c) hielt das nicht: `models.freigabe.pruefe_freigabe`
+lieferte fuer jede Ablehnung keinen Befund, und Ablehnungen sind nach
+ADR-008, Punkt 6, unsigniert. Ebenso gab die unsignierte Ablehnung eines
+Agenten ueber das Gate den Abbruch frei.
+
+**Invariante.** Eine ANGENOMMENE Migrationsabnahme verliert ihre Geltung fuer
+den Abbruch nur durch einen Widerruf, den eine fuer A-M4 berechtigte Rolle
+GEZEICHNET hat.
+
+**Regel.** Ablehnungen bleiben im Allgemeinen unsigniert (ein Agent darf
+ablehnen). Aber eine Ablehnung mit dem Schluessel einer Rolle, die das Gate
+zeichnen darf (`--freigabe-schluessel`, zuletzt im Ring, und
+`--zeichnungsordnung`), ist GEZEICHNET: Das Gate schreibt `zeichnung` (unter
+dem Glied der Spitze, mit Klasse und bei Simulation dem Mandat) und
+`freigabe` in den Snapshot, mit denselben Sperren der Rollenbindung wie bei
+einer Annahme. Jede getragene Freigabe pruefen die Kettenleser ueber den Ring
+(`pruefe_freigabe` prueft jetzt jede Annahme UND jede Ablehnung, die eine
+Freigabe traegt). Die eine Regel `gates.gate_entscheid.gezeichneter_widerruf_fehler`:
+Nach einer Annahme in der A-M4-Kette gibt eine Ablehnung als Spitze den
+Abbruch nur frei, wenn sie eine Freigabe traegt und ihre Rolle unter dem
+gepinnten Glied der Linie A-M4 zeichnen darf (`models.zeichnung.zeichnende_rolle_fehler`,
+samt Abloesung durch spaetere Glieder). Sonst verweigert die Vorlage mit
+Code `vorbedingung` und nennt den Ausweg: das Aktuariat lehnt A-M4 mit seinem
+Schluessel ab (Bedienfolge "abbrechen", Schritt 4).
+
+**Die Klasse, gemessen.** Gefragt war: Wo hebt eine Ablehnung als Spitze die
+Wirkung einer signierten Annahme fuer einen NACHFOLGENDEN Leser auf, sodass
+etwas FREIGEGEBEN wird? Gelesen wurden alle Kettenleser (`gates.gate_entscheid`:
+neun Aufrufe von `_lade_snapshot_kette`, dazu `fallauftrag_pruefen` und
+`_verweis_gilt_fehler`; `gates.stand_belegen`: `_lade_kette` dreimal und
+`geltende_spitze`; `gates.fall_belegen`: zweimal `geltende_spitze`;
+`betrieb.uebernahme._pruefe_geltende_spitze` fuer A-M4, A-M1, A-B2, A-B3 und
+jetzt A-M6; `abbruch_im_fall`).
+
+| Leser | Ablehnung als Spitze | Richtung |
+|---|---|---|
+| A-M4 (A-Q1, A-M1..A-M3, Standabnahme Weg a), A-B2 (A-M4, A-M1) | keine geltende Annahme | sperrt |
+| `fallauftrag_pruefen` (A-M6), `fall_belegen` (Auftrag fuer den Abbruch) | kein geltender Auftrag | sperrt |
+| Verweis Weg b (`_verweis_gilt_fehler`, `stand_belegen` Verweis) | die verwiesene Abnahme gilt nicht mehr | sperrt |
+| T-Box: `tbox_vokabular_fehler`, `_zuletzt_angenommen` | Ablehnungen zaehlen nicht | weder noch |
+| Betrieb: A-M4, A-M1, A-B2, A-B3, A-M6 (`_pruefe_geltende_spitze`) | der Snapshot ist nicht die Spitze | sperrt |
+| `abbruch_im_fall` (A-M5) | eine A-M5-Ablehnung sperrt nicht; eine A-M5-Annahme bleibt sperrend | weder noch |
+| **A-M5: `_lebenslauf_vorlage` (A-M4)** | **die Abnahme gilt nicht mehr** | **gibt frei** |
+
+Eine Stelle gibt frei; sie geht durch die eine Regel. Ratsche mit `==` ueber
+die Aufrufer von `gezeichneter_widerruf_fehler`, mit Positivkontrolle
+(`tests/test_lebenslauf_runde_i.py`). Sperren durch eine unsignierte
+Ablehnung bleibt: Das ist die sichere Richtung, und wer `entscheide/`
+beschreiben kann, kann den Fall ohnehin unbrauchbar machen.
+
+**Gestalt und Version.** Eine Ablehnung ohne Schluessel oder ohne Ordnung
+behaelt ihre Gestalt (kein `freigabe`, kein `zeichnung`). Neu ist eine
+Ablehnung MIT `freigabe` und `zeichnung`; das Schema laesst `freigabe` an
+einer Ablehnung zu, verlangt dann `zeichnung` und erst ab Schema 10. Kein
+neues Schema: Schema 10 und Gate 5.0.0 sind ausserhalb der Tests nie
+gezeichnet (dieselbe Begruendung wie im Nachtrag Runde G); ein Schema 11
+haette ein Schema eingefuehrt, das kein Vorgaenger je getragen hat. Ein vorher
+gruener Aufruf wird rot (Abbruch nach einer unsignierten A-M4-Ablehnung) —
+die Gate-Version bleibt aus demselben Grund 5.0.0. Gemessen vor der
+Verschaerfung: In der Suite liefen 28 Ablehnungen, 10 davon mit dem
+Schluessel einer berechtigten Rolle und Ordnung (sie sind jetzt gezeichnet);
+eine davon (A-M6, simulierter Vorstand) trug kein Mandat und wurde
+umgestellt, ebenso der Test des Abbruchs nach abgelehnter A-M4 (G15), der
+die Ablehnung jetzt gezeichnet vornimmt.
+
+**Verworfen:** *jede Ablehnung signieren.* Ein Agent haette keinen Weg mehr,
+einen Zwischenstand zu dokumentieren (ADR-008, Punkt 6). *Die Rolle der
+Ablehnung strukturell lesen* (Feld `rolle` gleich `mensch/aktuariat`) —
+das Feld schreibt, wer die Datei schreibt. *Den Abbruch nach einer A-M4
+ganz verbieten* — dann bliebe ein Fall, dessen Abnahme sich als falsch
+erweist, ohne Ende. *Nur die Signatur der Ablehnung pruefen, nicht die
+Rolle* — dann widerriefe jeder Schluessel der Ordnung die Abnahme des
+Aktuariats.
+
+**Grenze, benannt.** Die HMAC-Grenze bleibt: Wer den Schluessel des
+Aktuariats im Ring haelt (der Abbruch nach A-M4 verlangt ihn ohnehin), kann
+den Widerruf zeichnen. Der Widerruf traegt keinen Fallauftrag; dass er
+unter dem geltenden Auftrag steht, haelt der Abbruch selbst
+(`fallauftrag_pruefen`).
+
+### b) Der Betrieb liest den Auftrag, den die Abnahmen nennen (I07)
+
+**Befund.** Der Betrieb registrierte einen Zugang, dessen Fallauftrag durch
+`verfallen` auf der Wurzel gefallen war; der Produzent der Ordnungslinie
+verspricht als Folge "jede Annahme jedes Falls". Ebenso registrierte er nach
+einem Rueckzug oder einem neuen Auftrag NACH der Zugangsabnahme (im Nachtrag
+Runde G, a als offen benannt). Beides bewegt eine Entscheidung (den Eintritt
+eines Zugangs) und ist keine zulaessige Grenze.
+
+**Gemessen.** Die Schichtgrenze ist kein Hindernis: Der eine Leser
+`betrieb.uebernahme.lies_abnahme_snapshot` liest Ketten, Signaturen und die
+Rollenregel ueber `models.snapshot_kette`, `models.freigabe` und
+`models.zeichnung`; `gates` wird nicht importiert (`code_karte` befundfrei).
+
+**Regel.** Traegt eine gelesene Abnahme das Feld `fallauftrag` (A-M4, A-M1,
+A-B2 nach Schema 10), liest derselbe Leser den genannten A-M6-Snapshot mit
+derselben Pruefung wie jede Abnahme: Schema, Selbstadressierung, Fall,
+Belegrollen, GELTENDE Spitze der A-M6-Kette, angenommen, Signatur ueber den
+Ring, Rollenregel unter der Linie des Betriebs. Damit verweigern
+Registrierung, Zugangsprobe und Neuaufsetzen gleich: nach einem Rueckzug
+(Spitze ist eine Ablehnung), nach einem neuen Auftrag (der genannte ist
+nicht mehr Spitze; erst neu gezeichnete A-M4, A-M1 und A-B2 tragen), nach
+`verfallen` auf der Wurzel. Die Meldung nennt den Auftrag und den Ausweg.
+Der Ring jedes Betriebskommandos traegt dafuer den Schluessel des Vorstands.
+
+**Verworfen:** *die Grenze benennen und nicht bauen* — sie bewegte eine
+Entscheidung. *Einen zweiten Leser fuer A-M6 im Betrieb* — zwei Regeln fuer
+dieselbe Frage; der eine Leser liest sich selbst.
+
+**Grenze, benannt.** Nicht nachgerechnet wird beim Betrieb die Bindung des
+Auftrags an die Lieferung (`eingang.json`, `fall.json`) und die Identitaet
+der Linie des Auftrags; beides haelt das Gate bei jeder Annahme. Ein Zugang,
+der VOR dem Rueckzug oder vor `verfallen` registriert wurde, bleibt
+registriert: Wer ihn zuruecknimmt, entscheidet nicht dieser Leser (dieselbe
+Grenze wie bei der A-M4-Ablehnung nach der Registrierung).
+
+### c) Der Betrieb gruendet nur auf dem aktuellen Schema (I08)
+
+**Befund.** Eine Zugangsabnahme A-B2 nach Schema 9 (Gate 4.0.0, ohne
+Fallauftrag) trug den Eintritt; die Schema-Pruefung stand nur fuer A-M4 in
+der Registrierung.
+
+**Invariante und Menge.** Jeder Snapshot, auf dem der Betrieb gruendet,
+traegt das aktuelle Schema. Gemessen (AST): Jede gruendende Lesung im
+Betrieb geht durch `lies_abnahme_snapshot` — neun Aufrufstellen in
+`betrieb/` (A-M4 viermal, A-M1 zweimal, A-B2 zweimal, A-B3 einmal) und der
+Fallauftrag im Leser selbst; Ratsche mit `==` in
+`tests/test_abnahme_rolle_klasse.py`. Die Schema-Pruefung steht jetzt dort,
+genau einmal in `betrieb/` (Ratsche mit `==` und Positivkontrolle in
+`tests/test_lebenslauf_runde_i.py`); die Pruefung in der Registrierung
+entfaellt.
+
+**Verworfen:** *die Pruefung je Aufrufer* — der naechste vergaesse sie,
+genau so entstand der Fund.
+
+### d) Die Programmleitung gehoert keiner Rolle der Ordnung — zu jedem Zeitpunkt (I09)
+
+**Befund.** Die Trennung (Abschnitt 2) hielt nur die Vorlage des Auftrags.
+Gab ein spaeteres Glied den Schluessel der Programmleitung dem Aktuariat,
+zeichnete derselbe Schluessel A-Q1 als `mensch/aktuariat` und danach den
+Abbruch als Programmleitung.
+
+**Regel.** `fallauftrag_pruefen` — die Stelle, durch die jede Annahme des
+Falls geht, den Abbruch eingeschlossen — verlangt, dass der Fingerabdruck der
+Programmleitung des geltenden Auftrags unter der Ordnung der SPITZE der Linie
+dieses Aufrufs keiner Rolle gehoert. Das schliesst "der zeichnende Schluessel
+einer Annahme ist nicht der der Programmleitung" ein: Er gehoerte sonst
+einer Rolle der Ordnung. Verweigert mit Code `fallauftrag` und dem Ausweg:
+neu beauftragen mit einem eigenen Schluessel der Programmleitung, oder der
+Vorstand gibt der Rolle mit einem neuen Glied einen eigenen Schluessel.
+Gemessen vor der Verschaerfung: In 753 Annahmen der Suite gehoerte der
+Schluessel der Programmleitung nie einer Rolle; kein Testweg umgestellt.
+
+**Verworfen:** *nur den zeichnenden Schluessel vergleichen* — dann zeichnete
+die Rolle, der das Glied den Schluessel gab, mit ihm weiter, solange ein
+anderer Schluessel derselben Ordnung zeichnete; die Trennung waere nur fuer
+den Moment des Vergleichs behauptet. *Die Linie die Schluessel der
+Programmleitungen fuehren lassen* — sie fuehrt die Rollen des Hauses
+(Abschnitt 4).
+
+**Grenze, benannt.** Gehalten wird gegen die Spitze der Linie DIESES
+Aufrufs; eine aeltere Kopie der Linie bleibt die Grenze aus Nachtrag b und g.
+
+### e) Gleichzeitige Annahmen desselben Gates — gemessen, nicht gebaut
+
+Gemessen (zehn Versuche, je zwei Prozesse, die per Barriere zugleich A-Q1
+im selben Fall annehmen): In 5 von 10 Versuchen entstanden zwei Spitzen —
+beide Snapshots eingehaengt, die Kette danach mehrdeutig und fuer jeden
+Leser verletzt. In keinem Versuch endeten beide mit Exit 0: Der zweite
+Prozess endete jeweils mit Exit 50 (`gate_ledger`), weil das Aufraeumen der
+Schreibreste des einen die Tempdatei des Ledgers des anderen traf — NACHDEM
+sein Snapshot schon eingehaengt war. In den uebrigen 5 Versuchen scheiterte
+der zweite am Start des Ledgers, bevor er schrieb. Dieselbe Bauform wie bei
+den Gliedern der Ordnungslinie: Die Exklusivitaet gilt je Dateiname, und der
+Name traegt den Hash des Inhalts. `gates/` hat kein Sperrmittel (nur
+`schreibe_exklusiv`, exklusiv je Name); eine Sperre ueber Lesen der Kette und
+Schreiben des Snapshots waere ein neues Mittel. **Nicht gebaut.** Betriebsregel
+bleibt: Die Gates eines Falls laufen nacheinander.
+
+### Versionen und Testwege
+
+P9-Schema 10 und Gate-Version 5.0.0 bleiben (siehe a). Kein Produzent
+aendert seine Gestalt. Umgestellt: die Helfer der Betriebstests legen den
+Fallauftrag der Suite in den Fall (`tests/test_betrieb_uebernahme.am6_snapshot`,
+`lege_auftrag`; A-M4, A-M1 und A-B2 nennen ihn) — vorher nannten 196
+Testwege in 24 Modulen einen Auftrag, der nicht im Fall lag; dazu drei
+Fallbauer mit eigener Schreibstelle, das Neuzeichnen unter einem anderen
+Glied, drei Ringe ohne den Vorstand, der Test G15, der Rueckzug mit Mandat
+und die Meldung des Altsnapshots (Schema 6).

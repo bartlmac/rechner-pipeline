@@ -864,7 +864,24 @@ Ohne ihn verweigert das Gate und nennt die Rolle. Der Abbruch nach einer A-M4
 geht deshalb nur gemeinsam mit dem Aktuariat (ADR-026, Nachtrag Runde G).
 Danach ist im Fall nichts mehr zeichenbar; `entscheide/` wird nie bereinigt.
 Nach einer geltenden A-M4-Annahme verweigert das Gate den Abbruch; ob A-M4
-abgelehnt wird, entscheidet der Mensch.
+abgelehnt wird, entscheidet der Mensch. Den Abbruch gibt danach nur ein
+GEZEICHNETER Widerruf frei (ADR-026, Nachtrag Pruefrunde I): das Aktuariat
+lehnt mit seinem Schluessel unter der Ordnung der Spitze ab, und das Gate
+zeichnet die Ablehnung:
+
+```bash
+python -m rechner_pipeline.gates.gate_entscheid --fall faelle/<fall> --linie linie \
+    --gate A-M4 --entscheid abgelehnt --rolle mensch/aktuariat --entscheider "<Name>" \
+    --begruendung "<warum die Abnahme widerrufen wird>" --repo-root . \
+    --zeichnungsordnung <ordnung> --freigabe-schluessel <vorstand.key> \
+    --freigabe-schluessel <aktuariat.key> [--mandat <mandat>]
+```
+
+Eine Ablehnung ohne Schluessel oder ohne Ordnung (auch deine,
+`--rolle agent/programmleitung`) bleibt unsigniert und gibt den Abbruch nicht
+frei. Gibt ein Glied der Linie den Schluessel der Programmleitung einer Rolle
+der Ordnung, verweigert jede Annahme im Fall mit Code `fallauftrag`; der Fall
+wird mit einem eigenen Schluessel der Programmleitung neu beauftragt.
 
 Zieht der Vorstand den Auftrag zurueck und beauftragt neu, gelten die
 Annahmen unter dem alten Auftrag nicht mehr als Vorbedingung: A-M4 und A-B2

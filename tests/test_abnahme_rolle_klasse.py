@@ -182,8 +182,20 @@ def _unter_glied(fall: Path, pin: dict) -> None:
     am1_pfad = entscheide / f"A-M1-{am4['pflichtbelege']['am1_snapshot'][0]}.json"
     am1 = (json.loads(am1_pfad.read_text(encoding="utf-8")) if am1_pfad.is_file()
            else am1_snapshot(json.loads((fall / "fall.json").read_text())["name"]))
-    _fall_faelschen(fall, am1={"zeichnung": {**am1["zeichnung"], **pin}},
-                    am4={"zeichnung": {**am4["zeichnung"], **pin}},
+    # Der Fallauftrag, den beide nennen, unter demselben Glied (Pruefrunde I:
+    # der Betrieb liest ihn mit derselben Regel).
+    from tests.freigabe_testschluessel import VORSTANDKEY
+
+    am6_pfad = entscheide / f"A-M6-{am4['fallauftrag']}.json"
+    am6_alt = json.loads(am6_pfad.read_text(encoding="utf-8"))
+    am6 = _neu_signiert(am6_alt, VORSTANDKEY, zeichnung={**am6_alt["zeichnung"], **pin})
+    am6_pfad.unlink()
+    (entscheide / f"A-M6-{am6['snapshot_sha256']}.json").write_text(
+        json.dumps(am6, ensure_ascii=False), encoding="utf-8")
+    _fall_faelschen(fall, am1={"zeichnung": {**am1["zeichnung"], **pin},
+                               "fallauftrag": am6["snapshot_sha256"]},
+                    am4={"zeichnung": {**am4["zeichnung"], **pin},
+                         "fallauftrag": am6["snapshot_sha256"]},
                     am4_schluessel=_SCHLUESSEL_NACH_FP[am4["freigabe"]["schluessel_sha256"]])
 
 
@@ -592,10 +604,16 @@ def test_ein_einzelner_freigabeschluessel_reicht_nicht(tmp_path, betriebsschlues
     """Pruefer-Befund zur Doku: Mit getrennten Schluesseln (Aktuariat fuer
     A-M1/A-M4, mensch/betrieb fuer A-B2) braucht die Registrierung BEIDE im
     Ring — mit nur dem Aktuariatsschluessel verweigert sie am A-B2-Snapshot.
-    deploy/plv/README.md zeigt den Schalter deshalb zweifach."""
+    deploy/plv/README.md zeigt den Schalter deshalb zweifach. Der Schluessel
+    des Vorstands liegt seit Pruefrunde I immer im Ring (der Betrieb liest den
+    Fallauftrag, den die Abnahmen nennen); fehlt nur der von mensch/betrieb,
+    verweigert die Registrierung an A-B2."""
+    from tests.freigabe_testschluessel import VORSTANDKEY
+
     fall = _fall(tmp_path)
     _, registriere = _registriere(tmp_path, fall, betriebsschluessel, _ordnung_ohne(None),
-                                  schluesselring={hashlib.sha256(TESTKEY).hexdigest(): TESTKEY})
+                                  schluesselring={hashlib.sha256(k).hexdigest(): k
+                                                  for k in (TESTKEY, VORSTANDKEY)})
     with pytest.raises(ueb.UebernahmeError, match=r"A-B2-.*nicht bereitgestellten Schluessel"):
         registriere()
 
@@ -673,6 +691,9 @@ LESESTELLEN = Counter({
     # Die Bindung der Abnahme des Anfangsbestands (ADR-025): derselbe Leser,
     # im Linienbereich.
     ("betrieb/anfangsbestand.py", "binden", "A-B3"): 1,
+    # Der Fallauftrag, den A-M4, A-M1 und A-B2 signiert nennen (ADR-026,
+    # Nachtrag Pruefrunde I, I07): im Leser selbst, fuer jede Abnahme eines Falls.
+    ("betrieb/uebernahme.py", "lies_abnahme_snapshot", "A-M6"): 1,
 })
 
 LESER = ("lies_abnahme_snapshot", "lies_am4_snapshot")
@@ -695,6 +716,9 @@ def _aufrufe(quelle: str, datei: str):
                 gate = "A-M4"
             elif len(knoten.args) >= 2 and isinstance(knoten.args[1], ast.Constant):
                 gate = knoten.args[1].value
+            elif len(knoten.args) >= 2 and isinstance(knoten.args[1], ast.Name) \
+                    and knoten.args[1].id == "AUFTRAG_GATE":
+                gate = "A-M6"
             else:
                 gate = "?"
             treffer.append((datei, funktion.name, gate,
@@ -713,7 +737,7 @@ def test_ratsche_jede_lesestelle_des_betriebs_reicht_die_ordnung():
     assert [(d, f, g) for d, f, g, mit in alle if not mit] == []
     # A-B3 (ADR-025) liest der Betrieb beim Binden des Anfangsbestands; die
     # Angriffe darauf stehen in tests/test_erstabnahme_linie.py.
-    assert {g for _, _, g in LESESTELLEN} == set(GATES) | {"A-B3"} == set(ueb._ABNAHME)
+    assert {g for _, _, g in LESESTELLEN} == set(GATES) | {"A-B3", "A-M6"} == set(ueb._ABNAHME)
 
 
 def test_ratsche_der_leser_verlangt_die_ordnung_ohne_default():
@@ -754,6 +778,10 @@ REGEL_AUFRUFE = Counter({
     ("gates/gate_entscheid.py", "gegenstand.gate"): 2,
     # Jede Annahme eines Falls: der geltende Fallauftrag (ADR-026).
     ("gates/gate_entscheid.py", "AUFTRAG_GATE"): 1,
+    # Der gezeichnete Widerruf (ADR-026, Nachtrag Pruefrunde I): die Rolle der
+    # Ablehnung, die dem Abbruch nach A-M4 die Sperre nimmt
+    # (gezeichneter_widerruf_fehler, Gate-Argument des Aufrufers).
+    ("gates/gate_entscheid.py", "gate"): 1,
 })
 
 #: Die Kettenleser im Gate — je Gate-Argument. ``args.gate`` ist die EIGENE
