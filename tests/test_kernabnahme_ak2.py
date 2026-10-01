@@ -578,7 +578,8 @@ def test_die_darstellung_verlangt_jeden_entscheid_den_a_m4_verlangt():
     for scope in ("tarif", "bestand"):
         rollen = belegrollen("A-M4", scope)
         erwartet = {f"A-{r[1].upper()}{r[2]}" for r in rollen if r.endswith("_snapshot")}
-        assert set(falldaten.erwartete_entscheide(scope)) == erwartet | {"A-M4"}
+        # dazu der Fallauftrag, den jede Annahme nennt (ADR-026)
+        assert set(falldaten.erwartete_entscheide(scope)) == erwartet | {"A-M4", "A-M6"}
         assert {"A-Q1", "A-M1"} <= set(falldaten.erwartete_entscheide(scope))
         assert not {g.gate for g in sa.GEGENSTAENDE} & set(falldaten.erwartete_entscheide(scope))
     assert falldaten.erwartete_entscheide(None) == falldaten.erwartete_entscheide("bestand")

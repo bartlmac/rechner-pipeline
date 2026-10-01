@@ -202,10 +202,21 @@ def _testbetriebsschluessel():
     schluessel.chmod(0o600)
     ordnung = verzeichnis / "zeichnungsordnung.json"
     ordnung.write_text(json.dumps(betriebsordnung(), sort_keys=True), encoding="utf-8")
+    # Die Linie ist Pflicht (ADR-025, Nachtrag 2026-10-01): Der Betrieb liest
+    # jede Abnahme gegen den Stand der Ordnung, unter dem sie gezeichnet
+    # wurde. Die Test-Linie traegt die Ordnung des Betriebs als erstes Glied
+    # (deterministisch, tests/freigabe_testschluessel.suitelinie_glied); die
+    # Naht ``tageslauf._STANDARD_LINIE`` reicht sie jedem Zeichner des Betriebs.
+    from tests.freigabe_testschluessel import suitelinie_anlegen
+
+    linie = suitelinie_anlegen(verzeichnis / "linie")
     vorher = _tl._STANDARD_BETRIEBSZEICHNUNG
+    vorher_linie = _tl._STANDARD_LINIE
     _tl._STANDARD_BETRIEBSZEICHNUNG = (schluessel, ordnung)
+    _tl._STANDARD_LINIE = linie
     yield schluessel, ordnung
     _tl._STANDARD_BETRIEBSZEICHNUNG = vorher
+    _tl._STANDARD_LINIE = vorher_linie
     shutil.rmtree(verzeichnis, ignore_errors=True)
 
 

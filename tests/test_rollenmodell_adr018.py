@@ -23,7 +23,7 @@ from rechner_pipeline.models.schemas import P9_SNAPSHOT_SCHEMA_VERSION, P9Snapsh
 from rechner_pipeline.models.zeichnung import lade_zeichnungsordnung
 
 from tests.e2e_fixture import bereite_pk1_fall
-from tests.zeichnung_fixture import AGENT, VA, ordnung_schreiben, schluessel_anlegen
+from tests.zeichnung_fixture import linie_args, AGENT, VA, auftrag_args, ordnung_schreiben, schluessel_anlegen
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -40,6 +40,8 @@ def _annahme(fall: Path, schluessel: Path, ordnung: Path, *extra: str):
         "--fall", str(fall), "--gate", "A-Q1", "--entscheid", "angenommen",
         "--entscheider", "fachrolle", "--begruendung", "geprueft",
         "--repo-root", str(REPO_ROOT),
+        # Der Fall ist beauftragt, unter der Ordnung des Tests (ADR-026).
+        *auftrag_args(fall, ordnung),
         "--freigabe-schluessel", str(schluessel), "--zeichnungsordnung", str(ordnung),
         *extra,
     ])
@@ -69,7 +71,7 @@ def test_simulierte_rolle_traegt_ihre_klasse_und_ihr_mandat(fall, tmp_path):
     key = tmp_path / "va.key"
     fp = schluessel_anlegen(key)
     ordnung = ordnung_schreiben(tmp_path / "ordnung.json", {
-        VA: {"schluessel_sha256": fp, "schluesselklasse": "simulation", "gates": ["*"]},
+        VA: {"schluessel_sha256": fp, "schluesselklasse": "simulation", "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
     })
     mandat = tmp_path / "mandat.md"
     mandat.write_text("Mandat: A-Q1 vorbereiten und zeichnen.", encoding="utf-8")
@@ -79,17 +81,22 @@ def test_simulierte_rolle_traegt_ihre_klasse_und_ihr_mandat(fall, tmp_path):
     snapshot = json.loads(Path(ergebnis.paths["snapshot"]).read_text(encoding="utf-8"))
     assert snapshot["schema_version"] == P9_SNAPSHOT_SCHEMA_VERSION
     assert snapshot["rolle"] == VA
+    from rechner_pipeline.models.ordnungslinie import lade_linie
+
     assert snapshot["zeichnung"] == {
         "rolle": VA,
         "ordnung_sha256": hashlib.sha256(ordnung.read_bytes()).hexdigest(),
         "schluesselklasse": "simulation",
         "mandat_sha256": hashlib.sha256(mandat.read_bytes()).hexdigest(),
+        # das Glied der Linie, unter dem gezeichnet wurde (ADR-025: Pflicht)
+        "ordnungsglied_sha256": lade_linie(fall.parent / "linie")[0][-1]["glied_sha256"],
     }
     # Der Renderer liest die Besetzung aus dem Snapshot.
     import sys
     sys.path.insert(0, str(REPO_ROOT / "werkzeuge"))
     import falldaten
-    [eintrag] = falldaten.kette(fall)["entscheide"]
+    # Neben A-Q1 steht der Fallauftrag in der Kette (ADR-026).
+    [eintrag] = [e for e in falldaten.kette(fall)["entscheide"] if e.get("gate") == "A-Q1"]
     assert eintrag["schluesselklasse"] == "simulation"
     assert eintrag["rolle"] == VA
 
@@ -98,7 +105,7 @@ def test_alte_rollenwerte_ohne_ebene_gelten_nicht_mehr(fall, tmp_path):
     key = tmp_path / "va.key"
     fp = schluessel_anlegen(key)
     ordnung = ordnung_schreiben(tmp_path / "ordnung.json", {
-        VA: {"schluessel_sha256": fp, "schluesselklasse": "simulation", "gates": ["*"]},
+        VA: {"schluessel_sha256": fp, "schluesselklasse": "simulation", "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
     })
     ergebnis = _annahme(fall, key, ordnung, "--rolle", "mensch")
     assert ergebnis.exit_code == 2
@@ -156,7 +163,7 @@ def test_behauptete_rolle_mit_schluessel_ohne_ordnung_nimmt_nicht_an(fall, tmp_p
     key = tmp_path / "va.key"
     schluessel_anlegen(key)
     ergebnis = gate_entscheid.main([
-        "--fall", str(fall), "--gate", "A-Q1", "--entscheid", "angenommen",
+        "--fall", str(fall), *linie_args(fall), "--gate", "A-Q1", "--entscheid", "angenommen",
         "--rolle", VA, "--entscheider", "fachrolle", "--begruendung", "geprueft",
         "--repo-root", str(REPO_ROOT), "--freigabe-schluessel", str(key),
     ])
@@ -177,7 +184,7 @@ def test_simulierte_rolle_ohne_mandat_wird_gesperrt(fall, tmp_path):
     key = tmp_path / "va.key"
     fp = schluessel_anlegen(key)
     ordnung = ordnung_schreiben(tmp_path / "ordnung.json", {
-        VA: {"schluessel_sha256": fp, "schluesselklasse": "simulation", "gates": ["*"]},
+        VA: {"schluessel_sha256": fp, "schluesselklasse": "simulation", "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
     })
     ergebnis = _annahme(fall, key, ordnung)
     assert ergebnis.exit_code == 20
@@ -190,7 +197,7 @@ def test_menschliche_rolle_braucht_kein_mandat(fall, tmp_path):
     key = tmp_path / "va.key"
     fp = schluessel_anlegen(key)
     ordnung = ordnung_schreiben(tmp_path / "ordnung.json", {
-        VA: {"schluessel_sha256": fp, "schluesselklasse": "mensch", "gates": ["*"]},
+        VA: {"schluessel_sha256": fp, "schluesselklasse": "mensch", "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
     })
     ergebnis = _annahme(fall, key, ordnung)
     assert ergebnis.exit_code == 0
@@ -225,7 +232,7 @@ def test_entscheide_verweigert_simulation_ohne_mandat(fall, tmp_path, capsys):
     key = tmp_path / "va.key"
     fp = schluessel_anlegen(key)
     ordnung = ordnung_schreiben(tmp_path / "ordnung.json", {
-        VA: {"schluessel_sha256": fp, "schluesselklasse": "simulation", "gates": ["*"]},
+        VA: {"schluessel_sha256": fp, "schluesselklasse": "simulation", "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
     })
     code = entscheide_cli.main([
         "--fall", str(fall), "--diskrepanz", "D-gibt-es-nicht", "--wert", "1",

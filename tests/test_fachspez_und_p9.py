@@ -38,7 +38,7 @@ PLAUSIBEL = {
 }
 
 
-from tests.zeichnung_fixture import VA, annahme_args
+from tests.zeichnung_fixture import linie_args, entscheide_args, VA, annahme_args
 
 
 def _freigabe_arg(fall: Path) -> list[str]:
@@ -115,13 +115,13 @@ def test_p9_annahme_blockt_bei_vorlaeufigen(fall_mit_konflikt):
     from rechner_pipeline.gates.gate_entscheid import main
 
     f, *_ = fall_mit_konflikt
-    result = main(["--fall", str(f), "--gate", "A-Q1",
+    result = main(["--fall", str(f), *linie_args(f), "--gate", "A-Q1",
                    "--entscheid", "angenommen", "--rolle", VA, "--entscheider", "maintainer",
                    "--begruendung", "ok", "--repo-root", "."])
     assert result.exit_code == 20
     assert any("vorlaeufig" in e["code"] for e in result.errors)
     # Ablehnung ist jederzeit snapshotbar:
-    result = main(["--fall", str(f), "--gate", "A-Q1",
+    result = main(["--fall", str(f), *linie_args(f), "--gate", "A-Q1",
                    "--entscheid", "abgelehnt", "--rolle", VA, "--entscheider", "maintainer",
                    "--begruendung", "Zins offen", "--repo-root", "."])
     assert result.exit_code == 0
@@ -140,7 +140,7 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
 
     f, _, _, d_id = fall_mit_konflikt
     rc = entscheide([
-        "--fall", str(f), *_freigabe_arg(f), "--diskrepanz", d_id, "--wert", "0.025",
+        "--fall", str(f), *entscheide_args(f), "--diskrepanz", d_id, "--wert", "0.025",
         "--entscheider", "maintainer",
         "--begruendung", "Meldung ist die eingereichte Fassung",
     ])
@@ -156,7 +156,7 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
     assert abox.generationen[0].zellen[0].parameter["beta1"].wert == 0.025
     # Eine endgueltige Entscheidung ist nicht erneut ueberschreibbar:
     rc = entscheide([
-        "--fall", str(f), *_freigabe_arg(f), "--diskrepanz", d_id, "--wert", "0.03",
+        "--fall", str(f), *entscheide_args(f), "--diskrepanz", d_id, "--wert", "0.03",
         "--entscheider", "X", "--begruendung", "y",
     ])
     assert rc == 1
@@ -195,7 +195,7 @@ def test_p9_meldungen_nennen_das_kommando_das_weiterhilft(fall_mit_konflikt, tmp
 
     # (a) gar kein Arbeitsbereich -> das Anlege- UND das Registrier-Kommando
     leer = tmp_path / "kein_fall"
-    result = main(["--fall", str(leer)] + basis)
+    result = main(["--fall", str(leer), *linie_args(leer)] + basis)
     assert result.exit_code == 2
     [fehler] = result.errors
     assert "rechner_pipeline.fall anlegen" in fehler["message"]
@@ -207,7 +207,7 @@ def test_p9_meldungen_nennen_das_kommando_das_weiterhilft(fall_mit_konflikt, tmp
     quelle = tmp_path / "rechner.xlsm"
     quelle.write_bytes(b"x")
     registrieren(ohne_abox, quelle)
-    result = main(["--fall", str(ohne_abox)] + basis)
+    result = main(["--fall", str(ohne_abox), *linie_args(ohne_abox)] + basis)
     assert result.exit_code == 20
     [fehler] = result.errors
     assert fehler["code"] == "abox"
@@ -217,11 +217,11 @@ def test_p9_meldungen_nennen_das_kommando_das_weiterhilft(fall_mit_konflikt, tmp
     # (c) A-Box entschieden, aber Gate P-Q3 nie gelaufen -> das P-Q3-Kommando
     f, _, _, d_id = fall_mit_konflikt
     assert entscheide([
-        "--fall", str(f), *_freigabe_arg(f), "--diskrepanz", d_id,
+        "--fall", str(f), *entscheide_args(f), "--diskrepanz", d_id,
         "--wert", "0.025", "--entscheider", "maintainer",
         "--begruendung", "Meldung ist die eingereichte Fassung",
     ]) == 0
-    result = main(["--fall", str(f)] + basis)
+    result = main(["--fall", str(f), *linie_args(f)] + basis)
     assert result.exit_code == 20
     [fehler] = result.errors
     assert fehler["code"] == "vorbedingung"
@@ -310,7 +310,7 @@ def test_pk1_hinweis_ist_je_generation_eine_kopierbare_zeile(tmp_path: Path):
     assert [g.id for g in abox.generationen] == ["klv/tg2012", "klv/tg2015"]
     assert pq3(["--fall", str(f)]).exit_code == 0
 
-    result = main(["--fall", str(f), "--gate", "A-M4", "--entscheid",
+    result = main(["--fall", str(f), *linie_args(f), "--gate", "A-M4", "--entscheid",
                    "angenommen", "--rolle", VA, "--entscheider",
                    "maintainer", "--begruendung", "ok", "--repo-root", "."])
     assert result.exit_code == 20
@@ -472,7 +472,7 @@ def test_entscheide_alle_vorlaeufigen_nach_quelle(fall_mit_konflikt, capsys):
 
     f, *_ = fall_mit_konflikt
     rc = entscheide([
-        "--fall", str(f), *_freigabe_arg(f), "--alle-vorlaeufigen",
+        "--fall", str(f), *entscheide_args(f), "--alle-vorlaeufigen",
         "--quelle", "rechner.xlsm", "--entscheider", "maintainer",
         "--begruendung", "Fachverantwortlicher bestaetigt den Rechner-Stand",
     ])
@@ -552,7 +552,7 @@ sys.exit(run_command(gate_entscheid.main, sys.argv[2:]))
 
 
 def _ablehnung(fall: Path) -> list[str]:
-    return ["--fall", str(fall), "--gate", "A-Q1", "--entscheid", "abgelehnt",
+    return ["--fall", str(fall), *linie_args(fall), "--gate", "A-Q1", "--entscheid", "abgelehnt",
             "--rolle", VA, "--entscheider", "maintainer",
             "--begruendung", "Zins offen", "--repo-root", str(REPO_ROOT)]
 

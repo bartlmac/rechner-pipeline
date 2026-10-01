@@ -182,7 +182,7 @@ def test_die_wurzel_ist_unsigniert_und_benennt_die_vorstand_rolle(tmp_path):
     assert glied["zeichnung"] is None and glied["eintrag"]["art"] == "wurzel"
     assert "unsigniert" in glied["eintrag"]["vermerk"]
     ordnung = ol.ordnung_aus(glied)
-    assert ordnung["rollen"][ol.WURZELROLLE]["gates"] == [ol.ORDNUNGS_GATE]
+    assert ordnung["rollen"][ol.WURZELROLLE]["gates"] == list(ol.WURZEL_GATES)
     assert {a["art"] for a in glied["aenderungen"]} == {"neue_rolle"}
     assert (linie / "abgeleitet" / "ordnung" / "linie.md").is_file()
 
@@ -223,7 +223,7 @@ def test_ein_spaeteres_glied_zeichnet_der_vorstand_mit_dem_schluessel_der_spitze
     linie = linie_anlegen(tmp_path)
     ordnung = _ordnung(tmp_path)
     neu = json.loads(json.dumps(ordnung))
-    neu["rollen"]["mensch/programmleitung"] = {
+    neu["rollen"]["mensch/revision"] = {
         "schluessel_sha256": "ab" * 32, "schluesselklasse": "simulation", "gates": []}
     ohne = _haenge_an(linie, neu, tmp_path / "o2.json", schluessel=None)
     assert ohne.exit_code != 0 and "nicht anhaengbar" in ohne.errors[0]["message"]
@@ -249,12 +249,12 @@ def test_die_aenderungsliste_unterscheidet_verbreiterung_und_neue_rolle(tmp_path
     ordnung = _ordnung(tmp_path)
     neu = json.loads(json.dumps(ordnung))
     neu["rollen"][ARCHITEKTUR]["gates"] = ["A-O1", "A-K2"]
-    neu["rollen"]["mensch/programmleitung"] = {
+    neu["rollen"]["mensch/revision"] = {
         "schluessel_sha256": "ab" * 32, "schluesselklasse": "simulation", "gates": []}
     assert _haenge_an(linie, neu, tmp_path / "o2.json").exit_code == 0
     glieder, _ = ol.lade_linie(linie)
     arten = {(a["art"], a["rolle"]) for a in glieder[1]["aenderungen"]}
-    assert arten == {("gates_erweitert", ARCHITEKTUR), ("neue_rolle", "mensch/programmleitung")}
+    assert arten == {("gates_erweitert", ARCHITEKTUR), ("neue_rolle", "mensch/revision")}
     sicht = (linie / "abgeleitet" / "ordnung" / "linie.md").read_text(encoding="utf-8")
     assert f"bestehende Rolle {ARCHITEKTUR} um ['A-K2'] erweitert" in sicht
     # Behauptet statt gerechnet: die Liste leeren und das Glied neu hashen.
@@ -271,7 +271,7 @@ def test_die_aenderungsliste_unterscheidet_verbreiterung_und_neue_rolle(tmp_path
 def test_ein_umgeschriebenes_oder_entferntes_glied_bricht_die_linie(tmp_path):
     linie = linie_anlegen(tmp_path)
     neu = _ordnung(tmp_path)
-    neu["rollen"]["mensch/programmleitung"] = {
+    neu["rollen"]["mensch/revision"] = {
         "schluessel_sha256": "ab" * 32, "schluesselklasse": "simulation", "gates": []}
     assert _haenge_an(linie, neu, tmp_path / "o2.json").exit_code == 0
     erstes = next((linie / ol.VERZEICHNIS).glob("0001-*.json"))
@@ -327,7 +327,7 @@ def test_verweis_auf_die_erstabnahme_ohne_fall_loest_auf_und_verweigert_nach_aen
 def test_gezeichnet_wird_nur_unter_der_spitze_der_linie(tmp_path):
     linie = linie_anlegen(tmp_path)
     ordnung = _ordnung(tmp_path)
-    ordnung["rollen"]["mensch/programmleitung"] = {
+    ordnung["rollen"]["mensch/revision"] = {
         "schluessel_sha256": "ab" * 32, "schluesselklasse": "simulation", "gates": []}
     andere = tmp_path / "andere" / "zeichnungsordnung.json"
     andere.parent.mkdir()
@@ -411,7 +411,7 @@ def test_eine_erweiterung_der_ordnung_entwertet_keine_abnahme(tmp_path):
     linie, fall = _fall_mit_linie(tmp_path)
     _verweise(fall, linie)
     neu = _ordnung(tmp_path)
-    neu["rollen"]["mensch/programmleitung"] = {
+    neu["rollen"]["mensch/revision"] = {
         "schluessel_sha256": "ab" * 32, "schluesselklasse": "simulation", "gates": []}
     assert _haenge_an(linie, neu, tmp_path / "zeichnungsordnung.neu.json").exit_code == 0
     (tmp_path / "zeichnungsordnung.json").write_text(
@@ -436,7 +436,11 @@ def test_damals_nicht_berechtigt_wird_verweigert_auch_wenn_heute_berechtigt():
                               "ordnungsglied_sha256": glied["glied_sha256"]}}
     rolle, fehler = zeichnende_rolle_fehler(snapshot, "A-T1", heute, linie=[glied])
     assert rolle is None and "nicht fuer A-T1" in fehler
-    assert zeichnende_rolle_fehler(snapshot, "A-T1", heute)[0] == VA  # ohne Linie: heute
+    # Ohne Linie begruendet die Abnahme nichts (ADR-025, Nachtrag 2026-10-01):
+    # Der Weg gegen die heutige Ordnung des Lesers ist entfallen.
+    for ohne in (None, []):
+        rolle, fehler = zeichnende_rolle_fehler(snapshot, "A-T1", heute, linie=ohne)
+        assert rolle is None and "ohne Ordnungslinie" in fehler
 
 
 def test_ein_snapshot_ohne_glied_ist_nicht_lokalisierbar(tmp_path):
@@ -455,7 +459,12 @@ def test_ein_snapshot_ohne_glied_ist_nicht_lokalisierbar(tmp_path):
     assert ergebnis.exit_code == 0, ergebnis.errors
     am4 = _am4(fall)
     assert am4.exit_code != 0
-    assert "nicht lokalisierbar" in am4.errors[0]["message"], am4.errors
+    # Der fruehere Fall zeichnete unter SEINER Linie (die Linie ist Pflicht,
+    # ADR-025, Nachtrag 2026-10-01): In dieser Linie ist sein Glied nicht
+    # lokalisierbar — als Grundlage nicht verwendbar.
+    meldung = am4.errors[0]["message"]
+    assert ("nicht lokalisierbar" in meldung
+            or "steht nicht in der Ordnungslinie" in meldung), am4.errors
     assert _o3_tg2012 is not None
 
 
@@ -614,7 +623,7 @@ def test_belegen_zeichnen_binden_dann_laeuft_der_tag(aufgebaut, tmp_path):
     assert (linie / ab.SICHT_RELATIV).read_text(encoding="utf-8").startswith("# Abnahme")
     sha = zeichne_ab3(linie, beleg)
     bindung = anf.binden(aufgebaut.wurzel, linie, _zeichner(), schluesselring=TESTRING,
-                         snapshot_sha256=sha)
+                         snapshot_sha256=sha, ordnungslinie=ol.lade_linie(linie)[0])
     assert bindung["stand"] == ab.stand_aus_beleg(beleg)
     code, zeile = tageslauf(aufgebaut, dt.date(2026, 2, 3))
     assert code == EXIT_OK, zeile.get("fehler")
@@ -636,7 +645,8 @@ def test_binden_verweigert_fremden_stand_und_unberechtigte_rolle(aufgebaut):
         json.dumps(falsch), encoding="utf-8")
     with pytest.raises(anf.AnfangsbestandFehler, match="nicht der, den die Ablage"):
         anf.binden(aufgebaut.wurzel, linie, _zeichner(), schluesselring=TESTRING,
-                   snapshot_sha256=falsch["snapshot_sha256"])
+                   snapshot_sha256=falsch["snapshot_sha256"],
+                   ordnungslinie=ol.lade_linie(linie)[0])
     fremd = ab3_snapshot(linie, beleg_sha256=roh_sha, stand=ab.stand_aus_beleg(beleg),
                          vorgaenger=[falsch["snapshot_sha256"]], schluessel=TESTKEY,
                          rolle=VA)
@@ -644,7 +654,8 @@ def test_binden_verweigert_fremden_stand_und_unberechtigte_rolle(aufgebaut):
         json.dumps(fremd), encoding="utf-8")
     with pytest.raises(anf.AnfangsbestandFehler, match="A-B3"):
         anf.binden(aufgebaut.wurzel, linie, _zeichner(), schluesselring=TESTRING,
-                   snapshot_sha256=fremd["snapshot_sha256"])
+                   snapshot_sha256=fremd["snapshot_sha256"],
+                   ordnungslinie=ol.lade_linie(linie)[0])
     assert not (aufgebaut.wurzel / ab.BINDUNG_DATEI).exists()
 
 

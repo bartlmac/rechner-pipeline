@@ -57,7 +57,10 @@ BINDUNG_DATEI = "anfangsbestand.json"
 
 SCHEMA_VERSION = 1
 ART = "anfangsbestand"
-BINDUNG_SCHEMA_VERSION = 1
+#: 2 (2026-10-01): der Anker des Betriebsschluessels — ``betriebsschluessel_sha256``
+#: (der Fingerabdruck, den die Spitze der Ordnungslinie der Betriebsrolle gibt)
+#: und ``ordnungsglied_sha256`` (das Glied, unter dem aufgeloest wurde).
+BINDUNG_SCHEMA_VERSION = 2
 BINDUNG_ART = "anfangsbestand_abnahme"
 
 BELEG_FELDER = frozenset({
@@ -66,7 +69,8 @@ BELEG_FELDER = frozenset({
 })
 BINDUNG_FELDER = frozenset({
     "schema_version", "art", "linie", "snapshot_sha256", "beleg_sha256", "stand",
-    "kennzahlen", "freigabe_rolle", "zeichnung",
+    "kennzahlen", "freigabe_rolle", "betriebsschluessel_sha256", "ordnungsglied_sha256",
+    "zeichnung",
 })
 #: Die Kennzahlen zur Ansicht (Anzahl, Summen) — Zahlen, kein Urteil.
 KENNZAHLEN = ("vertraege", "in_kraft", "versicherungssumme", "bu_rente", "jahresbeitrag")
@@ -161,7 +165,8 @@ def beleg_fehler(beleg: object) -> List[str]:
 
 
 def bindung_inhalt(*, linie: str, snapshot: Mapping[str, Any], beleg_sha256: str,
-                   kennzahlen: Mapping[str, Any], freigabe_rolle: str) -> Dict[str, Any]:
+                   kennzahlen: Mapping[str, Any], freigabe_rolle: str,
+                   betriebsschluessel_sha256: str, ordnungsglied_sha256: str) -> Dict[str, Any]:
     """Der ungezeichnete Satz der Bindung in der Ablage."""
     return {
         "schema_version": BINDUNG_SCHEMA_VERSION,
@@ -172,6 +177,8 @@ def bindung_inhalt(*, linie: str, snapshot: Mapping[str, Any], beleg_sha256: str
         "stand": dict(snapshot["stand"]),
         "kennzahlen": dict(kennzahlen),
         "freigabe_rolle": freigabe_rolle,
+        "betriebsschluessel_sha256": betriebsschluessel_sha256,
+        "ordnungsglied_sha256": ordnungsglied_sha256,
     }
 
 

@@ -395,9 +395,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--zugangsabnahme", default=None,
                         help="Snapshot-Hash der Zugangsabnahme A-B2 fuer den Eingang der neuen "
                              "Ablage (ADR-022; Default: aus dem A-B2-Gate-Beleg des Falls).")
-    parser.add_argument("--linie", default=None,
-                        help="Linienbereich (ADR-025): die Abnahmen werden gegen die Ordnung "
-                             "gehalten, unter der sie gezeichnet wurden (Ordnungslinie).")
+    parser.add_argument("--linie", required=True,
+                        help="Linienbereich (ADR-025; Pflicht seit dem Nachtrag 2026-10-01): "
+                             "die Abnahmen werden gegen die Ordnung gehalten, unter der sie "
+                             "gezeichnet wurden (Ordnungslinie). Kein Default, keine "
+                             "Umgebungsvorgabe: der Ort wird bei jedem Aufruf genannt.")
     parser.add_argument("--aufschalten", action="store_true",
                         help="Einmalig: die alte Ablage traegt ein Protokoll ohne gezeichnete "
                              "Zeile (Altbestand vor dem Betriebsschluessel) und wird trotzdem "
@@ -441,7 +443,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             schluesselring=ring, betriebsschluessel=Path(ns.betriebsschluessel),
             zeichnungsordnung=Path(ns.zeichnungsordnung), aufschalten=ns.aufschalten,
             zugangsabnahme_sha256=ns.zugangsabnahme,
-            linie=Path(ns.linie) if ns.linie else None,
+            linie=Path(ns.linie),
         )
     except (NeuaufsetzenError, UebernahmeError, ValueError) as exc:
         print(f"neuaufsetzen: {exc}", file=sys.stderr)

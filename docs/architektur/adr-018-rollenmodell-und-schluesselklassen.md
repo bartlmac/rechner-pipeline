@@ -535,6 +535,40 @@ Fuer dieses Rollenmodell aendert sich:
    vorlegendes Gegenstueck; ohne Gegenstueck bleiben begruendet der
    Vorstand und `mensch/quell-aktuar`.
 
+## Nachtrag 2026-10-01: Der Lebenslauf eines Falls — Fallauftrag und Fallabbruch
+
+Entschieden und gebaut in ADR-026 (Frage des Maintainers: "jemand muss es
+beauftragen und dem Programmleiter den Auftrag geben und das kann nur ein
+Mensch sein"). Fuer dieses Rollenmodell aendert sich:
+
+1. **Die Tabelle Linie/Fall bekommt ihre Gates.**
+
+   | Rolle | Linie | Fall | Gates | Recht aus |
+   |---|---|---|---|---|
+   | `mensch/vorstand` | ja | nein | `A-Z1`, `A-M6` (Fallauftrag) | der Ordnung der Linie |
+   | `mensch/programmleitung` | nein | ja | `A-M5` (Fallabbruch) | dem Fallauftrag |
+   | `mensch/quell-aktuar` | nein | ja | keine | dem eigenen Haus (im Auftrag als Platz benannt) |
+
+   Die Programmleitung "fuehrt durch den Prozess, sie zeichnet genau nichts"
+   (Entscheid 2026-09-16) — mit einer Ausnahme, die schon damals vorgesehen
+   war: den Abbruch ihres Falls. Sie nimmt nichts fachlich ab; sie beendet
+   das Vorhaben, ein Akt statt aller.
+
+2. **Woher eine Rolle ihr Recht hat — eine Regel.** Eine Rolle der Linie hat
+   ihr Recht aus der Ordnung der Linie (mit Linie: der Stand, unter dem sie
+   zeichnete). Eine Rolle des Falls hat es aus dem Fallauftrag: Er benennt
+   die Programmleitung mit Rolle und Fingerabdruck und gibt ihr `A-M5`.
+   `models.zeichnung.zeichnende_rolle_fehler` haelt beides an einer Stelle
+   (`FALLROLLEN_GATES`). Damit loest sich die Frage, die der Satz "entsteht
+   mit einem Fall und endet mit ihm" offen liess: Eine Rolle, die erst mit
+   dem Fall entsteht, kann ihr Recht nicht aus der Linie haben — sie hat es
+   aus dem Akt, der den Fall entstehen laesst. Die Ordnung der Linie fuehrt
+   die Programmleitung nicht, und keine Ordnung kann `A-M5` vergeben.
+
+3. **Agent.** `agent/programmleitung` beginnt einen Fall nur mit einem
+   geltenden Auftrag (es liest ihn, es zeichnet ihn nie) und legt bei einem
+   Abbruchkriterium die Vorlage des Fallabbruchs vor.
+
 ## Bewusst nicht Bestandteil
 
 Die Modellierung simulierter Rueckfragen (naechste Ausbaustufe der

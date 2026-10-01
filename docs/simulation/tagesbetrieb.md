@@ -613,11 +613,17 @@ python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
     --fall faelle/<fall> --stichtag 2026-01-01 [--config configs/bestand_gesamt.toml] \
     --freigabe-schluessel <schlüssel-mensch-aktuariat> \
     --freigabe-schluessel <schlüssel-mensch-betrieb> \
-    --betriebsschluessel <betriebsschlüssel> --zeichnungsordnung <ordnung>
+    --betriebsschluessel <betriebsschlüssel> --zeichnungsordnung <ordnung> \
+    --linie ~/apps/plv/linie
 ```
 
 (Zwei Freigabeschlüssel, weil die Registrierung des neuen Eingangs die
-Signaturen von A-M1/A-M4 und von A-B2 prüft.)
+Signaturen von A-M1/A-M4 und von A-B2 prüft. Die Linie ist Pflicht
+(ADR-025, Nachtrag 2026-10-01): Jede Abnahme wird gegen den Stand der
+Zeichnungsordnung gelesen, unter dem sie gezeichnet wurde; ohne `--linie`
+gründet kein Kommando des Betriebs auf einer Abnahme. Der Nachtlauf selbst
+braucht sie nicht — er gründet auf keinem Snapshot und hält seinen
+Schlüssel gegen die gezeichnete Bindung des Anfangsbestands.)
 
 Sie prüft, bevor sie etwas anlegt (keine Lauf-Sperre; die Tarifwerk-
 Schalter der Config stimmen mit dem Übernahmebeleg des Falls überein; eine
@@ -666,8 +672,13 @@ gefahrener P-B1-Befund, Kennzahlen und die Abweichung zum zuletzt
 abgenommenen Anfangsbestand der archivierten Ablage), `A-B3` im
 Linienbereich der Erstabnahme zeichnen, `betrieb.anfangsbestand binden`.
 Ohne die Bindung hält jeder weitere Lauf an (Exit 2, Ausweg in der
-Meldung). Die Reihenfolge ist also: Zugangsprobe auf leerer Ablage, A-B2,
-Neuaufsetzen, Aufbaulauf, Abnahme des Anfangsbestands, Export, Timer.
+Meldung). Die Reihenfolge ist also: Linie bereitstellen (ihre Spitze ist
+die Ordnung, unter der gezeichnet wird), Fallauftrag und Abnahmen im Fall
+(ADR-026), Zugangsprobe auf leerer Ablage, A-B2, Neuaufsetzen (es
+archiviert die alte Ablage selbst), Aufbaulauf, Abnahme des
+Anfangsbestands, Export, Timer. `binden` löst dabei unter der Linie auf,
+welcher Schlüssel die Ablage führt; ein Wechsel des Betriebsschlüssels
+braucht deshalb ein Glied der Linie und eine neue Bindung.
 
 ### 8.6 Eine neue Config gilt von Beginn der Simulation an
 

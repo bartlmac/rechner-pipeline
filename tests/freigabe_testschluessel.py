@@ -68,15 +68,74 @@ def freigaberollen() -> dict:
     }
 
 
+#: Der Schluessel der Wurzelrolle (Vorstand) der Test-Ordnung des Betriebs —
+#: ohne sie kommt die Ordnung nicht in die Linie (ADR-025).
+VORSTANDKEY: bytes = hashlib.sha256(b"rechner-pipeline: testschluessel des vorstands").digest()
+#: Der Zeitpunkt, zu dem das erste Glied der Test-Linie eingetragen ist —
+#: fest, damit das Glied (und sein Hash) deterministisch ist.
+TESTLINIE_EINGETRAGEN = "2026-10-01T08:00:00+00:00"
+
+
 def betriebsordnung(weitere: "dict | None" = None) -> dict:
-    """Die Test-Zeichnungsordnung (Schema 2) mit der Betriebsrolle und den
-    beiden zeichnenden Rollen (:func:`freigaberollen`)."""
+    """Die Test-Zeichnungsordnung (Schema 2) mit der Betriebsrolle, den
+    beiden zeichnenden Rollen (:func:`freigaberollen`) und der Wurzelrolle —
+    so kommt sie in die Versionslinie (ADR-025, die Linie ist Pflicht)."""
+    from rechner_pipeline.models.ordnungslinie import WURZEL_GATES, WURZELROLLE
+
     rollen = {BETRIEBSROLLE: {
         "schluessel_sha256": hashlib.sha256(BETRIEBSKEY).hexdigest(),
         "schluesselklasse": "betrieb", "gates": []}}
     rollen.update(freigaberollen())
+    rollen[WURZELROLLE] = {"schluessel_sha256": hashlib.sha256(VORSTANDKEY).hexdigest(),
+                           "schluesselklasse": "mensch", "gates": list(WURZEL_GATES)}
     rollen.update(weitere or {})
     return {"schema_version": 2, "rollen": rollen}
+
+
+def ordnung_bytes(ordnung: "dict | None" = None) -> bytes:
+    """Die Bytes, die ``conftest`` als Ordnungsdatei des Betriebs schreibt."""
+    import json
+
+    return json.dumps(ordnung if ordnung is not None else betriebsordnung(),
+                      sort_keys=True).encode("utf-8")
+
+
+def suitelinie_glied(ordnung: "dict | None" = None) -> dict:
+    """Das erste Glied der Test-Linie (deterministisch aus der Ordnung)."""
+    from rechner_pipeline.models.ordnungslinie import baue_glied
+
+    return baue_glied(ordnung_bytes(ordnung), nummer=1, vorgaenger=None,
+                      eingetragen_am=TESTLINIE_EINGETRAGEN)
+
+
+def suitelinie_pin(ordnung: "dict | None" = None) -> dict:
+    """Was eine unter der Test-Linie gezeichnete Abnahme in ``zeichnung`` pinnt."""
+    glied = suitelinie_glied(ordnung)
+    return {"ordnung_sha256": glied["ordnung_sha256"],
+            "ordnungsglied_sha256": glied["glied_sha256"]}
+
+
+def suitelinie_anlegen(linie: "Path", ordnung: "dict | None" = None) -> "Path":
+    """Einen Linienbereich mit dem ersten Glied der Test-Linie (einmal)."""
+    import json
+    from pathlib import Path
+
+    from rechner_pipeline.models import ordnungslinie as ol
+    from rechner_pipeline.models import standabnahme as sa
+
+    linie = Path(linie)
+    linie.mkdir(parents=True, exist_ok=True)
+    if not (linie / sa.LINIE_MARKER).is_file():
+        (linie / sa.LINIE_MARKER).write_text(
+            json.dumps(sa.linie_kennung(linie.name), sort_keys=True, indent=2) + "\n",
+            encoding="utf-8")
+    glied = suitelinie_glied(ordnung)
+    ziel = linie / ol.VERZEICHNIS / ol.dateiname(glied)
+    if not ziel.is_file():
+        ziel.parent.mkdir(parents=True, exist_ok=True)
+        ziel.write_text(json.dumps(glied, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8")
+    return linie
 
 
 def betriebsargs(flag: str = "--schluessel") -> list:
@@ -86,6 +145,15 @@ def betriebsargs(flag: str = "--schluessel") -> list:
 
     schluessel, ordnung = tl._STANDARD_BETRIEBSZEICHNUNG
     return [flag, str(schluessel), "--zeichnungsordnung", str(ordnung)]
+
+
+def linieargs() -> list:
+    """``--linie <linie>`` fuer die Kommandos des Betriebs, die auf einer
+    Abnahme gruenden (Registrierung, Zugangsprobe, Neuaufsetzen) — die Linie
+    der Session (ADR-025: Pflicht, kein Default)."""
+    from rechner_pipeline.betrieb import tageslauf as tl
+
+    return ["--linie", str(tl._STANDARD_LINIE)]
 
 
 def zeichne_neu(zeile: dict) -> dict:

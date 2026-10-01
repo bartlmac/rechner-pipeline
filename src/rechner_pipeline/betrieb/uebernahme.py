@@ -524,10 +524,12 @@ def naechstes_band(uebernahme: Path, anzahl: int) -> Tuple[int, int]:
 
 def pruefe_am4_snapshot(
     fall: Path, snapshot_sha256: Optional[str], *, ordnung: Optional[Mapping[str, Any]],
+    ordnungslinie: Optional[list],
 ) -> Dict[str, Any]:
     """Die Zeichnungsangaben des geprueften Snapshots (siehe
     :func:`lies_am4_snapshot`)."""
-    daten, name, verifiziert = lies_am4_snapshot(fall, snapshot_sha256, ordnung=ordnung)
+    daten, name, verifiziert = lies_am4_snapshot(fall, snapshot_sha256, ordnung=ordnung,
+                                                 ordnungslinie=ordnungslinie)
     return _zeichnung_aus_daten(daten, name, verifiziert=verifiziert)
 
 
@@ -563,7 +565,7 @@ def lies_am4_snapshot(
     fall: Path, snapshot_sha256: Optional[str], *,
     schluesselring: Optional[Mapping[str, bytes]] = None,
     ordnung: Optional[Mapping[str, Any]],
-    ordnungslinie: Optional[list] = None,
+    ordnungslinie: Optional[list],
 ) -> Tuple[Dict[str, Any], str, bool]:
     """Den A-M4-Snapshot einer Uebernahme pruefen (siehe :func:`lies_abnahme_snapshot`)."""
     return lies_abnahme_snapshot(fall, "A-M4", snapshot_sha256, schluesselring=schluesselring,
@@ -572,7 +574,7 @@ def lies_am4_snapshot(
 
 def zeichnende_rolle(
     daten: Mapping[str, Any], gate: str, ordnung: Optional[Mapping[str, Any]], name: str,
-    *, ordnungslinie: Optional[list] = None,
+    *, ordnungslinie: Optional[list],
 ) -> str:
     """Die Rolle, die einen Abnahme-Snapshot gezeichnet hat — oder Verweigerung.
 
@@ -600,9 +602,13 @@ def lies_abnahme_snapshot(
     fall: Path, gate: str, snapshot_sha256: Optional[str], *,
     schluesselring: Optional[Mapping[str, bytes]] = None,
     ordnung: Optional[Mapping[str, Any]],
-    ordnungslinie: Optional[list] = None,
+    ordnungslinie: Optional[list],
 ) -> Tuple[Dict[str, Any], str, bool]:
     """Den Abnahme-Snapshot (A-M1, A-M4 oder A-B2) einer Uebernahme pruefen.
+
+    ``ordnungslinie`` ist Pflicht (ADR-025, Nachtrag 2026-10-01): Ohne die
+    Linie ist nicht lokalisierbar, unter welchem Stand der Ordnung die Abnahme
+    gezeichnet wurde, und sie begruendet nichts — die Rollenregel verweigert.
 
     Eine Pruefung fuer alle Abnahmen, auf denen ein Zugang steht
     (ADR-022): Schema, Selbstadressierung, Gate, Entscheid, Fall, exakte
@@ -2306,9 +2312,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                              "eingang.json gezeichnet wird; ausserhalb der Ablage.")
     parser.add_argument("--zeichnungsordnung", required=True,
                         help="Zeichnungsordnung, die dem Betriebsschluessel seine Rolle gibt.")
-    parser.add_argument("--linie", default=None,
-                        help="Linienbereich (ADR-025): die Abnahmen werden gegen die Ordnung "
-                             "gehalten, unter der sie gezeichnet wurden (Ordnungslinie).")
+    parser.add_argument("--linie", required=True,
+                        help="Linienbereich (ADR-025; Pflicht seit dem Nachtrag 2026-10-01): "
+                             "die Abnahmen werden gegen die Ordnung gehalten, unter der sie "
+                             "gezeichnet wurden (Ordnungslinie). Kein Default, keine "
+                             "Umgebungsvorgabe: der Ort wird bei jedem Aufruf genannt.")
     ns = parser.parse_args(argv)
     ring: Optional[Mapping[str, bytes]] = None
     if ns.freigabe_schluessel:
@@ -2330,7 +2338,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             schluesselring=ring, betriebsschluessel=Path(ns.betriebsschluessel),
             zeichnungsordnung=Path(ns.zeichnungsordnung),
             zugangsabnahme_sha256=ns.zugangsabnahme,
-            linie=Path(ns.linie) if ns.linie else None,
+            linie=Path(ns.linie),
         )
     except UebernahmeError as exc:
         print(f"uebernahme: {exc}", file=sys.stderr)

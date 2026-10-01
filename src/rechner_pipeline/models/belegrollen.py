@@ -168,6 +168,18 @@ BELEGROLLEN = {
         "bestand": (),
         "linie": ("anfangsbestand",),
     },
+    # A-M6 Fallauftrag und A-M5 Fallabbruch (ADR-026): je die Vorlage am
+    # festen Ort (``gates.fall_belegen``), die das Gate gegen Fall, Eingang und
+    # Linie nachrechnet; ihr Inhalt steht zusaetzlich signiert im Snapshot
+    # (``auftrag`` bzw. ``abbruch``). In beiden Fall-Scopes, nie in der Linie.
+    "A-M6": {
+        "tarif": ("fallauftrag",),
+        "bestand": ("fallauftrag",),
+    },
+    "A-M5": {
+        "tarif": ("fallabbruch",),
+        "bestand": ("fallabbruch",),
+    },
     # A-M4 verlangt seit dem Entscheid des Maintainers 2026-10-01 in BEIDEN
     # Scopes, dass der Stand, auf dem der Fall laeuft, abgenommen ist — je
     # Gegenstand eine Rolle (models.standabnahme, ADR-018 Nachtrag

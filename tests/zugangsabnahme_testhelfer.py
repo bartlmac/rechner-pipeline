@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
 from rechner_pipeline.models import zugangsprobe as zp
-from tests.freigabe_testschluessel import BETRIEB_FREIGABEKEY
+from tests.freigabe_testschluessel import BETRIEB_FREIGABEKEY, suitelinie_pin
 
 
 def abnahmen_aus_fall(fall: Path, am4_snapshot_sha256: str) -> Dict[str, Dict[str, str]]:
@@ -114,8 +114,10 @@ def probenbeleg(
 def ab2_snapshot(
     fallname: str, *, pflichtbelege: Dict[str, list], vorgaenger: list,
     schluessel: bytes, entscheid: str = "angenommen", rolle: str = "mensch/betrieb",
+    pin: Optional[Mapping[str, str]] = None,
 ) -> Dict[str, Any]:
-    """Ein gueltiger A-B2-Snapshot (Schema 7), wie das Gate ihn schreibt."""
+    """Ein gueltiger A-B2-Snapshot, wie das Gate ihn schreibt — unter dem Glied
+    ``pin`` (Default: das erste Glied der Test-Linie)."""
     from rechner_pipeline.models.freigabe import freigabe_fuer
     from rechner_pipeline.models.schemas import P9_GATE_VERSION, P9_SNAPSHOT_SCHEMA_VERSION, p9_snapshot_sha256
 
@@ -129,12 +131,25 @@ def ab2_snapshot(
                    "quellcode_sha256": "ef" * 32},
         "vorgaenger": sorted(vorgaenger), "entschieden_am": "2026-01-01T11:00:00+00:00",
         "fall_scope": "bestand", "pflichtbelege": pflichtbelege,
-        "zeichnung": {"rolle": rolle, "ordnung_sha256": "cd" * 32, "schluesselklasse": "mensch"},
+        # unter der Test-Linie gezeichnet (ADR-025: die Linie ist Pflicht)
+        "zeichnung": {"rolle": rolle, **(dict(pin) if pin else suitelinie_pin()),
+                      "schluesselklasse": "mensch"},
     }
     if entscheid == "angenommen":
+        # Der Auftrag, auf dem die Annahme steht (ADR-026); die Signatur buergt.
+        daten["fallauftrag"] = hashlib.sha256(b"fallauftrag der Suite").hexdigest()
         daten["freigabe"] = freigabe_fuer(daten, schluessel)
     daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
     return daten
+
+
+def _pin_der_spitze(zeichner: Any) -> Optional[Dict[str, str]]:
+    """Gezeichnet wird unter der Spitze der Linie, die der Betrieb liest."""
+    glieder = getattr(zeichner, "ordnungslinie", None)
+    if not glieder:
+        return None
+    return {"ordnung_sha256": glieder[-1]["ordnung_sha256"],
+            "ordnungsglied_sha256": glieder[-1]["glied_sha256"]}
 
 
 def schreibe_zugangsabnahme(
@@ -169,7 +184,8 @@ def schreibe_zugangsabnahme(
         "zugangsprobe": [hashlib.sha256(roh).hexdigest()],
         "am4_snapshot": [am4_snapshot_sha256],
         "eingang": [hashlib.sha256(eingang_roh).hexdigest()],
-    }, vorgaenger=vorher, schluessel=BETRIEB_FREIGABEKEY, rolle=rolle)
+    }, vorgaenger=vorher, schluessel=BETRIEB_FREIGABEKEY, rolle=rolle,
+       pin=_pin_der_spitze(zeichner))
     (entscheide / f"A-B2-{daten['snapshot_sha256']}.json").write_text(
         json.dumps(daten, ensure_ascii=False), encoding="utf-8")
     return str(daten["snapshot_sha256"])

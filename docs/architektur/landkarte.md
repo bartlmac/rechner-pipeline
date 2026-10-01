@@ -31,10 +31,10 @@ flowchart TD
     bestand["bestand<br/>23 Module"]
     betrieb["betrieb<br/>11 Module"]
     fall["fall<br/>1 Module"]
-    gates["gates<br/>21 Module"]
+    gates["gates<br/>22 Module"]
     kern["kern<br/>13 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
-    models["models<br/>17 Module"]
+    models["models<br/>18 Module"]
     ontologie["ontologie<br/>16 Module"]
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
@@ -46,9 +46,9 @@ flowchart TD
     betrieb -- 2 --> kern
     betrieb -- 32 --> models
     gates -- 14 --> bestand
-    gates -- 10 --> fall
+    gates -- 11 --> fall
     gates -- 10 --> kern
-    gates -- 37 --> models
+    gates -- 43 --> models
     gates -- 13 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
@@ -82,20 +82,21 @@ flowchart TD
     klv["klv<br/>93 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
-    system_entscheid["system/entscheid<br/>14 Module"]
+    system_entscheid["system/entscheid<br/>16 Module"]
     system_fall["system/fall<br/>1 Module"]
     bu -- 3 --> system_assurance
     bu -- 19 --> system_entscheid
     klv -- 9 --> system_assurance
-    klv -- 41 --> system_entscheid
+    klv -- 43 --> system_entscheid
     klv -- 10 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv
-    system_assurance -- 2 --> system_entscheid
+    system_assurance -- 3 --> system_entscheid
     system_assurance -- 1 --> system_fall
     system_entscheid -- 3 --> bu
-    system_entscheid -- 9 --> klv
-    system_entscheid -- 7 --> system_assurance
+    system_entscheid -- 11 --> klv
+    system_entscheid -- 10 --> system_assurance
+    system_entscheid -- 1 --> system_fall
 ```
 
 ## 3 Der Zielrechenkern von innen

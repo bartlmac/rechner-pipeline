@@ -37,7 +37,7 @@ from rechner_pipeline.models.belegrollen import belegrollen
 from rechner_pipeline.models.schemas import P9_GATES_MIT_STAND
 from rechner_pipeline.models.zeichnung import GUELTIGE_GATES
 from rechner_pipeline.ontologie import tbox
-from tests.zeichnung_fixture import ARCHITEKTUR, annahme_args, zeichne_kernstand
+from tests.zeichnung_fixture import linie_args, ARCHITEKTUR, annahme_args, zeichne_kernstand
 
 REPO = Path(__file__).resolve().parents[1]
 LINIE_MIT_UEBERGANG = (tuple(tbox.TBOX_VERSIONEN) if len(tbox.TBOX_VERSIONEN) > 1
@@ -89,7 +89,7 @@ def _zeichne_tboxstand(fall: Path, *schluessel_args: str):
         "felder": [{"name": "raucher", "wirkung": "tariflich",
                     "begruendung": "Zuschlag je Raucherstatus"}]}), encoding="utf-8")
     return gate_entscheid.main([
-        "--fall", str(fall), "--gate", "A-O1", "--entscheid", "angenommen",
+        "--fall", str(fall), *linie_args(fall), "--gate", "A-O1", "--entscheid", "angenommen",
         "--entscheider", "it-verantwortung", "--begruendung", "Diffs der T-Box gesehen",
         "--repo-root", str(REPO), *(schluessel_args or annahme_args(fall, fuer="A-O1"))])
 
@@ -202,16 +202,28 @@ def test_kern_verweis_auf_einen_anderen_stand_wird_verweigert(tmp_path, monkeypa
 
 def test_kern_verweis_auf_den_snapshot_einer_unberechtigten_rolle_wird_verweigert(tmp_path):
     """Dieselbe Rollenregel wie fuer jede Abnahme, auf der etwas gruendet:
-    Die Ordnung des Falls gibt der Rolle des frueheren Schluessels A-K2 nicht.
+    Die Ordnung, unter der der fruehere Snapshot gezeichnet wurde, gibt der
+    Rolle seines Schluessels A-K2 nicht — hier: von mensch/architektur
+    gezeichnet (Rollenfeld stimmig, Signatur gueltig). Seit die Linie Pflicht
+    ist (ADR-025), gilt die Ordnung DER ZEICHNUNG; eine spaeter geaenderte
+    Ordnung des Lesers entzoege nichts rueckwirkend.
 
     Mutationsprobe: den Rollenregel-Aufruf im Verweis-Zweig aussetzen -> rot."""
+    from rechner_pipeline.models.freigabe import freigabe_fuer
+    from rechner_pipeline.models.schemas import p9_snapshot_sha256
+
     frueher = _fall(tmp_path / "a")
     neu = _fall(tmp_path / "b", mit_kernstand=False)
-    assert _verweisen(neu, "A-K2", _snapshot(frueher, "A-K2")).exit_code == 0
-    ordnung_pfad = neu.parent / "zeichnungsordnung.json"
-    ordnung = json.loads(ordnung_pfad.read_text(encoding="utf-8"))
-    ordnung["rollen"]["mensch/rechenkern"]["gates"] = []
-    ordnung_pfad.write_text(json.dumps(ordnung), encoding="utf-8")
+    snap = json.loads(_snapshot(frueher, "A-K2").read_text(encoding="utf-8"))
+    rest = {k: v for k, v in snap.items() if k not in ("freigabe", "snapshot_sha256")}
+    rest["rolle"] = "mensch/architektur"
+    rest["zeichnung"] = {**rest["zeichnung"], "rolle": "mensch/architektur"}
+    rest["freigabe"] = freigabe_fuer(
+        rest, (frueher.parent / "p9-architektur.key").read_bytes())
+    rest["snapshot_sha256"] = p9_snapshot_sha256(rest)
+    fremd = tmp_path / "a-k2-architektur.json"
+    fremd.write_text(json.dumps(rest), encoding="utf-8")
+    assert _verweisen(neu, "A-K2", fremd).exit_code == 0
     am4 = _am4(neu)
     assert am4.exit_code != 0
     meldung = am4.errors[0]["message"]
@@ -223,7 +235,7 @@ def test_eine_kette_im_fall_geht_jedem_verweis_vor(tmp_path):
     frueher = _fall(tmp_path / "a")
     neu = _fall(tmp_path / "b", mit_kernstand=False)
     abgelehnt = gate_entscheid.main([
-        "--fall", str(neu), "--gate", "A-K2", "--entscheid", "abgelehnt",
+        "--fall", str(neu), *linie_args(neu), "--gate", "A-K2", "--entscheid", "abgelehnt",
         "--rolle", "agent/rechenkern", "--entscheider", "agent", "--begruendung", "offen",
         "--repo-root", str(REPO)])
     assert abgelehnt.exit_code == 0, abgelehnt.errors

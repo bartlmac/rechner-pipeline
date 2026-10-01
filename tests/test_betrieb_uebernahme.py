@@ -197,8 +197,14 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
         "fall_scope": scope,
         "pflichtbelege": pflichtbelege,
     }
+    # Ab Schema 9 unter der Test-Linie gezeichnet (ADR-025: die Linie ist
+    # Pflicht) — Ordnung und Glied, wie das Gate sie pinnt.
+    from tests.freigabe_testschluessel import suitelinie_pin
+
     daten["zeichnung"] = ({"rolle": rolle_id, "ordnung_sha256": "cd" * 32} if schema == 6
-                          else {"rolle": rolle_id, "ordnung_sha256": "cd" * 32, "schluesselklasse": "mensch"})
+                          else {"rolle": rolle_id, "ordnung_sha256": "cd" * 32, "schluesselklasse": "mensch"}
+                          if schema < 9 else
+                          {"rolle": rolle_id, **suitelinie_pin(), "schluesselklasse": "mensch"})
     if gate == "A-M4":
         daten["pk1_belege"] = {"klv/plv_2017": [gen_beleg]} if "pk1_belege" in pflichtbelege else {}   # Schluessel: familie/generation
         if schema >= 8:
@@ -210,6 +216,10 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
                 g.rolle: {"gate": g.gate, "weg": sa.KEINE_AENDERUNG,
                           "anzeige": f"{g.titel} (Suite)"}
                 for g in sa.AM4_GEGENSTAENDE if g.rolle in pflichtbelege}
+    if entscheid == "angenommen" and schema >= 10:
+        # Jede Annahme eines Falls nennt den Auftrag, auf dem sie steht
+        # (ADR-026); hier buergt die Signatur, der Betrieb rechnet ihn nicht nach.
+        daten["fallauftrag"] = hashlib.sha256(b"fallauftrag der Suite").hexdigest()
     if entscheid == "angenommen":
         daten["freigabe"] = freigabe_fuer(daten, schluessel or TESTKEY)
     daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
@@ -376,7 +386,9 @@ def test_eingang_prueft_seine_form(tmp_path):
         ueb.eingang_anlegen(_mit_config(tmp_path / "d"), fall, STICHTAG, quelle=tmp_path / "leer")
     from tests.freigabe_testschluessel import betriebsargs
 
-    bs = betriebsargs("--betriebsschluessel")
+    from tests.freigabe_testschluessel import linieargs
+
+    bs = [*betriebsargs("--betriebsschluessel"), *linieargs()]
     assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "2026-01-01", *bs]) == 0
     assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "2026-01-01", *bs]) == 2
     assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "kein", *bs]) == 2
@@ -746,7 +758,10 @@ def test_die_gepruefte_zeichnung_stammt_aus_den_gepruefte_bytes(tmp_path, monkey
     monkeypatch.setattr(pathlib.Path, "read_text", zaehlend)
     from tests.freigabe_testschluessel import betriebsordnung
 
-    zeichnung = ueb.pruefe_am4_snapshot(fall, sha, ordnung=betriebsordnung())
+    from tests.freigabe_testschluessel import suitelinie_glied
+
+    zeichnung = ueb.pruefe_am4_snapshot(fall, sha, ordnung=betriebsordnung(),
+                                        ordnungslinie=[suitelinie_glied()])
     monkeypatch.undo()
 
     assert len(gelesen) == 1, f"der Snapshot wurde {len(gelesen)}-mal gelesen"
@@ -1230,8 +1245,11 @@ def test_gleichnamige_tabellen_an_zwei_orten_sind_kein_widerspruch(tmp_path):
     assert ziel.is_dir()
     from tests.freigabe_testschluessel import betriebsordnung
 
+    from tests.freigabe_testschluessel import suitelinie_glied
+
     snapshot, _, _verifiziert = ueb.lies_am4_snapshot(fall, _snapshot_sha(fall),
-                                                      ordnung=betriebsordnung())
+                                                      ordnung=betriebsordnung(),
+                                                      ordnungslinie=[suitelinie_glied()])
     belegt = ueb.belegte_tabellen(fall, snapshot)
     quelle = fall / "abgeleitet" / "bestand"
     for datei in ("historie.parquet", "bestand.parquet", "ledger.parquet"):

@@ -49,7 +49,7 @@ from rechner_pipeline.betrieb import zugangsprobe as zpb
 from rechner_pipeline.betrieb.tageslauf import EXIT_OK, Ablage, tageslauf
 from rechner_pipeline.models import anker as ak
 from rechner_pipeline.models import zugangsprobe as zp
-from tests.freigabe_testschluessel import betriebsargs
+from tests.freigabe_testschluessel import betriebsargs, linieargs
 from tests.test_betrieb_seite import _ablage
 from tests.test_betrieb_uebernahme import STICHTAG
 from tests.test_zugangsabnahme_ab2 import _welt
@@ -610,7 +610,7 @@ def _fall_fuer_main(tmp_path: Path) -> Path:
 
 def _main(fall: Path, stand: Path, *extra) -> int:
     return zpb.main(["--stand", str(stand), "--fall", str(fall), "--stichtag", STICHTAG.isoformat(),
-                     *betriebsargs("--schluessel"), *extra])
+                     *betriebsargs("--schluessel"), *linieargs(), *extra])
 
 
 def test_repro_f7_der_beleg_ort_ist_nicht_anlegbar_exit_2(tmp_path, monkeypatch, capsys):

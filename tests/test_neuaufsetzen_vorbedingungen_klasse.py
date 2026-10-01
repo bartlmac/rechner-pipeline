@@ -62,8 +62,14 @@ def _stand_der_ablage(ablage) -> dict:
 
 def _mit_ordnung(ordnung):
     def anpassen(tmp_path, kw, monkeypatch):
+        # Die Abnahmen des Falls unter dem Glied dieser Ordnung, gelesen unter
+        # ihrer Linie (ADR-025: die Linie ist Pflicht; gilt die Ordnung, unter
+        # der gezeichnet wurde).
+        from tests.test_abnahme_rolle_klasse import _unter_ordnung
+
         kw["betriebsschluessel"] = kw["_naht"][0]
         kw["zeichnungsordnung"] = _schreibe(tmp_path / "ordnung-aussen", "o.json", ordnung())
+        kw["linie"] = _unter_ordnung(kw["fall"], ordnung(), tmp_path / "linie-neuaufsetzen")
     return anpassen
 
 
@@ -81,14 +87,15 @@ def _ab2_vorab_unberechtigt(tmp_path, kw, monkeypatch):
     nicht."""
     import hashlib
 
-    from tests.freigabe_testschluessel import BETRIEB_FREIGABEKEY
+    from tests.freigabe_testschluessel import BETRIEB_FREIGABEKEY, suitelinie_pin
     from tests.zugangsabnahme_testhelfer import ab2_snapshot
 
     fall = kw["fall"]
     daten = ab2_snapshot(fall.name, pflichtbelege={
         rolle: [hashlib.sha256(rolle.encode()).hexdigest()]
         for rolle in ("zugangsprobe", "am4_snapshot", "eingang")},
-        vorgaenger=[], schluessel=BETRIEB_FREIGABEKEY)
+        vorgaenger=[], schluessel=BETRIEB_FREIGABEKEY,
+        pin=suitelinie_pin(_ordnung_ohne("A-B2")))
     (fall / "entscheide" / f"A-B2-{daten['snapshot_sha256']}.json").write_text(
         json.dumps(daten), encoding="utf-8")
     kw["zugangsabnahme_sha256"] = daten["snapshot_sha256"]

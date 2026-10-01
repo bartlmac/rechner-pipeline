@@ -258,10 +258,10 @@ def probe(tmp_path_factory):
 def _soll(fall: Path, arbeit: Path) -> zpb.Soll:
     eingang = arbeit / zpb.KOPIE_MIT / "uebernahme" / "probe-uebernahme"
     am4 = json.loads((eingang / "eingang.json").read_text(encoding="utf-8"))["snapshot_sha256"]
-    from tests.freigabe_testschluessel import betriebsordnung
+    from tests.freigabe_testschluessel import betriebsordnung, suitelinie_glied
 
     return zpb.lies_soll(fall, STICHTAG, ueb.zielnummern(eingang), am4_snapshot_sha256=am4,
-                         ordnung=betriebsordnung())
+                         ordnung=betriebsordnung(), ordnungslinie=[suitelinie_glied()])
 
 
 # --------------------------------------------------------------------------- #
@@ -1042,8 +1042,11 @@ def test_die_cli_schreibt_den_beleg_an_den_festen_ort(tmp_path):
     schluessel = tmp_path / "freigabe.key"
     schluessel.write_bytes(TESTKEY)
     schluessel.chmod(0o600)
+    from tests.freigabe_testschluessel import linieargs
+
     code = zpb.main(["--stand", str(stand), "--fall", str(fall), "--stichtag", STICHTAG.isoformat(),
-                     "--freigabe-schluessel", str(schluessel), *betriebsargs("--schluessel")])
+                     "--freigabe-schluessel", str(schluessel), *betriebsargs("--schluessel"),
+                     *linieargs()])
     assert code == 0
     beleg = json.loads((fall / zp.BELEG_RELATIV).read_text(encoding="utf-8"))
     assert beleg["bestanden"] is True and zp.beleg_fehler(beleg) == []
@@ -1072,7 +1075,12 @@ def gatefall(tmp_path):
         BETRIEBSROLLE,
     )
     from tests.test_betrieb_uebernahme import am1_snapshot, am4_snapshot
-    from tests.zeichnung_fixture import ordnung_schreiben, schluessel_anlegen
+    from tests.zeichnung_fixture import (
+        auftrag_args,
+        ordnung_schreiben,
+        schluessel_anlegen,
+        vorstand_rolle,
+    )
     from tests.zugangsabnahme_testhelfer import abnahmen_aus_fall, probenbeleg
 
     fall = bereite_pk1_fall(tmp_path, ("klv/tg2012",), scope="bestand")
@@ -1119,18 +1127,29 @@ def gatefall(tmp_path):
         # DIESE Ordnung (Entscheid 2026-10-01).
         AKTUARIAT_ROLLE: {"schluessel_sha256": hashlib.sha256(TESTKEY).hexdigest(),
                           "schluesselklasse": "mensch", "gates": list(AKTUARIAT_GATES)},
+        # Der Vorstand beauftragt den Fall (ADR-026).
+        **vorstand_rolle(tmp_path),
     })
+    auftrag_args(fall)
     return fall, am4, beleg, schluessel, testkey, ordnung
 
 
 def _ab2(fall, *, schluessel, testkey, ordnung, entscheid="angenommen", extra=()):
     from rechner_pipeline.gates import gate_entscheid
+    from tests.zeichnung_fixture import auftrag_args
 
     args = ["--fall", str(fall), "--gate", "A-B2", "--entscheid", entscheid,
             "--entscheider", "Betriebsverantwortung", "--begruendung", "Zugang geprueft.",
             "--repo-root", str(REPO_ROOT), "--zeichnungsordnung", str(ordnung)]
+    if schluessel is None:
+        # Auch eine Ablehnung nennt die Linie (ADR-025, Nachtrag 2026-10-01).
+        from tests.zeichnung_fixture import linie_sicherstellen
+
+        args += ["--linie", str(linie_sicherstellen(fall, Path(ordnung)))]
     if schluessel is not None:
-        args += ["--freigabe-schluessel", str(testkey), "--freigabe-schluessel", str(schluessel)]
+        # Der Fall ist beauftragt (ADR-026); der Ring traegt den Auftrag mit.
+        args += [*auftrag_args(fall, Path(ordnung)), "--freigabe-schluessel", str(testkey),
+                 "--freigabe-schluessel", str(schluessel)]
     return gate_entscheid.main(args + list(extra))
 
 
@@ -1155,9 +1174,12 @@ def test_mensch_betrieb_zeichnet_die_zugangsabnahme_mit_ihren_drei_belegen(gatef
                         .read_text(encoding="utf-8"))
     assert ledger["summary"]["snapshot_sha256"] == snapshot["snapshot_sha256"]
     ring = {hashlib.sha256(schluessel["mensch"].read_bytes()).hexdigest(): schluessel["mensch"].read_bytes()}
+    from rechner_pipeline.models.ordnungslinie import lade_linie
+
     daten, _, verifiziert = ueb.lies_abnahme_snapshot(
         fall, "A-B2", snapshot["snapshot_sha256"], schluesselring=ring,
-        ordnung=json.loads(Path(ordnung).read_text(encoding="utf-8")))
+        ordnung=json.loads(Path(ordnung).read_text(encoding="utf-8")),
+        ordnungslinie=lade_linie(fall.parent / "linie")[0])
     assert verifiziert is True and daten["gate"] == "A-B2"
 
 
@@ -1321,7 +1343,9 @@ def test_die_registrierung_haelt_das_soll_gegen_die_geltenden_abnahmen(tmp_path,
         ablehnung = am1_snapshot(fall.name)
         ablehnung.update(entscheid="abgelehnt",
                          vorgaenger=[beleg["abnahmen"]["aktuartest"]["snapshot_sha256"]])
+        # Eine Ablehnung traegt weder Freigabe noch Auftragsbezug (ADR-026).
         ablehnung.pop("freigabe"), ablehnung.pop("snapshot_sha256")
+        ablehnung.pop("fallauftrag", None)
         ablehnung["snapshot_sha256"] = p9_snapshot_sha256(ablehnung)
         (fall / "entscheide" / f"A-M1-{ablehnung['snapshot_sha256']}.json").write_text(
             json.dumps(ablehnung), encoding="utf-8")

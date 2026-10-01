@@ -25,7 +25,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from tests.freigabe_testschluessel import betriebsargs
+from tests.freigabe_testschluessel import betriebsargs, linieargs
 
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.betrieb import neuaufsetzen as na
@@ -271,11 +271,11 @@ def test_neuaufsetzen_verweigert_unter_lauf_sperre_und_bei_falscher_config(gefue
 def test_neuaufsetzen_cli(gefuehrt, tmp_path):
     fall = _fall_mit_nebentabellen(tmp_path)
     rc = na.main(["--stand", str(gefuehrt.wurzel), "--fall", str(fall), "--stichtag", STICHTAG.isoformat(),
-                  "--archiv", str(tmp_path / "archiv"), *betriebsargs("--betriebsschluessel")])
+                  "--archiv", str(tmp_path / "archiv"), *betriebsargs("--betriebsschluessel"), *linieargs()])
     assert rc == 0
     assert (tmp_path / "archiv" / "journal").is_dir()
     assert na.main(["--stand", str(tmp_path / "gibt-es-nicht"), "--fall", str(fall), "--stichtag", "2026-01-01",
-                    *betriebsargs("--betriebsschluessel")]) == 2
+                    *betriebsargs("--betriebsschluessel"), *linieargs()]) == 2
 
 
 def test_neuaufsetzen_loescht_nichts():

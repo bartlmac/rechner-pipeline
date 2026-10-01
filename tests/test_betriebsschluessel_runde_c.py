@@ -52,6 +52,7 @@ from tests.freigabe_testschluessel import (
     BETRIEBSROLLE,
     TESTRING,
     betriebsordnung,
+    linieargs,
     zeichne_neu,
 )
 from tests.test_betrieb_seite import _ablage
@@ -886,7 +887,7 @@ def test_cli_uebernahme_reicht_den_schluessel_ausdruecklich_weiter(tmp_path, mon
     assert fehler.value.code == 2
     assert "--betriebsschluessel" in capsys.readouterr().err
     assert ueb.main([*grund, "--betriebsschluessel", str(schluessel),
-                     "--zeichnungsordnung", str(ordnung)]) == 0
+                     "--zeichnungsordnung", str(ordnung), *linieargs()]) == 0
     kopf = json.loads((ablage.uebernahme / "probe-uebernahme" / "eingang.json")
                       .read_text(encoding="utf-8"))
     assert kopf["betriebszeichnung"]["schluessel_sha256"] == hashlib.sha256(
@@ -909,7 +910,7 @@ def test_cli_neuaufsetzen_reicht_den_schluessel_ausdruecklich_weiter(tmp_path, m
     assert fehler.value.code == 2
     assert "--betriebsschluessel" in capsys.readouterr().err
     assert na.main([*grund, "--betriebsschluessel", str(schluessel),
-                    "--zeichnungsordnung", str(ordnung)]) == 0
+                    "--zeichnungsordnung", str(ordnung), *linieargs()]) == 0
     [eingang] = [p for p in Ablage(ablage.wurzel).uebernahme.iterdir() if p.is_dir()]
     kopf = json.loads((eingang / "eingang.json").read_text(encoding="utf-8"))
     assert kopf["betriebszeichnung"]["schluessel_sha256"] == hashlib.sha256(

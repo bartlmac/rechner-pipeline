@@ -63,6 +63,41 @@ sha256sum ~/apps/plv/schluessel/betrieb.key   # -> schluessel_sha256
 Ohne Schluessel laeuft kein Tag (Exit 2 mit Ausweg); ein Menschen- oder
 Agentenschluessel wird abgewiesen.
 
+**Der Linienbereich** (ADR-025; Pflicht seit dem Nachtrag 2026-10-01).
+Jede Abnahme wird unter der Versionslinie der Zeichnungsordnung gezeichnet
+und gegen den Stand gelesen, unter dem sie entstand; ohne Linie zeichnet
+kein Gate und gruendet kein Kommando des Betriebs auf einer Abnahme. Die
+Linie ist nicht eingecheckt (Entscheidernamen, installationsgebundene
+Fingerabdruecke) und wird im Datenbereich der Laufzeit ANGELEGT, neben
+`daten/`, nicht darin: `~/apps/plv/linie`. Sie gehoert in DIESELBE Sicherung
+wie die Schluessel — ihr Verlust macht jede Zeichnung unpruefbar, die ein
+Glied pinnt (also alle). `ordnung/` und `entscheide/` sind nur-anfuegbar,
+kein Kommando loescht dort. Den Ort nennt jeder Aufruf ausdruecklich
+(`--linie ~/apps/plv/linie`): kein Default, keine Umgebungsvorgabe — ein
+Schalter, der fehlen kann, waere wieder eine abschaltbare Wurzel.
+
+```
+python -m rechner_pipeline.gates.stand_belegen linie --linie ~/apps/plv/linie
+python -m rechner_pipeline.gates.stand_belegen ordnung --linie ~/apps/plv/linie \
+    --ordnung <ordnung-der-plv> --vorgaenger keiner
+# ansehen: ~/apps/plv/linie/abgeleitet/ordnung/linie.md
+```
+
+Die Ordnung der PLV fuehrt den Vorstand (`mensch/vorstand`, Gates `A-Z1`
+und `A-M6`), die zeichnenden Rollen und die Betriebsrolle
+`betrieb/tageslauf`. **Welche Kommandos die Linie verlangen**
+(`betrieb.tageslauf.KOMMANDOS_MIT_LINIE`): Registrierung, Zugangsprobe,
+Neuaufsetzen und Anfangsbestand (belegen, binden) — sie gruenden auf einer
+Abnahme oder binden eine. **Der Nachtlauf nicht**
+(`KOMMANDOS_OHNE_LINIE`): Er zeichnet Protokollzeilen, haelt beim Eintritt
+nur die betriebsgezeichneten Saetze der Registrierung und gruendet auf
+keinem Snapshot. Seinen Schluessel haelt er gegen die gezeichnete Bindung
+des Anfangsbestands: `binden` loest unter der Linie auf, welchen
+Fingerabdruck die Spitze der Betriebsrolle gibt, und zeichnet ihn in
+`anfangsbestand.json` (Schema 2). Folge: Ein Wechsel des
+Betriebsschluessels braucht ein Glied der Linie UND eine neue Bindung
+(belegen, A-B3, binden); eine Bindung nach Schema 1 wird neu gebunden.
+
 **Einmaliger Schritt beim ersten Lauf nach dem Umstieg.** Eine Ablage,
 die schon vor dem Betriebsschluessel gefuehrt wurde, traegt ein
 Protokoll ohne gezeichnete Zeile. Darauf verweigern Tageslauf, Export
@@ -141,7 +176,7 @@ python -m rechner_pipeline.betrieb.zugangsprobe --stand ~/apps/plv/daten \
     --freigabe-schluessel <schluessel-mensch-aktuariat> \
     --schluessel ~/apps/plv/schluessel/betrieb.key \
     --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json \
-    [--arbeit <leeres-verzeichnis-ausserhalb-von-daten>]
+    --linie ~/apps/plv/linie [--arbeit <leeres-verzeichnis-ausserhalb-von-daten>]
 ```
 
    Die Probe liest A-M4 und den A-M1, den A-M4 pinnt; sie braucht den
@@ -160,20 +195,22 @@ python -m rechner_pipeline.betrieb.zugangsprobe --stand ~/apps/plv/daten \
 
 ```
 python -m rechner_pipeline.gates.gate_entscheid --fall faelle/<fall> \
+    --linie ~/apps/plv/linie \
     --gate A-B2 --entscheid angenommen --entscheider "<Name>" \
-    --begruendung "..." --freigabe-schluessel <schluessel-mensch-aktuariat> \
+    --begruendung "..." --freigabe-schluessel <schluessel-vorstand> \
+    --freigabe-schluessel <schluessel-mensch-aktuariat> \
     --freigabe-schluessel <schluessel-mensch-betrieb> \
-    --zeichnungsordnung <ordnung> [--mandat <mandat>]
+    --zeichnungsordnung <ordnung-der-spitze> [--mandat <mandat>]
 ```
 
    Der Schalter steht zweifach: Das Gate prueft die Signaturen der A-M4-
    und A-M1-Snapshots, auf denen das Soll der Probe steht (Schluessel von
    `mensch/aktuariat`), und zeichnet selbst mit dem zuletzt genannten
-   (`mensch/betrieb`). Die Ordnung DIESES Aufrufs nennt auch
-   `mensch/aktuariat` mit A-M1 und A-M4, unter demselben Namen wie die
-   Ordnung, unter der A-M1 und A-M4 gezeichnet wurden — das Gate haelt die
-   Rolle und Schluesselklasse beider Snapshots gegen sie (ADR-022,
-   Nachtrag 2026-10-01).
+   (`mensch/betrieb`). Die Ordnung DIESES Aufrufs ist die Spitze der Linie;
+   Rolle und Schluesselklasse der Snapshots haelt das Gate gegen die Ordnung
+   des Glieds, unter dem sie gezeichnet wurden (ADR-025). Wie jede Annahme
+   im Fall setzt A-B2 den Fallauftrag voraus (ADR-026): Der Schluessel des
+   Vorstands steht deshalb im Ring.
 
 3. **Registrierung** — auf DERSELBEN Ablage, ohne dass dazwischen ein
    Tageslauf den gefuehrten Stand bewegt oder die Config getauscht wird,
@@ -204,7 +241,8 @@ python -m rechner_pipeline.betrieb.uebernahme --stand ~/apps/plv/daten \
     --freigabe-schluessel <schluessel-mensch-aktuariat> \
     --freigabe-schluessel <schluessel-mensch-betrieb> \
     --betriebsschluessel ~/apps/plv/schluessel/betrieb.key \
-    --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json
+    --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json \
+    --linie ~/apps/plv/linie
 ```
 
 Der Schalter steht zweifach, weil die Registrierung die Signaturen aller
@@ -285,17 +323,17 @@ dem Einschalten des Timers):
 
 ```
 python -m rechner_pipeline.betrieb.anfangsbestand belegen --stand ~/apps/plv/daten \
-    --linie <linienbereich> --schluessel ~/apps/plv/schluessel/betrieb.key \
+    --linie ~/apps/plv/linie --schluessel ~/apps/plv/schluessel/betrieb.key \
     --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json
-# ansehen: <linienbereich>/abgeleitet/anfangsbestand/beleg.md
-python -m rechner_pipeline.gates.gate_entscheid --linie <linienbereich> --gate A-B3 \
+# ansehen: ~/apps/plv/linie/abgeleitet/anfangsbestand/beleg.md
+python -m rechner_pipeline.gates.gate_entscheid --linie ~/apps/plv/linie --gate A-B3 \
     --entscheid angenommen --entscheider "<Rolle>" --begruendung "..." --repo-root . \
-    --zeichnungsordnung <ordnung> --freigabe-schluessel <schluessel-mensch-betrieb> \
+    --zeichnungsordnung <ordnung-der-spitze> --freigabe-schluessel <schluessel-mensch-betrieb> \
     [--mandat <mandat>]
 python -m rechner_pipeline.betrieb.anfangsbestand binden --stand ~/apps/plv/daten \
-    --linie <linienbereich> --freigabe-schluessel <schluessel-mensch-betrieb> \
+    --linie ~/apps/plv/linie --freigabe-schluessel <schluessel-mensch-betrieb> \
     --schluessel ~/apps/plv/schluessel/betrieb.key \
-    --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json [--ordnungslinie]
+    --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json
 ```
 
 Der Beleg bindet Tabellen, Config, Code-Stand und einen neu gefahrenen
@@ -304,8 +342,10 @@ nach einem Neuaufsetzen zeigt die Sicht die Abweichung zum zuletzt
 abgenommenen Anfangsbestand (aus der Bindung im Archiv der alten Ablage).
 `binden` haelt den Stand des A-B3-Snapshots per Gleichheit gegen den der
 Ablage — liegt zwischen Belegen und Binden ein Lauf, verweigert es. Der
-Linienbereich ist der Ort der Erstabnahme des Zielsystems (ADR-025); die
-Ordnung von `binden` nennt `mensch/betrieb` mit `A-B3`. Eine Zugangsprobe
+Linienbereich ist der Ort der Erstabnahme des Zielsystems (ADR-025); `binden`
+liest A-B3 gegen das Glied, unter dem es gezeichnet wurde, und verweigert,
+wenn die Ordnungsdatei des Betriebs der Rolle `betrieb/tageslauf` einen
+anderen Schluessel gibt als die Spitze der Linie. Eine Zugangsprobe
 auf einer Ablage mit gefuehrtem Stand verlangt die Bindung ebenso (sie
 faehrt den Tageslauf auf einer Kopie); auf der LEEREN Ablage eines
 Neuaufsetzens wird der Zugang Teil des Anfangsbestands.
@@ -342,7 +382,7 @@ python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
     --freigabe-schluessel <schluessel-mensch-betrieb> \
     --betriebsschluessel ~/apps/plv/schluessel/betrieb.key \
     --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json \
-    --zugangsabnahme <sha256-des-a-b2-snapshots>
+    --linie ~/apps/plv/linie --zugangsabnahme <sha256-des-a-b2-snapshots>
 cd ~/apps/plv && docker compose run --rm tageslauf      # Aufbaulauf
 # Abnahme des Anfangsbestands A-B3: belegen, zeichnen, binden (siehe oben)
 python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten \
@@ -351,6 +391,30 @@ python -m rechner_pipeline.betrieb.seite --stand ~/apps/plv/daten \
     --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json
 systemctl --user start tageslauf.timer
 ```
+
+**Reihenfolge des Hochziehens** (gemessen am Code: was verlangt was). Mit
+angehaltenem Timer:
+
+1. **Neues Image** ziehen und den Digest eintragen (oben). Der Code-Stand
+   steht in jeder Protokollzeile; die Zugangsprobe haelt ihren eigenen
+   dagegen.
+2. **Linie** anlegen bzw. bereitstellen (oben) und die Ordnung der Spitze
+   eintragen — ohne sie zeichnet kein Gate (`gate_entscheid`) und laeuft
+   keines der Kommandos unten.
+3. Im Fall: **Fallauftrag** (A-M6, ADR-026) und die Abnahmen bis A-M4 —
+   unter der Linie gezeichnet.
+4. **Zugangsprobe und A-B2** je Eingang auf der neuen Config: auf einem
+   leeren Verzeichnis, das nur die neue `configs/bestand.toml` traegt
+   (dieselben Bytes), dann A-B2 zeichnen. Das Neuaufsetzen registriert nur
+   mit geltender A-B2.
+5. **Neu aufsetzen** (`--linie`, `--zugangsabnahme`). Es legt die alte
+   Ablage SELBST als `daten.archiv-<Zeit>` ab, bevor die neue an ihre Stelle
+   tritt — das Archiv ist Teil dieses Schritts, kein eigener am Ende.
+6. **Aufbaulauf** (`docker compose run --rm tageslauf`): Er laeuft ohne
+   Abnahme und erzeugt erst den gefuehrten Stand, den A-B3 abnimmt.
+7. **Anfangsbestand** belegen, A-B3 zeichnen, binden (oben) — vorher
+   verweigert jeder weitere Lauf.
+8. Export (`betrieb.seite`) mit neuem Ankerverzeichnis, Timer einschalten.
 
 **Config nachziehen** (etwa die Annahmen fuer Beitragsherabsetzung und
 Teilkuendigung vom 2026-10-01, `docs/simulation/erfahrungsannahmen.md`

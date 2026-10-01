@@ -24,7 +24,7 @@ import pytest
 
 from tests.freigabe_testschluessel import zeichne_neu
 
-from tests.freigabe_testschluessel import betriebsargs
+from tests.freigabe_testschluessel import betriebsargs, linieargs
 
 from rechner_pipeline.betrieb import seite as st
 from rechner_pipeline.betrieb import tageslauf as tl
@@ -115,7 +115,8 @@ def test_eine_halbe_config_ist_ein_eingangsfehler(tmp_path, kaputt, capsys):
     assert "nicht lesbar" in capsys.readouterr().err
     fall = _fall(tmp_path / "f")
     assert ueb.main(["--stand", str(ablage.wurzel), "--fall", str(fall),
-                     "--stichtag", STICHTAG.isoformat(), *betriebsargs("--betriebsschluessel")]) == 2
+                     "--stichtag", STICHTAG.isoformat(), *betriebsargs("--betriebsschluessel"),
+                     *linieargs()]) == 2
 
 
 def test_neuaufsetzen_ohne_schluessel_baut_nichts(tmp_path, monkeypatch):

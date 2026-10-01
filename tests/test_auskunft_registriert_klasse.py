@@ -360,6 +360,9 @@ ERLAUBTE_ANTEIL_ARGUMENTE = {
 ERLAUBTE_WIEDERHOLBARE_TEXTE = {
     ("aktuartest_lauf", "--plausibilitaet-groesse"),
     ("gate_entscheid", "--freigabe-schluessel"),
+    # <rolle>=<datei> je simulierter Rolle (ADR-026): In den Auftrag geht nur
+    # der SHA-256 der Mandatsdatei je Rollenkennung — kein Wert je Police.
+    ("fall_belegen", "--mandat"),
 }
 
 

@@ -931,11 +931,14 @@ def erwartete_entscheide(scope: Optional[str]) -> Tuple[str, ...]:
     sind, zeigt :func:`standabnahmen` aus dem A-M4-Snapshot.
     """
     from rechner_pipeline.models.belegrollen import am4_belegrollen
+    from rechner_pipeline.models.zeichnung import AUFTRAG_GATE
 
     rollen = am4_belegrollen(scope if scope in ("tarif", "bestand") else "bestand")
     vorher = tuple(f"A-{m.group(1).upper()}{m.group(2)}"
                    for m in map(_SNAPSHOTROLLE.match, rollen) if m)
-    return vorher + ("A-M4",)
+    # Der Fallauftrag (ADR-026) ist Pflicht-Entscheid jedes Falls: Jede
+    # Annahme nennt ihn signiert (Feld ``fallauftrag``), keine Belegrolle.
+    return (AUFTRAG_GATE,) + vorher + ("A-M4",)
 
 
 def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:

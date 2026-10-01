@@ -28,18 +28,20 @@ from typing import Any, Dict, List
 
 from rechner_pipeline.models import anfangsbestand as ab
 from rechner_pipeline.models import standabnahme as sa
-from tests.freigabe_testschluessel import AB2_ROLLE, BETRIEB_FREIGABEKEY, TESTRING
+from tests.freigabe_testschluessel import (
+    AB2_ROLLE,
+    BETRIEB_FREIGABEKEY,
+    TESTRING,
+    suitelinie_anlegen,
+    suitelinie_pin,
+)
 
 
 def linie_neben(ablage_wurzel: Path) -> Path:
     """Der Linienbereich der Tests: neben der Ablage, einmal angelegt."""
     linie = Path(ablage_wurzel).parent / f"{Path(ablage_wurzel).name}-linie"
-    if sa.bereich_art(linie) != "linie":
-        linie.mkdir(parents=True, exist_ok=True)
-        (linie / sa.LINIE_MARKER).write_text(
-            json.dumps(sa.linie_kennung(linie.name), sort_keys=True, indent=2) + "\n",
-            encoding="utf-8")
-    return linie
+    # mit dem ersten Glied der Test-Linie: Die Linie ist Pflicht (ADR-025).
+    return suitelinie_anlegen(linie)
 
 
 def ab3_snapshot(linie: Path, *, beleg_sha256: str, stand: Dict[str, str],
@@ -65,7 +67,7 @@ def ab3_snapshot(linie: Path, *, beleg_sha256: str, stand: Dict[str, str],
         "vorgaenger": sorted(vorgaenger), "entschieden_am": "2026-01-01T12:00:00+00:00",
         "fall_scope": sa.LINIE_SCOPE, "pflichtbelege": {"anfangsbestand": [beleg_sha256]},
         "stand": dict(stand),
-        "zeichnung": {"rolle": rolle, "ordnung_sha256": "cd" * 32, "schluesselklasse": "mensch"},
+        "zeichnung": {"rolle": rolle, **suitelinie_pin(), "schluesselklasse": "mensch"},
     }
     if entscheid == "angenommen":
         daten["freigabe"] = freigabe_fuer(daten, schluessel)
@@ -94,5 +96,7 @@ def schreibe_anfangsbestand(ablage: Any, zeichner: Any) -> None:
     linie = linie_neben(ablage.wurzel)
     beleg = anf.belegen(ablage.wurzel, linie, zeichner, sperre_gehalten=True)
     sha = zeichne_ab3(linie, beleg)
+    from rechner_pipeline.models.ordnungslinie import lade_linie
+
     anf.binden(ablage.wurzel, linie, zeichner, schluesselring=TESTRING,
-               snapshot_sha256=sha, sperre_gehalten=True)
+               snapshot_sha256=sha, ordnungslinie=lade_linie(linie)[0], sperre_gehalten=True)

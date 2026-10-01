@@ -162,7 +162,7 @@ def lies_soll(
     quelle: Optional[Path] = None,
     schluesselring: Optional[Mapping[str, bytes]] = None,
     ordnung: Optional[Mapping[str, Any]],
-    ordnungslinie: Optional[list] = None,
+    ordnungslinie: Optional[list],
 ) -> Soll:
     """Das Soll aus dem Fall: Uebernahme, aktuarieller Test, Migrationssuite.
 
@@ -976,9 +976,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help=f"Beleg (Default: <fall>/{zp.BELEG_RELATIV} — dort liest ihn A-B2).")
     parser.add_argument("--image-digest", dest="image_digest", default=None,
                         help="Digest des produktiven Images fuer den Beleg (Default: PLV_IMAGE_DIGEST).")
-    parser.add_argument("--linie", default=None,
-                        help="Linienbereich (ADR-025): die Abnahmen werden gegen die Ordnung "
-                             "gehalten, unter der sie gezeichnet wurden (Ordnungslinie).")
+    parser.add_argument("--linie", required=True,
+                        help="Linienbereich (ADR-025; Pflicht seit dem Nachtrag 2026-10-01): "
+                             "die Abnahmen werden gegen die Ordnung gehalten, unter der sie "
+                             "gezeichnet wurden (Ordnungslinie). Kein Default, keine "
+                             "Umgebungsvorgabe: der Ort wird bei jedem Aufruf genannt.")
     ns = parser.parse_args(argv)
     try:
         stichtag = _dt.date.fromisoformat(ns.stichtag)
@@ -1003,7 +1005,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             schluesselring=ring, snapshot_sha256=ns.snapshot,
             quelle=Path(ns.quelle) if ns.quelle else None,
             image_digest=ns.image_digest or os.environ.get("PLV_IMAGE_DIGEST") or None,
-            linie=Path(ns.linie) if ns.linie else None)
+            linie=Path(ns.linie))
     except (ZugangsprobeError, ValueError) as exc:
         print(f"zugangsprobe: {exc}", file=sys.stderr)
         return 2

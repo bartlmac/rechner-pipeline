@@ -232,11 +232,24 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   Aenderung"). The opening portfolio of a store (A-B3, presented by
   `agent/betrieb` with `betrieb.anfangsbestand belegen`, signed by
   `mensch/betrieb`, bound with `betrieb.anfangsbestand binden`) is
-  required by the daily run after the build run. With a line, signing
-  happens only under the tip of the signing-order version line and every
-  reader holds an acceptance against the order it was signed under
+  required by the daily run after the build run. The line is MANDATORY
+  (ADR-025, addendum 2026-10-01): every decision names `--linie`, signing
+  happens only under the tip of the signing-order version line, and every
+  reader that relies on an acceptance holds it against the order it was
+  signed under — without a line nothing is signed and nothing relied on
+  (the nightly run, which relies on no snapshot, excepted)
   (`models.ordnungslinie`; its root role is the board, `mensch/vorstand`,
-  which signs order changes A-Z1 and nothing else). Until the
+  which signs order changes A-Z1 and case mandates A-M6, never a
+  technical acceptance). A case starts with the signed CASE MANDATE
+  A-M6 (presented with `gates.fall_belegen auftrag`, signed by the
+  board): it binds the delivery (`eingang.json`), names the case's
+  programme lead (`mensch/programmleitung`, role and key fingerprint)
+  and the mandates of simulated roles; every other acceptance in the
+  case requires it, and `agent/programmleitung` does not start a case
+  without it. A failing case ends with the signed CASE ABORT A-M5
+  (presented with `gates.fall_belegen abbruch`, signed by the programme
+  lead with the right the mandate gives it); afterwards nothing in the
+  case can be signed (ADR-026). Until the
   regression tool exists, the A-K2 regression record is the named
   EXCEPTION "nicht gefahren, Werkzeug noch nicht erstellt", never a pass.
   During a running migration no agent writes to the T-Box or the kernel:

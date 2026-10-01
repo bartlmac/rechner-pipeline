@@ -195,6 +195,33 @@ PROTOKOLL_SCHEMA_VERSION = 3
 #: geladen und geprueft wird auch dann bei jedem Aufruf, mit denselben
 #: Regeln wie ein expliziter Schluessel.
 _STANDARD_BETRIEBSZEICHNUNG: Optional[Tuple[Path, Path]] = None
+#: Die Naht fuer den Linienbereich, wenn der Aufrufer keinen nennt. Produktiv
+#: None: Jedes Kommando, das auf einer Abnahme gruendet (Registrierung,
+#: Zugangsprobe, Neuaufsetzen, Bindung des Anfangsbestands), verlangt
+#: ``--linie`` ausdruecklich — kein Default, keine Umgebungsvorgabe (ADR-025,
+#: Nachtrag 2026-10-01). Tests setzen sie sessionweit (``tests/conftest.py``).
+_STANDARD_LINIE: Optional[Path] = None
+#: Die Abgrenzung (ADR-025, Nachtrag 2026-10-01), als benannte Menge: Welche
+#: Kommandos des Betriebs die Linie verlangen (``--linie``, Pflicht, ohne
+#: Default) — weil sie auf einer Abnahme gruenden oder eine binden —, und
+#: welche nicht, mit Grund. ``tests/test_linie_pflicht.py`` haelt beide Mengen
+#: gegen die Kommandos des Pakets (==).
+KOMMANDOS_MIT_LINIE: Dict[str, str] = {
+    "rechner_pipeline.betrieb.uebernahme": "Registrierung: gruendet auf A-M4, A-M1 und A-B2",
+    "rechner_pipeline.betrieb.zugangsprobe": "Zugangsprobe: ihr Soll steht auf A-M4 und A-M1",
+    "rechner_pipeline.betrieb.neuaufsetzen": "Neuaufsetzen: registriert die Eingaenge neu",
+    "rechner_pipeline.betrieb.anfangsbestand": (
+        "Anfangsbestand: Beleg in der Linie, Bindung liest A-B3 und loest den Schluessel "
+        "der Ablage unter der Linie auf"),
+}
+KOMMANDOS_OHNE_LINIE: Dict[str, str] = {
+    "rechner_pipeline.betrieb.tageslauf": (
+        "der Nachtlauf zeichnet Protokollzeilen und haelt beim Eintritt nur die Saetze, die "
+        "die Registrierung betriebsgezeichnet hat; er gruendet auf keinem Snapshot. Seinen "
+        "Schluessel haelt er gegen die gezeichnete Bindung des Anfangsbestands, die ihn "
+        "unter der Linie aufgeloest hat — nicht gegen die uebergebene Ordnungsdatei"),
+    "rechner_pipeline.betrieb.seite": "die Seite zeigt an; sie gruendet nichts",
+}
 #: Benannter Zustand einer Protokollangabe, die die Umgebung nicht liefert.
 NICHT_ERFASST = "nicht erfasst"
 
@@ -435,6 +462,11 @@ def betriebszeichner(
     except ZeichnungFehler as exc:
         raise TageslaufError(str(exc)) from exc
     if linie is None:
+        linie = _STANDARD_LINIE
+    if linie is None:
+        # Ohne Linie zeichnet der Betrieb Protokollzeilen und Eingaenge (der
+        # Nachtlauf braucht sie nicht, er gruendet auf keiner Abnahme); jeder
+        # Leser, der auf einer Abnahme gruendet, verweigert dann (Rollenregel).
         return zeichner
     # Mit Linie (ADR-025): die geprueften Glieder ihrer Ordnungslinie — die
     # Leser halten jede Abnahme gegen den Stand der Ordnung, unter dem sie

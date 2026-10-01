@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.freigabe_testschluessel import betriebsargs
+from tests.freigabe_testschluessel import betriebsargs, linieargs
 
 from rechner_pipeline.betrieb import _loeschen
 from rechner_pipeline.betrieb import seite as st
@@ -101,7 +101,7 @@ def test_neuaufsetzen_erneut_gefahren_vollendet_den_tausch(tmp_path, monkeypatch
     assert not ablage.wurzel.exists()
     assert na.main(["--stand", str(ablage.wurzel), "--fall", str(fall),
                     "--stichtag", STICHTAG.isoformat(),
-                    *betriebsargs("--betriebsschluessel")]) == 0
+                    *betriebsargs("--betriebsschluessel"), *linieargs()]) == 0
     assert (ablage.wurzel / na.PROVENIENZ_DATEI).is_file()
     assert not list(tmp_path.glob("daten.neu-*"))
 
@@ -159,7 +159,8 @@ def test_ein_ausgabefehler_der_registrierung_ist_eine_meldung(tmp_path, monkeypa
 
     monkeypatch.setattr(ueb, "eingang_anlegen", voll)
     code = ueb.main(["--stand", str(tmp_path / "daten"), "--fall", str(fall),
-                     "--stichtag", STICHTAG.isoformat(), *betriebsargs("--betriebsschluessel")])
+                     "--stichtag", STICHTAG.isoformat(), *betriebsargs("--betriebsschluessel"),
+                     *linieargs()])
     assert code == 2 and "Ein-/Ausgabefehler" in capsys.readouterr().err
 
 

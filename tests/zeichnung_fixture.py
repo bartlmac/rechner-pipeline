@@ -54,16 +54,29 @@ STANDROLLEN = (
 RECHENKERN_GATES = ["A-K2"]
 #: Die Wurzelrolle der Ordnungslinie (ADR-025) — die Kennung steht an EINER
 #: Stelle (``models.ordnungslinie.WURZELROLLE``); eigener Schluessel.
-_VORSTAND_SCHLUESSEL = b"test-only-p9-vorstand-key-az1!!!!" * 2
+#: Derselbe Schluessel wie der des Vorstands der Test-Ordnung des Betriebs
+#: (``freigabe_testschluessel.VORSTANDKEY``): EINE Wurzel je Testlinie, die mit
+#: der Ordnung des Betriebs beginnt und die Ordnung des Falls als Glied anhaengt.
+from tests.freigabe_testschluessel import VORSTANDKEY as _VORSTAND_SCHLUESSEL  # noqa: E402
 VORSTAND_SCHLUESSEL_DATEI = "p9-vorstand.key"
+#: Die Programmleitung des Falls (ADR-026): eigener Schluessel, NICHT in der
+#: Ordnung — der Fallauftrag benennt sie und gibt ihr das Recht auf A-M5.
+_PROGRAMMLEITUNG_SCHLUESSEL = b"test-only-p9-programmleitung-am5" * 2
+PROGRAMMLEITUNG_SCHLUESSEL_DATEI = "p9-programmleitung.key"
+#: Das Repo, auf dessen Systemstand die Helfer zeichnen.
+_REPO = Path(__file__).resolve().parents[1]
 
 
 def _fall_gates() -> List[str]:
-    from rechner_pipeline.models.zeichnung import GUELTIGE_GATES
+    from rechner_pipeline.models.ordnungslinie import WURZEL_GATES
+    from rechner_pipeline.models.zeichnung import FALLROLLEN_GATES, GUELTIGE_GATES
 
     eigene = {gate for _, gate, _, _ in STANDROLLEN}
+    # Den Fallauftrag zeichnet der Vorstand, den Abbruch die Programmleitung
+    # mit dem Recht aus dem Auftrag (ADR-026) — nie die Standardrolle.
     return [g for g in GUELTIGE_GATES
-            if g not in ("A-B1", "A-B2", "A-B3") and g not in eigene]
+            if g not in ("A-B1", "A-B2", "A-B3") and g not in eigene
+            and g not in WURZEL_GATES and g not in FALLROLLEN_GATES]
 
 
 #: Die Gates der Standardrolle (mensch/aktuariat): alle zeichenbaren ausser
@@ -108,8 +121,18 @@ def standard_ordnung(
         if eigener_fp != fp:
             rollen[name] = {"schluessel_sha256": eigener_fp, "schluesselklasse": klasse,
                             "gates": [gate]}
+    # Die Wurzelrolle steht in jeder Standardordnung (ADR-025, ADR-026): Sie
+    # beauftragt jeden Fall und traegt die Ordnungslinie.
+    if rolle != _wurzelrolle():
+        rollen.update(vorstand_rolle(schluessel.parent))
     rollen.update(weitere or {})
     return ordnung_schreiben(verzeichnis / "zeichnungsordnung.json", rollen)
+
+
+def _wurzelrolle() -> str:
+    from rechner_pipeline.models.ordnungslinie import WURZELROLLE
+
+    return WURZELROLLE
 
 
 def annahme_args(fall: Path, **kw) -> List[str]:
@@ -119,33 +142,190 @@ def annahme_args(fall: Path, **kw) -> List[str]:
     Ordnung verlangt), je Fall genau einmal angelegt.
     """
     fuer = kw.pop("fuer", None)
+    ohne_auftrag = kw.pop("ohne_auftrag", False)
+    ohne_linie = kw.pop("ohne_linie", False)
     schluessel = fall.parent / "p9-freigabe.key"
-    ordnung = fall.parent / "zeichnungsordnung.json"
+    ordnung = kw.pop("ordnung_pfad", None) or fall.parent / "zeichnungsordnung.json"
     if not ordnung.exists():
         standard_ordnung(fall.parent, schluessel, **kw)
+    # Die Linie ist Pflicht (ADR-025, Nachtrag 2026-10-01): Jeder Fall der
+    # Suite zeichnet und liest unter der Linie neben ihm, deren Spitze die
+    # Ordnung dieses Aufrufs ist — der Normalweg der Suite ist der MIT Wurzel.
+    linie = None if ohne_linie else linie_sicherstellen(fall, ordnung)
+    # Jeder Abnahmepunkt eines Falls setzt den gezeichneten Fallauftrag voraus
+    # (ADR-026): Der gemeinsame Weg beauftragt den Fall, bevor er zeichnet —
+    # und neu, sobald sich die Lieferung geaendert hat.
+    if not ohne_auftrag and fuer != "A-M6" and (fall / "eingang.json").is_file() \
+            and not _auftrag_gilt(fall):
+        # Nicht streng: Ein Test, der einen kaputten Fall baut (Scope, Eingang),
+        # bekommt die Meldung des Gates zu SEINEM Befund, nicht die des Helfers;
+        # fehlt der Auftrag dann, sagt das Gate "kein Fallauftrag".
+        fallauftrag_zeichnen(fall, streng=False,
+                             **{k: v for k, v in kw.items() if k == "klasse"})
     # Der Ring: alle Schluessel, der zeichnende zuletzt. A-K2 zeichnet
-    # mensch/rechenkern, A-O1 mensch/architektur, jedes andere Gate die
-    # Standardrolle; A-M4 prueft mit dem Ring die Signaturen der Annahmen,
-    # auf denen es gruendet.
+    # mensch/rechenkern, A-O1 mensch/architektur, A-M6 der Vorstand, A-M5 die
+    # Programmleitung, jedes andere Gate die Standardrolle. Jede Annahme
+    # prueft mit dem Ring die Signaturen der Annahmen, auf denen sie gruendet —
+    # den Fallauftrag immer (HMAC-Grenze, ADR-026).
     eigene = {gate: fall.parent / datei for _, gate, datei, _ in STANDROLLEN}
-    if fuer in eigene:
-        ring = [eigene[fuer]]
-    else:
-        ring = [d for d in eigene.values() if d.exists()] + (
-            [schluessel] if schluessel.exists() else [])
+    eigene["A-M6"] = fall.parent / VORSTAND_SCHLUESSEL_DATEI
+    eigene["A-M5"] = fall.parent / PROGRAMMLEITUNG_SCHLUESSEL_DATEI
+    zeichnend = eigene.get(fuer, schluessel)
+    ring = [d for d in [*eigene.values(), schluessel] if d.exists() and d != zeichnend]
+    if zeichnend.exists():
+        ring.append(zeichnend)
     args = ["--zeichnungsordnung", str(ordnung)]
-    # Fuehrt der Test eine Linie (ADR-025; :func:`linie_anlegen`), zeichnet
-    # und liest jeder Aufruf unter ihrer Ordnungslinie — der Normalweg.
-    linie = fall.parent / "linie"
-    if fall.resolve() != linie.resolve() and (linie / "linie.json").is_file():
+    if linie is not None and fall.resolve() != linie.resolve():
         args += ["--linie", str(linie)]
     for datei in ring:
         args += ["--freigabe-schluessel", str(datei)]
     # Eine simulierte Rolle handelt unter einem Mandat — Pflicht seit
     # Review T22-07 (ADR-018): das Mandat liegt wie die Ordnung neben dem Fall.
-    if kw.get("klasse", "simulation") == "simulation":
+    # Vorstand und Programmleitung sind in der Suite immer simuliert.
+    if kw.get("klasse", "simulation") == "simulation" or fuer in ("A-M6", "A-M5"):
         args += ["--mandat", str(mandat_datei(fall))]
     return args
+
+
+def auftrag_args(fall: Path, ordnung: Optional[Path] = None) -> List[str]:
+    """Fuer Tests mit eigenem Argumentbau: den Fall beauftragen, falls noch
+    nicht (ADR-026), und die Schluessel von Vorstand und Programmleitung fuer
+    den Ring — VOR den zeichnenden Schluessel setzen (der letzte zeichnet).
+    Jede Annahme prueft die Signatur des Fallauftrags (HMAC-Grenze).
+
+    ``ordnung``: die eigene Ordnung des Tests; sie bekommt die Wurzelrolle,
+    falls ihr die fehlt, wird Spitze der Linie neben dem Fall (die Linie ist
+    Pflicht, ADR-025), und unter ihr wird beauftragt. Rueckgabe beginnt mit
+    ``--linie <linie>``."""
+    ordnung = Path(ordnung) if ordnung is not None else fall.parent / "zeichnungsordnung.json"
+    if not ordnung.exists():
+        standard_ordnung(fall.parent, fall.parent / "p9-freigabe.key")
+    _wurzel_sicherstellen(ordnung, fall.parent)
+    linie = linie_sicherstellen(fall, ordnung)
+    if (fall / "eingang.json").is_file() and not _auftrag_gilt(fall):
+        fallauftrag_zeichnen(fall, streng=False, ordnung_pfad=ordnung)
+    return ["--linie", str(linie)] + [
+        teil for datei in (VORSTAND_SCHLUESSEL_DATEI, PROGRAMMLEITUNG_SCHLUESSEL_DATEI)
+        if (fall.parent / datei).exists()
+        for teil in ("--freigabe-schluessel", str(fall.parent / datei))]
+
+
+def entscheide_args(fall: Path, **kw) -> List[str]:
+    """Ordnung, Schluessel und Mandat fuer das Diskrepanz-Kommando
+    (``ontologie.entscheide``): Es ist kein Gate, kennt weder ``--linie`` noch
+    den Fallauftrag (ADR-026 betrifft die Abnahmepunkte)."""
+    return annahme_args(fall, ohne_linie=True, ohne_auftrag=True, **kw)
+
+
+def linie_args(fall: Path, ordnung: Optional[Path] = None) -> List[str]:
+    """``--linie <linie>`` fuer Aufrufe mit eigenem Argumentbau, die nur die
+    Linie brauchen (Ablehnungen, Verweigerungen vor dem Schluessel): Ohne
+    Linie wird nicht entschieden (ADR-025, Nachtrag 2026-10-01)."""
+    fall = Path(fall)
+    ordnung = Path(ordnung) if ordnung is not None else fall.parent / "zeichnungsordnung.json"
+    if not ordnung.exists():
+        standard_ordnung(fall.parent, fall.parent / "p9-freigabe.key")
+    return ["--linie", str(linie_sicherstellen(fall, ordnung))]
+
+
+def linie_sicherstellen(fall: Path, ordnung: Path) -> Path:
+    """Die Linie neben dem Fall, mit ``ordnung`` als Spitze (ADR-025).
+
+    Fehlt die Linie, wird sie angelegt und die Ordnung ihr erstes Glied; ist
+    die Spitze eine andere Ordnung, haengt der Vorstand die neue als Glied an
+    (Schluessel neben dem Fall) — wie im Betrieb: Gezeichnet wird nur unter
+    der Spitze. Eine Ordnung, die nicht in die Linie darf (Stern, Rolle des
+    Falls oder des abgebenden Hauses), scheitert hier mit der Meldung der
+    Linie."""
+    from rechner_pipeline.gates import stand_belegen
+    from rechner_pipeline.models import ordnungslinie as ol
+
+    linie = fall.parent / "linie"
+    if fall.resolve() == linie.resolve():
+        return linie
+    from tests.freigabe_testschluessel import suitelinie_anlegen
+
+    _wurzel_sicherstellen(Path(ordnung), fall.parent)
+    schluessel_anlegen(fall.parent / VORSTAND_SCHLUESSEL_DATEI, _VORSTAND_SCHLUESSEL)
+    if not (linie / "linie.json").is_file():
+        # Die Test-Linie beginnt mit der Ordnung des Betriebs (deterministisches
+        # erstes Glied): Was der Betrieb liest, ist in JEDER Linie der Suite
+        # lokalisierbar; die Ordnung des Falls haengt der Vorstand an.
+        suitelinie_anlegen(linie)
+    glieder, fehler = ol.lade_linie(linie)
+    assert not fehler, fehler
+    sha = hashlib.sha256(Path(ordnung).read_bytes()).hexdigest()
+    if glieder and glieder[-1]["ordnung_sha256"] == sha:
+        return linie
+    argv = ["ordnung", "--linie", str(linie), "--ordnung", str(ordnung),
+            "--eingetragen-am", f"2026-10-01T08:{len(glieder):02d}:00+00:00"]
+    if glieder:
+        argv += ["--vorgaenger", glieder[-1]["glied_sha256"],
+                 "--vorstand-schluessel", str(fall.parent / VORSTAND_SCHLUESSEL_DATEI)]
+    else:
+        argv += ["--vorgaenger", "keiner"]
+    ergebnis = stand_belegen.main(argv)
+    assert ergebnis.exit_code == 0, ergebnis.errors
+    return linie
+
+
+def _auftrag_gilt(fall: Path) -> bool:
+    """Ob der Fall einen geltenden, angenommenen Fallauftrag auf der heutigen
+    Lieferung traegt (strukturell — das Gate prueft Signatur und Rolle)."""
+    from rechner_pipeline.gates.stand_belegen import geltende_spitze
+
+    spitze, _ = geltende_spitze(fall, "A-M6")
+    if spitze is None or spitze.get("entscheid") != "angenommen":
+        return False
+    return all(spitze["artefakt_hashes"].get(name)
+               == hashlib.sha256((fall / name).read_bytes()).hexdigest()
+               for name in ("eingang.json", "fall.json"))
+
+
+def fallauftrag_zeichnen(fall: Path, *, programmleitung_klasse: str = "simulation",
+                         auftrag: str = "Fall der Suite: migrieren und abnehmen",
+                         streng: bool = True, ordnung_pfad: Optional[Path] = None, **kw):
+    """Den Fall beauftragen (ADR-026): Vorlage legen, als Vorstand A-M6 zeichnen.
+
+    Die Programmleitung bekommt ihren eigenen Schluessel neben dem Fall (nicht
+    in der Ordnung), jede simulierte Rolle das Mandat der Suite. Der gemeinsame
+    Weg fuer jeden Fall, statt je Test."""
+    from rechner_pipeline.gates import fall_belegen, gate_entscheid
+
+    ordnung_pfad = Path(ordnung_pfad or fall.parent / "zeichnungsordnung.json")
+    if not ordnung_pfad.exists():
+        standard_ordnung(fall.parent, fall.parent / "p9-freigabe.key", **kw)
+    ordnung = _wurzel_sicherstellen(ordnung_pfad, fall.parent)
+    pl = fall.parent / PROGRAMMLEITUNG_SCHLUESSEL_DATEI
+    schluessel_anlegen(pl, _PROGRAMMLEITUNG_SCHLUESSEL)
+    argv = ["auftrag", "--fall", str(fall), "--zeichnungsordnung", str(ordnung_pfad),
+            "--programmleitung-schluessel", str(pl),
+            "--programmleitung-klasse", programmleitung_klasse, "--auftrag", auftrag]
+    for rolle in fall_belegen.mandatsrollen(ordnung, programmleitung_klasse):
+        argv += ["--mandat", f"{rolle}={mandat_datei(fall)}"]
+    # Die Linie ist Pflicht (ADR-025): Der Auftrag verweist auf ihre Abnahmen.
+    argv += ["--linie", str(linie_sicherstellen(fall, ordnung_pfad))]
+    vorlage = fall_belegen.main(argv)
+    if not streng and vorlage.exit_code != 0:
+        return vorlage
+    assert vorlage.exit_code == 0, vorlage.errors
+    ergebnis = gate_entscheid.main([
+        "--fall", str(fall), "--gate", "A-M6", "--entscheid", "angenommen",
+        "--entscheider", "vorstand", "--begruendung", "Fall beauftragt (Suite)",
+        "--repo-root", str(_REPO),
+        *annahme_args(fall, fuer="A-M6", ordnung_pfad=ordnung_pfad, **kw)])
+    assert not streng or ergebnis.exit_code == 0, ergebnis.errors
+    return ergebnis
+
+
+def _wurzel_sicherstellen(ordnung_pfad: Path, schluessel_ort: Path) -> dict:
+    """Eine Testordnung ohne Wurzel bekommt sie, bevor der Fall beauftragt
+    wird (ADR-025, ADR-026); Rueckgabe: die Ordnung."""
+    ordnung = json.loads(ordnung_pfad.read_text(encoding="utf-8"))
+    if _wurzelrolle() not in ordnung["rollen"]:
+        ordnung["rollen"].update(vorstand_rolle(schluessel_ort))
+        ordnung_schreiben(ordnung_pfad, ordnung["rollen"])
+    return ordnung
 
 
 def mandat_datei(fall: Path) -> Path:
@@ -263,11 +443,11 @@ def zeichne_stand(fall: Path, repo_root: Path, **kw):
 
 def vorstand_rolle(verzeichnis: Path) -> Dict[str, dict]:
     """Die Wurzelrolle der Ordnungslinie mit ihrem eigenen Schluessel."""
-    from rechner_pipeline.models.ordnungslinie import WURZELROLLE, ORDNUNGS_GATE
+    from rechner_pipeline.models.ordnungslinie import WURZELROLLE, WURZEL_GATES
 
     fp = schluessel_anlegen(verzeichnis / VORSTAND_SCHLUESSEL_DATEI, _VORSTAND_SCHLUESSEL)
     return {WURZELROLLE: {"schluessel_sha256": fp, "schluesselklasse": "simulation",
-                               "gates": [ORDNUNGS_GATE]}}
+                          "gates": list(WURZEL_GATES)}}
 
 
 def linie_anlegen(verzeichnis: Path, **kw) -> Path:
@@ -281,7 +461,6 @@ def linie_anlegen(verzeichnis: Path, **kw) -> Path:
     verzeichnis.mkdir(parents=True, exist_ok=True)
     linie = verzeichnis / "linie"
     weitere = dict(kw.pop("weitere", None) or {})
-    weitere.update(vorstand_rolle(verzeichnis))
     ordnung = standard_ordnung(verzeichnis, verzeichnis / "p9-freigabe.key",
                                weitere=weitere, **kw)
     assert stand_belegen.main(["linie", "--linie", str(linie)]).exit_code == 0

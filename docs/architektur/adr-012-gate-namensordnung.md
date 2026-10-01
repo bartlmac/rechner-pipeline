@@ -96,6 +96,8 @@ die Belege lesen.
 | (neu) | `A-T1.tarifwerk` | Tarifwerk der PLV: Tarifplaene und Parametrierung der eigenen Generationen (ADR-025) |
 | (neu) | `A-B3.anfangsbestand` | Anfangsbestand einer aufgesetzten Ablage (ADR-025) |
 | (neu) | `A-Z1.ordnungsaenderung` | ein Glied der Versionslinie der Zeichnungsordnung (ADR-025; kein P9-Snapshot) |
+| (neu) | `A-M6.fallauftrag` | Auftrag eines Falls durch den Vorstand (ADR-026) |
+| (neu) | `A-M5.fallabbruch` | gezeichnetes Ende eines Falls ohne Abnahme (ADR-026) |
 | `A-K1` | `A-O1.tbox-aenderung` | T-Box-Aenderung (Gegenstand `O`) |
 | `P9.gate-entscheid` | `entscheid.vollzug` | das Entscheid-Kommando |
 | `P9.<gate>` | `entscheid.<abnahme>` | Ledger-Eintrag eines Vollzugs |
@@ -271,6 +273,21 @@ Bisher musste man wissen, dass `G-A` vor `G-2` kommt.
 
 Der kuenftige Fallauftrag bekommt einen eigenen Namen; `A-M5` bleibt dem
 Fallabbruch vorbehalten.
+
+## Nachtrag 2026-10-01: Auftrag und Abbruch eines Falls (ADR-026)
+
+* **`A-M5.fallabbruch`** — wie am 2026-09-16 vorgesehen: Art `A`, Gegenstand
+  `M` (die Migration als Ganzes), Nummer 5. Gezeichnet von der Programmleitung
+  des Falls.
+* **`A-M6.fallauftrag`** — Art `A`, Gegenstand `M`, die naechste freie Nummer.
+  Der Auftrag betrifft die Migration als Ganzes wie der Abbruch; beide Enden
+  des Lebenslaufs stehen unter demselben Gegenstand. Die Nummer sagt die
+  Reihenfolge der Vergabe, nicht die des Ablaufs: Der Auftrag kommt im Ablauf
+  zuerst, vergeben wurde zuerst `A-M5`. Verworfen: `A-M0` (die Nummern
+  beginnen bei 1) und ein eigener Gegenstand fuer zwei Gates, die beide die
+  Migration als Ganzes betreffen.
+
+Beide stehen im Register (Abschnitt 2).
 
 ## Nachtrag 2026-09-05: Versionierungsregel der Gates
 

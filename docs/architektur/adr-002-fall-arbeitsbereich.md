@@ -228,3 +228,16 @@ Kein neuer Eingang: Die Auskunft ist die registrierte Datei des Nachtrags vom
 einen solchen Vertrag durch die ganze Kette, je einmal fuer eine Generation
 mit `prospektiv`, `mit_abzug` und `teilkuendigung`, und die Angriffe des
 Pruefers als Verweigerungen.
+
+## Nachtrag 2026-10-01: der Fall und sein Auftrag (ADR-026)
+
+Ein Fall entsteht weiterhin, indem jemand ihn anlegt und die Lieferung
+registriert; gefuehrt wird er erst mit dem gezeichneten **Fallauftrag**
+(`A-M6`, Vorstand). Der Auftrag bindet genau die Bytes, die dieser ADR zur
+Provenienzkette macht: `eingang.json` mit je Quelle Name und SHA-256, dazu
+`fall.json` (Name, Scope). Eine nachgereichte Quelle aendert das Register und
+entzieht dem Auftrag die Geltung; der Vorstand beauftragt neu. Die Zone
+bleibt, was sie war: Der Auftrag steht als Snapshot unter `entscheide/`, seine
+Vorlage unter `abgeleitet/auftrag/`; der Eingang wird dadurch nicht
+beruehrt. Ein Fall, der scheitert, endet mit dem **Fallabbruch** (`A-M5`);
+danach ist in ihm nichts mehr zeichenbar, abgelegt wird er wie jeder Fall.

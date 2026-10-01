@@ -282,16 +282,48 @@ def _ab3_aus_ledger(linie: Path) -> Optional[str]:
     return sha if isinstance(sha, str) else None
 
 
+def betriebsschluessel_der_linie(zeichner: Zeichner, ordnungslinie: list) -> str:
+    """Der Fingerabdruck, den die SPITZE der Ordnungslinie der Rolle des
+    Betriebszeichners gibt — oder :class:`AnfangsbestandFehler`.
+
+    Der Anker des Betriebsschluessels (Entscheid 2026-10-01): Der Nachtlauf
+    kennt die Linie nicht und soll sie nicht brauchen; er prueft seine Rolle
+    gegen die Ordnungsdatei, die ihm uebergeben wird. Wer diese Datei tauscht,
+    tauscht die Rolle. ``binden`` loest deshalb UNTER der Linie einmal auf,
+    welcher Schluessel der Betriebsrolle gehoert, und schreibt ihn in die
+    gezeichnete Bindung; der Nachtlauf haelt seinen Schluessel gegen diese
+    Zahl, nicht gegen die Datei (``anfangsbestand_fehler``).
+    """
+    from rechner_pipeline.models.ordnungslinie import ordnung_aus
+
+    if not ordnungslinie:
+        raise AnfangsbestandFehler(
+            "ohne Ordnungslinie ist nicht bestimmbar, welcher Schluessel die Ablage fuehrt "
+            "(ADR-025, Nachtrag 2026-10-01) — Ausweg: --linie <linienbereich>")
+    spitze = ordnungslinie[-1]
+    eintrag = (ordnung_aus(spitze).get("rollen") or {}).get(zeichner.rolle) or {}
+    fp = eintrag.get("schluessel_sha256")
+    if fp != zeichner.schluessel_sha256:
+        raise AnfangsbestandFehler(
+            f"die Spitze der Ordnungslinie (Glied {spitze['nummer']}) gibt der Rolle "
+            f"{zeichner.rolle!r} den Schluessel {str(fp)[:16]}, gezeichnet wird mit "
+            f"{zeichner.schluessel_sha256[:16]} — die Ordnungsdatei des Betriebs ist nicht die "
+            "der Linie. Ausweg: die Ordnung der Spitze verwenden oder die Ordnung in die Linie "
+            "eintragen (ADR-025)")
+    return str(fp)
+
+
 def binden(
     stand: Path, linie: Path, zeichner: Zeichner, *,
     schluesselring: Mapping[str, bytes], snapshot_sha256: Optional[str] = None,
-    ordnungslinie: Optional[list] = None, sperre_gehalten: bool = False,
+    ordnungslinie: Optional[list], sperre_gehalten: bool = False,
 ) -> Dict[str, Any]:
     """Die A-B3-Abnahme an die Ablage binden; Rueckgabe: die Bindung."""
     from rechner_pipeline.betrieb import uebernahme as ueb
 
     linie = Path(linie)
     name = _linie_pruefen(linie)
+    betriebsschluessel = betriebsschluessel_der_linie(zeichner, ordnungslinie or [])
     sha = snapshot_sha256 or _ab3_aus_ledger(linie)
     try:
         snap, snap_name, _ = ueb.lies_abnahme_snapshot(
@@ -321,7 +353,9 @@ def binden(
         if beleg_pfad.is_file() and _datei_sha(beleg_pfad) == beleg_sha:
             kennzahlen = json.loads(beleg_pfad.read_text(encoding="utf-8")).get("kennzahlen") or {}
         satz = ab.bindung_inhalt(linie=name, snapshot=snap, beleg_sha256=str(beleg_sha),
-                                 kennzahlen=kennzahlen, freigabe_rolle=rolle)
+                                 kennzahlen=kennzahlen, freigabe_rolle=rolle,
+                                 betriebsschluessel_sha256=betriebsschluessel,
+                                 ordnungsglied_sha256=str(ordnungslinie[-1]["glied_sha256"]))
         bindung = {**satz, "zeichnung": zeichner.zeichne(satz)}
         tl._schreibe_json_atomar(tl.schreibziel(ablage, ablage.wurzel / ab.BINDUNG_DATEI), bindung)
     return bindung
@@ -356,8 +390,23 @@ def anfangsbestand_fehler(ablage: tl.Ablage, zeichner: Zeichner) -> Optional[str
         bindung = json.loads(pfad.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         return f"{pfad}: nicht lesbar ({exc}). {ausweg}"
-    if not isinstance(bindung, dict) or set(bindung) != ab.BINDUNG_FELDER:
-        return f"{pfad}: keine Bindung nach dem Vertrag ({sorted(ab.BINDUNG_FELDER)}). {ausweg}"
+    if not isinstance(bindung, dict) or set(bindung) != ab.BINDUNG_FELDER \
+            or bindung.get("schema_version") != ab.BINDUNG_SCHEMA_VERSION:
+        return (f"{pfad}: keine Bindung nach dem Vertrag (Schema "
+                f"{ab.BINDUNG_SCHEMA_VERSION}, {sorted(ab.BINDUNG_FELDER)}) — eine Bindung nach "
+                "Schema 1 traegt den Schluessel der Ablage nicht und wird neu gebunden. "
+                f"{ausweg}")
+    # Der Anker (Entscheid 2026-10-01): Der Schluessel, mit dem dieser Lauf
+    # zeichnet, muss der sein, den die Linie beim Binden der Betriebsrolle gab.
+    # Eine ausgetauschte Ordnungsdatei tauscht die Rolle, nicht diese Zahl.
+    if bindung.get("betriebsschluessel_sha256") != zeichner.schluessel_sha256:
+        return (f"{pfad}: der Betriebsschluessel {zeichner.schluessel_sha256[:16]} ist nicht "
+                "der gebundene "
+                f"({str(bindung.get('betriebsschluessel_sha256'))[:16]}, aufgeloest unter der "
+                "Ordnungslinie beim Binden) — die Ordnungsdatei des Laufs gibt die Rolle einem "
+                "anderen Schluessel als die Linie. Ausweg: mit dem gebundenen Schluessel "
+                "fahren; ein Wechsel des Betriebsschluessels braucht eine neue Bindung unter "
+                f"der Linie. {ausweg}")
     zf = betriebszeichnung_fehler(bindung, zeichner.ring, zeichner.ordnung, was="die Bindung")
     if zf is not None:
         return f"{pfad}: {zf}. {ausweg}"
@@ -385,9 +434,6 @@ def main(argv: Optional[List[str]] = None) -> int:
                            help="Schluessel von mensch/betrieb (prueft die A-B3-Freigabe)")
             u.add_argument("--abnahme", default=None,
                            help="Snapshot-Hash von A-B3 (Default: das A-B3-Gate-Ledger der Linie)")
-            u.add_argument("--ordnungslinie", action="store_true",
-                           help="die Rolle gegen den Stand der Ordnung halten, unter dem A-B3 "
-                                "gezeichnet wurde (Ordnungslinie der Linie, ADR-025)")
     a = p.parse_args(argv)
     ablage = tl.Ablage(Path(a.stand))
     try:
@@ -404,15 +450,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         if fehler:
             print("anfangsbestand: " + "; ".join(fehler), file=sys.stderr)
             return 2
-        glieder = None
-        if a.ordnungslinie:
-            from rechner_pipeline.models.ordnungslinie import lade_linie
+        # Die Ordnungslinie der Linie ist Pflicht (ADR-025, Nachtrag
+        # 2026-10-01): A-B3 wird gegen den Stand der Ordnung gelesen, unter dem
+        # es gezeichnet wurde, und der Schluessel der Ablage wird unter ihr
+        # aufgeloest.
+        from rechner_pipeline.models.ordnungslinie import lade_linie
 
-            glieder, lf = lade_linie(Path(a.linie))
-            if lf or not glieder:
-                print("anfangsbestand: Ordnungslinie " + ("; ".join(lf[:3]) or "leer"),
-                      file=sys.stderr)
-                return 2
+        glieder, lf = lade_linie(Path(a.linie))
+        if lf or not glieder:
+            print("anfangsbestand: Ordnungslinie " + ("; ".join(lf[:3]) or "leer"),
+                  file=sys.stderr)
+            return 2
         bindung = binden(ablage.wurzel, Path(a.linie), zeichner, schluesselring=ring,
                          snapshot_sha256=a.abnahme, ordnungslinie=glieder)
         print(f"anfangsbestand: {ab.anzeige_bindung(bindung)}", file=sys.stderr)

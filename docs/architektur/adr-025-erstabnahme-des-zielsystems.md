@@ -307,10 +307,15 @@ konnte), und deshalb hat sie Schranken (gebaut):
   Verbreiterung einer bestehenden (`gates_erweitert`); eine behauptete
   Liste bricht die Linie.
 * (c) Die Wurzel kann Vollmachten vergeben, aber keine fachliche an sich
-  selbst: Sie traegt genau `["A-Z1"]`, keine andere Rolle traegt `A-Z1`, und
-  ein Glied, das ihr eine fachliche Abnahme gibt, ist nicht anhaengbar. Das
-  ist die Trennung, die den Rest tragbar macht — sonst koennte sie
-  beauftragen, erlauben und abnehmen in einer Hand.
+  selbst: Sie traegt genau die Gates der Wurzel (`WURZEL_GATES`, an einer
+  Stelle benannt: die Ordnungsaenderung `A-Z1` und, seit ADR-026, den
+  Fallauftrag `A-M6`; `A-Z1` immer), keine andere Rolle traegt eines davon,
+  und ein Glied, das ihr eine fachliche Abnahme gibt, ist nicht anhaengbar.
+  Der Fallauftrag ist keine Abnahme: Er bezeugt nichts ueber einen
+  Gegenstand, er setzt die Migration in Gang (ADR-026, Abschnitt 6). Das ist
+  die Trennung, die den Rest tragbar macht — sonst koennte sie beauftragen,
+  erlauben und abnehmen in einer Hand; so kann sie beauftragen und erlauben,
+  aber nicht abnehmen.
 * (d) Die Ordnung der PLV fuehrt nur Rollen der PLV: Eine Rolle des
   abgebenden Hauses (`mensch/quell-aktuar`) ist in einem Glied nicht
   anhaengbar (benannte Meldung). Gemessen: Sie zeichnet heute kein Gate, hat
@@ -321,8 +326,8 @@ konnte), und deshalb hat sie Schranken (gebaut):
   gebaut, nur benannt).
 
 **Gewaltenteilung, als Grenze benannt.** Dieselbe Rolle verwaltet die
-Vertrauenswurzel (administrativ) und soll kuenftig den Fall beauftragen
-(fachlich). Der Schluessel, der einen Fall beauftragt, kann damit aendern,
+Vertrauenswurzel (administrativ) und beauftragt den Fall (fachlich; gebaut mit
+ADR-026, Gate `A-M6`). Der Schluessel, der einen Fall beauftragt, kann damit aendern,
 wer dessen Abnahmen zeichnen darf. Hier ist das vertretbar: eine Person,
 Vorfuehrung, kein Vier-Augen-Umfeld — eine Trennung, die mit einer Person
 nur Schein waere, wird nicht gebaut. Ein Haus mit getrennten Funktionen
@@ -337,9 +342,9 @@ Auftrag); die Gestalt der Linie laesst das ohne Umbau zu.
 | `mensch/architektur` | ja | ja | `agent/architektur` | A-O1 |
 | `mensch/aktuariat` | ja | ja | `agent/aktuariat` | A-T1, A-M1 bis A-M4 |
 | `mensch/betrieb` | ja | ja | `agent/betrieb` (neu definiert) | A-B1, A-B2, A-B3 |
-| `mensch/programmleitung` | nein | ja | `agent/programmleitung` | keine (fuehrt durch den Prozess) |
+| `mensch/programmleitung` | nein | ja | `agent/programmleitung` | A-M5 Fallabbruch, Recht aus dem Fallauftrag (ADR-026) |
 | `mensch/quell-aktuar` | nein | ja | keins (Rolle des abgebenden Hauses) | keine (Vollmacht vom eigenen Haus, Abschnitt 8 d) |
-| `mensch/vorstand` (Vorstand, Wurzelrolle) | ja | nein | keins (vergibt Rechte) | A-Z1 |
+| `mensch/vorstand` (Vorstand, Wurzelrolle) | ja | nein | keins (vergibt Rechte) | A-Z1, A-M6 Fallauftrag (ADR-026) |
 
 Mit `.claude/agents/betrieb.md` (byte-gleich unter `.agents/`) hat jede
 fachliche Linienrolle ihr vorlegendes Gegenstueck; ohne Gegenstueck bleiben
@@ -394,7 +399,8 @@ bisher, auch im Linienbereich und als Wurzelrolle; nichts Neues.
   Leser haelt jede Abnahme gegen den damaligen Stand); ohne `--linie` der
   bisherige Weg. Ob die Linie dort Pflicht wird, entscheidet der Betrieb
   mit dem ersten Fall nach der Erstabnahme.
-* **Offen:** der Fallauftrag als Gate am Anfang des Falls (eigener Block).
+* **Erledigt (ADR-026):** der Fallauftrag als Gate am Anfang des Falls
+  (`A-M6`) und der Fallabbruch (`A-M5`).
 
 ## Bedienfolge: Erstabnahme durchfuehren
 
@@ -451,3 +457,94 @@ und bei Schluesselklasse `simulation` dem Mandat.
    linie --ordnung <neue ordnung> --vorgaenger <glied_sha256 der Spitze>
    --vorstand-schluessel <vorstand.key>`; ansehen, was sich aendert:
    `linie/abgeleitet/ordnung/linie.md`.
+
+## Nachtrag 2026-10-01: Die Linie ist Pflicht
+
+**Befund.** Mit diesem ADR wirkte die Versionslinie nur, wenn `--linie`
+uebergeben wurde: `gate_entscheid` nahm sie mit `default=None`, ohne sie
+galt "benannt der bisherige Weg" — die Rolle wurde gegen die HEUTIGE
+Ordnung des Lesers gehalten, der `ordnung_sha256` des Snapshots gegen
+nichts. 27 Test-Wege liefen so, im Betrieb war `--linie` optional; die
+gruene Suite bezeugte ueberwiegend den Zustand OHNE Wurzel. Das ist
+woertlich das Loch, das dieses Repo am 2026-09-16 schon einmal geschlossen
+hat (`dev-docs/offene-punkte.md`: "`summary.manifest` von OPTIONAL auf
+PFLICHT gestellt — das war das eigentliche Loch: Jede Aussage, die nur im
+Manifest steht, liess sich durch Weglassen von `--manifest` abschalten").
+Eine Wurzel, die man weglassen kann, ist keine.
+
+**Entscheid.**
+
+1. **Zeichnen.** Kein Entscheid ohne Linie: `gate_entscheid` verlangt
+   `--linie` (Fall und Linienbereich, Annahme und Ablehnung) und zeichnet
+   eine Annahme nur unter der Spitze; ohne Linie Verweigerung mit Ausweg
+   ("Linienbereich anlegen, Ordnung eintragen", Bedienfolge oben). Dasselbe
+   fuer Fallauftrag und Fallabbruch (ADR-026); die Vorlage des Auftrags
+   verweist auf die Abnahmen der Linie (`fall_belegen auftrag --linie`,
+   Pflicht).
+2. **Gruenden.** Die Regel `models.zeichnung.zeichnende_rolle_fehler` hat
+   keinen Zweig ohne Linie mehr: Ihr Parameter `linie` hat keinen Default,
+   und ohne Linie (None oder leer) begruendet eine Abnahme nichts. Die
+   gruendenden Leser sind gemessen und gehalten (`tests/test_linie_pflicht.py`,
+   `==`): im Gate die Standabnahme (Wege a und b), der Fallauftrag und die
+   Vorbedingungen von A-M4 und A-B2; im Betrieb der eine Leser
+   (`uebernahme.zeichnende_rolle`), durch den Registrierung, Zugangsprobe
+   (`lies_soll`), Neuaufsetzen und die Bindung des Anfangsbestands gehen.
+   Deren Parameter `ordnungslinie` hat ebenfalls keinen Default.
+3. **Altbestand.** Snapshots, die ohne Linie entstanden (Schema bis 8,
+   abgeschlossene Faelle), bleiben fuer ihre ANZEIGE lesbar (Fallbericht,
+   Falldaten, Seite: `pruefe_snapshot_ohne_schluessel`,
+   `uebernahme.zeichnung_aus_snapshot`), begruenden aber nichts Neues — der
+   Schnitt aus Abschnitt 7. Die anzeigenden Werkzeuge rufen die Regel nicht
+   (Ratsche).
+4. **Betrieb.** Die Kommandos, die auf einer Abnahme gruenden oder eine
+   binden, verlangen `--linie` ohne Default
+   (`betrieb.tageslauf.KOMMANDOS_MIT_LINIE`: Registrierung, Zugangsprobe,
+   Neuaufsetzen, Anfangsbestand). Der Nachtlauf nicht
+   (`KOMMANDOS_OHNE_LINIE`, mit der Seite): Er zeichnet Protokollzeilen und
+   haelt beim Eintritt nur die betriebsgezeichneten Saetze der
+   Registrierung; er gruendet auf keinem Snapshot. Den Ort erfaehrt der
+   Betrieb nur ueber den ausdruecklichen Schalter (`--linie
+   ~/apps/plv/linie`, `deploy/plv/README.md`); eine Umgebungsvorgabe waere
+   wieder ein Schalter, der fehlen kann.
+5. **Der Anker des Betriebsschluessels.** Der Nachtlauf haelt seine Rolle
+   gegen die Ordnungsdatei, die ihm uebergeben wird; wer sie austauscht,
+   tauscht die Rolle. `betrieb.anfangsbestand binden` loest deshalb UNTER der
+   Linie einmal auf, welchen Fingerabdruck die Spitze der Betriebsrolle gibt
+   (verweigert, wenn die Ordnungsdatei des Betriebs einen anderen nennt), und
+   zeichnet ihn mit dem Glied in die Bindung (`betriebsschluessel_sha256`,
+   `ordnungsglied_sha256`; Bindung Schema 2). Der Nachtlauf haelt seinen
+   Schluessel gegen diese gezeichnete Zahl. Gemessen: Ein Lauf mit
+   ausgetauschter Ordnungsdatei und anderem Schluessel hielt schon vorher an
+   — die Protokollkette und die Bindung sind mit dem alten Schluessel
+   gezeichnet. Der Anker macht daraus eine benannte Aussage, die an der
+   Linie haengt, und faengt die ausgetauschte Ordnungsdatei schon beim
+   Binden. **Grenze:** Wer die Ablage samt Bindung mit einem eigenen
+   Schluessel neu zeichnet, bleibt fuer den Nachtlauf allein unsichtbar; den
+   Bezug nach aussen liefert der Anker beim Export (Nachtrag 2026-09-30 zu
+   ADR-018). **Folge:** Ein Wechsel des Betriebsschluessels braucht ein Glied
+   der Linie UND eine neue Bindung; Bindungen nach Schema 1 werden neu
+   gebunden.
+6. **Tests.** Die gemeinsamen Helfer legen fuer jeden Fall eine Linie an
+   (`tests/zeichnung_fixture.linie_sicherstellen`: das erste Glied ist die
+   Ordnung des Betriebs der Suite, die Ordnung des Falls haengt der Vorstand
+   an); der Normalweg der Suite ist der mit Wurzel. Tests, die das Verhalten
+   ohne Linie pruefen, pruefen die Verweigerung.
+
+**Pruefbarkeit von aussen, als Grenze benannt.** `linie/` ist nicht
+eingecheckt (Entscheidernamen, installationsgebundene Fingerabdruecke —
+Abschnitt 2). Ein externer Gutachter sieht die Vertrauenswurzel einer
+Installation deshalb nicht im Repository, nur ihre Hashes in den Snapshots
+(`zeichnung.ordnung_sha256`, `zeichnung.ordnungsglied_sha256`). Das ist eine
+Aussage ueber die Pruefbarkeit, nicht ueber die Datenhygiene. Der Weg, sie
+ihm vorzulegen: das Verzeichnis `linie/ordnung/` (die Glieder, mit den
+Ordnungen im Klartext und ohne Geheimnisse) und `linie/linie.json` als
+Pruefpaket; `models.ordnungslinie.lade_linie` rechnet Hash-Kette, Nummern
+und Aenderungslisten ohne Schluessel nach, die Signaturen der Glieder nur
+mit dem Schluessel des Vorstands im Ring (HMAC); jeder Snapshot der
+Installation laesst sich damit in der Linie lokalisieren.
+
+*Verworfen:* **die Linie optional lassen** ("ohne Linie der bisherige Weg,
+benannt"). Benannt ist nicht erzwungen: Jede Lesestelle mit einem Zweig
+ohne Linie macht die Wurzel durch Weglassen abschaltbar, und die Suite
+bezeugte genau diesen Zweig. Dieselbe Abwaegung wie am 2026-09-16 beim
+Manifest.

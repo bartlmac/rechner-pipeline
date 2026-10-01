@@ -200,7 +200,10 @@ def test_ein_altsnapshot_ohne_schluesselklasse_tritt_nicht_ein(tmp_path):
                      .read_text())["summary"]["snapshot_sha256"]
     z = ueb.zeichnung_aus_snapshot(alt, sha)      # der Leseweg der Seite
     assert z["schema_version"] == 6 and z["schluesselklasse"] == "nicht ausgewiesen"
-    with pytest.raises(ueb.UebernahmeError, match="behauptet als Rolle.*'mensch'.*mensch/aktuariat"):
+    # Seit die Linie Pflicht ist (ADR-025, Nachtrag 2026-10-01), faellt er
+    # schon davor: Ein Altsnapshot pinnt kein Glied der Linie und begruendet
+    # nichts Neues (Schnitt der Linie) — lesbar bleibt er fuer die Anzeige.
+    with pytest.raises(ueb.UebernahmeError, match="pinnt kein Glied der Ordnungslinie"):
         ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), alt, STICHTAG)
 
 

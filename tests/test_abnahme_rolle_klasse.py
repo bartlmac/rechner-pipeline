@@ -71,6 +71,9 @@ from tests.freigabe_testschluessel import (
     TESTRING,
     betriebsordnung,
     freigaberollen,
+    suitelinie_anlegen,
+    suitelinie_glied,
+    suitelinie_pin,
 )
 from tests.test_betrieb_uebernahme import STICHTAG, _fall, _mit_config
 
@@ -160,11 +163,47 @@ def _fall_faelschen(fall: Path, *, am1: "dict | None" = None, am4: "dict | None"
         json.dumps({"summary": {"snapshot_sha256": am4_neu["snapshot_sha256"]}}), encoding="utf-8")
 
 
+#: Die Schluessel, mit denen die Suite Abnahmen signiert — fuer das Neuzeichnen.
+_SCHLUESSEL_NACH_FP = {hashlib.sha256(k).hexdigest(): k
+                       for k in (TESTKEY, BETRIEB_FREIGABEKEY, FREMDER_SCHLUESSEL)}
+
+
+def _unter_glied(fall: Path, pin: dict) -> None:
+    """A-M1 und A-M4 des Falls unter dem Glied ``pin`` neu zeichnen (dieselben
+    Schluessel, dieselben Felder): Seit die Linie Pflicht ist (ADR-025,
+    Nachtrag 2026-10-01), gilt fuer die Rollenregel die Ordnung, unter der
+    gezeichnet wurde — ein Angriff ueber "eine andere Ordnung" ist ein
+    Snapshot unter einem anderen Glied."""
+    from tests.test_betrieb_uebernahme import am1_snapshot
+
+    entscheide = fall / "entscheide"
+    (am4_pfad,) = list(entscheide.glob("A-M4-*.json"))
+    am4 = json.loads(am4_pfad.read_text(encoding="utf-8"))
+    am1_pfad = entscheide / f"A-M1-{am4['pflichtbelege']['am1_snapshot'][0]}.json"
+    am1 = (json.loads(am1_pfad.read_text(encoding="utf-8")) if am1_pfad.is_file()
+           else am1_snapshot(json.loads((fall / "fall.json").read_text())["name"]))
+    _fall_faelschen(fall, am1={"zeichnung": {**am1["zeichnung"], **pin}},
+                    am4={"zeichnung": {**am4["zeichnung"], **pin}},
+                    am4_schluessel=_SCHLUESSEL_NACH_FP[am4["freigabe"]["schluessel_sha256"]])
+
+
+def _unter_ordnung(fall: Path, ordnung: dict, linie: Path) -> Path:
+    """Eine Linie mit ``ordnung`` als erstem Glied, und A-M1/A-M4 darunter."""
+    linie = suitelinie_anlegen(linie, ordnung)
+    if ordnung != betriebsordnung():
+        _unter_glied(fall, suitelinie_pin(ordnung))
+    return linie
+
+
 def _registriere(tmp_path: Path, fall: Path, betriebsschluessel: Path, ordnung: dict, **kw):
+    """Die Registrierung unter der Linie, deren Glied ``ordnung`` ist — die
+    Abnahmen des Falls sind unter genau diesem Glied gezeichnet."""
     stand = _mit_config(tmp_path / "daten")
     pfad = _schreibe(tmp_path / "schluessel", "ordnung.json", ordnung)
+    linie = _unter_ordnung(fall, ordnung, tmp_path / "linie-betrieb")
     return stand, partial(ueb.eingang_anlegen, stand, fall, STICHTAG,
-                          betriebsschluessel=betriebsschluessel, zeichnungsordnung=pfad, **kw)
+                          betriebsschluessel=betriebsschluessel, zeichnungsordnung=pfad,
+                          linie=linie, **kw)
 
 
 # --------------------------------------------------------------------------- #
@@ -272,31 +311,47 @@ def welt(tmp_path_factory):
     return _welt(tmp_path_factory.mktemp("rolle-welt"))
 
 
-def _lies_soll(fall: Path, ordnung: dict):
+def _kopie_unter(fall: Path, ordnung: dict, tmp_path: Path):
+    """Eine Kopie des Falls der Welt (die Welt bleibt unberuehrt), deren
+    A-M1/A-M4 unter dem Glied von ``ordnung`` gezeichnet sind, und die Linie."""
+    import shutil
+
+    kopie = tmp_path / "welt-kopie" / fall.name
+    shutil.copytree(fall, kopie)
+    return kopie, _unter_ordnung(kopie, ordnung, tmp_path / "linie-probe")
+
+
+def _lies_soll(fall: Path, ordnung: dict, tmp_path: Path):
+    from rechner_pipeline.models.ordnungslinie import lade_linie
+
+    fall, linie = _kopie_unter(fall, ordnung, tmp_path)
     sha = json.loads((fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json")
                      .read_text(encoding="utf-8"))["summary"]["snapshot_sha256"]
     bestand = read_portfolio(fall / "abgeleitet" / "bestand" / "bestand.parquet",
                              expected_columns=STAMM_NAMES)
     identitaet = {int(p): int(p) for p in bestand["police_id"]}
-    return zpb.lies_soll(fall, STICHTAG, identitaet, am4_snapshot_sha256=sha, ordnung=ordnung)
+    return zpb.lies_soll(fall, STICHTAG, identitaet, am4_snapshot_sha256=sha, ordnung=ordnung,
+                         ordnungslinie=lade_linie(linie)[0])
 
 
 @pytest.mark.parametrize("gate", ("A-M1", "A-M4"))
-def test_lies_soll_verweigert_eine_abnahme_deren_rolle_das_gate_nicht_zeichnen_darf(welt, gate):
+def test_lies_soll_verweigert_eine_abnahme_deren_rolle_das_gate_nicht_zeichnen_darf(
+        welt, gate, tmp_path):
     """Das Soll der Probe steht auf A-M4 und dem A-M1, den A-M4 pinnt. Ein
     Soll aus einer Abnahme, die eine unberechtigte Rolle gezeichnet hat, ist
     kein Soll."""
     with pytest.raises(zpb.ZugangsprobeError) as fehler:
-        _lies_soll(welt[0], _ordnung_ohne(gate))
+        _lies_soll(welt[0], _ordnung_ohne(gate), tmp_path)
     assert f"nicht fuer {gate} berechtigt" in str(fehler.value), str(fehler.value)
 
 
-def test_lies_soll_verweigert_ein_rollenfeld_das_die_ordnung_dem_schluessel_nicht_gibt(welt):
+def test_lies_soll_verweigert_ein_rollenfeld_das_die_ordnung_dem_schluessel_nicht_gibt(
+        welt, tmp_path):
     """Die Ordnung nennt die Rolle des A-M4-Schluessels anders als der
     Snapshot. Welche der beiden Ordnungen recht hat, weiss der Leser nicht —
     also gruendet er nichts darauf."""
     with pytest.raises(zpb.ZugangsprobeError) as fehler:
-        _lies_soll(welt[0], _ordnung_umbenannt(AKTUARIAT_ROLLE))
+        _lies_soll(welt[0], _ordnung_umbenannt(AKTUARIAT_ROLLE), tmp_path)
     meldung = str(fehler.value)
     assert "behauptet als Rolle" in meldung and "'mensch/va'" in meldung, meldung
 
@@ -307,9 +362,11 @@ def test_die_zugangsprobe_verweigert_eine_abnahme_deren_rolle_das_gate_nicht_zei
     """Durch den Eingang der Probe: A-M4 faellt schon bei der Registrierung in
     der Probenkopie, A-M1 beim Soll — beides, bevor ein Lauf faehrt."""
     fall, stand = welt
+    fall, linie = _kopie_unter(fall, _ordnung_ohne(gate), tmp_path)
     with pytest.raises(zpb.ZugangsprobeError) as fehler:
         zpb.zugangsprobe(stand, fall, STICHTAG, schluessel=betriebsschluessel,
-                         zeichnungsordnung=_schreibe(tmp_path / "s", "o.json", _ordnung_ohne(gate)))
+                         zeichnungsordnung=_schreibe(tmp_path / "s", "o.json", _ordnung_ohne(gate)),
+                         linie=linie)
     assert f"nicht fuer {gate} berechtigt" in str(fehler.value), str(fehler.value)
 
 
@@ -320,21 +377,51 @@ def test_die_zugangsprobe_verweigert_eine_abnahme_deren_rolle_das_gate_nicht_zei
 from tests.test_zugangsabnahme_ab2 import _ab2, gatefall  # noqa: E402,F401  (Fixture)
 
 
+def _gate_unter(fall: Path, pfad: Path) -> Path:
+    """Die Ordnung ``pfad`` wird Spitze der Linie des Falls; A-M1/A-M4 werden
+    unter ihr neu gezeichnet und die Probe darauf neu belegt (dieselbe
+    Gestalt wie in ``gatefall``) — das Gate liest die Abnahmen gegen die
+    Ordnung, unter der sie gezeichnet wurden (ADR-025: die Linie ist Pflicht)."""
+    from rechner_pipeline.betrieb import tageslauf as tl
+    from rechner_pipeline.betrieb.tageslauf import Ablage
+    from rechner_pipeline.models import zugangsprobe as zp
+    from rechner_pipeline.models.ordnungslinie import lade_linie
+    from tests.zeichnung_fixture import auftrag_args
+    from tests.zugangsabnahme_testhelfer import abnahmen_aus_fall, probenbeleg
+
+    auftrag_args(fall, pfad)
+    spitze = lade_linie(fall.parent / "linie")[0][-1]
+    _unter_glied(fall, {"ordnung_sha256": spitze["ordnung_sha256"],
+                        "ordnungsglied_sha256": spitze["glied_sha256"]})
+    (am4,) = [json.loads(p.read_text(encoding="utf-8"))
+              for p in (fall / "entscheide").glob("A-M4-*.json")]
+    eingang = {"fall": fall.name, "snapshot_sha256": am4["snapshot_sha256"],
+               "stichtag": STICHTAG.isoformat()}
+    beleg = probenbeleg(fall.name, ablage_stand={"gefuehrter_tag": None, "config_sha256": "ab" * 32},
+                        eingang_roh=json.dumps(eingang).encode("utf-8"),
+                        am4_snapshot_sha256=am4["snapshot_sha256"],
+                        zeichner=tl.betriebszeichner(Ablage(fall.parent / "irgendeine-ablage")),
+                        abnahmen=abnahmen_aus_fall(fall, am4["snapshot_sha256"]))
+    (fall / zp.BELEG_RELATIV).write_text(json.dumps(beleg), encoding="utf-8")
+    return pfad
+
+
 def _gate_ordnung(ordnung_pfad: Path, ziel: Path, *, ohne: "str | None" = None,
-                  umbenannt: bool = False) -> Path:
+                  umbenannt: bool = False, fall: "Path | None" = None) -> Path:
     daten = json.loads(Path(ordnung_pfad).read_text(encoding="utf-8"))
     if ohne is not None:
         daten["rollen"][AKTUARIAT_ROLLE]["gates"] = [
             g for g in daten["rollen"][AKTUARIAT_ROLLE]["gates"] if g != ohne]
     if umbenannt:
         daten["rollen"]["mensch/va"] = daten["rollen"].pop(AKTUARIAT_ROLLE)
-    return _schreibe(ziel, "gate-ordnung.json", daten)
+    pfad = _schreibe(ziel, "gate-ordnung.json", daten)
+    return _gate_unter(fall, pfad) if fall is not None else pfad
 
 
 def test_positivkontrolle_das_gate_a_b2_nimmt_mit_der_vollen_ordnung_an(gatefall, tmp_path):
     fall, _, _, schluessel, testkey, ordnung = gatefall
     ergebnis = _ab2(fall, schluessel=schluessel["mensch"], testkey=testkey,
-                    ordnung=_gate_ordnung(ordnung, tmp_path / "o"))
+                    ordnung=_gate_ordnung(ordnung, tmp_path / "o", fall=fall))
     assert ergebnis.exit_code == 0, ergebnis.errors
 
 
@@ -348,7 +435,7 @@ def test_das_gate_a_b2_verweigert_eine_abnahme_deren_rolle_das_gate_nicht_zeichn
     -> Annahme -> rot."""
     fall, _, _, schluessel, testkey, ordnung = gatefall
     ergebnis = _ab2(fall, schluessel=schluessel["mensch"], testkey=testkey,
-                    ordnung=_gate_ordnung(ordnung, tmp_path / "o", ohne=gate))
+                    ordnung=_gate_ordnung(ordnung, tmp_path / "o", ohne=gate, fall=fall))
     assert ergebnis.exit_code != 0
     meldung = ergebnis.errors[0]["message"]
     assert f"{gate}-Snapshot" in meldung and f"nicht fuer {gate} berechtigt" in meldung, meldung
@@ -359,7 +446,7 @@ def test_das_gate_a_b2_verweigert_ein_rollenfeld_das_die_ordnung_dem_schluessel_
         gatefall, tmp_path):
     fall, _, _, schluessel, testkey, ordnung = gatefall
     ergebnis = _ab2(fall, schluessel=schluessel["mensch"], testkey=testkey,
-                    ordnung=_gate_ordnung(ordnung, tmp_path / "o", umbenannt=True))
+                    ordnung=_gate_ordnung(ordnung, tmp_path / "o", umbenannt=True, fall=fall))
     assert ergebnis.exit_code != 0
     meldung = ergebnis.errors[0]["message"]
     assert "A-M4-Snapshot" in meldung and "behauptet als Rolle" in meldung, meldung
@@ -460,9 +547,9 @@ def test_registrierung_verweigert_eine_schluesselklasse_die_nicht_die_der_ordnun
 # (Einheitstest unten), damit sie ohne das Schema vollstaendig ist.
 
 
-def test_lies_soll_verweigert_eine_schluesselklasse_die_nicht_die_der_ordnung_ist(welt):
+def test_lies_soll_verweigert_eine_schluesselklasse_die_nicht_die_der_ordnung_ist(welt, tmp_path):
     with pytest.raises(zpb.ZugangsprobeError, match="Schluesselklasse 'mensch'.*'simulation'"):
-        _lies_soll(welt[0], _ordnung_klasse(AKTUARIAT_ROLLE, "simulation"))
+        _lies_soll(welt[0], _ordnung_klasse(AKTUARIAT_ROLLE, "simulation"), tmp_path)
 
 
 def test_das_gate_a_b2_verweigert_eine_schluesselklasse_die_nicht_die_der_ordnung_ist(
@@ -471,7 +558,8 @@ def test_das_gate_a_b2_verweigert_eine_schluesselklasse_die_nicht_die_der_ordnun
     daten = json.loads(Path(ordnung).read_text(encoding="utf-8"))
     daten["rollen"][AKTUARIAT_ROLLE]["schluesselklasse"] = "simulation"
     ergebnis = _ab2(fall, schluessel=schluessel["mensch"], testkey=testkey,
-                    ordnung=_schreibe(tmp_path / "o", "gate-ordnung.json", daten))
+                    ordnung=_gate_unter(fall, _schreibe(tmp_path / "o", "gate-ordnung.json",
+                                                        daten)))
     assert ergebnis.exit_code != 0
     meldung = ergebnis.errors[0]["message"]
     assert "A-M4-Snapshot" in meldung and "Schluesselklasse 'mensch'" in meldung, meldung
@@ -523,17 +611,24 @@ def test_die_regel_ist_eine_funktion_fuer_alle_gates():
     Rollenfeld, ohne Rollenfeld, mit fremder oder fehlender Klasse, als
     Simulation ohne Mandat, ohne Ordnung -> Meldung mit Ausweg. Der
     Betriebsweg liefert dasselbe."""
+    def unter(daten: dict, ordnung: dict):
+        # gezeichnet unter dem Glied dieser Ordnung, gelesen mit genau ihm
+        z = {**(daten.get("zeichnung") or {}), **suitelinie_pin(ordnung)}
+        return {**daten, "zeichnung": z}, [suitelinie_glied(ordnung)]
+
     for gate in GATES:
         rolle = ROLLE_VON[gate]
         fp = freigaberollen()[rolle]["schluessel_sha256"]
         daten = {"freigabe": {"schluessel_sha256": fp}, "rolle": rolle,
                  "zeichnung": {"rolle": rolle, "schluesselklasse": "mensch"}}
-        assert zmod.zeichnende_rolle_fehler(daten, gate, betriebsordnung()) == (rolle, None)
-        assert ueb.zeichnende_rolle(daten, gate, betriebsordnung(), "x.json") == rolle
+        d, linie = unter(daten, betriebsordnung())
+        assert zmod.zeichnende_rolle_fehler(d, gate, None, linie=linie) == (rolle, None)
+        assert ueb.zeichnende_rolle(d, gate, None, "x.json", ordnungslinie=linie) == rolle
         simuliert = _ordnung_klasse(rolle, "simulation")
         mit_mandat = {**daten, "zeichnung": {**daten["zeichnung"], "schluesselklasse": "simulation",
                                              "mandat_sha256": "ab" * 32}}
-        assert zmod.zeichnende_rolle_fehler(mit_mandat, gate, simuliert) == (rolle, None)
+        d, linie = unter(mit_mandat, simuliert)
+        assert zmod.zeichnende_rolle_fehler(d, gate, None, linie=linie) == (rolle, None)
         ohne_mandat = {**daten, "zeichnung": {**daten["zeichnung"], "schluesselklasse": "simulation"}}
         for ordnung, daten_x, muster in (
                 (_ordnung_ohne(gate), daten, f"nicht fuer {gate} berechtigt"),
@@ -542,12 +637,20 @@ def test_die_regel_ist_eine_funktion_fuer_alle_gates():
                 (betriebsordnung(), {"freigabe": daten["freigabe"]}, "behauptet als Rolle nichts"),
                 (simuliert, daten, "Schluesselklasse 'mensch'"),
                 (betriebsordnung(), {**daten, "zeichnung": {"rolle": rolle}}, "Schluesselklasse None"),
-                (simuliert, ohne_mandat, "ohne Mandat"),
-                (None, daten, "ohne Zeichnungsordnung")):
-            rolle_x, fehler = zmod.zeichnende_rolle_fehler(daten_x, gate, ordnung)
+                (simuliert, ohne_mandat, "ohne Mandat")):
+            d, linie = unter(daten_x, ordnung)
+            rolle_x, fehler = zmod.zeichnende_rolle_fehler(d, gate, None, linie=linie)
             assert rolle_x is None and muster in fehler and "Ausweg" in fehler, fehler
             with pytest.raises(ueb.UebernahmeError, match="Ausweg"):
-                ueb.zeichnende_rolle(daten_x, gate, ordnung, "x.json")
+                ueb.zeichnende_rolle(d, gate, None, "x.json", ordnungslinie=linie)
+        # Ohne Linie begruendet die Abnahme nichts — kein Weg ueber die
+        # heutige Ordnung des Lesers (ADR-025, Nachtrag 2026-10-01).
+        d, _ = unter(daten, betriebsordnung())
+        for ohne in (None, []):
+            rolle_x, fehler = zmod.zeichnende_rolle_fehler(d, gate, betriebsordnung(), linie=ohne)
+            assert rolle_x is None and "ohne Ordnungslinie" in fehler and "Ausweg" in fehler
+            with pytest.raises(ueb.UebernahmeError, match="ohne Ordnungslinie"):
+                ueb.zeichnende_rolle(d, gate, betriebsordnung(), "x.json", ordnungslinie=ohne)
 
 
 # --------------------------------------------------------------------------- #
@@ -649,13 +752,18 @@ REGEL_AUFRUFE = Counter({
     # A-M4: die Standabnahme je Gegenstand (A-K2, A-O1; Entscheid 2026-10-01)
     # — der Snapshot im Fall (a) und der fruehere Snapshot des Verweises (b).
     ("gates/gate_entscheid.py", "gegenstand.gate"): 2,
+    # Jede Annahme eines Falls: der geltende Fallauftrag (ADR-026).
+    ("gates/gate_entscheid.py", "AUFTRAG_GATE"): 1,
 })
 
 #: Die Kettenleser im Gate — je Gate-Argument. ``args.gate`` ist die EIGENE
 #: Kette (Vorgaenger, Idempotenz), auf ihr gruendet keine fremde Abnahme;
-#: jede andere steht in REGEL_AUFRUFE mit einem Regelaufruf.
-GATE_KETTENLESER = Counter({"'A-M4'": 1, "'A-M1'": 1, "'A-Q1'": 1, "gegenstand.gate": 1,
-                            "abnahme_gate": 1, "args.gate": 1})
+#: jede andere steht in REGEL_AUFRUFE mit einem Regelaufruf. Ausnahme mit
+#: Grund: Der Fallabbruch liest die A-M4-Kette ein zweites Mal, um eine
+#: geltende Migrationsabnahme zu ERKENNEN und den Abbruch zu VERWEIGERN — er
+#: gruendet nichts auf ihr, die Lesung kann nur sperren (ADR-026).
+GATE_KETTENLESER = Counter({"'A-M4'": 2, "'A-M1'": 1, "'A-Q1'": 1, "gegenstand.gate": 1,
+                            "abnahme_gate": 1, "args.gate": 1, "AUFTRAG_GATE": 1})
 
 
 def _regel_und_ketten(quelle: str, datei: str):
@@ -918,9 +1026,12 @@ def test_ratsche_die_test_ordnungen_trennen_fall_und_betrieb(tmp_path):
 #: Zeichnung im Gate (ADR-018); keine signiert A-B1/A-B2, und keiner ihrer
 #: Snapshots wird von einem Leser des Betriebs gelesen. Neue Stellen nicht.
 #: ``test_erstabnahme_linie.py``: die Probe, dass eine Ordnung mit '*' NICHT
-#: in die Versionslinie kommt (ADR-025) — sie wird nie gezeichnet.
-STERN_IN_TESTS = Counter({"test_rollenmodell_adr018.py": 6, "test_zeichnungsvertrag_t23.py": 4,
-                          "test_zeichnungsordnung.py": 2, "test_erstabnahme_linie.py": 1})
+#: in die Versionslinie kommt (ADR-025) — sie wird nie gezeichnet. Seit die
+#: Linie Pflicht ist (Nachtrag 2026-10-01), zeichnet KEINE Ordnung mit '*'
+#: mehr: ``test_zeichnungsordnung.py`` prueft genau diese Verweigerung,
+#: ``test_rollenmodell_adr018.py`` den Lader der Altform (Schema 1).
+STERN_IN_TESTS = Counter({"test_rollenmodell_adr018.py": 1, "test_zeichnungsordnung.py": 1,
+                          "test_erstabnahme_linie.py": 1})
 
 
 def _sterne(quelle: str) -> int:

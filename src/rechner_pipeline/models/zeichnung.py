@@ -222,15 +222,41 @@ def gueltige_rollenkennung(rolle: object) -> bool:
 #: ANFANGSBESTANDS einer aufgesetzten Ablage (``mensch/betrieb``). Mit
 #: Kernstand (A-K2) und T-Box-Stand (A-O1) sind das die vier Gegenstaende
 #: der Erstabnahme des Zielsystems (``models.standabnahme``).
-GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-O1", "A-K2", "A-T1",
-                  "A-B1", "A-B2", "A-B3")
+#:
+#: ``A-M6.fallauftrag`` und ``A-M5.fallabbruch`` (ADR-026, Entscheid des
+#: Maintainers 2026-10-01: "jemand muss es beauftragen ... und das kann nur
+#: ein Mensch sein (Auftrag zeichnen)"): der Lebenslauf eines Falls. Der
+#: Fallauftrag am Anfang, gezeichnet vom Vorstand (der Wurzelrolle der Linie);
+#: jeder weitere Abnahmepunkt des Falls setzt ihn voraus. Der Fallabbruch am
+#: Ende, gezeichnet von der Programmleitung des Falls — mit dem Recht, das ihr
+#: der Fallauftrag gibt (:data:`FALLROLLEN_GATES`).
+GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-M5", "A-M6", "A-O1", "A-K2",
+                  "A-T1", "A-B1", "A-B2", "A-B3")
 
-#: Was eine Ordnung einer Rolle geben kann: die P9-Gates und die
+#: Der Lebenslauf eines Falls (ADR-026): Auftrag und Abbruch.
+AUFTRAG_GATE = "A-M6"
+ABBRUCH_GATE = "A-M5"
+#: Die Fall-Rolle, die den Fall fuehrt (ADR-018: "entsteht mit einem Fall und
+#: endet mit ihm"). Sie steht in keiner Ordnung der Linie; ihr Recht kommt aus
+#: dem Fallauftrag.
+PROGRAMMLEITUNG = "mensch/programmleitung"
+#: Gates, deren Zeichnungsrecht aus dem FALLAUFTRAG kommt, nicht aus der
+#: Ordnung der Linie — Gate -> Fall-Rolle. Die EINE Regel, woher eine Rolle ihr
+#: Recht hat (:func:`zeichnende_rolle_fehler`): fuer diese Gates der
+#: Fallauftrag des Falls, fuer jedes andere die Ordnung (mit Linie: die, unter
+#: der gezeichnet wurde). Eine Ordnung kann sie deshalb niemandem geben.
+FALLROLLEN_GATES: Dict[str, str] = {ABBRUCH_GATE: PROGRAMMLEITUNG}
+#: Die Gates des Lebenslaufs brauchen weder A-Box noch P-Q3: Der Auftrag steht
+#: VOR der ersten Extraktion, der Abbruch kann jederzeit kommen.
+LEBENSLAUF_GATES: Tuple[str, ...] = (AUFTRAG_GATE, ABBRUCH_GATE)
+
+#: Was eine Ordnung einer Rolle geben kann: die P9-Gates AUSSER denen der
+#: Fall-Rollen (ihr Recht kommt aus dem Fallauftrag) und die
 #: Ordnungsaenderung ``A-Z1`` (ADR-025). ``A-Z1`` zeichnet die Wurzelrolle (Vorstand)
 #: — kein P9-Snapshot, sondern das Anhaengen eines Glieds an die
 #: Versionslinie der Ordnung (``models.ordnungslinie``); das Entscheid-Kommando
 #: kennt es deshalb nicht.
-ZEICHENBARE_GATES = GUELTIGE_GATES + ("A-Z1",)
+ZEICHENBARE_GATES = tuple(g for g in GUELTIGE_GATES if g not in FALLROLLEN_GATES) + ("A-Z1",)
 
 #: Zeichenbare Gates OHNE Belegvertrag — die begruendete Ausnahme.
 #:
@@ -460,6 +486,14 @@ def pruefe_ordnung(daten: object) -> List[str]:
             )
         gesehen[fp] = name
         gates = eintrag.get("gates")
+        fallrolle = sorted(set(gates) & set(FALLROLLEN_GATES)) if isinstance(gates, list) \
+            and all(isinstance(g, str) for g in gates) else []
+        if fallrolle:
+            fehler.append(
+                f"Zeichnungsordnung: Rolle {name!r} mit {fallrolle} — das Recht dazu kommt aus "
+                "dem Fallauftrag des Falls, nicht aus der Ordnung (ADR-026); eine Ordnung "
+                "gibt es niemandem")
+            continue
         if not isinstance(gates, list) or not all(
             isinstance(g, str) and (g == "*" or g in ZEICHENBARE_GATES)
             for g in gates
@@ -490,7 +524,7 @@ def rolle_darf_gate(ordnung: dict, rolle: str, gate: str) -> bool:
 
 def zeichnende_rolle_fehler(
     daten: object, gate: str, ordnung: Optional[dict],
-    *, linie: Optional[list] = None,
+    *, linie: Optional[list], fallauftrag: Optional[dict] = None,
 ) -> Tuple[Optional[str], Optional[str]]:
     """Die EINE Regel fuer jeden Leser, der auf einem Abnahme-Snapshot etwas
     gruendet: ``(rolle, None)`` oder ``(None, meldung)``.
@@ -533,16 +567,53 @@ def zeichnende_rolle_fehler(
     damals zeichnen". Eine spaetere Erweiterung der Ordnung entwertet so
     keine Abnahme, und ein spaeterer Entzug wirkt nicht zurueck (ADR-022,
     Nachtrag 2026-10-01 — jetzt pruefbar). Ein Snapshot ohne lokalisierbares
-    Glied ist als Grundlage nicht verwendbar. Ohne Linie gilt der bisherige
-    Weg: die Ordnung des Lesers.
+    Glied ist als Grundlage nicht verwendbar.
+
+    **Die Linie ist Pflicht** (ADR-025, Nachtrag 2026-10-01): Ohne Linie
+    (``linie`` None oder leer) begruendet eine Abnahme nichts — der fruehere
+    Weg "gegen die heutige Ordnung des Lesers" entfaellt fuer jeden, der auf
+    einer Abnahme gruendet. Eine Wurzel, die man weglassen kann, ist keine.
+    Wer nur ANZEIGT (Fallbericht, Seite), ruft diese Regel nicht.
+
+    **Woher eine Rolle ihr Recht hat — EINE Regel (ADR-026).** Fuer ein Gate
+    aus :data:`FALLROLLEN_GATES` (der Fallabbruch) ist die Ordnung, gegen die
+    gehalten wird, die des FALLAUFTRAGS (``fallauftrag``: der geltende,
+    angenommene A-M6-Snapshot; ``models.fallauftrag.rechtsordnung``): Die
+    Programmleitung entsteht mit dem Fall, die Linie der PLV kennt sie nicht.
+    Der Snapshot muss genau diesen Auftrag nennen (``fallauftrag``). Fuer jedes
+    andere Gate die Ordnung der Linie wie oben. Die vier Fragen bleiben
+    dieselben.
     """
     daten = daten if isinstance(daten, dict) else {}
-    if linie is not None:
-        from rechner_pipeline.models.ordnungslinie import damalige_ordnung
+    if not linie:
+        return None, (
+            f"ohne Ordnungslinie begruendet eine {gate}-Abnahme nichts — gegen welchen Stand "
+            "der Ordnung sie gezeichnet wurde, ist nur in der Linie lokalisierbar; der Weg "
+            "gegen die heutige Ordnung des Lesers ist entfallen (ADR-025, Nachtrag "
+            "2026-10-01). Ausweg: --linie <linienbereich> angeben (Linienbereich anlegen und "
+            "die Ordnung eintragen: Bedienfolge ADR-025)")
+    from rechner_pipeline.models.ordnungslinie import damalige_ordnung
 
-        ordnung, meldung = damalige_ordnung(daten, linie)
-        if meldung is not None:
-            return None, meldung
+    ordnung, meldung = damalige_ordnung(daten, linie)
+    if meldung is not None:
+        return None, meldung
+    if gate in FALLROLLEN_GATES:
+        from rechner_pipeline.models.fallauftrag import auftrag_fehler, rechtsordnung
+
+        auftrag = (fallauftrag or {}).get("auftrag") if isinstance(fallauftrag, dict) else None
+        if auftrag is None or auftrag_fehler(auftrag):
+            return None, (
+                f"{gate} zeichnet die Fall-Rolle {FALLROLLEN_GATES[gate]!r} mit dem Recht aus dem "
+                "Fallauftrag — ohne geltenden Fallauftrag ist nicht pruefbar, wer zeichnen "
+                f"durfte (ADR-026). Ausweg: den Fall beauftragen ({AUFTRAG_GATE}), dann {gate} "
+                "neu zeichnen")
+        if daten.get("fallauftrag") != fallauftrag.get("snapshot_sha256"):
+            return None, (
+                f"der Snapshot nennt den Fallauftrag {str(daten.get('fallauftrag'))[:16]}…, "
+                f"geltend ist {str(fallauftrag.get('snapshot_sha256'))[:16]}… — das Recht der "
+                "Fall-Rolle kommt aus dem geltenden Auftrag (ADR-026). Ausweg: "
+                f"{gate} unter dem geltenden Auftrag neu zeichnen")
+        ordnung = rechtsordnung(auftrag)
     fingerabdruck = str((daten.get("freigabe") or {}).get("schluessel_sha256") or "")
     kurz = f"{fingerabdruck[:16]}…"
     ausweg = (f"Ausweg: {gate} mit dem Schluessel einer berechtigten Rolle neu zeichnen, "

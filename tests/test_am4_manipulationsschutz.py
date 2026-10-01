@@ -20,7 +20,9 @@ import pytest
 
 from rechner_pipeline.fall import anlegen, registrieren
 from tests.zeichnung_fixture import (
+    linie_args,
     STANDROLLEN,
+    auftrag_args,
     VA,
     mandat_datei,
     standard_ordnung,
@@ -99,7 +101,7 @@ def _fall(tmp_path: Path) -> Path:
 
 def _p9(fall: Path, key: Path | None, gate: str, entscheid: str = "angenommen"):
     argv = [
-        "--fall", str(fall),
+        "--fall", str(fall), *linie_args(fall),
         "--gate", gate,
         "--entscheid", entscheid,
         "--rolle", VA,
@@ -111,8 +113,10 @@ def _p9(fall: Path, key: Path | None, gate: str, entscheid: str = "angenommen"):
         # Die Ordnung liegt NEBEN dem Fall (ausserhalb), auch wenn der
         # Schluessel absichtlich falsch liegt — geprueft wird der Schluessel.
         ordnung = standard_ordnung(fall.parent, key)
-        # Der Ring traegt die Schluessel der Standabnahme mit (A-K2, A-O1):
-        # A-M4 prueft die Signaturen der Annahmen, auf denen es gruendet.
+        # Der Fall ist beauftragt (ADR-026); der Ring traegt Vorstand und
+        # Programmleitung und die Schluessel der Standabnahme (A-K2, A-O1):
+        # Jede Annahme prueft die Signaturen der Annahmen, auf denen sie gruendet.
+        argv.extend(auftrag_args(fall))
         for _, _, datei, _ in STANDROLLEN:
             if (fall.parent / datei).exists():
                 argv.extend(["--freigabe-schluessel", str(fall.parent / datei)])
@@ -464,12 +468,14 @@ def test_p9_cli_emittiert_genau_ein_json_und_schema_valides_ledger(
 ) -> None:
     fall = _fall(tmp_path)
     key = _schluessel(tmp_path / "p9.key")
+    ordnung = standard_ordnung(tmp_path, key)
     argv = [
         "--fall", str(fall), "--gate", "A-Q1", "--entscheid", "angenommen",
         "--rolle", VA, "--entscheider", "fachrolle",
         "--begruendung", "CLI-Vertrag geprueft", "--repo-root", str(REPO_ROOT),
+        *auftrag_args(fall),
         "--freigabe-schluessel", str(key),
-        "--zeichnungsordnung", str(standard_ordnung(tmp_path, key)),
+        "--zeichnungsordnung", str(ordnung),
         "--mandat", str(mandat_datei(tmp_path / "fall")),
     ]
 

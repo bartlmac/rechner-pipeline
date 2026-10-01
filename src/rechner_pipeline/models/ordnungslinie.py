@@ -49,9 +49,12 @@ des Maintainers 2026-10-01) — die Ordnungsaenderung :data:`ORDNUNGS_GATE` — 
 dem Schluessel, den die bis dahin geltende SPITZE dieser Rolle gibt; auch ein
 Wechsel des Vorstands-Schluessels ist ein solches Glied, gezeichnet vom
 alten. Ohne diese Zeichnung ist ein Glied nicht anhaengbar. Die Rolle zeichnet
-nichts anderes (gates genau ``["A-Z1"]``), und keine andere Rolle zeichnet
-``A-Z1``: Wer Zeichnungsrechte vergibt, nimmt nichts fachlich ab. Ein Agent
-hat kein Gegenstueck dazu — Zeichnungsrechte vergibt kein Agent.
+nur die Gates der Wurzel (:data:`WURZEL_GATES`: ``A-Z1`` und, seit ADR-026, den
+Fallauftrag ``A-M6``), und keine andere Rolle zeichnet eines davon: Wer
+Zeichnungsrechte vergibt und Faelle beauftragt, nimmt nichts fachlich ab. Ein
+Agent hat kein Gegenstueck dazu — Zeichnungsrechte vergibt kein Agent. Die
+Rollen des Falls (:data:`ROLLEN_DES_FALLS`) fuehrt die Linie nicht; ihr Recht
+kommt aus dem Fallauftrag.
 
 Grenze der Aussage: Die Zeichnung ist ein HMAC. Wer den Vorstands-Schluessel
 nicht haelt, prueft Form und Fingerabdruck (gegen die Spitze davor), nicht die
@@ -90,12 +93,23 @@ VERZEICHNIS = "ordnung"
 #: bezieht sie von hier.
 WURZELROLLE = "mensch/vorstand"
 ORDNUNGS_GATE = "A-Z1"
+#: Die Gates der Wurzel — an EINER Stelle (ADR-026): die Ordnungsaenderung
+#: und der Fallauftrag. Der Vorstand vergibt Vollmachten und beauftragt
+#: Faelle; er nimmt nichts fachlich ab (ein Auftrag beauftragt, er bezeugt
+#: nicht, dass etwas richtig ist). Er traegt ``A-Z1`` immer — ohne sie zeichnet
+#: niemand das naechste Glied — und sonst nur Gates dieser Menge; keine andere
+#: Rolle traegt eines davon.
+WURZEL_GATES: Tuple[str, ...] = (ORDNUNGS_GATE, "A-M6")
 #: Anzeige der Rolle in Unternehmenssprache.
 WURZELROLLE_ANZEIGE = "Vorstand"
 ZEICHEN_VERFAHREN = "hmac-sha256-v1"
 #: Rollen des ABGEBENDEN Hauses (ADR-018): Die Ordnung der PLV fuehrt nur
 #: Rollen der PLV, der Vorstand vergibt nur diese.
 ROLLEN_DES_ABGEBENDEN_HAUSES = ("mensch/quell-aktuar",)
+#: Rollen des FALLS (ADR-018: "entsteht mit einem Fall und endet mit ihm"):
+#: Die Ordnung der Linie fuehrt sie nicht; der Fallauftrag benennt sie und gibt
+#: ihnen ihr Recht (ADR-026).
+ROLLEN_DES_FALLS = ("mensch/programmleitung",)
 ZEICHNUNG_FELDER = frozenset({"gate", "rolle", "schluesselklasse", "schluessel_sha256",
                               "verfahren", "signatur"})
 GLIED_SCHEMA_VERSION = 1
@@ -165,16 +179,26 @@ def ordnung_inhalt_fehler(text: str) -> Tuple[Optional[dict], List[str]]:
             "sie abgeschafft; eine solche Ordnung kommt nicht in die Linie. Ausweg: die "
             "Gates der Rolle einzeln nennen"]
     vorstand = daten["rollen"].get(WURZELROLLE)
-    if not isinstance(vorstand, dict) or vorstand.get("gates") != [ORDNUNGS_GATE] \
+    vgates = vorstand.get("gates") if isinstance(vorstand, dict) else None
+    if not isinstance(vorstand, dict) or not isinstance(vgates, list) \
+            or ORDNUNGS_GATE not in vgates or not set(vgates) <= set(WURZEL_GATES) \
+            or len(vgates) != len(set(vgates)) \
             or vorstand.get("schluesselklasse") not in ("mensch", "simulation"):
         return None, [
-            f"die Ordnung fuehrt keine Rolle {WURZELROLLE!r} mit gates "
-            f"[{ORDNUNGS_GATE!r}] und Schluesselklasse mensch/simulation — ohne sie zeichnet "
-            "niemand das naechste Glied, und sie zeichnet nichts anderes (ADR-025)"]
+            f"die Ordnung fuehrt keine Rolle {WURZELROLLE!r} mit gates aus den Gates der "
+            f"Wurzel {list(WURZEL_GATES)} (darunter {ORDNUNGS_GATE!r}) und Schluesselklasse "
+            "mensch/simulation — ohne sie zeichnet niemand das naechste Glied, und sie "
+            "zeichnet nichts anderes, schon gar keine fachliche Abnahme (ADR-025, ADR-026)"]
     fremd = sorted(n for n, e in daten["rollen"].items()
-                   if n != WURZELROLLE and ORDNUNGS_GATE in (e.get("gates") or []))
+                   if n != WURZELROLLE and set(e.get("gates") or []) & set(WURZEL_GATES))
     if fremd:
-        return None, [f"{ORDNUNGS_GATE} zeichnet nur {WURZELROLLE}, nicht {fremd}"]
+        return None, [f"{list(WURZEL_GATES)} zeichnet nur {WURZELROLLE}, nicht {fremd}"]
+    fallrollen = sorted(set(daten["rollen"]) & set(ROLLEN_DES_FALLS))
+    if fallrollen:
+        return None, [
+            f"die Ordnung fuehrt {fallrollen} — eine Rolle des Falls; sie entsteht mit dem "
+            "Fall, der Fallauftrag benennt sie und gibt ihr ihr Recht (ADR-026). In die "
+            "Ordnung der Linie gehoert sie nicht"]
     abgebend = sorted(set(daten["rollen"]) & set(ROLLEN_DES_ABGEBENDEN_HAUSES))
     if abgebend:
         return None, [

@@ -145,6 +145,26 @@ Der Scope ist ein fachlicher Entscheid: `tarif` ohne Bestandsuebernahme,
 `bestand` mit Bestandsabzug/-uebernahme. Nie aus zufaellig vorhandenen Dateien
 erraten oder spaeter zur Umgehung einer Gate-Pflicht umetikettieren.
 
+### Stufe 0b — Fallauftrag (Vorstand; hier STOPPST du, bis er gezeichnet ist)
+
+Ein Fall wird nur mit einem gezeichneten Auftrag gefuehrt (ADR-026). Nach der
+Registrierung der Lieferung legst du die Vorlage vor und haeltst an:
+
+```bash
+python -m rechner_pipeline.gates.fall_belegen auftrag --fall faelle/<fall> \
+    --linie linie --zeichnungsordnung <ordnung> \
+    --programmleitung-schluessel <schluessel der programmleitung> \
+    --programmleitung-klasse mensch|simulation \
+    [--mandat <rolle>=<mandat> je simulierter Rolle] --auftrag "<Auftrag>"
+```
+
+Der Vorstand prueft `abgeleitet/auftrag/fallauftrag.md` und zeichnet
+`A-M6` (`gates.gate_entscheid --gate A-M6`). Erst dann beginnt Stufe 1. Jede
+Annahme im Fall setzt den geltenden Auftrag voraus und nennt ihn; der
+Schluessel des Vorstands gehoert deshalb in jeden Ring
+(`--freigabe-schluessel`, vor dem zeichnenden). Wird eine Quelle nachgereicht,
+gilt der Auftrag nicht mehr — Vorlage neu, der Vorstand zeichnet neu.
+
 ### Stufe 1 — Quellen -> A-Box
 
 1. Vorverdichtung (deterministisch, je Quelltyp):
@@ -507,6 +527,8 @@ Der Freigabeschluessel gehoert ausserhalb des Falls und ausserhalb des
 Agentenzugriffs in die Autoritaetsumgebung des Menschen (mindestens 32
 kryptografisch zufaellige Byte, POSIX 0600, genau ein Hardlink).
 
+**Die Linie ist Pflicht** (ADR-025, Nachtrag 2026-10-01): Jeder Entscheid-Aufruf nennt `--linie <linienbereich>`; gezeichnet wird nur unter der Spitze ihrer Ordnungslinie (`--zeichnungsordnung` ist die Ordnung der Spitze), und jede Vorbedingung wird gegen die Ordnung gelesen, unter der sie gezeichnet wurde. Ohne Linie verweigert das Gate mit Ausweg; eine Ordnung mit `"*"` kommt nicht in die Linie und zeichnet deshalb nicht mehr.
+
 Zeichnet in der Vorzeige eine SIMULIERTE menschliche Rolle (Schluesselklasse `simulation` in der Zeichnungsordnung), ist `--mandat <datei>` Pflicht: Das Gate verweigert die Annahme ohne Mandat (ADR-018). Das Mandat ist das Dokument der Regie, unter dem die Rolle handelt; sein Hash steht mitsigniert im Snapshot.
 
 **Zeichnungsordnung (Zwei-Operatoren-Regie, Beschluss 2026-08-31).**
@@ -782,6 +804,23 @@ definieren, sondern entstehen aus dem konkreten Bestand
 Ohne rechnende Schicht (Residuum ~0 wie im ersten Baldrian-Lauf)
 entfaellt der Schritt — das haeltst du im Laufprotokoll fest, statt ihn
 still zu ueberspringen.
+
+## Fallabbruch (Programmleitung)
+
+Laesst sich der Fall nicht zu Ende fuehren, endet er nicht im Sande, sondern
+mit dem gezeichneten Satz "dieser Fall endet hier, ohne Abnahme" (`A-M5`,
+ADR-026). Du legst die Vorlage vor und haeltst an:
+
+```bash
+python -m rechner_pipeline.gates.fall_belegen abbruch --fall faelle/<fall> --repo-root . \
+    --grund "<woran der Fall scheitert>" --bestand "<was mit dem Bestand geschieht>" \
+    --uebergabe "<wohin die Uebergabe geht>"
+```
+
+`mensch/programmleitung` prueft `abgeleitet/abbruch/fallabbruch.md` und
+zeichnet `A-M5` mit dem Schluessel, den der Auftrag ihr gibt. Danach ist im
+Fall nichts mehr zeichenbar. Nach einer geltenden A-M4-Annahme verweigert das
+Gate den Abbruch; ob A-M4 abgelehnt wird, entscheidet der Mensch.
 
 ## Abbruchkriterien (STOPP und Mensch fragen)
 

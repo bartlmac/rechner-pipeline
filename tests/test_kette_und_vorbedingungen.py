@@ -32,7 +32,7 @@ PLAUSIBEL = {
 AKTEUR = "test/extrahiere-quellfragment@abc1234"
 
 
-from tests.zeichnung_fixture import AGENT, VA, annahme_args, mandat_datei
+from tests.zeichnung_fixture import entscheide_args, linie_args, AGENT, VA, annahme_args, mandat_datei
 
 
 def _freigabe_arg(fall: Path) -> list[str]:
@@ -289,7 +289,7 @@ def test_aq1_annahme_verlangt_gebundenes_pq3(fall_mit_fragmenten):
 def test_agent_rolle_darf_nur_ablehnen(fall_mit_fragmenten):
     f = fall_mit_fragmenten
     merge_cli(["--fall", str(f)])
-    basis = ["--fall", str(f), "--entscheider", "claude-fable-5",
+    basis = ["--fall", str(f), *linie_args(f), "--entscheider", "claude-fable-5",
              "--begruendung", "Zwischenstand", "--repo-root", "."]
     result = p9(["--gate", "A-Q1", "--entscheid", "angenommen",
                  "--rolle", AGENT, *basis])
@@ -328,7 +328,7 @@ def test_entscheide_verlangt_rolle_mensch_und_archiviert(fall_mit_fragmenten, ca
         ["--fall", str(f), "--diskrepanz", d.id, "--wert", "0.025",
          "--entscheider", "B", "--begruendung", "x"]) == 2
     capsys.readouterr()
-    rc = entscheide(["--fall", str(f), *_freigabe_arg(f),
+    rc = entscheide(["--fall", str(f), *entscheide_args(f),
                      "--diskrepanz", d.id, "--wert", "0.025",
                      "--entscheider", "maintainer", "--begruendung", "Meldung gilt"])
     assert rc == 0
