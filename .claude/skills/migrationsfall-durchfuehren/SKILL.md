@@ -818,9 +818,22 @@ python -m rechner_pipeline.gates.fall_belegen abbruch --fall faelle/<fall> --rep
 ```
 
 `mensch/programmleitung` prueft `abgeleitet/abbruch/fallabbruch.md` und
-zeichnet `A-M5` mit dem Schluessel, den der Auftrag ihr gibt. Danach ist im
-Fall nichts mehr zeichenbar. Nach einer geltenden A-M4-Annahme verweigert das
-Gate den Abbruch; ob A-M4 abgelehnt wird, entscheidet der Mensch.
+zeichnet `A-M5` mit dem Schluessel, den der Auftrag ihr gibt. Der Abbruch geht
+auch bei verletztem Eingang (eine verlorene Lieferung ist ein typischer
+Grund); der Befund der Eingangspruefung steht dann woertlich in Vorlage und
+Sicht. Der Ring traegt den Schluessel des Vorstands (Auftrag) und, sobald eine
+A-M4 im Fall liegt — auch eine abgelehnte —, den von `mensch/aktuariat`:
+Ohne ihn verweigert das Gate und nennt die Rolle. Der Abbruch nach einer A-M4
+geht deshalb nur gemeinsam mit dem Aktuariat (ADR-026, Nachtrag Runde G).
+Danach ist im Fall nichts mehr zeichenbar; `entscheide/` wird nie bereinigt.
+Nach einer geltenden A-M4-Annahme verweigert das Gate den Abbruch; ob A-M4
+abgelehnt wird, entscheidet der Mensch.
+
+Zieht der Vorstand den Auftrag zurueck und beauftragt neu, gelten die
+Annahmen unter dem alten Auftrag nicht mehr als Vorbedingung: A-M4 und A-B2
+verweigern und nennen das Gate; zeichne die Vorbedingungen unter dem neuen
+Auftrag neu vor. Gezeichnet wird unter der Linie, die der Auftrag nennt — eine
+Kopie der Linie ohne ihre Abnahmen verweigert das Gate.
 
 ## Abbruchkriterien (STOPP und Mensch fragen)
 

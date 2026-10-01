@@ -16,7 +16,8 @@ Snapshot (``models.fallauftrag``).
   benannte, heute leere Platz fuer den Aktuar des abgebenden Hauses.
 * ``abbruch`` — woran der Fall scheitert, welche Gates gezeichnet waren
   (aus ``entscheide/`` gerechnet), was mit dem Bestand geschieht, wohin die
-  Uebergabe geht, und an welchem Stand er endet.
+  Uebergabe geht, was die Eingangspruefung fand (woertlich; der Abbruch geht
+  auch bei verletztem Eingang) und an welchem Stand er endet.
 
 Run via::
 
@@ -65,7 +66,9 @@ from rechner_pipeline.models.zeichnung import (
 )
 
 COMMAND = "fall_belegen"
-GATE_VERSION = "1.0.0"
+#: 2.0.0 (ADR-026, Nachtrag Runde G): die Vorlage des Abbruchs traegt Schema 2
+#: mit ``eingang_befund``; eine Vorlage nach Schema 1 nimmt das Gate nicht mehr.
+GATE_VERSION = "2.0.0"
 
 
 class FallBelegFehler(RuntimeError):
@@ -189,6 +192,9 @@ def baue_abbruch(fall: Path, *, repo_root: Path, grund: str, bestand: str,
         "fallauftrag": spitze["snapshot_sha256"],
         "grund": grund.strip(),
         "gezeichnet": gezeichnet(fall),
+        # Der Abbruch geht auch bei verletztem Eingang (ADR-026, Nachtrag
+        # Runde G): Der Befund steht woertlich darin, das Gate rechnet ihn nach.
+        "eingang_befund": fall_mod.pruefen(Path(fall)),
         "bestand": bestand.strip(),
         "uebergabe": uebergabe.strip(),
         "stand": {"eingang_sha256": _sha256(Path(fall) / fall_mod.EINGANG_REGISTER),
@@ -242,7 +248,13 @@ def rendere_abbruch(beleg: Mapping[str, Any]) -> str:
          f"Wohin die Uebergabe geht: {_md(beleg['uebergabe'])}", "",
          f"Fallauftrag {_c(beleg['fallauftrag'][:16])}; Eingang "
          f"{_c(beleg['stand']['eingang_sha256'][:16])}; System "
-         f"{_c(beleg['stand']['system']['commit'][:12])}.", "", "## Gezeichnet waren", ""]
+         f"{_c(beleg['stand']['system']['commit'][:12])}.", "", "## Der Eingang", ""]
+    if beleg["eingang_befund"]:
+        z += ["Der Eingang verletzt sein Register — Befund der Eingangspruefung, woertlich:", ""]
+        z += [f"- {_md(satz)}" for satz in beleg["eingang_befund"]]
+    else:
+        z.append("Der Eingang ist unversehrt: Er erfuellt sein Register.")
+    z += ["", "## Gezeichnet waren", ""]
     z += [f"- {_md(e['gate'])} {_md(e['entscheid'])} {_c(e['snapshot_sha256'][:16])}"
           for e in beleg["gezeichnet"]] or ["- nichts ausser dem Auftrag"]
     z += ["", "Nach der Zeichnung ist im Fall nichts mehr zeichenbar.", ""]

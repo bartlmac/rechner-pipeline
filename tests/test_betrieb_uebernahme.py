@@ -133,7 +133,8 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
                  schema: "int | None" = None,
                  schluessel: "bytes | None" = None,
                  pins: "dict | None" = None,
-                 rolle_id: "str | None" = None) -> dict:
+                 rolle_id: "str | None" = None,
+                 fallauftrag: "str | None" = None) -> dict:
     """Ein gueltiger P9-Snapshot, wie ihn das Gate schreibt — Schema 7 mit
     Zeichnung (Rolle, Schluesselklasse), EXAKT den Pflichtrollen seines
     Scopes und einer ECHTEN Freigabesignatur (Testschluessel; conftest
@@ -219,7 +220,9 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
     if entscheid == "angenommen" and schema >= 10:
         # Jede Annahme eines Falls nennt den Auftrag, auf dem sie steht
         # (ADR-026); hier buergt die Signatur, der Betrieb rechnet ihn nicht nach.
-        daten["fallauftrag"] = hashlib.sha256(b"fallauftrag der Suite").hexdigest()
+        # ``fallauftrag``: der Snapshot des geltenden Auftrags, wenn ein Gate
+        # auf dieser Annahme gruendet (ADR-026, Nachtrag Runde G).
+        daten["fallauftrag"] = fallauftrag or hashlib.sha256(b"fallauftrag der Suite").hexdigest()
     if entscheid == "angenommen":
         daten["freigabe"] = freigabe_fuer(daten, schluessel or TESTKEY)
     daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
@@ -227,7 +230,8 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
 
 
 def am1_snapshot(fall_name: str, *, aktuartest_sha: "str | None" = None,
-                 schluessel: "bytes | None" = None, rolle_id: "str | None" = None) -> dict:
+                 schluessel: "bytes | None" = None, rolle_id: "str | None" = None,
+                 fallauftrag: "str | None" = None) -> dict:
     """Ein angenommener A-M1-Snapshot (Bestands-Scope) — ``aktuartest``
     pinnt ``aktuartest_sha`` (Default: Platzhalter), der Bericht einen
     Platzhalter. Deterministisch: Derselbe Fall ergibt denselben Hash, den
@@ -236,7 +240,7 @@ def am1_snapshot(fall_name: str, *, aktuartest_sha: "str | None" = None,
 
     return am4_snapshot(
         fall_name, gate="A-M1", rollen=tuple(belegrollen("A-M1", "bestand")),
-        schluessel=schluessel, rolle_id=rolle_id,
+        schluessel=schluessel, rolle_id=rolle_id, fallauftrag=fallauftrag,
         pins={"aktuartest": aktuartest_sha} if aktuartest_sha else None)
 
 

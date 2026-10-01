@@ -381,9 +381,9 @@ def test_ohne_auftrag_kann_die_programmleitung_nicht_abbrechen(fall):
 
     (fall / fa.ABBRUCH_RELATIV).parent.mkdir(parents=True, exist_ok=True)
     (fall / fa.ABBRUCH_RELATIV).write_text(json.dumps({
-        "schema_version": 1, "art": "fallabbruch", "fall": fall.name,
+        "schema_version": fa.ABBRUCH_SCHEMA_VERSION, "art": "fallabbruch", "fall": fall.name,
         "fallauftrag": "aa" * 32, "grund": "g", "bestand": "b", "uebergabe": "u",
-        "gezeichnet": fall_belegen.gezeichnet(fall),
+        "gezeichnet": fall_belegen.gezeichnet(fall), "eingang_befund": [],
         "stand": {"eingang_sha256": hashlib.sha256((fall / "eingang.json").read_bytes())
                   .hexdigest(), "system": systemstand(REPO_ROOT)}}), encoding="utf-8")
     _pl_schluessel(fall)

@@ -42,8 +42,9 @@ das tut das Gate (``gates.gate_entscheid``) gegen den Fall und die Linie.
 **Der Fallabbruch** sagt: woran der Fall scheitert (``grund``), welche Gates
 gezeichnet waren (``gezeichnet``, aus ``entscheide/`` gerechnet), was mit dem
 Bestand geschieht (``bestand``), wohin die Uebergabe geht (``uebergabe``),
-auf welchem Auftrag (``fallauftrag``) und an welchem Stand er endet
-(``stand``: Eingang und Systemstand).
+auf welchem Auftrag (``fallauftrag``), was die Eingangspruefung beim Abbruch
+fand (``eingang_befund``, woertlich; leer = unversehrt) und an welchem Stand
+er endet (``stand``: Eingang und Systemstand).
 
 Knoten: system/entscheid
 """
@@ -76,11 +77,15 @@ AUFTRAG_FELDER = frozenset({
     "schema_version", "art", "fall", "lieferung", "programmleitung", "mandate",
     "zielsystem", "abgebendes_haus", "auftrag",
 })
-ABBRUCH_SCHEMA_VERSION = 1
+#: Schema 2 (ADR-026, Nachtrag Runde G): ``eingang_befund`` — der Abbruch
+#: geht auch bei verletztem Eingang und traegt den Befund woertlich. Schema 1
+#: ist nie gezeichnet worden (Gate-Version 5.0.0 vor dem Merge) und wird nicht
+#: mehr gelesen.
+ABBRUCH_SCHEMA_VERSION = 2
 ABBRUCH_ART = "fallabbruch"
 ABBRUCH_FELDER = frozenset({
     "schema_version", "art", "fall", "fallauftrag", "grund", "gezeichnet",
-    "bestand", "uebergabe", "stand",
+    "bestand", "uebergabe", "eingang_befund", "stand",
 })
 
 #: Was der Platz des abgebenden Hauses heute sagt — woertlich.
@@ -190,8 +195,8 @@ def rechtsordnung(auftrag: Mapping[str, Any]) -> Dict[str, Any]:
 
 def abbruch_fehler(beleg: object) -> List[str]:
     """Die FORM eines Fallabbruchs. Leer = in Ordnung. Die Bindung an den
-    Fall (Auftrag, gezeichnete Gates, Eingang, Systemstand) rechnet das Gate
-    nach."""
+    Fall (Auftrag, gezeichnete Gates, Befund des Eingangs, Eingang,
+    Systemstand) rechnet das Gate nach."""
     if not isinstance(beleg, dict):
         return ["der Fallabbruch ist kein JSON-Objekt"]
     if set(beleg) != ABBRUCH_FELDER:
@@ -217,6 +222,10 @@ def abbruch_fehler(beleg: object) -> List[str]:
         fehler.append("gezeichnet muss [{gate, entscheid, snapshot_sha256}] sein")
     elif gezeichnet != sorted(gezeichnet, key=lambda e: (e["gate"], e["snapshot_sha256"])):
         fehler.append("gezeichnet muss nach (gate, snapshot_sha256) sortiert sein")
+    befund = beleg.get("eingang_befund")
+    if not (isinstance(befund, list) and all(_text(z) for z in befund)):
+        fehler.append("eingang_befund muss die Liste der Saetze der Eingangspruefung sein "
+                      "(leer = der Eingang erfuellt sein Register)")
     stand = beleg.get("stand")
     system = stand.get("system") if isinstance(stand, dict) else None
     if not (isinstance(stand, dict) and set(stand) == {"eingang_sha256", "system"}

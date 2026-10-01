@@ -1085,29 +1085,6 @@ def gatefall(tmp_path):
 
     fall = bereite_pk1_fall(tmp_path, ("klv/tg2012",), scope="bestand")
     assert pq3(["--fall", str(fall), "--repo-root", str(REPO_ROOT)]).exit_code == 0
-    # Die Belege der Abnahmen am festen Ort und die Snapshots, die sie pinnen.
-    berichte = fall / "abgeleitet" / "berichte"
-    berichte.mkdir(parents=True, exist_ok=True)
-    (berichte / "aktuartest.json").write_text('{"abnahme": "A-M1"}', encoding="utf-8")
-    (berichte / "migrationssuite.json").write_text('{"abnahme": "A-M4"}', encoding="utf-8")
-    sha = {n: hashlib.sha256((berichte / f"{n}.json").read_bytes()).hexdigest()
-           for n in ("aktuartest", "migrationssuite")}
-    am1 = am1_snapshot(fall.name, aktuartest_sha=sha["aktuartest"])
-    am4 = am4_snapshot(fall.name, pins={"am1_snapshot": am1["snapshot_sha256"],
-                                        "migrationssuite": sha["migrationssuite"]})
-    (fall / "entscheide").mkdir(exist_ok=True)
-    for daten in (am1, am4):
-        (fall / "entscheide" / f"{daten['gate']}-{daten['snapshot_sha256']}.json").write_text(
-            json.dumps(daten), encoding="utf-8")
-    eingang = {"fall": fall.name, "snapshot_sha256": am4["snapshot_sha256"],
-               "stichtag": STICHTAG.isoformat()}
-    beleg = probenbeleg(fall.name, ablage_stand={"gefuehrter_tag": None, "config_sha256": "ab" * 32},
-                        eingang_roh=json.dumps(eingang).encode("utf-8"),
-                        am4_snapshot_sha256=am4["snapshot_sha256"],
-                        zeichner=tl.betriebszeichner(Ablage(tmp_path / "irgendeine-ablage")),
-                        abnahmen=abnahmen_aus_fall(fall, am4["snapshot_sha256"]))
-    (fall / zp.BELEG_RELATIV).parent.mkdir(parents=True, exist_ok=True)
-    (fall / zp.BELEG_RELATIV).write_text(json.dumps(beleg), encoding="utf-8")
     schluessel = {}
     for name, inhalt in (("mensch", b"betriebsverantwortung-schluessel!" * 2),
                          ("agent", b"betriebs-agent-schluessel-nur-vorlage!" * 2)):
@@ -1130,7 +1107,38 @@ def gatefall(tmp_path):
         # Der Vorstand beauftragt den Fall (ADR-026).
         **vorstand_rolle(tmp_path),
     })
+    # Erst beauftragen, dann die Annahmen, die auf dem Auftrag stehen: A-B2
+    # gruendet auf A-M4 und A-M1, und die nennen den GELTENDEN Auftrag
+    # (ADR-026, Nachtrag Runde G).
     auftrag_args(fall)
+    from rechner_pipeline.gates.stand_belegen import geltende_spitze
+
+    fallauftrag = geltende_spitze(fall, "A-M6")[0]["snapshot_sha256"]
+    # Die Belege der Abnahmen am festen Ort und die Snapshots, die sie pinnen.
+    berichte = fall / "abgeleitet" / "berichte"
+    berichte.mkdir(parents=True, exist_ok=True)
+    (berichte / "aktuartest.json").write_text('{"abnahme": "A-M1"}', encoding="utf-8")
+    (berichte / "migrationssuite.json").write_text('{"abnahme": "A-M4"}', encoding="utf-8")
+    sha = {n: hashlib.sha256((berichte / f"{n}.json").read_bytes()).hexdigest()
+           for n in ("aktuartest", "migrationssuite")}
+    am1 = am1_snapshot(fall.name, aktuartest_sha=sha["aktuartest"],
+                       fallauftrag=fallauftrag)
+    am4 = am4_snapshot(fall.name, fallauftrag=fallauftrag,
+                       pins={"am1_snapshot": am1["snapshot_sha256"],
+                             "migrationssuite": sha["migrationssuite"]})
+    (fall / "entscheide").mkdir(exist_ok=True)
+    for daten in (am1, am4):
+        (fall / "entscheide" / f"{daten['gate']}-{daten['snapshot_sha256']}.json").write_text(
+            json.dumps(daten), encoding="utf-8")
+    eingang = {"fall": fall.name, "snapshot_sha256": am4["snapshot_sha256"],
+               "stichtag": STICHTAG.isoformat()}
+    beleg = probenbeleg(fall.name, ablage_stand={"gefuehrter_tag": None, "config_sha256": "ab" * 32},
+                        eingang_roh=json.dumps(eingang).encode("utf-8"),
+                        am4_snapshot_sha256=am4["snapshot_sha256"],
+                        zeichner=tl.betriebszeichner(Ablage(tmp_path / "irgendeine-ablage")),
+                        abnahmen=abnahmen_aus_fall(fall, am4["snapshot_sha256"]))
+    (fall / zp.BELEG_RELATIV).parent.mkdir(parents=True, exist_ok=True)
+    (fall / zp.BELEG_RELATIV).write_text(json.dumps(beleg), encoding="utf-8")
     return fall, am4, beleg, schluessel, testkey, ordnung
 
 
@@ -1181,6 +1189,33 @@ def test_mensch_betrieb_zeichnet_die_zugangsabnahme_mit_ihren_drei_belegen(gatef
         ordnung=json.loads(Path(ordnung).read_text(encoding="utf-8")),
         ordnungslinie=lade_linie(fall.parent / "linie")[0])
     assert verifiziert is True and daten["gate"] == "A-B2"
+
+
+def test_a_b2_gruendet_nicht_auf_einer_am4_unter_abgeloestem_auftrag(gatefall):
+    """ADR-026, Nachtrag Runde G (G14): Der Vorstand zieht den Auftrag zurueck
+    und beauftragt neu. A-M4 und A-M1 stehen auf dem alten Auftrag; A-B2
+    gruendet nicht auf ihnen und nennt den Ausweg.
+
+    Mutationsprobe: im A-B2-Zweig die Anmeldung von A-M4 und A-M1 entfernen
+    -> A-B2 angenommen -> rot."""
+    from rechner_pipeline.gates import gate_entscheid
+    from tests.zeichnung_fixture import VORSTAND_SCHLUESSEL_DATEI, fallauftrag_zeichnen
+
+    fall, am4, _, schluessel, testkey, ordnung = gatefall
+    zurueck = gate_entscheid.main([
+        "--fall", str(fall), "--gate", "A-M6", "--entscheid", "abgelehnt",
+        "--entscheider", "vorstand", "--begruendung", "Auftrag zurueckgezogen",
+        "--rolle", "mensch/vorstand", "--repo-root", str(REPO_ROOT),
+        "--zeichnungsordnung", str(ordnung), "--linie", str(fall.parent / "linie"),
+        "--freigabe-schluessel", str(fall.parent / VORSTAND_SCHLUESSEL_DATEI)])
+    assert zurueck.exit_code == 0, zurueck.errors
+    fallauftrag_zeichnen(fall, ordnung_pfad=Path(ordnung))
+    ergebnis = _ab2(fall, schluessel=schluessel["mensch"], testkey=testkey, ordnung=ordnung)
+    assert ergebnis.exit_code == 20, ergebnis.errors
+    assert ergebnis.errors[0]["code"] == "fallauftrag", ergebnis.errors
+    meldung = ergebnis.errors[0]["message"]
+    assert "A-M4" in meldung and am4["fallauftrag"][:16] in meldung and "neu zeichnen" in meldung
+    assert not list((fall / "entscheide").glob("A-B2-*.json"))
 
 
 def test_agent_betrieb_darf_nur_ablehnen(gatefall):
