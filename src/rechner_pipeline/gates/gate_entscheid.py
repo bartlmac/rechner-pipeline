@@ -1,7 +1,8 @@
 """``gate_entscheid`` — der P9-Snapshot eines menschlichen Gates.
 
 Ein menschliches Gate (A-Q1 fachlich; A-M1, A-M2, A-M3 die drei
-aktuariellen Abnahmen; A-M4 Migrationsabnahme; A-O1 T-Box-Aenderung)
+aktuariellen Abnahmen; A-M4 Migrationsabnahme; A-O1 T-Box-Aenderung; A-K2
+der Kernstand des Falls; A-B1, A-B2 Auslieferung und Zugang)
 endet nicht in einer Commit-Message, sondern in einem unveraenderlichen,
 inhaltsadressierten Snapshot: WER hat WAS auf WELCHEM Stand entschieden,
 mit welcher Begruendung. Der Snapshot haelt die SHA-256-Hashes aller
@@ -41,7 +42,13 @@ und Zwei-Stichtagsstands. Die Reihenfolge ist erzwungen: Ein
 A-M4-Entscheid ohne geltende, signierte A-M1-Annahme auf demselben Stand
 ist unmoeglich (ADR-010); im Bestands-Scope gilt dasselbe fuer A-M2 und
 A-M3 (Entscheidung des Auftraggebers 2026-08-31), im Tarif-Scope bleibt
-es bei A-M1. Im Abnahme-Ledger verlangt A-M4 ausserdem die
+es bei A-M1. In beiden Scopes verlangt A-M4 seit dem Entscheid des
+Maintainers vom 2026-10-01 die geltende A-K2-Annahme des Kernstands, auf
+dem der Fall rechnet (ADR-018, Nachtrag 2026-10-01): Rolle
+``mensch/rechenkern``, Belege ``abgeleitet/kern/aenderung.json`` und
+``regression.json`` (bis zum Regressionswerkzeug die benannte Ausnahme
+"nicht gefahren"), nachgerechnet gegen den lebenden Kern. Im
+Abnahme-Ledger verlangt A-M4 ausserdem die
 vier festen Renderer-Artefaktrollen, prueft ihre aktuellen Bytes und
 leitet das Berichtsverdikt aus den gebundenen Inhalten neu ab.
 
@@ -91,14 +98,17 @@ from rechner_pipeline.gates._fall_scope import (
     scope_bindung,
     validate_scope_bindung,
 )
+from rechner_pipeline.gates import kernstand_belegen as _kernstand
+from rechner_pipeline.gates import stand_belegen as _stand
 from rechner_pipeline.gates._provenienz import (
     O3_BELEG_GLOB,
-    PRODUKTIVER_ZWEIG,
     git_stand,
     pruefe_pk1_beleg,
     systemstand,
     zweig_ist_aktuell,
 )
+from rechner_pipeline.models import kernabnahme as _kernabnahme
+from rechner_pipeline.models import standabnahme as _standabnahme
 from rechner_pipeline.models.belegrollen import (
     BelegrollenFehler,
     am4_belegrollen,
@@ -116,6 +126,8 @@ from rechner_pipeline.models.schemas import (
     P9_AKTUARIELLE_ABNAHMEN,
     P9_FREIGABE_VERFAHREN,
     P9_GATE_VERSION,
+    P9_GATES_MIT_AUSNAHMEN,
+    P9_GATES_MIT_STAND,
     P9_SNAPSHOT_SCHEMA_VERSION,
     P9Snapshot,
     p9_semantik_fehler,
@@ -505,56 +517,24 @@ def pruefe_stellungnahme_aktuariat(
     return fehler
 
 
-#: Schema der beiden Belege von ``A-K2.kernaenderung`` (Entscheid des
-#: Maintainers 2026-09-16). Getrennt gehalten, weil sie verschiedene Dinge
-#: bezeugen: Der AENDERUNGSbeleg sagt, WAS am Kern anders wurde; der
-#: REGRESSIONSbeleg sagt, was das fuer den bestehenden Bestand bedeutet.
-KERN_AENDERUNG_SCHEMA_VERSION = 2
-KERN_REGRESSION_SCHEMA_VERSION = 1
+#: Schema der beiden Belege von ``A-K2.kernaenderung``. Getrennt gehalten,
+#: weil sie verschiedene Dinge bezeugen: Der AENDERUNGSbeleg sagt, WAS am
+#: Kern anders wurde; der REGRESSIONSbeleg sagt, was das fuer den bestehenden
+#: Bestand bedeutet. Vertrag und Produzent: ``gates.kernstand_belegen``,
+#: Gegenstand und Ausnahme: ``models.kernabnahme`` (ADR-018, Nachtrag
+#: 2026-10-01).
+KERN_AENDERUNG_SCHEMA_VERSION = _kernstand.KERN_AENDERUNG_SCHEMA_VERSION
+KERN_REGRESSION_SCHEMA_VERSION = _kernstand.KERN_REGRESSION_SCHEMA_VERSION
 
-#: Die eingefrorenen Referenzwerte des Kerns — die Regressionssicherung
-#: aus dem Abnahme-Protokoll (``kern/__init__``). Ihr Sammelhash bindet
-#: den Aenderungsbeleg an den Stand, den der Code wirklich traegt.
-KERN_REFERENZWERTE = ("tests", "fixtures", "kern_referenzwerte")
-
-#: Das Rechenkern-Paket. Der Beleg bindet es ueber einen Sammelhash,
-#: NICHT ueber einen Import: Das Entscheid-Kommando gehoert dem KI-Tool
-#: (Ebene 2), der Rechenkern der Vorzeige (Ebene 3), und das Tool greift
-#: nicht in die Vorzeige (ADR-017, TOOL_NACH_VORZEIGE_ERLAUBT). Ein Hash
-#: ueber die Quelldateien leistet ohnehin mehr als eine Versionsnummer:
-#: Eine Version kann man hochzaehlen, ohne etwas zu aendern, und etwas
-#: aendern, ohne sie hochzuzaehlen. Dieselbe Figur wie der Modul-Hash der
-#: T-Box in ``pruefe_tbox_aenderung``.
-KERN_PAKET = ("src", "rechner_pipeline", "kern")
-
-
-def referenzwerte_hash(repo_root: Path) -> str | None:
-    """Sammelhash der eingefrorenen Kern-Referenzwerte, sortiert.
-
-    Sortiert nach Dateiname, damit der Hash nicht von der Reihenfolge des
-    Dateisystems abhaengt; Name UND Inhalt gehen ein, sonst bliebe das
-    Umbenennen oder Loeschen einer Datei unsichtbar.
-    """
-    verzeichnis = repo_root.joinpath(*KERN_REFERENZWERTE)
-    if not verzeichnis.is_dir():
-        return None
-    sammel = hashlib.sha256()
-    for datei in sorted(verzeichnis.glob("*.json"), key=lambda d: d.name):
-        sammel.update(datei.name.encode("utf-8"))
-        sammel.update(datei.read_bytes())
-    return sammel.hexdigest()
-
-
-def kern_modul_hash(repo_root: Path) -> str | None:
-    """Sammelhash der Quelldateien des Rechenkerns, sortiert nach Name."""
-    verzeichnis = repo_root.joinpath(*KERN_PAKET)
-    if not verzeichnis.is_dir():
-        return None
-    sammel = hashlib.sha256()
-    for datei in sorted(verzeichnis.rglob("*.py"), key=lambda d: d.as_posix()):
-        sammel.update(datei.relative_to(verzeichnis).as_posix().encode("utf-8"))
-        sammel.update(datei.read_bytes())
-    return sammel.hexdigest()
+#: Die eingefrorenen Referenzwerte und das Rechenkern-Paket — als Pfadteile,
+#: aus dem EINEN Gegenstand (``models.kernabnahme.KERNSTAND``). Das Paket
+#: wird ueber einen Sammelhash gebunden, NICHT ueber einen Import: Das
+#: Entscheid-Kommando gehoert dem KI-Tool (Ebene 2), der Rechenkern der
+#: Vorzeige (Ebene 3), und das Tool greift nicht in die Vorzeige (ADR-017).
+KERN_REFERENZWERTE = tuple(_kernabnahme.KERN_REFERENZWERTE.split("/"))
+KERN_PAKET = tuple(_kernabnahme.KERN_PAKET.split("/"))
+referenzwerte_hash = _kernstand.referenzwerte_hash
+kern_modul_hash = _kernstand.kern_modul_hash
 
 
 def pruefe_kernaenderung(
@@ -564,19 +544,20 @@ def pruefe_kernaenderung(
     text: str | None = None,
     repo_root: Path | None = None,
 ) -> List[str]:
-    """Den Beleg einer Rechenkern-Aenderung gegen den Code halten.
+    """Den Aenderungsbeleg des Kernstands gegen Code und Git halten.
 
-    Gleiche Figur wie ``pruefe_tbox_aenderung``: Der Beleg sagt, VON
-    welcher Kern-Version NACH welcher es geht, welchen Sammelhash die
-    eingefrorenen Referenzwerte danach tragen, welche davon sich geaendert
-    haben und welches Artefakt die Aenderung begruendet.
+    Der Beleg sagt, VON welchem zuletzt abgenommenen Kernstand (Commit und
+    Version) NACH welchem es geht, was sich je Modul geaendert hat, mit
+    welchen Commits, und welchen Sammelhash Kern und Referenzwerte tragen.
+    Ein unveraenderter Kern ist ein gueltiger Beleg (Entscheid 2026-10-01:
+    jeder Fall traegt die Abnahme seines Kernstands) — er sagt dann genau
+    das.
 
-    Der ALTE Stand ist hier nicht aus dem Code nachweisbar — der Kern
-    deklariert keine Versionslinie wie die T-Box. Was nachweisbar ist und
-    deshalb geprueft wird: Die NEUE Version muss die sein, die der Code
-    jetzt traegt (``kern.__version__``), und der Sammelhash muss der der
-    tatsaechlich vorliegenden Referenzwerte sein. Ein Beleg, der eine
-    Aenderung behauptet, die der Code nicht traegt, wird nicht gezeichnet.
+    Geprueft wird erst Feld fuer Feld (die Meldungen nennen, was nicht
+    stimmt), dann wird der GANZE Beleg nachgerechnet
+    (``kernstand_belegen.nachgerechnet``): Ein Beleg, der nur in sich
+    stimmig ist, bezeugt nichts (T24-04) — eine erfundene Commit-Zeile, ein
+    weggelassenes Modul, ein geschoenter Diffstat fallen hier.
     """
     if not pfad.is_file():
         return ["Datei fehlt"]
@@ -591,21 +572,29 @@ def pruefe_kernaenderung(
     fehler: List[str] = []
     if daten.get("schema_version") != KERN_AENDERUNG_SCHEMA_VERSION:
         fehler.append(f"schema_version muss {KERN_AENDERUNG_SCHEMA_VERSION} sein")
+    if daten.get("art") != _kernstand.ART:
+        fehler.append(f"art muss {_kernstand.ART!r} sein")
     von, nach = daten.get("von_version"), daten.get("nach_version")
     semver_ok = True
     for name, wert in (("von_version", von), ("nach_version", nach)):
         if not isinstance(wert, str) or not _SEMVER.match(wert):
             fehler.append(f"{name} muss eine Version x.y.z sein")
             semver_ok = False
-    if von == nach:
-        fehler.append("von_version und nach_version sind gleich — keine Aenderung")
-    if semver_ok and von != nach:
-        if _semver_tuple(von) >= _semver_tuple(nach):
+    if semver_ok and _semver_tuple(von) > _semver_tuple(nach):
+        fehler.append(
+            f"von_version {von!r} liegt nach nach_version {nach!r} "
+            "— ein Uebergang laeuft nicht abwaerts"
+        )
+    wurzel = repo_root
+    if wurzel is not None and semver_ok:
+        init = wurzel.joinpath(*KERN_PAKET, "__init__.py")
+        ist_version = _kernstand.kern_version(
+            init.read_text(encoding="utf-8") if init.is_file() else None)
+        if ist_version != nach:
             fehler.append(
-                f"von_version {von!r} liegt nicht vor nach_version {nach!r} "
-                "— ein Uebergang laeuft aufwaerts"
+                f"nach_version {nach!r} ist nicht die Version, die der Kern "
+                f"traegt ({ist_version!r})"
             )
-    wurzel = repo_root if repo_root is not None else None
     kern_ist = kern_modul_hash(wurzel) if wurzel is not None else None
     kern_soll = daten.get("kern_sha256")
     if not (isinstance(kern_soll, str) and _SHA256.match(kern_soll)):
@@ -618,7 +607,7 @@ def pruefe_kernaenderung(
     elif kern_soll != kern_ist:
         fehler.append(
             "kern_sha256 stimmt nicht mit dem vorliegenden Rechenkern "
-            "ueberein — der Beleg behauptet eine Aenderung, die der Code "
+            "ueberein — der Beleg behauptet einen Kern, den der Code "
             "nicht traegt"
         )
     ist_hash = referenzwerte_hash(wurzel) if wurzel is not None else None
@@ -637,42 +626,32 @@ def pruefe_kernaenderung(
             "Referenzwerten ueberein — der Beleg gehoert zu einem anderen "
             "Stand des Kerns"
         )
-    # Der ALTE Stand (Entscheid des Maintainers 2026-09-16): Entwicklung
-    # im Fall laeuft auf einem Branch, der produktive Kern liegt auf
-    # ``main``. Damit ist die Vorher-Seite nicht mehr behauptet, sondern
-    # benennbar — und der Vergleich ist reproduzierbar, weil der Hash
-    # inhaltsadressiert ist und der Commit dazu im Beleg steht.
     kern_alt = daten.get("kern_alt_sha256")
     if not (isinstance(kern_alt, str) and _SHA256.match(kern_alt)):
         fehler.append("kern_alt_sha256 fehlt oder ist kein SHA-256")
-    elif isinstance(kern_soll, str) and kern_alt == kern_soll:
-        fehler.append(
-            "kern_alt_sha256 ist kern_sha256 — der Kern hat sich nicht "
-            "geaendert, es gibt nichts abzunehmen"
-        )
+    if not isinstance(daten.get("veraendert"), bool):
+        fehler.append("veraendert fehlt oder ist kein Wahrheitswert")
+    if not isinstance(daten.get("module"), list):
+        fehler.append("module fehlt oder ist keine Liste")
     git_beleg = daten.get("git")
     if not isinstance(git_beleg, dict):
         fehler.append("git fehlt oder ist kein Objekt")
     else:
-        if git_beleg.get("dirty") != "nein":
-            fehler.append(
-                "git.dirty ist nicht 'nein' — eine Regression gegen "
-                "uncommittete Aenderungen ist nicht reproduzierbar"
-            )
+        # Der Zweig muss den zuletzt abgenommenen Kernstand ENTHALTEN
+        # (merge_base == referenz_commit): Sonst mischte die Differenz die
+        # Aenderungen dieses Zweigs mit fremden.
         if not zweig_ist_aktuell(git_beleg):
             fehler.append(
-                f"der Zweig liegt nicht auf der Spitze von "
-                f"{git_beleg.get('referenz', PRODUKTIVER_ZWEIG)!r} "
-                "(merge_base != referenz_commit) — die Differenz mischte "
-                "die eigene Aenderung mit einer fremden"
+                f"der lebende Stand liegt nicht auf dem zuletzt abgenommenen "
+                f"Kernstand {git_beleg.get('referenz')!r} auf (merge_base != "
+                "referenz_commit) — die Differenz mischte die eigene Aenderung "
+                "mit einer fremden"
             )
+        # dirty sperrt die qualitative Pruefung NICHT mehr (2026-10-01): Die
+        # Sicht zeigt nicht committete Aenderungen ausdruecklich, und der
+        # Diffstat laeuft gegen den Arbeitsbaum. Die Sperre gehoert zur
+        # Regression und steht dort (pruefe_kernregression).
         if wurzel is not None:
-            # Gegen den LEBENDEN Git-Stand halten, nicht nur gegen sich
-            # selbst: Ein Beleg, der nur innerlich stimmig ist, bezeugt
-            # nichts (T24-04). Geprueft wird, was die DREI vorhandenen
-            # lesenden git-Aufrufe hergeben — Commit und dirty. Der
-            # Merge-Base bliebe ein vierter Aufruf und damit eine zweite
-            # Subprozess-Ausnahme; die gibt es hier nicht.
             jetzt = git_stand(wurzel)
             if jetzt.get("commit") == "unbekannt":
                 fehler.append(
@@ -686,12 +665,6 @@ def pruefe_kernaenderung(
                     f"({str(jetzt.get('commit'))[:12]!r}) — der Beleg "
                     "gehoert zu einem anderen Lauf"
                 )
-            # dirty wird NICHT gegen den lebenden Stand gehalten: Ob die
-            # Regression reproduzierbar ist, entscheidet der Baum zur
-            # MESSZEIT, nicht zur Unterschrift — die kann Tage spaeter
-            # fallen. Der festgehaltene Wert ist der richtige; und ein
-            # zwischenzeitlich veraenderter Kern faellt ohnehin ueber
-            # kern_sha256 auf.
     geaendert = daten.get("geaenderte_referenzwerte")
     if not isinstance(geaendert, list) or not all(
         isinstance(x, str) for x in geaendert
@@ -702,6 +675,61 @@ def pruefe_kernaenderung(
         fehler.append("geaenderte_referenzwerte fehlt oder ist keine Liste von Namen")
     if not (isinstance(daten.get("begruendung"), str) and daten["begruendung"].strip()):
         fehler.append("begruendung fehlt")
+    if fehler:
+        return fehler
+    if wurzel is None:
+        return ["der Beleg ist nicht nachrechenbar — --repo-root fehlt"]
+    try:
+        neu = _kernstand.nachgerechnet(wurzel, daten)
+    except (_kernstand.KernstandFehler, OSError) as exc:
+        return [f"der Beleg ist nicht nachrechenbar: {exc}"]
+    abweichend = sorted(k for k in set(neu) | set(daten) if neu.get(k) != daten.get(k))
+    if abweichend:
+        return [
+            "der Beleg ist nicht der Kernstand zwischen dem zuletzt abgenommenen "
+            f"Stand und dem Arbeitsbaum — abweichend: {abweichend}; neu erzeugen "
+            "mit: python -m rechner_pipeline.gates.kernstand_belegen --fall <fall> "
+            f"--repo-root <repo> --von {neu['git']['referenz']} --begruendung <text>"
+        ]
+    return []
+
+
+def _pruefe_regressionsausnahme(
+    daten: Dict[str, object], aenderung: Dict[str, object] | None
+) -> List[str]:
+    """Die benannte Ausnahme — genau diese Form, nichts anderes Unvollstaendiges."""
+    if not _kernabnahme.REGRESSION_AUSNAHME_ERLAUBT:
+        return [
+            "der Regressionsbeleg ist die Ausnahme 'nicht gefahren', die Ausnahme "
+            "ist aber nicht mehr erlaubt (models.kernabnahme."
+            "REGRESSION_AUSNAHME_ERLAUBT) — den Regressionsproduzenten fahren"
+        ]
+    fehler: List[str] = []
+    if set(daten) != _kernabnahme.AUSNAHME_FELDER:
+        fehler.append(
+            "der Ausnahmebeleg traegt genau die Felder "
+            f"{sorted(_kernabnahme.AUSNAHME_FELDER)} — fehlen="
+            f"{sorted(_kernabnahme.AUSNAHME_FELDER - set(daten))}, fremd="
+            f"{sorted(set(daten) - _kernabnahme.AUSNAHME_FELDER)}; ein Feld mehr "
+            "saehe wie ein Ergebnis aus"
+        )
+    if daten.get("schema_version") != KERN_REGRESSION_SCHEMA_VERSION:
+        fehler.append(f"schema_version muss {KERN_REGRESSION_SCHEMA_VERSION} sein")
+    for feld, soll in (("zustand", _kernabnahme.ZUSTAND_NICHT_GEFAHREN),
+                       ("grund", _kernabnahme.GRUND_NICHT_GEFAHREN),
+                       ("grundlage", _kernabnahme.AUSNAHME_GRUNDLAGE)):
+        if daten.get(feld) != soll:
+            fehler.append(f"{feld} muss {soll!r} sein, nicht {daten.get(feld)!r}")
+    if aenderung is None:
+        fehler.append("die Ausnahme ist an keinen Aenderungsbeleg gebunden")
+    else:
+        for feld in _kernabnahme.BINDUNGSFELDER:
+            if daten.get(feld) != aenderung.get(feld):
+                fehler.append(
+                    f"{feld} {daten.get(feld)!r} weicht vom Aenderungsbeleg "
+                    f"({aenderung.get(feld)!r}) ab — die Ausnahme gehoert zu "
+                    "einem anderen Uebergang"
+                )
     return fehler
 
 
@@ -712,19 +740,22 @@ def pruefe_kernregression(
     text: str | None = None,
     aenderung: Dict[str, object] | None = None,
 ) -> List[str]:
-    """Den Regressionsbeleg einer Kern-Aenderung pruefen.
+    """Den Regressionsbeleg des Kernstands pruefen.
 
-    Entscheid des Maintainers 2026-09-16: **Ohne Regression keine Abnahme.**
-    Eine Kern-Aenderung entsteht im Fall, aber der geaenderte Kern bewertet
-    danach den LAUFENDEN Bestand weiter — diese Wirkung sieht sonst
-    niemand. Der Beleg rechnet deshalb jeden Vertrag mit altem und neuem
-    Kern durch und weist die Differenz JE VERTRAG aus.
+    Zwei Formen, und nur diese:
 
-    Geprueft wird vor allem die Vollstaendigkeit: ``vertraege_geprueft``
-    muss ``vertraege_gesamt`` sein. Eine Stichprobe ist hier wertlos —
-    ein Fehler, der einen von tausend Vertraegen trifft, ist genau der,
-    den man sucht. Aggregate sind aus demselben Grund nicht zugelassen:
-    Gegenlaeufige Abweichungen heben sich in der Summe auf.
+    * die benannte AUSNAHME (ADR-018, Nachtrag 2026-10-01): Zustand
+      ``nicht_gefahren``, Grund "Werkzeug noch nicht erstellt", gebunden an
+      den Uebergang des Aenderungsbelegs — angenommen, solange
+      ``models.kernabnahme.REGRESSION_AUSNAHME_ERLAUBT`` gilt;
+    * das ERGEBNIS nach der Regel vom 2026-09-16: jeder Vertrag mit altem
+      und neuem Kern durchgerechnet, Differenz JE VERTRAG.
+      ``vertraege_geprueft`` muss ``vertraege_gesamt`` sein — eine
+      Stichprobe ist hier wertlos, der Fehler, der einen von tausend
+      Vertraegen trifft, ist der gesuchte; Aggregate sind aus demselben
+      Grund nicht zugelassen. Und der Arbeitsbaum muss beim Belegen sauber
+      gewesen sein: Eine Regression gegen uncommittete Aenderungen ist
+      nicht reproduzierbar.
     """
     if not pfad.is_file():
         return ["Datei fehlt"]
@@ -736,18 +767,26 @@ def pruefe_kernregression(
         return [f"nicht lesbar: {exc}"]
     if not isinstance(daten, dict):
         return ["kein JSON-Objekt"]
+    if "zustand" in daten:
+        return _pruefe_regressionsausnahme(daten, aenderung)
     fehler: List[str] = []
     if daten.get("schema_version") != KERN_REGRESSION_SCHEMA_VERSION:
         fehler.append(f"schema_version muss {KERN_REGRESSION_SCHEMA_VERSION} sein")
     if aenderung is not None:
-        for feld in ("von_version", "nach_version", "kern_alt_sha256",
-                     "kern_sha256"):
+        for feld in _kernabnahme.BINDUNGSFELDER:
             if daten.get(feld) != aenderung.get(feld):
                 fehler.append(
                     f"{feld} {daten.get(feld)!r} weicht vom Aenderungsbeleg "
                     f"({aenderung.get(feld)!r}) ab — die Regression gehoert "
                     "zu einem anderen Uebergang"
                 )
+        git_beleg = aenderung.get("git") if isinstance(aenderung.get("git"), dict) else {}
+        if git_beleg.get("dirty") != "nein":
+            fehler.append(
+                "git.dirty des Aenderungsbelegs ist nicht 'nein' — eine "
+                "Regression gegen uncommittete Aenderungen ist nicht "
+                "reproduzierbar"
+            )
     gesamt, geprueft = daten.get("vertraege_gesamt"), daten.get("vertraege_geprueft")
     for name, wert in (("vertraege_gesamt", gesamt), ("vertraege_geprueft", geprueft)):
         if not isinstance(wert, int) or isinstance(wert, bool) or wert < 0:
@@ -804,6 +843,226 @@ def pruefe_kernregression(
                     f"nachher - vorher ({nachher - vorher!r})"
                 )
     return fehler
+
+
+def _kernstand_kommando(fall: Path, repo_root: object) -> str:
+    return ("python -m rechner_pipeline.gates.kernstand_belegen "
+            f"--fall {fall} --repo-root {repo_root} --von <zuletzt abgenommener "
+            "Kernstand> --begruendung <text>")
+
+
+def kernstand_belege_pruefen(
+    fall: Path, repo_root: Optional[Path]
+) -> Tuple[List[str], Dict[str, str], Dict[str, str]]:
+    """Die beiden Belege des Kernstands an ihren festen Orten pruefen.
+
+    Rueckgabe ``(fehler, {rolle: sha256}, ausnahmen)``. EINE Funktion fuer
+    beide Leser: das Zeichnen von A-K2 und die Vorbedingung von A-M4, die
+    dieselben Bytes nachrechnet, statt der A-K2-Annahme zu glauben. Die
+    ``ausnahmen`` sind aus dem Regressionsbeleg ABGELEITET
+    (``models.kernabnahme.ausnahmen_fuer``), nicht angegeben.
+    """
+    kern_pfad = fall / _kernabnahme.AENDERUNG_RELATIV
+    regr_pfad = fall / _kernabnahme.REGRESSION_RELATIV
+    kern_gelesen = lies_gehasht(kern_pfad) if kern_pfad.is_file() else None
+    kern_fehler = pruefe_kernaenderung(
+        kern_pfad, fall,
+        text=kern_gelesen.text() if kern_gelesen else None,
+        repo_root=repo_root,
+    )
+    if kern_fehler or kern_gelesen is None:
+        return ([f"{_kernabnahme.AENDERUNG_RELATIV}: {f}" for f in kern_fehler]
+                or [f"{_kernabnahme.AENDERUNG_RELATIV}: Datei fehlt"]), {}, {}
+    regr_gelesen = lies_gehasht(regr_pfad) if regr_pfad.is_file() else None
+    regr_fehler = pruefe_kernregression(
+        regr_pfad, fall,
+        text=regr_gelesen.text() if regr_gelesen else None,
+        aenderung=json.loads(kern_gelesen.text()),
+    )
+    if regr_fehler or regr_gelesen is None:
+        return ([f"{_kernabnahme.REGRESSION_RELATIV}: {f}" for f in regr_fehler]
+                or [f"{_kernabnahme.REGRESSION_RELATIV}: Datei fehlt"]), {}, {}
+    return [], {
+        "kernaenderung": kern_gelesen.sha256,
+        "regression": regr_gelesen.sha256,
+    }, _kernabnahme.ausnahmen_fuer(json.loads(regr_gelesen.text()))
+
+
+def tbox_belege_pruefen(
+    fall: Path, repo_root: Optional[Path]
+) -> Tuple[List[str], Dict[str, str]]:
+    """Die beiden Belege einer T-Box-Aenderung an ihren festen Orten pruefen.
+
+    Rueckgabe ``(fehler, {rolle: sha256})``. EINE Funktion fuer beide Leser:
+    das Zeichnen von A-O1 und die Vorbedingung von A-M4 (Standabnahme, Weg
+    a), die dieselben Bytes nachrechnet, statt der Annahme zu glauben.
+    """
+    aenderung_pfad = fall / _stand.TBOX_AENDERUNG_RELATIV
+    aenderung_gelesen = (
+        lies_gehasht(aenderung_pfad) if aenderung_pfad.is_file() else None)
+    fehler = pruefe_tbox_aenderung(
+        aenderung_pfad, fall,
+        text=aenderung_gelesen.text() if aenderung_gelesen else None,
+        repo_root=repo_root,
+    )
+    if fehler or aenderung_gelesen is None:
+        return [f"den Beleg der T-Box-Aenderung ({_stand.TBOX_AENDERUNG_RELATIV}): "
+                + "; ".join(fehler or ["Datei fehlt"])], {}
+    stellung_pfad = fall / _stand.TBOX_STELLUNGNAHME_RELATIV
+    stellung_gelesen = (
+        lies_gehasht(stellung_pfad) if stellung_pfad.is_file() else None)
+    fehler = pruefe_stellungnahme_aktuariat(
+        stellung_pfad, fall,
+        text=stellung_gelesen.text() if stellung_gelesen else None,
+        aenderung=json.loads(aenderung_gelesen.text()),
+    )
+    if fehler or stellung_gelesen is None:
+        return [f"die aktuarielle Stellungnahme ({_stand.TBOX_STELLUNGNAHME_RELATIV}): "
+                + "; ".join(fehler or ["Datei fehlt"])], {}
+    return [], {
+        "tbox_aenderung": aenderung_gelesen.sha256,
+        "stellungnahme_aktuariat": stellung_gelesen.sha256,
+    }
+
+
+def _belege_im_fall(gate: str, fall: Path, repo_root: Optional[Path]
+                    ) -> Tuple[List[str], Dict[str, str], Dict[str, str]]:
+    """Die Belege des Gates am festen Ort, je Gegenstand dieselbe Gestalt."""
+    if gate == "A-K2":
+        return kernstand_belege_pruefen(fall, repo_root)
+    fehler, shas = tbox_belege_pruefen(fall, repo_root)
+    return fehler, shas, {}
+
+
+def _anzeige_mit_ausnahmen(text: str, ausnahmen: Mapping[str, str]) -> str:
+    """Die Anzeige eines Wegs, und woertlich, was die Abnahme NICHT deckt."""
+    if ausnahmen.get("regression"):
+        return f"{text}; {_kernabnahme.ANZEIGE_REGRESSION}"
+    return text
+
+
+def standabnahme_pruefen(
+    gegenstand: "_standabnahme.Gegenstand",
+    *,
+    fall: Path,
+    repo_root: Optional[Path],
+    verzeichnis: Path,
+    schluesselring: Mapping[str, bytes],
+    systemstand: Mapping[str, str],
+    ordnung: Optional[dict],
+    fall_json_sha256: Optional[str],
+) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, object]]]:
+    """EINE Regel fuer jeden Gegenstand der Standabnahme (models.standabnahme).
+
+    Rueckgabe ``(meldung, pin_sha256, eintrag)``: ``meldung`` ist None, wenn
+    der Stand, auf dem der Fall laeuft, abgenommen ist; ``pin_sha256`` ist
+    der Beleg, den A-M4 als Pflichtrolle pinnt; ``eintrag`` steht im
+    A-M4-Snapshot unter ``standabnahmen``.
+
+    (a) Hat der Fall eine Kette des Gates, gilt nur sie: eindeutige,
+        signierte ANNAHME auf diesem Scope- und Systemstand, gezeichnet von
+        einer berechtigten Rolle (Rollenregel), ihre Belege am festen Ort
+        und gegen den lebenden Code nachgerechnet, ihr ``stand`` == der
+        lebende. Eine Ablehnung im Fall laesst sich nicht umgehen.
+    (b) Sonst ein Verweis am festen Ort: die Kopie eines FRUEHER
+        angenommenen Snapshots, Signatur ueber den Ring, dieselbe
+        Rollenregel, ``stand`` == der lebende — "keine Aenderung".
+    (c) Sonst, nur wo der Gegenstand eine Basislinie hat (T-Box): eine
+        Versionslinie mit einem Element — kein Uebergang.
+    """
+    gate, titel = gegenstand.gate, gegenstand.titel
+    stand = _stand.lebender_stand(gate, repo_root)
+    if stand is None:
+        return (f"der {titel} ist nicht bestimmbar (--repo-root fehlt?)", None, None)
+    kette, spitzen, ketten_fehler = _lade_snapshot_kette(
+        verzeichnis, gegenstand.gate, fall, schluesselring, systemstand)
+    if ketten_fehler:
+        return (f"{gate}-Snapshot-Vertrag verletzt: " + "; ".join(ketten_fehler[:4]),
+                None, None)
+    if kette:
+        spitze = kette[spitzen[0]][1] if len(spitzen) == 1 else None
+        if not (
+            spitze is not None
+            and spitze["entscheid"] == "angenommen"
+            and spitze["artefakt_hashes"].get("fall.json") == fall_json_sha256
+            and spitze["system"] == systemstand
+        ):
+            return (f"keine eindeutige, signierte {gate}-ANNAHME des {titel}s auf "
+                    "aktuellem Scope- und Systemstand im Fall — eine Kette im Fall "
+                    "geht jedem Verweis vor", None, None)
+        _, zf = zeichnende_rolle_fehler(spitze, gegenstand.gate, ordnung)
+        if zf:
+            return (f"die geltende {gate}-Annahme wurde von einem unberechtigten "
+                    f"Schluessel gezeichnet -- {zf}", None, None)
+        belegfehler, shas, ausnahmen = _belege_im_fall(gate, fall, repo_root)
+        gepinnt = spitze.get("pflichtbelege") or {}
+        belegfehler += [
+            f"{rolle}: am festen Ort liegt nicht die Fassung, die {gate} pinnt"
+            for rolle, sha in shas.items() if gepinnt.get(rolle) != [sha]]
+        if not belegfehler and (spitze.get("ausnahmen") or {}) != ausnahmen:
+            belegfehler.append(
+                f"die {gate}-Annahme fuehrt die Ausnahmen {spitze.get('ausnahmen')!r}, "
+                f"die Belege ergeben {ausnahmen!r}")
+        if not belegfehler and spitze.get("stand") != stand:
+            belegfehler.append(
+                f"der abgenommene Stand {spitze.get('stand')!r} ist nicht der "
+                f"lebende {stand!r}")
+        if belegfehler:
+            return (f"die Belege des {titel}s tragen die geltende {gate}-Annahme "
+                    "nicht: " + "; ".join(belegfehler[:4]), None, None)
+        sha = spitze["snapshot_sha256"]
+        return None, sha, {
+            "gate": gate, "weg": _standabnahme.ABNAHME_IM_FALL,
+            "snapshot_sha256": sha, "stand": dict(stand), "ausnahmen": dict(ausnahmen),
+            "anzeige": _anzeige_mit_ausnahmen(
+                _standabnahme.anzeige_im_fall(gate, sha), ausnahmen),
+        }
+    verweis_pfad = fall / gegenstand.verweis_relativ
+    if verweis_pfad.is_file():
+        gelesen = lies_gehasht(verweis_pfad)
+        try:
+            verweis = gelesen.json()
+        except (OSError, ValueError) as exc:
+            return (f"{gegenstand.verweis_relativ} unlesbar: {exc}", None, None)
+        fehler = _stand.verweis_fehler(verweis, gegenstand, stand)
+        if not fehler:
+            snap = verweis["snapshot"]
+            fehler += _pruefe_freigabe(snap, schluesselring)
+            _, zf = zeichnende_rolle_fehler(snap, gegenstand.gate, ordnung)
+            if zf:
+                fehler.append(f"der fruehere {gate}-Snapshot wurde von einem "
+                              f"unberechtigten Schluessel gezeichnet -- {zf}")
+        if fehler:
+            return (f"der Verweis {gegenstand.verweis_relativ} belegt keine "
+                    "unveraenderte Abnahme: " + "; ".join(fehler[:4]), None, None)
+        snap = verweis["snapshot"]
+        ausnahmen = dict(snap.get("ausnahmen") or {})
+        return None, gelesen.sha256, {
+            "gate": gate, "weg": _standabnahme.KEINE_AENDERUNG,
+            "snapshot_sha256": snap["snapshot_sha256"], "herkunft": verweis["herkunft"],
+            "stand": dict(stand), "ausnahmen": ausnahmen,
+            "anzeige": _anzeige_mit_ausnahmen(_standabnahme.anzeige_keine_aenderung(
+                snap["snapshot_sha256"], verweis["herkunft"]), ausnahmen),
+        }
+    if gegenstand.basislinie and _stand.basislinie_gilt():
+        return None, stand["tbox_sha256"], {
+            "gate": gate, "weg": _standabnahme.BASISLINIE, "stand": dict(stand),
+            "ausnahmen": {}, "anzeige": _standabnahme.anzeige_basislinie(stand["version"]),
+        }
+    vorlage = (
+        f"python -m rechner_pipeline.gates.kernstand_belegen --fall {fall} "
+        "--repo-root <repo> --von <zuletzt abgenommener Kernstand> --begruendung <text>"
+        if gate == "A-K2" else
+        f"python -m rechner_pipeline.gates.stand_belegen tbox --fall {fall} "
+        "--repo-root <repo> --artefakt <vermerk> --begruendung <text> und die "
+        "aktuarielle Stellungnahme")
+    wege = (f"vorlegen mit {vorlage}, dann {gate} im Fall zeichnen "
+            f"(gates.gate_entscheid --gate {gate}); oder bei unveraendertem Stand den frueher "
+            f"angenommenen {gate}-Snapshot belegen: python -m "
+            f"rechner_pipeline.gates.stand_belegen verweisen --fall {fall} --gate "
+            f"{gate} --snapshot <frueherer {gate}-Snapshot> --repo-root <repo>")
+    return (f"der {titel}, auf dem der Fall laeuft, ist nicht abgenommen (ADR-018, "
+            f"Nachtrag 2026-10-01) — {wege}", None, None)
 
 
 def _pruefe_g2_snapshot_semantik(
@@ -1682,6 +1941,11 @@ def main(argv: Optional[List[str]] = None):
     # (Review T23-01).
     bekannte_hashes: Dict[str, str] = {}
     fall_scope: Optional[str] = None
+    # Was die A-K2-Zeichnung NICHT deckt (ADR-018, Nachtrag 2026-10-01),
+    # aus dem Regressionsbeleg abgeleitet; und je Gegenstand, auf welchem
+    # Weg der Stand abgenommen ist, auf dem A-M4 gruendet.
+    ak2_ausnahmen: Dict[str, str] = {}
+    am4_standabnahmen: Dict[str, object] = {}
     if args.gate in GATES_MIT_PFLICHTBELEGEN:
         try:
             fall_scope, fall_json_sha256 = fall_mod.lade_scope_gehasht(fall)
@@ -1821,86 +2085,36 @@ def main(argv: Optional[List[str]] = None):
             pflichtbelege["pq3_ledger"] = [pq3_gelesen.sha256]
 
         if args.gate == "A-O1":
-            # T-Box-Aenderung (Review T22-02): Der Beleg bindet alte und
-            # neue Version, den Hash des T-Box-Moduls und das
-            # Aenderungsartefakt. Ohne ihn ist A-O1 eine Zeichnung ueber
-            # nichts.
-            aenderung_pfad = fall / "abgeleitet" / "tbox" / "aenderung.json"
-            aenderung_gelesen = (
-                lies_gehasht(aenderung_pfad) if aenderung_pfad.is_file() else None
-            )
-            ak1_fehler = pruefe_tbox_aenderung(
-                aenderung_pfad, fall,
-                text=aenderung_gelesen.text() if aenderung_gelesen else None,
-                repo_root=Path(args.repo_root).resolve() if args.repo_root else None,
-            )
-            if ak1_fehler:
+            # T-Box-Aenderung (Review T22-02; Entscheid 2026-09-16: zweiter
+            # Beleg ist die aktuarielle Stellungnahme). Dieselbe Pruefung
+            # haelt A-M4 beim Lesen der A-O1-Annahme (tbox_belege_pruefen).
+            wurzel = Path(args.repo_root).resolve() if args.repo_root else None
+            tbox_fehler, tbox_shas = tbox_belege_pruefen(fall, wurzel)
+            if tbox_fehler:
                 return _sperre(
                     "vorbedingung",
-                    "Annahme verweigert: A-O1 braucht den Beleg der "
-                    f"T-Box-Aenderung ({aenderung_pfad.relative_to(fall)}): "
-                    + "; ".join(ak1_fehler[:5]),
+                    "Annahme verweigert: A-O1 braucht " + "; ".join(tbox_fehler[:5]),
                 )
-            # Zweiter Pflichtbeleg (Entscheid des Maintainers 2026-09-16):
-            # die aktuarielle Stellungnahme. Die Unterschrift gehoert der
-            # Architektur, die fachliche Bewertung dem Aktuariat.
-            stellung_pfad = fall / "abgeleitet" / "tbox" / "stellungnahme.json"
-            stellung_gelesen = (
-                lies_gehasht(stellung_pfad) if stellung_pfad.is_file() else None
-            )
-            stellung_fehler = pruefe_stellungnahme_aktuariat(
-                stellung_pfad, fall,
-                text=stellung_gelesen.text() if stellung_gelesen else None,
-                aenderung=json.loads(aenderung_gelesen.text()),
-            )
-            if stellung_fehler:
-                return _sperre(
-                    "vorbedingung",
-                    "Annahme verweigert: A-O1 braucht die aktuarielle "
-                    f"Stellungnahme ({stellung_pfad.relative_to(fall)}): "
-                    + "; ".join(stellung_fehler[:5]),
-                )
-            pflichtbelege["tbox_aenderung"] = [aenderung_gelesen.sha256]
-            pflichtbelege["stellungnahme_aktuariat"] = [stellung_gelesen.sha256]
+            for rolle, sha in tbox_shas.items():
+                pflichtbelege[rolle] = [sha]
 
         if args.gate == "A-K2":
-            # Kern-Aenderung (Entscheid des Maintainers 2026-09-16): zwei
-            # Belege an festen Orten, wie bei A-O1 — kein CLI-Flag, damit
-            # der Beleg nicht dorthin zeigen kann, wo es gerade passt.
-            kern_pfad = fall / "abgeleitet" / "kern" / "aenderung.json"
-            regr_pfad = fall / "abgeleitet" / "kern" / "regression.json"
-            kern_gelesen = lies_gehasht(kern_pfad) if kern_pfad.is_file() else None
+            # Kernstand (Entscheid des Maintainers 2026-09-16, formell
+            # eingepflegt 2026-10-01): zwei Belege an festen Orten, wie bei
+            # A-O1 — kein CLI-Flag, damit der Beleg nicht dorthin zeigen
+            # kann, wo es gerade passt. Dieselbe Pruefung haelt A-M4 beim
+            # Lesen der A-K2-Annahme (kernstand_belege_pruefen).
             wurzel = Path(args.repo_root).resolve() if args.repo_root else None
-            ak2_fehler = pruefe_kernaenderung(
-                kern_pfad, fall,
-                text=kern_gelesen.text() if kern_gelesen else None,
-                repo_root=wurzel,
-            )
-            if ak2_fehler:
+            kern_fehler, kern_shas, ak2_ausnahmen = kernstand_belege_pruefen(fall, wurzel)
+            if kern_fehler:
                 return _sperre(
                     "vorbedingung",
-                    "Annahme verweigert: A-K2 braucht den Beleg der "
-                    f"Kern-Aenderung ({kern_pfad.relative_to(fall)}): "
-                    + "; ".join(ak2_fehler[:5]),
+                    "Annahme verweigert: A-K2 braucht die Belege des Kernstands: "
+                    + "; ".join(kern_fehler[:5])
+                    + f" — Belege erzeugen mit: {_kernstand_kommando(fall, args.repo_root)}",
                 )
-            aenderung_daten = json.loads(kern_gelesen.text())
-            regr_gelesen = lies_gehasht(regr_pfad) if regr_pfad.is_file() else None
-            regr_fehler = pruefe_kernregression(
-                regr_pfad, fall,
-                text=regr_gelesen.text() if regr_gelesen else None,
-                aenderung=aenderung_daten,
-            )
-            if regr_fehler:
-                return _sperre(
-                    "vorbedingung",
-                    "Annahme verweigert: A-K2 braucht den Regressionsbeleg "
-                    f"({regr_pfad.relative_to(fall)}): "
-                    + "; ".join(regr_fehler[:5])
-                    + " -- ohne Regression keine Abnahme einer Kern-Aenderung "
-                    "(Entscheid des Maintainers 2026-09-16)",
-                )
-            pflichtbelege["kernaenderung"] = [kern_gelesen.sha256]
-            pflichtbelege["regression"] = [regr_gelesen.sha256]
+            for rolle, sha in kern_shas.items():
+                pflichtbelege[rolle] = [sha]
 
         if args.gate == "A-B1":
             # Auslieferung (Entscheid des Maintainers 2026-09-16): Der
@@ -2537,6 +2751,26 @@ def main(argv: Optional[List[str]] = None):
                 for rolle, beleg_sha256 in bestandsbelege.items():
                     pflichtbelege[rolle] = [beleg_sha256]
 
+            # Der Stand, auf dem der Fall laeuft, ist abgenommen (Entscheid
+            # des Maintainers 2026-10-01, ADR-018 Nachtrag 2026-10-01): EINE
+            # Regel fuer Kernstand (A-K2) und T-Box-Stand (A-O1), in jedem
+            # Scope — im Fall gezeichnet, als "keine Aenderung" belegt oder
+            # (nur T-Box) auf der Basislinie.
+            for gegenstand in _standabnahme.GEGENSTAENDE:
+                meldung, pin, eintrag = standabnahme_pruefen(
+                    gegenstand, fall=fall, repo_root=repo_root,
+                    verzeichnis=verzeichnis_aq1, schluesselring=schluesselring,
+                    systemstand=entscheid_systemstand, ordnung=zeichnungsordnung,
+                    fall_json_sha256=fall_json_sha256,
+                )
+                if meldung is not None:
+                    return _sperre(
+                        "vorbedingung",
+                        f"Annahme verweigert: {meldung}",
+                    )
+                pflichtbelege[gegenstand.rolle] = [pin]
+                am4_standabnahmen[gegenstand.rolle] = eintrag
+
             erwartete_rollen = am4_belegrollen(fall_scope or "")
             if set(pflichtbelege) != set(erwartete_rollen):
                 fehlende_rollen = sorted(set(erwartete_rollen) - set(pflichtbelege))
@@ -2687,6 +2921,25 @@ def main(argv: Optional[List[str]] = None):
         kern_inhalt["pflichtbelege"] = pflichtbelege
     if args.gate == "A-M4":
         kern_inhalt["pk1_belege"] = pk1_belege
+        # Je Gegenstand der Weg und die woertliche Anzeige — signiert, damit
+        # "keine Aenderung seit Abnahme ..." im Beleg steht, nicht nur im Ledger.
+        kern_inhalt["standabnahmen"] = am4_standabnahmen
+    if args.gate in P9_GATES_MIT_STAND:
+        # Der Stand, den diese Abnahme abnimmt (ADR-018, Nachtrag
+        # 2026-10-01): A-M4 haelt ihn per == gegen den lebenden — im Fall
+        # wie ueber einen Verweis aus einem spaeteren Fall.
+        abgenommen = _stand.lebender_stand(
+            args.gate, Path(args.repo_root).resolve() if args.repo_root else None)
+        if abgenommen is None:
+            return _sperre("vorbedingung",
+                           f"Entscheid verweigert: der Stand von {args.gate} ist nicht "
+                           "bestimmbar (--repo-root fehlt?)")
+        kern_inhalt["stand"] = abgenommen
+    if args.gate in P9_GATES_MIT_AUSNAHMEN:
+        # Was die Zeichnung NICHT deckt, im signierten Inhalt — woertlich
+        # (ADR-018, Nachtrag 2026-10-01). Eine Ablehnung deckt nichts und
+        # fuehrt deshalb keine.
+        kern_inhalt["ausnahmen"] = ak2_ausnahmen
     if zeichnung is not None:
         kern_inhalt["zeichnung"] = zeichnung
     # Idempotenz gegen den GELTENDEN Snapshot: derselbe Entscheid auf
@@ -2761,6 +3014,13 @@ def main(argv: Optional[List[str]] = None):
         ergebnis_summary["pk1_belege"] = pk1_belege
         ergebnis_summary["fall_scope"] = fall_scope
         ergebnis_summary["pflichtbelege"] = pflichtbelege
+        ergebnis_summary["standabnahmen"] = am4_standabnahmen
+    if args.gate == "A-K2":
+        ergebnis_summary["pflichtbelege"] = pflichtbelege
+        ergebnis_summary["ausnahmen"] = ak2_ausnahmen
+        if ak2_ausnahmen:
+            ergebnis_summary["anzeige"] = [_kernabnahme.ANZEIGE_REGRESSION]
+            ergebnis_summary["deckung"] = _kernabnahme.DECKUNG_UNTER_AUSNAHME
     if args.gate == "A-B2":
         # Die Registrierung liest den Snapshot-Hash aus diesem Ledger; die
         # Belege daneben sagen dem Bediener, WELCHEN Eingang A-B2 abnimmt.

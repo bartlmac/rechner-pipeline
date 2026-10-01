@@ -23,6 +23,8 @@ Knoten: system/assurance
 """
 
 from __future__ import annotations
+from rechner_pipeline.models.standabnahme import GEGENSTAENDE as _STAND_GEGENSTAENDE
+from rechner_pipeline.models.standabnahme import WEGE as _STAND_WEGE
 from rechner_pipeline.models.zeichnung import (
     GATES_MIT_PFLICHTBELEGEN,
     GUELTIGE_GATES,
@@ -82,12 +84,30 @@ GATE_VERSION_DEFAULT = "1.0.0"
 #: Schluesselklasse in der Zeichnung). Schema 6 bleibt LESBAR: Die
 #: Snapshots des zweiten Baldrian-Laufs sind als Ausnahme ausgewiesen und
 #: werden nicht nachsigniert.
-P9_SNAPSHOT_SCHEMA_VERSION = 7
+#:
+#: Version 8 (2026-10-01, ADR-018 Nachtrag 2026-10-01): Der Snapshot von
+#: ``A-K2`` traegt das Feld ``ausnahmen`` — was die Zeichnung NICHT deckt,
+#: woertlich (heute: die Regression, nicht gefahren). Die Snapshots von
+#: ``A-K2`` und ``A-O1`` tragen das Feld ``stand`` — den Stand, den sie
+#: abnehmen (models.standabnahme). ``A-M4`` traegt ``standabnahmen``: je
+#: Gegenstand (Kernstand, T-Box-Stand) den Weg, auf dem der Stand des
+#: Falls abgenommen ist, und die woertliche Anzeige; die Pflichtrollen
+#: ``kernstand`` und ``tboxstand`` pinnen den Beleg dazu
+#: (``models.belegrollen``). Gate-Version 3.0.0 (Major: ein vorher
+#: gruener A-M4-Entscheid wird ohne abgenommenen Kernstand rot). Schema 7
+#: bleibt lesbar.
+P9_SNAPSHOT_SCHEMA_VERSION = 8
 _ROLLEN_MUSTER = re.compile(r"^(mensch|agent)/[a-z][a-z0-9-]*$")
-P9_SNAPSHOT_SCHEMA_VERSIONEN = (6, 7)
-P9_GATE_VERSION = "2.0.0"
+P9_SNAPSHOT_SCHEMA_VERSIONEN = (6, 7, 8)
+P9_GATE_VERSION = "3.0.0"
 #: Gate-Version je lesbarem Schnappschuss-Schema.
-P9_GATE_VERSION_JE_SCHEMA = {6: "0.6.0", 7: P9_GATE_VERSION}
+P9_GATE_VERSION_JE_SCHEMA = {6: "0.6.0", 7: "2.0.0", 8: P9_GATE_VERSION}
+#: Gates, deren Snapshot ab Schema 8 das Feld ``ausnahmen`` traegt.
+P9_GATES_MIT_AUSNAHMEN: tuple[str, ...] = ("A-K2",)
+#: Gates, deren Snapshot ab Schema 8 den abgenommenen ``stand`` traegt —
+#: die Gegenstaende der Standabnahme (models.standabnahme.GEGENSTAENDE;
+#: eine Ratsche haelt beide gleich).
+P9_GATES_MIT_STAND: tuple[str, ...] = tuple(g.gate for g in _STAND_GEGENSTAENDE)
 P9_FREIGABE_VERFAHREN = "hmac-sha256-v1"
 #: Die menschlich entscheidbaren Gates. A-M2 (Verlaufstest) und A-M3
 #: (Geschaeftsvorfalltest) stehen hier gleichberechtigt neben A-M1: Alle
@@ -550,9 +570,19 @@ class P9Snapshot:
             expected_fields.add("pk1_belege")
         if data.get("entscheid") == "angenommen":
             expected_fields.add("freigabe")
+        version = data.get("schema_version")
+        mit_ausnahmen = (gate in P9_GATES_MIT_AUSNAHMEN and type(version) is int
+                         and version >= 8)
+        if mit_ausnahmen:
+            expected_fields.add("ausnahmen")
+        ab_schema_8 = type(version) is int and version >= 8
+        mit_stand = gate in P9_GATES_MIT_STAND and ab_schema_8
+        if mit_stand:
+            expected_fields.add("stand")
+        if gate == "A-M4" and ab_schema_8:
+            expected_fields.add("standabnahmen")
         fields = set(data)
         missing = sorted(expected_fields - fields)
-        version = data.get("schema_version")
         legacy = version == 6
         # "zeichnung": in Schema 6 optional (nur mit Ordnung), in Schema 7
         # bei jeder Annahme Pflicht und um die Schluesselklasse ergaenzt
@@ -703,6 +733,35 @@ class P9Snapshot:
                             errors.append(
                                 f"pflichtbelege[{rolle!r}] contains a non-SHA-256"
                             )
+        if mit_ausnahmen:
+            # Was die Zeichnung NICHT deckt — benannt je Pflichtrolle, nie
+            # leer formuliert: ein leeres Objekt heisst "keine Ausnahme".
+            ausnahmen = data.get("ausnahmen")
+            if not isinstance(ausnahmen, dict):
+                errors.append("ausnahmen must be an object")
+            else:
+                for rolle, text in ausnahmen.items():
+                    if not (isinstance(rolle, str) and re.fullmatch(r"[a-z0-9_]+", rolle)):
+                        errors.append(f"invalid ausnahmen role {rolle!r}")
+                    if not (isinstance(text, str) and text.strip()):
+                        errors.append(f"ausnahmen[{rolle!r}] must be a non-empty string")
+        if mit_stand:
+            stand = data.get("stand")
+            if not (isinstance(stand, dict) and stand and all(
+                    isinstance(k, str) and isinstance(v, str) and v for k, v in stand.items())):
+                errors.append("stand must be a non-empty object of non-empty strings")
+        if gate == "A-M4" and ab_schema_8:
+            standabnahmen = data.get("standabnahmen")
+            if not isinstance(standabnahmen, dict):
+                errors.append("standabnahmen must be an object")
+            else:
+                for rolle, eintrag in standabnahmen.items():
+                    if not (isinstance(eintrag, dict)
+                            and eintrag.get("weg") in _STAND_WEGE
+                            and isinstance(eintrag.get("gate"), str)
+                            and isinstance(eintrag.get("anzeige"), str) and eintrag["anzeige"].strip()):
+                        errors.append(
+                            f"standabnahmen[{rolle!r}] must carry gate, weg and anzeige")
         if gate == "A-M4":
             pk1_belege = data.get("pk1_belege")
             if not isinstance(pk1_belege, dict):

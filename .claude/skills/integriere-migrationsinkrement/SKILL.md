@@ -41,6 +41,15 @@ knotengebundener Inkremente, nie ein langlebiger Branch.
 - **Don't ship without tests**; Commit erst NACH grüner Suite;
   benanntes Staging (nie `git add -A`); Merge nach menschlicher
   Abnahme; **Push macht der Mensch**.
+- **Ein Inkrement am Rechenkern verschiebt den Kernstand** (Code unter
+  `kern/`, Referenzwerte, Grundsatzdokumentation, Tarifpläne —
+  `models.kernabnahme.KERNSTAND`). Jeder offene Fall, der danach A-M4
+  zeichnet, braucht ein A-K2 auf dem neuen Stand: Belege mit
+  `gates.kernstand_belegen --von <zuletzt abgenommener Kernstand>`
+  neu erzeugen, `mensch/rechenkern` zeichnet (ADR-018, Nachtrag
+  2026-10-01). Vor dem Merge gehört das A-K2 des Inkrements zur
+  menschlichen Abnahme; die Regression steht bis zu ihrem Werkzeug als
+  benannte Ausnahme darin, nie als bestanden.
 
 ## Ablauf je Inkrement
 

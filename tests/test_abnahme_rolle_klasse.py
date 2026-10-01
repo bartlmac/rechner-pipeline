@@ -641,13 +641,16 @@ REGEL_AUFRUFE = Counter({
     ("betrieb/uebernahme.py", "gate"): 1,
     ("gates/gate_entscheid.py", "abnahme_gate"): 2,   # A-B2: A-M4/A-M1; A-M4: A-M1..A-M3
     ("gates/gate_entscheid.py", "'A-Q1'"): 1,         # A-M4: A-Q1
+    # A-M4: die Standabnahme je Gegenstand (A-K2, A-O1; Entscheid 2026-10-01)
+    # — der Snapshot im Fall (a) und der fruehere Snapshot des Verweises (b).
+    ("gates/gate_entscheid.py", "gegenstand.gate"): 2,
 })
 
 #: Die Kettenleser im Gate — je Gate-Argument. ``args.gate`` ist die EIGENE
 #: Kette (Vorgaenger, Idempotenz), auf ihr gruendet keine fremde Abnahme;
 #: jede andere steht in REGEL_AUFRUFE mit einem Regelaufruf.
-GATE_KETTENLESER = Counter({"'A-M4'": 1, "'A-M1'": 1, "'A-Q1'": 1, "abnahme_gate": 1,
-                            "args.gate": 1})
+GATE_KETTENLESER = Counter({"'A-M4'": 1, "'A-M1'": 1, "'A-Q1'": 1, "gegenstand.gate": 1,
+                            "abnahme_gate": 1, "args.gate": 1})
 
 
 def _regel_und_ketten(quelle: str, datei: str):
@@ -871,13 +874,17 @@ def test_die_ausnahme_zeichnung_aus_snapshot_begruendet_in_src_nichts():
 
 def _allzweck(ordnung: dict) -> list:
     """Rollen, die Abnahmen des Falls (A-Q1, A-M*) UND des Betriebs (A-B*)
-    zeichnen duerfen — oder alles ('*')."""
+    zeichnen duerfen — oder alles ('*'); und Rollen, die einen Stand
+    (A-K2 mensch/rechenkern, A-O1 mensch/architektur) zusammen mit einer
+    anderen Abnahme zeichnen: A-M4 gruendet auf beiden, und ein gemeinsamer
+    Schluessel verdeckte, wer den Stand abgenommen hat (Entscheid 2026-10-01)."""
     befund = []
     for name, eintrag in ordnung["rollen"].items():
         gates = set(eintrag.get("gates", []))
         fall = any(g.startswith(("A-M", "A-Q")) for g in gates)
         betrieb = any(g.startswith("A-B") for g in gates)
-        if "*" in gates or (fall and betrieb):
+        kern = bool(gates & {"A-K2", "A-O1"}) and len(gates) > 1
+        if "*" in gates or (fall and betrieb) or kern:
             befund.append(name)
     return befund
 
@@ -927,5 +934,9 @@ def test_ratsche_kein_neuer_stern_in_test_ordnungen():
 
 def test_ratsche_positivkontrolle_der_allzweck_detektoren():
     assert _allzweck({"rollen": {"a": {"gates": ["A-M4", "A-B2"]}, "b": {"gates": ["*"]},
-                                 "c": {"gates": ["A-M4"]}, "d": {"gates": ["A-B2"]}}}) == ["a", "b"]
+                                 "c": {"gates": ["A-M4"]}, "d": {"gates": ["A-B2"]},
+                                 "e": {"gates": ["A-K2", "A-M4"]},
+                                 "f": {"gates": ["A-K2"]},
+                                 "g": {"gates": ["A-O1", "A-Q1"]},
+                                 "h": {"gates": ["A-O1"]}}}) == ["a", "b", "e", "g"]
     assert _sterne('x = {"gates": ["*"]}\ny = ["A-M4"]\n') == 1

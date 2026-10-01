@@ -409,21 +409,41 @@ def test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt():
         and isinstance(knoten.value, ast.Name)
         and knoten.value.id == "subprocess"
     ]
-    assert stellen == [("_git_stand", "run")]
+    assert stellen == [("_git_lesen", "run")]
 
-    # Nur lesende git-Aufrufe — kein beliebiges Kommando, kein Netz.
-    kommandos = [
-        [e.value for e in knoten.elts]
+    # Nur lesende git-Kommandos — abschliessend aufgezaehlt, kein beliebiges
+    # Kommando, kein Netz. Die ersten drei protokollieren den Systemstand
+    # (P-K1, P9), die uebrigen belegen den Kernstand fuer A-K2 (Entscheid des
+    # Maintainers 2026-10-01). Was nach dem Kommando kommt, sind Daten:
+    # _git_lesen weist alles ab, was mit einem Strich beginnt.
+    from rechner_pipeline.gates import _provenienz
+
+    assert _provenienz.LESENDE_KOMMANDOS == (
+        ("rev-parse", "HEAD"),
+        ("rev-parse", "--abbrev-ref", "HEAD"),
+        ("status", "--porcelain"),
+        ("status", "--porcelain", "--untracked-files=all", "--"),
+        ("rev-parse", "--verify", "--quiet"),
+        ("merge-base",),
+        ("diff", "--numstat", "--no-renames"),
+        ("log", "--no-renames", "--name-only", "--format=%x1e%H%x1f%cs%x1f%s"),
+        ("ls-tree", "-r", "--name-only"),
+        ("show",),
+    )
+    # Jeder Aufruf der Stelle nennt eine dieser Konstanten, nie ein Literal.
+    aufrufe = [
+        ast.unparse(knoten.args[1])
         for knoten in ast.walk(baum)
-        if isinstance(knoten, ast.List) and knoten.elts
-        and all(isinstance(e, ast.Constant) for e in knoten.elts)
-        and knoten.elts[0].value == "git"
+        if isinstance(knoten, ast.Call) and isinstance(knoten.func, ast.Name)
+        and knoten.func.id == "_git_lesen"
     ]
-    assert kommandos == [
-        ["git", "rev-parse", "HEAD"],
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        ["git", "status", "--porcelain"],
-    ]
+    namen = {name for name, wert in vars(_provenienz).items()
+             if isinstance(wert, tuple) and wert in _provenienz.LESENDE_KOMMANDOS}
+    assert aufrufe and set(aufrufe) <= namen, aufrufe
+    with pytest.raises(_provenienz.GitAngabeFehler):
+        _provenienz._git_lesen(Path("."), ("push",))
+    with pytest.raises(_provenienz.GitAngabeFehler):
+        _provenienz._git_lesen(Path("."), _provenienz.GIT_DIFFSTAT, "--output=/tmp/x")
 
     # Kein Prozessstart am subprocess-Waechter vorbei (os.system & Co.):
     ueber_os = {
@@ -439,7 +459,7 @@ def test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt():
         Path(__file__).resolve().parents[1] / "ONBOARDING.md"
     ).read_text(encoding="utf-8")
     assert "no subprocess" in onboarding
-    assert "gates/_provenienz._git_stand" in onboarding
+    assert "gates/_provenienz._git_lesen" in onboarding
     assert "exactly ONE subprocess exception" in onboarding
     assert (
         "test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt"

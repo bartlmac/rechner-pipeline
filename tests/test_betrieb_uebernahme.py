@@ -130,7 +130,7 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
                  pb1_ledger_sha: str = "ab" * 32,
                  fuehrungsprobe_sha: "str | None" = None,
                  rollen: "tuple[str, ...] | None" = None,
-                 schema: int = 7,
+                 schema: "int | None" = None,
                  schluessel: "bytes | None" = None,
                  pins: "dict | None" = None,
                  rolle_id: "str | None" = None) -> dict:
@@ -152,9 +152,15 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
     """
     from rechner_pipeline.models.belegrollen import am4_belegrollen
     from rechner_pipeline.models.freigabe import freigabe_fuer
-    from rechner_pipeline.models.schemas import P9_GATE_VERSION, p9_snapshot_sha256
+    from rechner_pipeline.models.schemas import (
+        P9_GATE_VERSION_JE_SCHEMA,
+        P9_SNAPSHOT_SCHEMA_VERSION,
+        p9_snapshot_sha256,
+    )
     from tests.freigabe_testschluessel import AKTUARIAT_ROLLE, TESTKEY
 
+    # Ohne Angabe das aktuelle Schema — das, das das Gate schreibt.
+    schema = P9_SNAPSHOT_SCHEMA_VERSION if schema is None else schema
     scope = "bestand"
     alle = list(rollen) if rollen is not None else (am4_belegrollen(scope) if gate == "A-M4" else ["pb1_ledger"])
     gen_beleg = hashlib.sha256(b"pk1:klv/plv_2017").hexdigest()
@@ -179,7 +185,7 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
         rolle_id = "mensch" if schema == 6 else AKTUARIAT_ROLLE
     daten = {
         "schema_version": schema, "command": "gate_entscheid",
-        "gate_version": "0.6.0" if schema == 6 else P9_GATE_VERSION,
+        "gate_version": P9_GATE_VERSION_JE_SCHEMA[schema],
         "gate": gate, "entscheid": entscheid, "entscheider": "Verantwortlicher Aktuar",
         "rolle": rolle_id, "begruendung": "Controlling bestanden",
         "fall": fall_name,
@@ -195,6 +201,15 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
                           else {"rolle": rolle_id, "ordnung_sha256": "cd" * 32, "schluesselklasse": "mensch"})
     if gate == "A-M4":
         daten["pk1_belege"] = {"klv/plv_2017": [gen_beleg]} if "pk1_belege" in pflichtbelege else {}   # Schluessel: familie/generation
+        if schema >= 8:
+            # Die Standabnahmen, wie das Gate sie schreibt (ADR-018, Nachtrag
+            # 2026-10-01); hier buergt die Signatur, nicht die Nachrechnung.
+            from rechner_pipeline.models import standabnahme as sa
+
+            daten["standabnahmen"] = {
+                g.rolle: {"gate": g.gate, "weg": sa.BASISLINIE if g.basislinie
+                          else sa.KEINE_AENDERUNG, "anzeige": f"{g.titel} (Suite)"}
+                for g in sa.GEGENSTAENDE if g.rolle in pflichtbelege}
     if entscheid == "angenommen":
         daten["freigabe"] = freigabe_fuer(daten, schluessel or TESTKEY)
     daten["snapshot_sha256"] = p9_snapshot_sha256(daten)

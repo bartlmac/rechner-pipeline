@@ -72,6 +72,12 @@ migrationsfall-durchfuehren
   |     Parametrierung: quellen/tafel_import (Code, kein Skill)
   |     mehr als Parametrierung: STOPP --> A-O1-Vorlage --> MENSCH
   |         danach: entwickle-im-zielsystem (unter dem A-O1-Beschluss)
+  |     JEDER Fall: Stand abgenommen? Kernstand (A-K2) und T-Box-Stand
+  |         (A-O1) — unveraendert: Verweis (gates/stand_belegen, Code);
+  |         geaendert: vorlegen (gates/kernstand_belegen bzw.
+  |         stand_belegen tbox) --> MENSCH (mensch/rechenkern bzw.
+  |         mensch/architektur; Regression bis zu ihrem Werkzeug als
+  |         benannte Ausnahme)
   |- Stufe 3b (uebernommener Bestand), Reihenfolge erzwungen (ADR-010):
   |     1. aktuartest-durchfuehren (qa/stichprobe, qa/testprofil,
   |        qa/aktuarieller_test, gates/aktuartest) --> je Abnahme eine
@@ -84,7 +90,7 @@ migrationsfall-durchfuehren
   '- Doku-Pflichten: dokumentiere-system (ADR, README, AGENTS)
 ```
 
-Menschliche Gates (A-Q1/A-M1/A-M2/A-M3/A-M4/A-O1, P9-Snapshots) sind
+Menschliche Gates (A-Q1/A-O1/A-K2/A-M1/A-M2/A-M3/A-M4, P9-Snapshots) sind
 KEINE Skills — sie sind Werkzeuge fuer Menschen (`ontologie.entscheide`,
 `gates.gate_entscheid`); wer zeichnet, wird aus dem Schluessel ueber die
 Zeichnungsordnung bestimmt (ADR-018). Skills bereiten sie vor und halten

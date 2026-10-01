@@ -80,8 +80,15 @@ Stufe 3  Abnahme
                   `gates.aktuartest` (Test je Vertrag am eigenen
                   Verankerungszeitpunkt, belegte Stichprobe); im
                   Bestands-Scope pinnt A-M1 Testergebnis und Bericht
+  Stand des Falls (ADR-018, Nachtrag 2026-10-01): Kernstand (Gate A-K2,
+                  mensch/rechenkern, Vorlage `gates.kernstand_belegen`)
+                  und T-Box-Stand (Gate A-O1, mensch/architektur) sind
+                  abgenommen — im Fall gezeichnet, "keine Aenderung"
+                  ueber einen Verweis (`gates.stand_belegen`) oder
+                  (T-Box) Basislinie
   Gate A-M4 (Mensch): P9-Snapshot — verlangt die Pflichtbelege je Gate
-                  und Scope. Tarif: P-Q3/A-Q1/A-M1/P-K1. Bestand zusaetzlich:
+                  und Scope. Tarif: P-Q3/A-Q1/A-M1/P-K1 und der Stand des
+                  Falls (kernstand, tboxstand). Bestand zusaetzlich:
                   P-B1, vollstaendige Zwei-Stichtags-Suite und gruener
                   Abnahmebericht; A-M4 revalidiert alles auf demselben
                   Eingangs-, A-Box-, System-, Bestands- und Stichtagsstand

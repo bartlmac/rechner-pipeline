@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.betrieb import seite as st
+from rechner_pipeline.models.schemas import P9_SNAPSHOT_SCHEMA_VERSION
 from rechner_pipeline.betrieb.tageslauf import EXIT_OK, Ablage, lies_protokoll, tageslauf
 from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
@@ -158,7 +159,7 @@ def test_uebernahme_traegt_rolle_und_schluesselklasse_der_zeichnung(tmp_path):
     eingang = json.loads((ziel / "eingang.json").read_text("utf-8"))
     z = eingang["zeichnung"]
     assert z["rolle"] == "mensch/aktuariat" and z["entscheider"] == "Verantwortlicher Aktuar"
-    assert z["schluesselklasse"] == "mensch" and z["schema_version"] == 7
+    assert z["schluesselklasse"] == "mensch" and z["schema_version"] == P9_SNAPSHOT_SCHEMA_VERSION
     assert len(z["schluessel_sha256"]) == 16 and z["signatur_verifiziert"] is True
     gelesen = ueb.lies_uebernahmen(tmp_path / "daten" / "uebernahme",
                                    __import__("rechner_pipeline.bestand.config", fromlist=["load_config"]).load_config(PLV))

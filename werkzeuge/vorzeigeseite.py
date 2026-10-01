@@ -97,6 +97,9 @@ UEBERNEHMEN = (
     # gehoeren NICHT in diese Liste.
     ("abgeleitet/bestand-nach", "Fortschreibung des uebernommenen Bestands"),
     ("abgeleitet/diagnostics", "Gate-Ledger"),
+    # Die Belege der Kernabnahme A-K2 und die Sicht des Pruefers (ADR-018,
+    # Nachtrag 2026-10-01) — Commits und Pfade des Repos, nichts aus der Regie.
+    ("abgeleitet/kern", "Belege der Kernabnahme A-K2"),
     ("entscheide", "Entscheid-Snapshots der Gates"),
 )
 
@@ -402,6 +405,45 @@ def _seite(fall: Path, modell: Dict[str, Any], repo: Path,
             z.append("Bestands-Scope duldet keine: Der Lauf endet dort mit")
             z.append("einem Befund, und das ist die richtige Auskunft — ein")
             z.append("geglätteter Wert wäre eine Behauptung ohne Rechnung.")
+            z.append("")
+    stand = a.get("standabnahmen") or []
+    if stand:
+        # Der Stand, auf dem der Fall laeuft (ADR-018, Nachtrag 2026-10-01).
+        z.append("### Der Stand des Falls (A-K2, A-O1)")
+        z.append("")
+        z.append("Rechenkern und Begriffsmodell, auf denen dieser Fall rechnet, sind")
+        z.append("abgenommen — im Fall gezeichnet oder belegt unverändert seit einer")
+        z.append("früheren Abnahme.")
+        z.append("")
+        z.append("| Gegenstand | Abnahme |")
+        z.append("|---|---|")
+        for s in stand:
+            z.append(f"| {s.get('gate')} {s.get('titel')} | {s.get('anzeige')} |")
+        z.append("")
+    kern = a.get("kernstand") or {}
+    if kern:
+        # A-K2 (ADR-018, Nachtrag 2026-10-01): der vorgelegte Kernstand, wenn
+        # der Fall ihn selbst abnimmt. Die Regression steht woertlich, wie der
+        # Beleg sie fuehrt — nie als Urteil.
+        z.append("### Der Kernstand (A-K2)")
+        z.append("")
+        z.append("Die Rechenkern-Verantwortung nimmt den Stand des Rechenkerns ab,")
+        z.append("auf dem dieser Fall rechnet — auch Änderungen, die außerhalb")
+        z.append("des Falls entstanden sind.")
+        z.append("")
+        z.append("| | |")
+        z.append("|---|---|")
+        z.append(f"| Zuletzt abgenommener Stand | `{kern.get('von')}` "
+                 f"(Version {kern.get('von_version')}) |")
+        z.append(f"| Stand des Falls | Version {kern.get('nach_version')} |")
+        z.append(f"| Geänderte Module | {len(kern.get('module_geaendert') or [])} "
+                 f"von {kern.get('module')} |")
+        z.append(f"| Commits seither | {kern.get('commits')} |")
+        z.append(f"| {kern.get('regression')} | {kern.get('deckung') or ''} |")
+        z.append("")
+        sicht = _artefakt_link(fall, kern.get("sicht"), im_artefakt)
+        if sicht:
+            z.append(f"* Änderungen entlang der Module: [{Path(sicht).name}]({sicht})")
             z.append("")
     bestandslinks = [
         link for ref in a.get("bestandsberichte") or []

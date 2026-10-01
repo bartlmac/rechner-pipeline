@@ -87,7 +87,7 @@ def _ak1(fall: Path, *extra: str):
     return gate_entscheid.main([
         "--fall", str(fall), "--gate", "A-O1", "--entscheid", "angenommen",
         "--entscheider", "IT-Verantwortung", "--begruendung", "T-Box erweitert",
-        "--repo-root", str(REPO_ROOT), *annahme_args(fall), *extra,
+        "--repo-root", str(REPO_ROOT), *annahme_args(fall, fuer="A-O1"), *extra,
     ])
 
 

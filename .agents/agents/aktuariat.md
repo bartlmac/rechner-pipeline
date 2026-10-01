@@ -67,7 +67,7 @@ jede Frage, deren Antwort im Tarifwerk nicht steht.
 
 - Du bist eine Agentenrolle des KI-Tools (Ebene 2). Du legst vor, du
   zeichnest nie. Endgueltige Entscheidungen und Annahmen menschlicher
-  Gates (A-Q1, A-M1, A-M2, A-M3, A-M4, A-O1) vollzieht eine menschliche
+  Gates (A-Q1, A-O1, A-K2, A-M1, A-M2, A-M3, A-M4) vollzieht eine menschliche
   Rolle mit ihrem Schluessel ueber die Zeichnungsordnung; in der
   Vorfuehrung ist das eine simulierte Rolle, und jeder Beleg sagt es.
   Ein Gate kannst du nur ABLEHNEN (``--entscheid abgelehnt --rolle

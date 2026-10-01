@@ -148,6 +148,28 @@ Produzenten dafuer nicht gibt, ist A-K2 nicht zeichenbar — gewollt, denn
 der geaenderte Kern bewertet nach der Migration den laufenden Bestand
 weiter, und diese Wirkung sieht sonst niemand.
 
+**Nachtrag 2026-10-01** (Entscheid des Maintainers, ADR-018 Nachtrag
+2026-10-01): A-K2 ist Teil des Ablaufs. Gegenstand ist der KERNSTAND, auf
+dem ein Fall rechnet, einschliesslich der Aenderungen ausserhalb eines
+Falls. `A-M4` verlangt in beiden Scopes, dass er abgenommen ist
+(Pflichtrolle `kernstand`): im Fall gezeichnet, oder bei unveraendertem
+Stand "keine Aenderung seit Abnahme <snapshot>" ueber einen Verweis auf
+einen frueher angenommenen A-K2-Snapshot. Dieselbe Regel gilt fuer
+`A-O1` und den T-Box-Stand (Pflichtrolle `tboxstand`; zusaetzlich die
+Basislinie: eine Versionslinie mit einem Element hat keinen Uebergang).
+Damit gilt der Satz oben "loest eine Tarifgeneration nicht aus" weiter
+fuer den ANLASS — eine Tarifgeneration erzwingt keine Kernaenderung —,
+aber jeder Fall rechnet auf einem abgenommenen Kernstand. Zwei Pruefungen: die
+qualitative Pruefung der Aenderungen entlang der Module mit den Commits
+des Zweigs (Produzent `gates.kernstand_belegen`, das Gate rechnet nach)
+und die Regression. Die Regression ist bis zu ihrem Produzenten eine
+benannte AUSNAHME ("nicht gefahren, Werkzeug noch nicht erstellt"),
+nie ein Ergebnis; A-K2 ist damit zeichenbar, und die Zeichnung deckt
+ausdruecklich nur die qualitative Pruefung. Der folgende Absatz zum
+alten Kern gilt mit einer Aenderung: Der Vergleichsstand ist der
+ausdruecklich genannte, zuletzt abgenommene Kernstand (`--von`, statt
+fest `origin/main`), und `dirty` sperrt nur noch die Regression.
+
 **Woher der ALTE Kern kommt** (Entscheid des Maintainers 2026-09-16):
 Entwicklung im Fall laeuft auf einem Branch, der produktive Kern liegt
 auf `main`. Damit ist die Vorher-Seite nicht erfunden, sondern

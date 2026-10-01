@@ -374,6 +374,119 @@ die Linie eine Agenten- und eine Menschenrolle bekommen, um
 Migrationszugang und Controllingvorgang zu verifizieren, auch im
 Regie-Modus.
 
+## Nachtrag 2026-10-01: Der Stand des Falls ist abgenommen — A-K2 und A-O1
+
+**Befund.** `A-K2.kernaenderung` (Nachtrag 2026-09-16) stand im
+Entscheid-Kommando, im Belegvertrag und in der Ordnung, war aber
+unwirksam: Es gab keinen Produzenten fuer die beiden Belege, kein Gate
+verlangte A-K2, und kein Ablauf nannte es. Der obige Satz "Kernaenderungen
+entstehen heute nur im Fall" traf nicht zu: Der Rechenkern ist ausserhalb
+jedes Falls von Version 3.6.0 (`origin/main`) auf 3.15.0 gewachsen — neun
+Minor-Versionen ohne eine einzige Abnahme.
+
+**Entscheid des Maintainers.** "Zeichnung Rechenkernentwickler — wir
+sollten dieses Gate formell einpflegen, in den Prozess, die Dokumentation
+und die Vorzeige." Zeitpunkt: vor dem Merge.
+
+1. **Gegenstand ist der Kernstand, auf dem ein Fall rechnet** —
+   einschliesslich der Aenderungen, die ausserhalb eines Falls entstanden
+   sind. Damit loest sich der Widerspruch oben: A-K2 ist keine Abnahme
+   einer Aenderung, die im Fall entsteht, sondern die Abnahme des Stands,
+   den der Fall benutzt; vorgelegt mit `--von` = dem zuletzt abgenommenen
+   Kernstand. Die Pfadmenge "Code und Dokumentation des Rechenkerns" steht
+   einmal in `models.kernabnahme.KERNSTAND`: das Paket `kern/`
+   (einschliesslich der Rechnungsgrundlagen), die eingefrorenen
+   Referenzwerte, die Grundsatzdokumentation und die Tarifplaene — nicht
+   der Zweitkern (ADR-013), nicht die Parametrierung (ADR-006), nicht die
+   Schichten, die den Kern benutzen.
+2. **EINE Regel fuer zwei Gegenstaende** (zweiter Entscheid desselben
+   Tages: "T-Box-Erweiterung muss auch ein Abnahmepunkt im Prozess sein,
+   wird bei 'keiner Aenderung' durchgewunken (da keine Aenderung
+   vorhanden)"). A-M4 verlangt in beiden Scopes, dass der Stand, auf dem
+   der Fall laeuft, abgenommen ist — fuer den **Kernstand** (A-K2,
+   `mensch/rechenkern`, Pflichtrolle `kernstand`) und den
+   **T-Box-Stand** (A-O1, `mensch/architektur`, Pflichtrolle
+   `tboxstand`), nach derselben Funktion (`models.standabnahme`,
+   `gate_entscheid.standabnahme_pruefen`). Erfuellt auf genau einem Weg:
+   (a) *abgenommen im Fall* — eine eindeutige, signierte Annahme im Fall
+   auf demselben Scope- und Systemstand, gezeichnet von einer Rolle, der
+   die Ordnung das Gate gibt (`models.zeichnung.zeichnende_rolle_fehler`),
+   ihre Belege am festen Ort und gegen den lebenden Code nachgerechnet;
+   (b) *keine Aenderung* — der Stand ist identisch zu dem, den ein FRUEHER
+   angenommener Snapshot abgenommen hat: Ein Verweis am festen Ort
+   (`abgeleitet/kern/verweis.json` bzw. `abgeleitet/tbox/verweis.json`,
+   Produzent `gates.stand_belegen verweisen`) traegt die vollstaendige,
+   signierte Kopie dieses Snapshots; A-M4 prueft Signatur, Rolle und Klasse
+   nach derselben Regel und haelt sein Feld `stand` per `==` gegen den
+   lebenden (Kern: Version, Sammelhash des Kernpakets, der Referenzwerte
+   und der ganzen Pfadmenge; T-Box: Version und SHA-256 des Moduls). Kein
+   neuer Entscheid; der A-M4-Snapshot fuehrt woertlich "keine Aenderung
+   seit Abnahme <snapshot> (<Herkunft>)" — durchgewunken heisst belegt
+   unveraendert, nicht ungeprueft; (c) *Basislinie*, nur T-Box: Solange
+   die Versionslinie ein Element hat, gab es keinen Uebergang. Fuer den
+   Kern gibt es keine Basislinie — seine erste Abnahme ist zu zeichnen.
+   Hat der Fall eine Kette des Gates, gilt nur (a): Eine Ablehnung im Fall
+   laesst sich nicht durch einen Verweis umgehen. Die Snapshots von A-K2
+   und A-O1 tragen dafuer den abgenommenen `stand`, der A-M4-Snapshot die
+   `standabnahmen` (Weg und Anzeige je Gegenstand). Gate-Version 3.0.0,
+   P9-Schema 8 (Major: ein vorher gruener A-M4-Entscheid wird ohne
+   abgenommenen Kernstand rot).
+3. **Zwei Pruefungen.** (1) Die *qualitative Pruefung der Aenderungen*:
+   `gates.kernstand_belegen` zeigt je Modul des Kernstands den Diffstat
+   gegen den Arbeitsbaum, die Commits des Zweigs mit Datum und
+   Betreffzeile als Kurzbeschreibung und was nicht committet ist, dazu
+   Versionsuebergang, beide Kern-Hashes und die bewegten Referenzwerte;
+   daneben eine lesbare Sicht fuer den Pruefer. Das Gate rechnet den Beleg
+   nach, statt ihm zu glauben. (2) Das *Ergebnis der Regression*: Das
+   Werkzeug ist noch nicht gebaut.
+4. **Die Regression ist eine benannte Ausnahme, kein Ergebnis.** Bis zum
+   Produzenten traegt `abgeleitet/kern/regression.json` den Zustand
+   `nicht_gefahren` mit dem Grund "Werkzeug noch nicht erstellt" — kein
+   Feld, das wie ein Ergebnis aussieht. Das Gate nimmt genau diese Form an,
+   solange `models.kernabnahme.REGRESSION_AUSNAHME_ERLAUBT` gilt, und
+   nichts anderes Unvollstaendiges; ein echter Regressionsbeleg wird nach
+   der Regel vom 2026-09-16 geprueft (jeder Vertrag, Differenz je Vertrag,
+   sauberer Arbeitsbaum). Snapshot (Feld `ausnahmen`), Ledger, Sicht und
+   jede Anzeige fuehren den Satz woertlich: "Regression: Ausnahme — nicht
+   gefahren, Werkzeug noch nicht erstellt". Die Zeichnung von A-K2 deckt
+   damit ausdruecklich NUR die qualitative Pruefung. Zwei Waechter halten
+   Konstante und Produzent zusammen: Die Konstante kippt nicht, solange es
+   keinen Produzenten gibt, und ein Produzent laesst sie nicht stehen.
+5. **`dirty` sperrt die Regression, nicht die Sicht.** Bis hierher sperrte
+   ein nicht committeter Arbeitsbaum den Aenderungsbeleg, begruendet mit
+   der Reproduzierbarkeit der Regression. Die Regel steht jetzt beim
+   echten Regressionsbeleg; die qualitative Pruefung zeigt nicht
+   committete Aenderungen ausdruecklich ("ohne Commit-Beschreibung").
+
+**Verworfene Alternativen.**
+
+* *Ohne Regression keine Abnahme* (Entscheid vom 2026-09-16): verworfen
+  fuer jetzt. Das Gate gaebe es sonst weiter nicht, waehrend der Kern sich
+  aendert — das ist genau die Lage, die zu diesem Nachtrag gefuehrt hat.
+  Die Regel bleibt fuer jeden echten Regressionsbeleg in Kraft und gilt
+  wieder vollstaendig, sobald die Konstante kippt.
+* *Den Platzhalter als bestanden fuehren*: verworfen. Ein gezeichneter
+  Beleg darf nichts behaupten, was niemand gefahren hat; ein
+  `vertraege_geprueft == vertraege_gesamt` mit Nullen saehe aus wie ein
+  Ergebnis und wuerde von jedem Leser als eines gelesen.
+
+**Wer an Kern und T-Box schreibt.** In der ENTWICKLUNG der Loesung
+darf ein Agent unter Auftrag des Maintainers eine Erweiterung der T-Box
+oder eine Aenderung des Kerns als Entwurf im Arbeitsbaum bauen. In der
+LAUFZEIT einer Migration schreibt kein Agent an der T-Box: Er legt den
+Aenderungsvorschlag vor (`gates.stand_belegen tbox`, die aktuarielle
+Stellungnahme vom Aktuariat), `mensch/architektur` prueft die Diffs und
+zeichnet A-O1 — im Regie-Modus die simulierte Rolle unter Mandat. Fuer
+den Kern gilt sinngemaess dasselbe: Der Rechenkern-Agent legt den
+Kernstand vor (`gates.kernstand_belegen`), `mensch/rechenkern`
+zeichnet A-K2.
+
+**Grenze.** Die Signaturpruefung bleibt HMAC: Wer A-M4 zeichnet, braucht
+die Schluessel von `mensch/rechenkern` und `mensch/architektur` im
+Ring, um die A-K2- und A-O1-Annahmen (im Fall oder im Verweis) zu
+pruefen — dieselbe Grenze wie bei A-B2 und A-M4 (Abschnitt
+"zeichnende_rolle_fehler", models.zeichnung).
+
 ## Bewusst nicht Bestandteil
 
 Die Modellierung simulierter Rueckfragen (naechste Ausbaustufe der

@@ -11,6 +11,14 @@ zugleich zeichnet, verdeckte genau den Fall, den die Rollenregel der Leser
 prueft (Entscheid 2026-10-01; Ratsche in tests/test_abnahme_rolle_klasse.py).
 Wer A-B1 zeichnet, legt die Ordnung mit ``rolle="mensch/betrieb"`` an.
 
+Ebenso wenig zeichnet sie den Kernstand: A-K2 gehoert ``mensch/rechenkern``
+(ADR-018), mit eigenem Schluessel neben dem Fall (``p9-rechenkern.key``).
+Jede Standardordnung fuehrt diese Rolle mit; :func:`annahme_args` legt
+beide Schluessel in den Ring — A-M4 prueft die Signatur der A-K2-Annahme,
+auf der es gruendet —, und :func:`zeichne_kernstand` legt den Kernstand
+eines Falls vor und zeichnet ihn (Entscheid des Maintainers 2026-10-01:
+jeder Fall traegt sein A-K2).
+
 Knoten: system/entscheid
 """
 
@@ -24,17 +32,35 @@ from typing import Dict, List, Optional
 VA = "mensch/aktuariat"
 QUELLE = "mensch/quell-aktuar"
 AGENT = "agent/programmleitung"
+RECHENKERN = "mensch/rechenkern"
+ARCHITEKTUR = "mensch/architektur"
 
 _STANDARD_SCHLUESSEL = b"test-only-p9-authorization-key!" * 2
+#: Der Schluessel der Rolle mensch/rechenkern — getrennt je Rolle.
+_RECHENKERN_SCHLUESSEL = b"test-only-p9-rechenkern-key-ak2!" * 2
+#: Der Schluessel der Rolle mensch/architektur (A-O1) — getrennt je Rolle.
+_ARCHITEKTUR_SCHLUESSEL = b"test-only-p9-architektur-key-o1!" * 2
+#: Dateinamen der getrennten Schluessel neben dem Fall.
+RECHENKERN_SCHLUESSEL_DATEI = "p9-rechenkern.key"
+ARCHITEKTUR_SCHLUESSEL_DATEI = "p9-architektur.key"
+#: Die Gates der Rollen der Standabnahme (models.standabnahme): je Gate eine
+#: eigene Rolle mit eigenem Schluessel — Rolle, Gate, Schluesseldatei, Inhalt.
+STANDROLLEN = (
+    (RECHENKERN, "A-K2", RECHENKERN_SCHLUESSEL_DATEI, _RECHENKERN_SCHLUESSEL),
+    (ARCHITEKTUR, "A-O1", ARCHITEKTUR_SCHLUESSEL_DATEI, _ARCHITEKTUR_SCHLUESSEL),
+)
+RECHENKERN_GATES = ["A-K2"]
 
 
 def _fall_gates() -> List[str]:
     from rechner_pipeline.models.zeichnung import GUELTIGE_GATES
 
-    return [g for g in GUELTIGE_GATES if g not in ("A-B1", "A-B2")]
+    eigene = {gate for _, gate, _, _ in STANDROLLEN}
+    return [g for g in GUELTIGE_GATES if g not in ("A-B1", "A-B2") and g not in eigene]
 
 
-#: Die Gates der Standardrolle: alle zeichenbaren ausser denen des Betriebs.
+#: Die Gates der Standardrolle: alle zeichenbaren ausser denen des Betriebs
+#: und der Standabnahme (A-K2, A-O1).
 FALL_GATES: List[str] = _fall_gates()
 
 
@@ -61,10 +87,18 @@ def standard_ordnung(
     gates: Optional[List[str]] = None,
     weitere: Optional[Dict[str, dict]] = None,
 ) -> Path:
-    """Ordnung mit einer zeichnenden Rolle fuer diesen Schluessel."""
+    """Ordnung mit einer zeichnenden Rolle fuer diesen Schluessel — und der
+    Rolle mensch/rechenkern mit ihrem eigenen Schluessel daneben."""
     fp = schluessel_anlegen(schluessel)
     rollen = {rolle: {"schluessel_sha256": fp, "schluesselklasse": klasse,
                       "gates": gates if gates is not None else list(FALL_GATES)}}
+    for name, gate, datei, inhalt in STANDROLLEN:
+        if rolle == name:
+            continue
+        eigener_fp = schluessel_anlegen(schluessel.parent / datei, inhalt)
+        if eigener_fp != fp:
+            rollen[name] = {"schluessel_sha256": eigener_fp, "schluesselklasse": klasse,
+                            "gates": [gate]}
     rollen.update(weitere or {})
     return ordnung_schreiben(verzeichnis / "zeichnungsordnung.json", rollen)
 
@@ -75,12 +109,23 @@ def annahme_args(fall: Path, **kw) -> List[str]:
     Ordnung und Schluessel liegen NEBEN dem Fall (ausserhalb, wie es die
     Ordnung verlangt), je Fall genau einmal angelegt.
     """
+    fuer = kw.pop("fuer", None)
     schluessel = fall.parent / "p9-freigabe.key"
     ordnung = fall.parent / "zeichnungsordnung.json"
     if not ordnung.exists():
         standard_ordnung(fall.parent, schluessel, **kw)
-    args = ["--zeichnungsordnung", str(ordnung),
-            "--freigabe-schluessel", str(schluessel)]
+    # Der Ring: alle Schluessel, der zeichnende zuletzt. A-K2 zeichnet
+    # mensch/rechenkern, A-O1 mensch/architektur, jedes andere Gate die
+    # Standardrolle; A-M4 prueft mit dem Ring die Signaturen der Annahmen,
+    # auf denen es gruendet.
+    eigene = {gate: fall.parent / datei for _, gate, datei, _ in STANDROLLEN}
+    if fuer in eigene:
+        ring = [eigene[fuer]]
+    else:
+        ring = [d for d in eigene.values() if d.exists()] + [schluessel]
+    args = ["--zeichnungsordnung", str(ordnung)]
+    for datei in ring:
+        args += ["--freigabe-schluessel", str(datei)]
     # Eine simulierte Rolle handelt unter einem Mandat — Pflicht seit
     # Review T22-07 (ADR-018): das Mandat liegt wie die Ordnung neben dem Fall.
     if kw.get("klasse", "simulation") == "simulation":
@@ -96,3 +141,27 @@ def mandat_datei(fall: Path) -> Path:
             "Mandat der Vorzeige: die simulierte Rolle prueft die Vorlagen "
             "und zeichnet die Gates dieses Falls.\n", encoding="utf-8")
     return mandat
+
+
+def zeichne_kernstand(fall: Path, repo_root: Path, *, von: str = "HEAD", **kw):
+    """Den Kernstand eines Falls vorlegen und als mensch/rechenkern zeichnen.
+
+    ``von`` = der zuletzt abgenommene Kernstand; in der Suite ``HEAD`` — der
+    Kern des lebenden Stands gilt als abgenommen, der Beleg sagt "nichts
+    geaendert" (oder nennt, was im Arbeitsbaum offen ist). Der gemeinsame
+    Weg fuer jeden Test, der A-M4 zeichnet (Entscheid 2026-10-01), statt
+    je Test. Setzt eine A-Box und P-Q3 voraus wie jede Annahme.
+    """
+    from rechner_pipeline.gates import gate_entscheid, kernstand_belegen
+
+    beleg = kernstand_belegen.main([
+        "--fall", str(fall), "--repo-root", str(repo_root), "--von", von,
+        "--begruendung", "Kernstand des Falls (Suite)"])
+    assert beleg.exit_code == 0, beleg.errors
+    ergebnis = gate_entscheid.main([
+        "--fall", str(fall), "--gate", "A-K2", "--entscheid", "angenommen",
+        "--entscheider", "rechenkern-verantwortung",
+        "--begruendung", "Aenderungen am Kernstand qualitativ geprueft",
+        "--repo-root", str(repo_root), *annahme_args(fall, fuer="A-K2", **kw)])
+    assert ergebnis.exit_code == 0, ergebnis.errors
+    return ergebnis

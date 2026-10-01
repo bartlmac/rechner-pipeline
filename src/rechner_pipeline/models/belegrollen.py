@@ -98,12 +98,13 @@ BELEGROLLEN = {
     # bestehenden Bestand bedeutet — jeder Vertrag mit altem und neuem
     # Kern durchgerechnet, Differenz JE VERTRAG.
     #
-    # Die Regression ist Pflicht, nicht Kuer ("ohne das kann die
-    # Aenderung im Rechenkern nicht abgenommen werden"). Solange es den
-    # Produzenten nicht gibt, ist A-K2 damit nicht zeichenbar — das ist
-    # gewollt. Ein optionaler Beleg waere derselbe Fehler, den A-M4 im
-    # Bestands-Scope schon einmal gemacht hat (T21-02/T22-01:
-    # "ausweisen statt erzwingen" nahm jedes Teilprofil an).
+    # Die Regression bleibt Pflichtrolle — ein optionaler Beleg waere
+    # derselbe Fehler, den A-M4 im Bestands-Scope schon einmal gemacht hat
+    # (T21-02/T22-01: "ausweisen statt erzwingen" nahm jedes Teilprofil
+    # an). Bis ihr Produzent gebaut ist, steht an ihrer Stelle die benannte
+    # AUSNAHME "nicht gefahren, Werkzeug noch nicht erstellt"
+    # (``models.kernabnahme``, ADR-018 Nachtrag 2026-10-01) — eine Rolle,
+    # die belegt, was NICHT geprueft ist, statt still zu fehlen.
     #
     # Scope-unabhaengig: Ein geaenderter Kern rechnet in jedem Scope.
     "A-K2": {
@@ -138,8 +139,16 @@ BELEGROLLEN = {
         "tarif": (),
         "bestand": ("zugangsprobe", "am4_snapshot", "eingang"),
     },
+    # A-M4 verlangt seit dem Entscheid des Maintainers 2026-10-01 in BEIDEN
+    # Scopes, dass der Stand, auf dem der Fall laeuft, abgenommen ist — je
+    # Gegenstand eine Rolle (models.standabnahme, ADR-018 Nachtrag
+    # 2026-10-01): ``kernstand`` (A-K2) und ``tboxstand`` (A-O1). Gepinnt
+    # wird der Beleg des Wegs: der Snapshot im Fall (a), der Verweis auf
+    # einen frueher angenommenen Snapshot bei unveraendertem Stand (b), der
+    # SHA-256 des T-Box-Moduls auf der Basislinie (c, nur T-Box).
     "A-M4": {
-        "tarif": ("pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege"),
+        "tarif": ("pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege",
+                  "kernstand", "tboxstand"),
         "bestand": (
             "pq3_ledger",
             "aq1_snapshot",
@@ -147,6 +156,8 @@ BELEGROLLEN = {
             "am2_snapshot",
             "am3_snapshot",
             "pk1_belege",
+            "kernstand",
+            "tboxstand",
             "pb1_ledger",
             "migrationssuite",
             # Freischaltung (Schritt 6): der Beleg, dass die Fuehrung die

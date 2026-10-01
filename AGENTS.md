@@ -10,7 +10,7 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
 - LLM agents propose (one pre-digested source each); deterministic code
   decides (merge, coverage, comparison, transformation, acceptance);
   humans decide contradictions between sources and every acceptance
-  gate (A-Q1/A-M1/A-M4/A-K1). No LLM path inside any gate.
+  gate (A-Q1/A-O1/A-K2/A-M1 to A-M4). No LLM path inside any gate.
 - The Python package is deterministic and SDK-free. Do not add OpenAI,
   Anthropic, LangGraph, provider, token, or hosted-agent runtime paths
   to `src/`; do not add network, subprocess, dynamic execution, or
@@ -218,7 +218,18 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   DECIDED by humans; the actuarial test is prepared with
   `$aktuartest-durchfuehren` (decision: human gate A-M1) and migration
   controlling with `$pruefe-migrationscontrolling` (decision: human
-  gate A-M4; A-M1 precedes A-M4).
+  gate A-M4; A-M1 precedes A-M4). A-M4 also requires that the state the
+  case runs on is accepted: kernel state A-K2 (presented by
+  `agent/rechenkern` with `gates.kernstand_belegen`, signed by
+  `mensch/rechenkern`) and T-Box state A-O1 (presented by
+  `agent/architektur`, signed by `mensch/architektur`) — signed in the
+  case, or "keine Aenderung" via `gates.stand_belegen verweisen` to an
+  earlier accepted snapshot, or for the T-Box its baseline. Until the
+  regression tool exists, the A-K2 regression record is the named
+  EXCEPTION "nicht gefahren, Werkzeug noch nicht erstellt", never a pass.
+  During a running migration no agent writes to the T-Box or the kernel:
+  it presents the change, the human role reviews the diffs and signs
+  (ADR-018, addendum 2026-10-01).
 - For implementation work in `src/`/`tests/`, follow
   `$entwickle-im-zielsystem` (the architecture rules there are
   non-negotiable); code changes during a running migration additionally

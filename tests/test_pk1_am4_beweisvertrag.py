@@ -61,7 +61,7 @@ from tests.e2e_fixture import (
     lade_pk1_fixture,
     zellen_config,
 )
-from tests.zeichnung_fixture import VA, annahme_args
+from tests.zeichnung_fixture import VA, annahme_args, zeichne_kernstand
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 #: Name der uebernommenen Generation in der Config (Stammspalte tarif_generation).
@@ -86,8 +86,12 @@ def _bereite_fall(
     generationen: tuple[str, ...],
     *,
     scope: str = "tarif",
+    mit_kernstand: bool = True,
 ) -> Path:
-    """Echten TG2012-Input vorbereiten; weitere Generationen teilen die Werte."""
+    """Echten TG2012-Input vorbereiten; weitere Generationen teilen die Werte.
+
+    ``mit_kernstand=False`` laesst die A-K2-Annahme weg — fuer die Tests,
+    deren Gegenstand genau sie ist."""
     fall = bereite_pk1_fall(tmp_path, generationen, scope=scope)
     if scope == "bestand":
         bestandsquelle = tmp_path / "synthetischer-bestand.csv"
@@ -104,6 +108,11 @@ def _bereite_fall(
         "--fall", str(fall), "--repo-root", str(REPO_ROOT),
     ]).exit_code == 0
     assert _p9_annahme(fall, "A-Q1", "A-Box fachlich geprueft").exit_code == 0
+    # Der Kernstand, auf dem der Fall rechnet (Entscheid 2026-10-01): A-M4
+    # verlangt die A-K2-Annahme in jedem Scope; gezeichnet von
+    # mensch/rechenkern mit eigenem Schluessel.
+    if mit_kernstand:
+        zeichne_kernstand(fall, REPO_ROOT)
     if scope == "tarif":
         # A-M1 geht A-M4 voraus (ADR-010); im Tarif-Scope ohne eigene
         # Belegrollen. Im Bestands-Scope stellt _bereite_bestandsfall
@@ -452,7 +461,7 @@ def test_echtes_pk1_schreibt_beleg_und_am4_nimmt_denselben_stand_an(
     }
     assert snapshot["fall_scope"] == "tarif"
     assert set(snapshot["pflichtbelege"]) == {
-        "pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege",
+        "pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege", "kernstand", "tboxstand",
     }
     assert not any("bestand" in rolle for rolle in snapshot["pflichtbelege"])
 
@@ -498,7 +507,7 @@ def test_bestands_scope_bindet_pb1_suite_und_abnahmebericht_bis_am4(
     assert set(snapshot["pflichtbelege"]) == {
         "pq3_ledger", "aq1_snapshot",
         "am1_snapshot", "am2_snapshot", "am3_snapshot",
-        "pk1_belege", "pb1_ledger", "migrationssuite", "fuehrungsprobe",
+        "pk1_belege", "kernstand", "tboxstand", "pb1_ledger", "migrationssuite", "fuehrungsprobe",
         "abnahmebericht",
     }
     assert all(snapshot["pflichtbelege"].values())
@@ -1600,6 +1609,7 @@ def test_am4_verlangt_geltendes_am1_vor_sich(tmp_path: Path):
         "--fall", str(fall), "--repo-root", str(REPO_ROOT),
     ]).exit_code == 0
     assert _p9_annahme(fall, "A-Q1", "A-Box fachlich geprueft").exit_code == 0
+    zeichne_kernstand(fall, REPO_ROOT)
     assert _o3_tg2012(fall).exit_code == 0
 
     vorzeitig = _p9_annahme(fall, "A-M4", "vor der aktuariellen Abnahme")

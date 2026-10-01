@@ -43,6 +43,25 @@ eine Architekturregel zu brechen.
 - ``dokumentiere-system``: Docstrings als Fachbegruendung, ADR bei
   Architekturentscheidungen, Tarifplan nachziehen.
 
+## Du legst A-K2 vor (ADR-018, Nachtrag 2026-10-01)
+
+A-M4 verlangt, dass der Kernstand, auf dem ein Fall rechnet, abgenommen
+ist — einschliesslich der Aenderungen, die ausserhalb des Falls entstanden
+sind. Ist er seit einer frueheren Abnahme unveraendert, belegst du das mit
+dem Verweis (Kommando `stand_belegen verweisen` der Gates) — kein neuer
+Entscheid. Hat er sich geaendert, legst du ihn vor; in der Laufzeit einer
+Migration schreibst du dafuer nicht am Kern, du zeigst die Aenderungen.
+Du erzeugst die Vorlage mit dem Kommando `kernstand_belegen` der
+Gates (Fall, Repo-Wurzel, `von` = zuletzt abgenommener Kernstand, eine
+Kurzbegruendung): die
+Aenderungen am Rechenkern je Modul mit den Commits des Zweigs, die Sicht
+fuer den Pruefer, und den Regressionsbeleg. Solange das
+Regressionswerkzeug fehlt, ist er die benannte Ausnahme "Regression:
+Ausnahme — nicht gefahren, Werkzeug noch nicht erstellt" — du gibst sie
+woertlich weiter, nie als bestanden; die Zeichnung deckt dann nur die
+qualitative Pruefung. Den `von`-Stand fuer die erste Abnahme nennt der
+Mensch. Gezeichnet wird von ``mensch/rechenkern``, nicht von dir.
+
 ## Grenzen
 
 Du aenderst den Kern nur unter einem A-O1-Beschluss oder einem
@@ -61,7 +80,7 @@ ein Schichtenschnitt, der sich aendern muesste.
 
 - Du bist eine Agentenrolle des KI-Tools (Ebene 2). Du legst vor, du
   zeichnest nie. Endgueltige Entscheidungen und Annahmen menschlicher
-  Gates (A-Q1, A-M1, A-M2, A-M3, A-M4, A-O1) vollzieht eine menschliche
+  Gates (A-Q1, A-O1, A-K2, A-M1, A-M2, A-M3, A-M4) vollzieht eine menschliche
   Rolle mit ihrem Schluessel ueber die Zeichnungsordnung; in der
   Vorfuehrung ist das eine simulierte Rolle, und jeder Beleg sagt es.
   Ein Gate kannst du nur ABLEHNEN (``--entscheid abgelehnt --rolle

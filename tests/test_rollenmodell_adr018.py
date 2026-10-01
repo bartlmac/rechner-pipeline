@@ -19,7 +19,7 @@ import pytest
 
 from rechner_pipeline.gates import gate_entscheid
 from rechner_pipeline.gates.abox_validate import main as pq3
-from rechner_pipeline.models.schemas import P9Snapshot, p9_snapshot_sha256
+from rechner_pipeline.models.schemas import P9_SNAPSHOT_SCHEMA_VERSION, P9Snapshot, p9_snapshot_sha256
 from rechner_pipeline.models.zeichnung import lade_zeichnungsordnung
 
 from tests.e2e_fixture import bereite_pk1_fall
@@ -77,7 +77,7 @@ def test_simulierte_rolle_traegt_ihre_klasse_und_ihr_mandat(fall, tmp_path):
     ergebnis = _annahme(fall, key, ordnung, "--mandat", str(mandat))
     assert ergebnis.exit_code == 0
     snapshot = json.loads(Path(ergebnis.paths["snapshot"]).read_text(encoding="utf-8"))
-    assert snapshot["schema_version"] == 7
+    assert snapshot["schema_version"] == P9_SNAPSHOT_SCHEMA_VERSION
     assert snapshot["rolle"] == VA
     assert snapshot["zeichnung"] == {
         "rolle": VA,

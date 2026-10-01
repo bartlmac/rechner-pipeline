@@ -13,6 +13,11 @@ die tatsaechlich installierten Python-/XML-Dateien des Pakets.  ``dirty=ja``
 allein waere kein exakter Stand: zwei verschiedene lokale Codeaenderungen
 haetten sonst denselben Wert.
 
+Hier liegt die EINE Subprozess-Stelle des Pakets (:func:`_git_lesen`):
+lesende git-Kommandos aus einer abschliessenden Liste, fuer den
+Systemstand (P-K1, P9) und seit 2026-10-01 fuer den Aenderungsbeleg der
+Kernabnahme A-K2 (``gates.kernstand_belegen``).
+
 Knoten: klv, system/assurance
 """
 
@@ -57,34 +62,170 @@ def _ist_sha256(wert: object) -> bool:
     )
 
 
+#: Die lesenden git-Kommandos — abschliessend. Jeder Aufruf von
+#: :func:`_git_lesen` nennt eines davon; was danach kommt, sind DATEN
+#: (Commit-Angaben, Pfade), keine Optionen. Der Waechter
+#: ``test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt`` haelt
+#: die Menge mit ``==``.
+#:
+#: Die ersten drei protokollieren den Systemstand (P-K1, P9). Die uebrigen
+#: kamen mit der Kernabnahme A-K2 (Entscheid des Maintainers 2026-10-01):
+#: Der Aenderungsbeleg zeigt die Aenderungen am Rechenkern zwischen dem
+#: zuletzt abgenommenen Kernstand und dem lebenden — Diffstat, Commits,
+#: nicht committete Aenderungen, der alte Kern. Lesend wie die ersten drei;
+#: sie rechnen und bewerten nichts, sie protokollieren, was vorliegt.
+GIT_COMMIT = ("rev-parse", "HEAD")
+GIT_ZWEIG = ("rev-parse", "--abbrev-ref", "HEAD")
+GIT_STATUS = ("status", "--porcelain")
+GIT_STATUS_PFADE = ("status", "--porcelain", "--untracked-files=all", "--")
+GIT_AUFLOESEN = ("rev-parse", "--verify", "--quiet")
+GIT_MERGE_BASE = ("merge-base",)
+GIT_DIFFSTAT = ("diff", "--numstat", "--no-renames")
+GIT_LOG = ("log", "--no-renames", "--name-only", "--format=%x1e%H%x1f%cs%x1f%s")
+GIT_DATEIEN = ("ls-tree", "-r", "--name-only")
+GIT_INHALT = ("show",)
+LESENDE_KOMMANDOS = (
+    GIT_COMMIT, GIT_ZWEIG, GIT_STATUS, GIT_STATUS_PFADE, GIT_AUFLOESEN,
+    GIT_MERGE_BASE, GIT_DIFFSTAT, GIT_LOG, GIT_DATEIEN, GIT_INHALT,
+)
+
+#: Eine Commit-Angabe, wie ein Mensch sie nennt (Hash, Zweig, ``HEAD``,
+#: ``origin/main``) — nie mit einem Strich vorn, damit sie keine Option
+#: werden kann.
+_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/^~-]*$")
+
+
+class GitAngabeFehler(ValueError):
+    """Eine Angabe an git, die keine Daten waere, sondern eine Option."""
+
+
+def _git_lesen(repo_root: Path, kommando: Tuple[str, ...], *daten: str) -> Optional[bytes]:
+    """DIE eine Subprozess-Stelle des Pakets: ein lesendes git-Kommando.
+
+    Sie protokolliert nur Beweisprovenienz (P-K1, P9, A-K2) und beeinflusst
+    keine fachliche Rechnung. ``kommando`` ist eines aus
+    :data:`LESENDE_KOMMANDOS`; ``daten`` sind Commit-Angaben, ``ref:pfad``,
+    Pfade oder der Trenner ``--`` — nichts davon beginnt mit einem Strich.
+    Ist Git nicht verfuegbar oder scheitert das Kommando, ist die Antwort
+    ``None``, und der Aufrufer benennt den Zustand.
+    """
+    if kommando not in LESENDE_KOMMANDOS:
+        raise GitAngabeFehler(f"kein lesendes git-Kommando: {kommando!r}")
+    for wert in daten:
+        if wert != "--" and (not isinstance(wert, str) or not wert or wert.startswith("-")):
+            raise GitAngabeFehler(f"git-Angabe {wert!r} waere eine Option, keine Angabe")
+    try:
+        return subprocess.run(
+            ["git", *kommando, *daten],
+            cwd=repo_root,
+            capture_output=True,
+            check=True,
+            timeout=60,
+        ).stdout
+    except Exception:  # noqa: BLE001 - None ist ein benannter Zustand
+        return None
+
+
+def _text(roh: Optional[bytes]) -> Optional[str]:
+    return None if roh is None else roh.decode("utf-8", errors="replace")
+
+
 def _git_stand(repo_root: Path) -> Dict[str, str]:
     """Den Git-Stand mit drei eng begrenzten, lesenden Aufrufen erfassen.
 
-    Dies ist weiterhin die einzige Subprozess-Ausnahme im Paket.  Sie
-    protokolliert nur Beweisprovenienz fuer P-K1/P9 und beeinflusst keine
-    fachliche Rechnung.  Ist Git nicht verfuegbar, bleibt der Zustand mit
-    ``unbekannt`` ausdruecklich benannt.
+    Ist Git nicht verfuegbar, bleibt der Zustand mit ``unbekannt``
+    ausdruecklich benannt.
     """
     stand: Dict[str, str] = {}
-    for name, argv in (
-        ("commit", ["git", "rev-parse", "HEAD"]),
-        ("branch", ["git", "rev-parse", "--abbrev-ref", "HEAD"]),
-        ("dirty", ["git", "status", "--porcelain"]),
-    ):
-        try:
-            out = subprocess.run(
-                argv,
-                cwd=repo_root,
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=30,
-            ).stdout.strip()
-        except Exception:  # noqa: BLE001 - unbekannt ist ein benannter Stand
+    for name, roh in (("commit", _git_lesen(repo_root, GIT_COMMIT)),
+                      ("branch", _git_lesen(repo_root, GIT_ZWEIG)),
+                      ("dirty", _git_lesen(repo_root, GIT_STATUS))):
+        out = _text(roh)
+        if out is None:
             stand[name] = "unbekannt"
             continue
+        out = out.strip()
         stand[name] = ("ja" if out else "nein") if name == "dirty" else out
     return stand
+
+
+def git_commit_von(repo_root: Path, angabe: str) -> Optional[str]:
+    """Die Commit-Angabe ``angabe`` als vollstaendiger Hash (None = keiner)."""
+    if not _REF.match(angabe or ""):
+        raise GitAngabeFehler(f"Commit-Angabe {angabe!r} ist keine Angabe")
+    out = _text(_git_lesen(repo_root, GIT_AUFLOESEN, f"{angabe}^{{commit}}"))
+    out = (out or "").strip()
+    return out if re.fullmatch(r"[0-9a-f]{40}", out) else None
+
+
+def git_merge_base(repo_root: Path, a: str, b: str) -> Optional[str]:
+    out = (_text(_git_lesen(repo_root, GIT_MERGE_BASE, a, b)) or "").strip()
+    return out if re.fullmatch(r"[0-9a-f]{40}", out) else None
+
+
+def git_diffstat(repo_root: Path, von: str, pfade: Tuple[str, ...]) -> Optional[list]:
+    """Zeilen hinzu/weg je Datei zwischen ``von`` und dem ARBEITSBAUM.
+
+    Gegen den Arbeitsbaum, nicht gegen ``HEAD``: Der Beleg bindet den Kern,
+    der vorliegt (``kern_sha256``), und die Sicht muss dieselben Bytes
+    zeigen. Binaerdateien tragen ``None`` als Zeilenzahl.
+    """
+    out = _text(_git_lesen(repo_root, GIT_DIFFSTAT, von, "--", *pfade))
+    if out is None:
+        return None
+    zeilen = []
+    for zeile in out.splitlines():
+        teile = zeile.split("\t")
+        if len(teile) != 3:
+            continue
+        plus, minus, pfad = teile
+        zeilen.append((None if plus == "-" else int(plus),
+                       None if minus == "-" else int(minus), pfad))
+    return zeilen
+
+
+def git_commits(repo_root: Path, von: str, pfade: Tuple[str, ...]) -> Optional[list]:
+    """Die Commits ``von..HEAD``, die einen der Pfade beruehren, aelteste zuerst.
+
+    Je Commit: Hash, Datum, Betreffzeile und die beruehrten Dateien. Die
+    Betreffzeile ist Fremdtext — der Aufrufer behandelt sie als Daten.
+    """
+    out = _text(_git_lesen(repo_root, GIT_LOG, f"{von}..HEAD", "--", *pfade))
+    if out is None:
+        return None
+    commits = []
+    for block in out.split("\x1e"):
+        if not block.strip():
+            continue
+        kopf, _, rest = block.partition("\n")
+        teile = kopf.split("\x1f")
+        if len(teile) != 3:
+            continue
+        commits.append({
+            "commit": teile[0], "datum": teile[1], "betreff": teile[2],
+            "dateien": sorted(z.strip() for z in rest.splitlines() if z.strip()),
+        })
+    commits.reverse()
+    return commits
+
+
+def git_nicht_committet(repo_root: Path, pfade: Tuple[str, ...]) -> Optional[list]:
+    """``(status, pfad)`` jeder nicht committeten Aenderung unter den Pfaden."""
+    out = _text(_git_lesen(repo_root, GIT_STATUS_PFADE, *pfade))
+    if out is None:
+        return None
+    return [(zeile[:2].strip(), zeile[3:].strip()) for zeile in out.splitlines() if len(zeile) > 3]
+
+
+def git_dateien(repo_root: Path, ref: str, pfad: str) -> Optional[list]:
+    """Die Dateien unter ``pfad`` im Commit ``ref``."""
+    out = _text(_git_lesen(repo_root, GIT_DATEIEN, ref, "--", pfad))
+    return None if out is None else [z for z in out.splitlines() if z]
+
+
+def git_inhalt(repo_root: Path, ref: str, pfad: str) -> Optional[bytes]:
+    """Die Bytes der Datei ``pfad`` im Commit ``ref``."""
+    return _git_lesen(repo_root, GIT_INHALT, f"{ref}:{pfad}")
 
 
 #: Der produktive Stand des Rechenkerns. Entwicklung im Fall laeuft auf
@@ -107,10 +248,9 @@ def git_stand(repo_root: Path) -> Dict[str, str]:
     """Der Git-Stand des Arbeitsbaums — oeffentlicher Name fuer ``_git_stand``.
 
     A-K2 haelt den Git-Teil seines Belegs gegen den LEBENDEN Stand
-    (Commit, dirty). Dafuer reichen die drei lesenden Aufrufe, die dieses
-    Modul ohnehin macht; ein vierter waere eine zweite Ausnahme, und die
-    gibt es hier nicht (Waechter: test_subprozess_bleibt_auf_die_
-    beweisprovenienz_beschraenkt).
+    (Commit); seit 2026-10-01 rechnet es den ganzen Aenderungsbeleg ueber
+    dieselbe Subprozess-Stelle nach (:func:`_git_lesen`, Waechter:
+    test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt).
     """
     return _git_stand(repo_root)
 
@@ -118,12 +258,12 @@ def git_stand(repo_root: Path) -> Dict[str, str]:
 def zweig_ist_aktuell(vergleich: Mapping[str, str]) -> bool:
     """Liegt der Branch auf der Spitze des Referenzzweigs auf?
 
-    Reine Funktion ueber die FESTGEHALTENEN Werte — ohne Subprozess. Der
-    Merge-Base ist die eine Angabe, die das Entscheid-Kommando nicht
-    selbst nachrechnen kann, ohne eine zweite Subprozess-Ausnahme
-    aufzumachen; sie bleibt deshalb eine Angabe des Produzenten. Was das
-    Gate SELBST nachprueft, sind Commit und ``dirty`` gegen den lebenden
-    Stand — das faengt den Beleg eines fremden Laufs.
+    Reine Funktion ueber die FESTGEHALTENEN Werte — ohne Subprozess. Seit
+    2026-10-01 ist ``referenz`` der zuletzt abgenommene Kernstand
+    (``kernstand_belegen --von``); liegt der lebende Stand auf ihm auf,
+    zeigt die Differenz nur die Aenderungen dieses Zweigs. Das Gate rechnet
+    den ganzen Beleg ueber :func:`_git_lesen` nach, den Merge-Base
+    eingeschlossen.
     """
     basis, spitze = vergleich.get("merge_base"), vergleich.get("referenz_commit")
     return bool(basis) and basis == spitze and basis != "unbekannt"

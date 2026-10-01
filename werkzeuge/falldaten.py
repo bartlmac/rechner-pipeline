@@ -49,6 +49,7 @@ import collections
 import datetime as _dt
 import csv
 import json
+import re
 import statistics
 import sys
 from pathlib import Path
@@ -515,13 +516,87 @@ def abnahmen(fall: Path) -> Dict[str, Any]:
         str(p.relative_to(fall))
         for p in abgeleitet.rglob("bestandsbericht*.html")
     ) if abgeleitet.is_dir() else []
+    aus["kernstand"] = kernstand(fall)
+    aus["standabnahmen"] = standabnahmen(fall)
     aus["gelesen_aus"] = [
         f"abgeleitet/berichte/{datei}.json"
         for _, datei, _ in ABNAHMEN
         if (berichte / f"{datei}.json").is_file()
     ] + (["abgeleitet/berichte/migrationssuite.json"]
-         if (berichte / "migrationssuite.json").is_file() else [])
+         if (berichte / "migrationssuite.json").is_file() else []) + (
+        (aus["kernstand"] or {}).get("gelesen_aus") or [])
     return aus
+
+
+def standabnahmen(fall: Path) -> List[Dict[str, Any]]:
+    """Je Gegenstand (Kernstand A-K2, T-Box-Stand A-O1), auf welchem Weg der
+    Stand des Falls abgenommen ist — woertlich aus dem A-M4-Snapshot, der es
+    signiert (ADR-018, Nachtrag 2026-10-01): "abgenommen im Fall", "keine
+    Aenderung seit Abnahme <snapshot> (<Herkunft>)" oder die Basislinie der
+    T-Box. Gelesen wird der juengste strukturell unversehrte, angenommene
+    A-M4-Snapshot; die Signatur prueft dieses Werkzeug nicht (T19-02)."""
+    from rechner_pipeline.models import standabnahme as sa
+
+    kandidaten = []
+    for pfad in sorted((fall / "entscheide").glob("A-M4-*.json")):
+        d = _json(pfad)
+        if (isinstance(d, dict) and d.get("entscheid") == "angenommen"
+                and not _verifiziere_snapshot(d, pfad.name)):
+            kandidaten.append(d)
+    if not kandidaten:
+        return []
+    juengster = max(kandidaten, key=lambda d: str(d.get("entschieden_am")))
+    eintraege = juengster.get("standabnahmen") or {}
+    return [{"gate": g.gate, "titel": g.titel,
+             "weg": (eintraege.get(g.rolle) or {}).get("weg"),
+             "anzeige": (eintraege.get(g.rolle) or {}).get("anzeige")
+             or "im Snapshot nicht ausgewiesen (Schema vor 8)"}
+            for g in sa.GEGENSTAENDE]
+
+
+def kernstand(fall: Path) -> Optional[Dict[str, Any]]:
+    """Die Kernabnahme A-K2 des Falls: was sich am Rechenkern seit dem
+    zuletzt abgenommenen Kernstand geaendert hat, und was die Zeichnung
+    NICHT deckt (ADR-018, Nachtrag 2026-10-01).
+
+    Die Regression steht hier so, wie der Beleg sie fuehrt — als benannte
+    Ausnahme, solange das Werkzeug fehlt, woertlich aus
+    ``models.kernabnahme``; nie als Urteil.
+    """
+    from rechner_pipeline.models import kernabnahme as ka
+
+    d = _json(fall / ka.AENDERUNG_RELATIV)
+    if not isinstance(d, dict):
+        return None
+    r = _json(fall / ka.REGRESSION_RELATIV)
+    git = d.get("git") if isinstance(d.get("git"), dict) else {}
+    module = [m for m in d.get("module") or [] if isinstance(m, dict)]
+    geaendert = [str(m.get("modul")) for m in module
+                 if m.get("hinzu") or m.get("weg") or m.get("commits")
+                 or m.get("nicht_committet")]
+    if ka.ist_ausnahme(r):
+        regression = ka.ANZEIGE_REGRESSION
+    elif isinstance(r, dict):
+        regression = (f"Regression: {r.get('vertraege_geprueft')} von "
+                      f"{r.get('vertraege_gesamt')} Vertraegen durchgerechnet, "
+                      f"{len(r.get('abweichungen') or [])} Abweichung(en)")
+    else:
+        regression = "Regression: kein Beleg"
+    return {
+        "von": git.get("referenz"),
+        "von_commit": str(git.get("referenz_commit") or "")[:12],
+        "von_version": d.get("von_version"),
+        "nach_version": d.get("nach_version"),
+        "veraendert": d.get("veraendert"),
+        "module": len(module),
+        "module_geaendert": geaendert,
+        "commits": len(d.get("commits") or []),
+        "regression": regression,
+        "deckung": ka.DECKUNG_UNTER_AUSNAHME if ka.ist_ausnahme(r) else None,
+        "sicht": (ka.SICHT_RELATIV if (fall / ka.SICHT_RELATIV).is_file() else None),
+        "gelesen_aus": [p for p in (ka.AENDERUNG_RELATIV, ka.REGRESSION_RELATIV)
+                        if (fall / p).is_file()],
+    }
 
 
 def _suite_achsen(suite: Dict[str, Any]) -> Dict[str, int]:
@@ -603,6 +678,9 @@ def kette(fall: Path) -> Dict[str, Any]:
             "entschieden_am": d.get("entschieden_am"),
             "schluessel_sha256": (freigabe.get("schluessel_sha256") or "")[:16],
             "pflichtbelege": sorted(d.get("pflichtbelege") or {}),
+            # Was die Zeichnung NICHT deckt, woertlich aus dem Snapshot
+            # (A-K2 ab Schema 8, ADR-018 Nachtrag 2026-10-01).
+            "ausnahmen": dict(d.get("ausnahmen") or {}),
             "artefakte_gebunden": len(d.get("artefakt_hashes") or {}),
             "begruendung": d.get("begruendung"),
             # Was dieses Werkzeug OHNE Schluessel pruefen kann (T19-02):
@@ -816,9 +894,9 @@ ERWARTET = (
 #: verlangen, sonst behauptet sie Vollstaendigkeit, die keine ist.
 ERWARTETE_ABNAHMEN = ("A-M1", "A-M2", "A-M3")
 
-#: Gates, fuer die ein abgeschlossener Bestands-Fall einen menschlichen
-#: Entscheid tragen muss.
-ERWARTETE_ENTSCHEIDE = ("A-M1", "A-M2", "A-M3", "A-M4")
+#: Pflichtrollen von A-M4, die ein Entscheid-Snapshot sind
+#: (``a<gegenstand><nummer>_snapshot``, models.belegrollen).
+_SNAPSHOTROLLE = re.compile(r"^a([a-z])(\d)_snapshot$")
 
 #: Gruppen des Modells, die es nur im Bestands-Scope gibt: Ein Tarif-Fall
 #: hat keinen Bestand, keine Transformation und kein Zwei-Stichtags-
@@ -835,7 +913,26 @@ def erwartete_abnahmen(scope: Optional[str]) -> Tuple[str, ...]:
 
 
 def erwartete_entscheide(scope: Optional[str]) -> Tuple[str, ...]:
-    return erwartete_abnahmen(scope) + ("A-M4",)
+    """Die Entscheide eines abgeschlossenen Falls: was A-M4 als Vorbedingung
+    pinnt, und A-M4 selbst.
+
+    ABGELEITET aus dem Belegvertrag (``models.belegrollen``), nicht
+    abgetippt: Bis 2026-10-01 stand hier eine Liste A-M1..A-M4 — ohne A-Q1,
+    das A-M4 seit jeher verlangt. Eine Menge, die die eine Seite erweitert
+    und die andere aufzaehlt, laeuft auseinander. Unbekannter Scope: das
+    volle Bestandsprofil (fail-closed, Review T21-04).
+
+    Die Standabnahmen (A-K2 Kernstand, A-O1 T-Box-Stand; Entscheid
+    2026-10-01) sind KEINE Pflicht-Entscheide im Fall: Bei unveraendertem
+    Stand gilt eine fruehere Abnahme ("keine Aenderung"). Wie sie erfuellt
+    sind, zeigt :func:`standabnahmen` aus dem A-M4-Snapshot.
+    """
+    from rechner_pipeline.models.belegrollen import am4_belegrollen
+
+    rollen = am4_belegrollen(scope if scope in ("tarif", "bestand") else "bestand")
+    vorher = tuple(f"A-{m.group(1).upper()}{m.group(2)}"
+                   for m in map(_SNAPSHOTROLLE.match, rollen) if m)
+    return vorher + ("A-M4",)
 
 
 def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:

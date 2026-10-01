@@ -19,7 +19,13 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.fall import anlegen, registrieren
-from tests.zeichnung_fixture import VA, mandat_datei, standard_ordnung
+from tests.zeichnung_fixture import (
+    STANDROLLEN,
+    VA,
+    mandat_datei,
+    standard_ordnung,
+    zeichne_kernstand,
+)
 from rechner_pipeline.gates import gate_entscheid
 from rechner_pipeline.gates._provenienz import (
     O3_BELEG_GATE_VERSION,
@@ -105,6 +111,11 @@ def _p9(fall: Path, key: Path | None, gate: str, entscheid: str = "angenommen"):
         # Die Ordnung liegt NEBEN dem Fall (ausserhalb), auch wenn der
         # Schluessel absichtlich falsch liegt — geprueft wird der Schluessel.
         ordnung = standard_ordnung(fall.parent, key)
+        # Der Ring traegt die Schluessel der Standabnahme mit (A-K2, A-O1):
+        # A-M4 prueft die Signaturen der Annahmen, auf denen es gruendet.
+        for _, _, datei, _ in STANDROLLEN:
+            if (fall.parent / datei).exists():
+                argv.extend(["--freigabe-schluessel", str(fall.parent / datei)])
         argv.extend(["--freigabe-schluessel", str(key),
                      "--zeichnungsordnung", str(ordnung),
                      "--mandat", str(mandat_datei(fall))])
@@ -140,6 +151,8 @@ def _bereit_fuer_g2(tmp_path: Path) -> tuple[Path, Path, Path]:
     # A-M1 geht A-M4 voraus (ADR-010); der Manipulationsschutz-Fall ist
     # tarif-Scope, dort traegt A-M1 keine eigenen Belegrollen.
     assert _p9(fall, key, "A-M1").exit_code == 0
+    # Der Kernstand des Falls (A-K2, Entscheid 2026-10-01) geht A-M4 voraus.
+    zeichne_kernstand(fall, REPO_ROOT)
     _o3_beleg(fall)
     return fall, key, Path(aq1.paths["snapshot"])
 

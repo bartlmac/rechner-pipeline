@@ -187,10 +187,18 @@ def gueltige_rollenkennung(rolle: object) -> bool:
 #: abgenommen. Nur wenn sie ausnahmsweise einen neuen Rechenweg erzwingt,
 #: ist sie eine Kern-Aenderung — und der Beleg zeigt dann genau das.
 #:
-#: Sie traegt ``regression`` als PFLICHTbeleg und ist damit ohne den
-#: Regressionsproduzenten bewusst nicht zeichenbar. Das ist Absicht: Der
-#: geaenderte Kern bewertet nach der Migration den laufenden Bestand
-#: weiter, und diese Wirkung sieht sonst niemand.
+#: Sie traegt ``regression`` als PFLICHTbeleg: Der geaenderte Kern bewertet
+#: nach der Migration den laufenden Bestand weiter, und diese Wirkung sieht
+#: sonst niemand.
+#:
+#: Nachtrag 2026-10-01 (Entscheid des Maintainers, ADR-018): A-K2 nimmt
+#: den KERNSTAND ab, auf dem ein Fall rechnet, A-O1 den T-BOX-STAND; A-M4
+#: verlangt beide nach einer Regel (``models.standabnahme``: im Fall
+#: gezeichnet, "keine Aenderung" ueber einen Verweis auf eine fruehere
+#: Abnahme, oder fuer die T-Box die Basislinie). Bis der
+#: Regressionsproduzent gebaut ist, steht an
+#: seiner Stelle die benannte Ausnahme (``models.kernabnahme``); die
+#: Zeichnung deckt dann nur die qualitative Pruefung der Aenderungen.
 #:
 #: ``A-B2.zugangsabnahme`` (ADR-022, Entscheid des Maintainers 2026-09-30):
 #: die Abnahme des ZUGANGS eines abgenommenen Bestands in die produktive

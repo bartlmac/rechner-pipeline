@@ -4,7 +4,7 @@ description: >-
   Run a complete migration case through the ontology pipeline (Stufe 1 Quellen->A-Box
   plus Bestandsabzug->Transformation, Stufe 2 A-Box->Spez->Kern-Parametrierung, Stufe 3
   Golden-Master-Abnahme plus aktuarieller Test und Bestands-Controlling ueber zwei
-  Stichtage), including the human gates A-Q1/A-M1/A-M4 and their P9 snapshots. Trigger when the user asks to migrate a new
+  Stichtage), including the human gates A-Q1/A-O1/A-K2/A-M1/A-M4 and their P9 snapshots. Trigger when the user asks to migrate a new
   Tarifgeneration or product delivery (Tarifmeldung + Tarifrechner + Bestandsabzug) into the
   kernel, to "einen Migrationsfall durchfuehren/anlegen", or names this skill. Skip for:
   authoring gates (use author-rechner-toolbox-gate) or pure read/analysis questions.
@@ -78,7 +78,9 @@ der Merge — er verweigert bei aufgeloesten Diskrepanzen den Lauf, und
 `--ueberschreiben` heisst: A-Q1 wird neu entschieden (Vorfall 2026-09-07).
 
 Erzwungen ist im Code nur zweierlei: **A-Q1 und A-M1 gehen A-M4
-voraus** — beide als Pflichtrollen im A-M4-Snapshot. Alles andere ist
+voraus** (im Bestands-Scope auch A-M2 und A-M3), und **der Stand des
+Falls ist abgenommen** (Kernstand A-K2, T-Box-Stand A-O1) — als
+Pflichtrollen im A-M4-Snapshot. Alles andere ist
 Datenabhaengigkeit ohne Gate-DAG; wer sie missachtet, bekommt keinen
 Fehler, sondern einen Beleg, der spaeter nicht mehr gilt.
 
@@ -543,6 +545,46 @@ A-Box- und Systemstands, einen geltenden signierten A-Q1-Annahme-Snapshot
 2. Volle Suite: `.venv/bin/python -m pytest` — bestehende Referenzwerte
    duerfen sich nicht bewegen.
 
+### Der Stand des Falls — A-K2 und A-O1 (Mensch; hier STOPPST du, wenn sich etwas geaendert hat)
+
+A-M4 verlangt in beiden Scopes, dass der Stand, auf dem der Fall laeuft,
+abgenommen ist — der KERNSTAND (A-K2, gezeichnet von `mensch/rechenkern`)
+und der T-BOX-STAND (A-O1, gezeichnet von `mensch/architektur`), nach EINER
+Regel (ADR-018, Nachtrag 2026-10-01). Je Gegenstand gilt genau einer von
+drei Wegen:
+
+1. **Abnahme im Fall** — der Stand hat sich seit der letzten Abnahme
+   geaendert. Kern: Der Rechenkern-Agent legt vor mit
+   `python -m rechner_pipeline.gates.kernstand_belegen --fall faelle/<fall> --repo-root . --von <zuletzt abgenommener Kernstand> --begruendung "<Kurzbegruendung>"`
+   (Aenderungen je Modul mit den Commits des Zweigs, Sicht
+   `abgeleitet/kern/aenderung.md`, Regressionsbeleg — bis zu seinem
+   Werkzeug die benannte AUSNAHME "Regression: Ausnahme — nicht gefahren,
+   Werkzeug noch nicht erstellt"; gib sie genau so weiter, nie als
+   bestanden). T-Box: Der Architektur-Agent legt vor mit
+   `python -m rechner_pipeline.gates.stand_belegen tbox --fall faelle/<fall> --repo-root . --artefakt <vermerk> --begruendung "<text>"`,
+   das Aktuariat legt `abgeleitet/tbox/stellungnahme.json` daneben. Der
+   Mensch prueft die Diffs und zeichnet: `gate_entscheid --gate A-K2` bzw.
+   `--gate A-O1` mit dem Schluessel seiner Rolle — uebergeben, nicht selbst
+   entscheiden.
+2. **Keine Aenderung** — der Stand ist identisch zu dem, den ein frueher
+   angenommener Snapshot (meist der des vorigen Falls) abgenommen hat:
+   `python -m rechner_pipeline.gates.stand_belegen verweisen --fall faelle/<fall> --gate A-K2|A-O1 --snapshot <frueherer Snapshot> --repo-root .`
+   legt den Verweis an den festen Ort. Kein neuer Entscheid; A-M4 prueft
+   Signatur, Rolle und Stand und fuehrt woertlich "keine Aenderung seit
+   Abnahme <snapshot> (<Herkunft>)".
+3. **Basislinie** (nur T-Box): Solange die Versionslinie der T-Box ein
+   Element hat, gab es keinen Uebergang — nichts vorzulegen.
+
+Fuer den Kern gibt es keine Basislinie: die erste Abnahme ist zu zeichnen
+(`--von` nennt der Mensch). Liegt im Fall eine Kette des Gates, gilt nur
+Weg 1 — eine Ablehnung wird nicht durch einen Verweis umgangen.
+
+**In der Laufzeit einer Migration schreibst du nicht an der T-Box und
+nicht am Kern.** Du legst den Aenderungsvorschlag vor; der Mensch prueft
+die Diffs und zeichnet (im Regie-Modus die simulierte Rolle unter Mandat).
+Einen Entwurf im Arbeitsbaum baut ein Agent nur in der ENTWICKLUNG der
+Loesung, unter Auftrag des Maintainers.
+
 ### Stufe 3b — Pruefung des uebernommenen Bestands (wenn Stufe 1b lief)
 
 P-K1 nimmt die PARAMETRIERUNG ab, nicht den Bestand. Der uebernommene
@@ -634,7 +676,10 @@ sie als Rollen `am1_snapshot`/`am2_snapshot`/`am3_snapshot`: A-M1 immer
 (aktuarielle vor finanzieller Abnahme, ADR-010), im Bestands-Scope auch
 A-M2 und A-M3 (Entscheidung 2026-08-31 — ein Bestand mit richtigem
 Stichtagswert und falscher Ablaufleistung kam vorher durch das
-Controlling). A-M4 liest den Scope aus `fall.json`
+Controlling). In beiden Scopes verlangt A-M4 ausserdem, dass Kernstand
+und T-Box-Stand abgenommen sind (Rollen `kernstand`, `tboxstand`; Weg und
+Anzeige je Gegenstand im Snapshot unter `standabnahmen`), und rechnet die
+Belege nach. A-M4 liest den Scope aus `fall.json`
 und leitet seine exakte Pflichtbelegmenge je Gate aus dem Fall-Scope ab. Im
 Bestands-Scope werden das Abnahme-Ledger, jedes von ihm gebundene Artefakt und
 das von P-B1 benannte Portfolio gegen die aktuellen Bytes nachgehasht. P-B1,

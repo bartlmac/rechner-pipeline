@@ -230,7 +230,7 @@ def test_ak1_liest_seine_pflichtbelege_genau_einmal(pk1_fall, monkeypatch):
     ergebnis = gate_entscheid.main([
         "--fall", str(pk1_fall), "--gate", "A-O1", "--entscheid", "angenommen",
         "--entscheider", "IT-Verantwortung", "--begruendung", "T-Box erweitert",
-        "--repo-root", str(REPO_ROOT), *annahme_args(pk1_fall),
+        "--repo-root", str(REPO_ROOT), *annahme_args(pk1_fall, fuer="A-O1"),
     ])
     assert ergebnis.exit_code == 0, ergebnis.errors
     _pruefe_belegidentitaet(zaehler, geschrieben, ergebnis, mindestens=3)
