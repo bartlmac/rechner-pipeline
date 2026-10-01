@@ -354,9 +354,10 @@ def test_impact_skill_aenderung_trifft_workflow_doku_test():
     ergebnis = berechne_impact(
         [".claude/skills/entwickle-im-zielsystem/SKILL.md"], *_repo_args())
     assert ergebnis["knoten"] == ["system/skills"]
-    # Zwei Tests lesen die Skills: Workflow-Doku und die woertlichen
-    # Kommandos (Pruefrunde H, H14).
+    # Drei Tests lesen die Skills: Workflow-Doku, die woertlichen
+    # Kommandos (Pruefrunde H, H14) und die Gate-Namen (Pruefrunde I, I17).
     assert ergebnis["tests"] == ["test_agent_workflow_docs.py",
+                                 "test_dokumente_gatenamen.py",
                                  "test_dokumentierte_kommandos.py"]
 
 
@@ -539,6 +540,7 @@ def test_skill_katalog_ist_an_system_skills_gebunden():
     ergebnis = berechne_impact(
         ["docs/architektur/skill-architektur.md"], *_repo_args())
     assert ergebnis["tests"] == ["test_agent_workflow_docs.py",
+                                 "test_dokumente_gatenamen.py",
                                  "test_dokumentierte_kommandos.py"]
 
 

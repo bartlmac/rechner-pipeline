@@ -213,3 +213,181 @@ def test_ratsche_positivkontrolle_des_detektors():
               'p.add_argument("--repo", type=lebendes_repo)\n')
     assert _repo_root_argumente(quelle, "x.py") == Counter({("x.py", True): 2,
                                                              ("x.py", False): 1})
+
+
+# --------------------------------------------------------------------------- #
+# Pruefrunde I, Nachtrag: der Rueckfall ohne --repo-root
+# --------------------------------------------------------------------------- #
+#
+# Ohne ``--repo-root`` fielen ``gates.extract`` und ``gates.abnahmebericht`` auf
+# das Arbeitsverzeichnis zurueck, ``gates.generation_golden`` auf den Baum des
+# Pakets (``__file__``) — alle drei an ``lebendes_repo`` vorbei (der Baum muss
+# inhaltsgleich mit dem ausgefuehrten Paket sein, kein fremder Bytecode). Der
+# Abnahmebericht erzeugt die Vorlage, die ein Mensch fuer A-M4 zeichnet; aus
+# dem Rueckfall kam der Systemstand, gegen den sie Suite, P-B1 und
+# Fuehrungsprobe haelt. Ein ``default="."`` am Argument geht durch den
+# ``type`` (argparse wandelt String-Vorgaben) und ist damit schon gedeckt.
+
+
+def _rueckfaelle(quelle: str, datei: str) -> Counter:
+    """Je Ausdruck ``<x> if args.repo_root else <rueckfall>``: der Rueckfall,
+    eingeteilt in ``None`` (kein Baum), ``lebendes_repo`` (die eine Pruefung)
+    oder den Quelltext (ein Baum an ihr vorbei)."""
+    treffer: Counter = Counter()
+    for k in ast.walk(ast.parse(quelle)):
+        if isinstance(k, ast.IfExp) and "repo_root" in ast.unparse(k.test):
+            sonst = k.orelse
+            if isinstance(sonst, ast.Constant) and sonst.value is None:
+                art = "None"
+            elif isinstance(sonst, ast.Call) and getattr(sonst.func, "id", None) == "lebendes_repo":
+                art = "lebendes_repo"
+            else:
+                art = ast.unparse(sonst)
+            treffer[(datei, art)] += 1
+    return treffer
+
+
+def _arbeitsverzeichnisse(quelle: str, datei: str) -> Counter:
+    """Je ``Path.cwd()``/``os.getcwd()``: wofuer — als Argument von
+    ``lebendes_repo``, als Wurzel des Diagnostik-Rueckfalls
+    (``cwd / "runs" / "diagnostics"``, kein Repo-Baum) oder anders."""
+    baum = ast.parse(quelle)
+    eltern = {kind: k for k in ast.walk(baum) for kind in ast.iter_child_nodes(k)}
+    treffer: Counter = Counter()
+    for k in ast.walk(baum):
+        if isinstance(k, ast.Call) and ast.unparse(k.func) in ("Path.cwd", "os.getcwd"):
+            oben = eltern.get(k)
+            if isinstance(oben, ast.Call) and getattr(oben.func, "id", None) == "lebendes_repo":
+                art = "lebendes_repo"
+            else:
+                kette = k
+                while isinstance(eltern.get(kette), ast.BinOp):
+                    kette = eltern[kette]
+                art = "diagnostics" if ast.unparse(kette).endswith("'diagnostics'") else "anders"
+            treffer[(datei, art)] += 1
+    return treffer
+
+
+#: Gemessen (AST ueber ``gates/``). ``==``: Ein neuer Rueckfall an der einen
+#: Pruefung vorbei ist rot.
+RUECKFAELLE = Counter({
+    ("gates/abnahmebericht.py", "None"): 2,
+    ("gates/abnahmebericht.py", "lebendes_repo"): 1,
+    ("gates/abox_merge.py", "None"): 2,
+    ("gates/abox_validate.py", "None"): 1,
+    ("gates/aktuartest.py", "None"): 1,
+    ("gates/bestand_validate.py", "None"): 2,
+    ("gates/extract.py", "lebendes_repo"): 1,
+    ("gates/gate_entscheid.py", "None"): 6,
+    ("gates/generation_golden.py", "None"): 1,
+    ("gates/generation_golden.py", "lebendes_repo"): 1,
+    # ``repo_root is not None``: eine Liste, kein Baum.
+    ("gates/gate_entscheid.py", "[]"): 1,
+    ("gates/stand_belegen.py", "[]"): 1,
+    # Der Ledger eines Aufruffehlers nennt den rohen Wert (``repo_root`` des
+    # Ledgers ist reserviert, ungenutzt).
+    ("gates/_common.py", "None"): 1,
+})
+ARBEITSVERZEICHNISSE = Counter({
+    ("gates/_common.py", "diagnostics"): 1,
+    ("gates/abnahmebericht.py", "diagnostics"): 1,
+    ("gates/abnahmebericht.py", "lebendes_repo"): 1,
+    ("gates/abox_merge.py", "diagnostics"): 1,
+    ("gates/abox_validate.py", "diagnostics"): 1,
+    ("gates/aktuartest.py", "diagnostics"): 1,
+    ("gates/bestand_validate.py", "diagnostics"): 1,
+    ("gates/extract.py", "diagnostics"): 1,
+    ("gates/extract.py", "lebendes_repo"): 1,
+    ("gates/gate_entscheid.py", "diagnostics"): 1,
+    ("gates/generation_golden.py", "diagnostics"): 1,
+})
+
+
+def test_ratsche_jeder_rueckfall_geht_durch_die_eine_stelle():
+    """Statisch (``==``): Kein Ausdruck unter ``gates/`` bestimmt ohne
+    ``--repo-root`` einen Baum an ``lebendes_repo`` vorbei, und jedes
+    Arbeitsverzeichnis ist entweder ihr Argument oder die Wurzel des
+    Diagnostik-Rueckfalls."""
+    rueck: Counter = Counter()
+    cwd: Counter = Counter()
+    for pfad in sorted((SRC / "gates").glob("*.py")):
+        quelle, name = pfad.read_text(encoding="utf-8"), pfad.relative_to(SRC).as_posix()
+        rueck += _rueckfaelle(quelle, name)
+        cwd += _arbeitsverzeichnisse(quelle, name)
+    assert rueck == RUECKFAELLE
+    assert cwd == ARBEITSVERZEICHNISSE
+
+
+def test_ratsche_rueckfall_positivkontrolle():
+    quelle = ("a = Path(args.repo_root) if args.repo_root else Path.cwd()\n"
+              "b = Path(args.repo_root) if args.repo_root else lebendes_repo(Path.cwd())\n"
+              "c = Path(args.repo_root) if args.repo_root else None\n"
+              "d = Path(args.d) if args.d else Path.cwd() / 'runs' / 'diagnostics'\n")
+    assert _rueckfaelle(quelle, "x.py") == Counter({
+        ("x.py", "Path.cwd()"): 1, ("x.py", "lebendes_repo"): 1, ("x.py", "None"): 1})
+    assert _arbeitsverzeichnisse(quelle, "x.py") == Counter({
+        ("x.py", "anders"): 1, ("x.py", "lebendes_repo"): 1, ("x.py", "diagnostics"): 1})
+
+
+def _leere_eingaben(tmp_path: Path) -> list:
+    """Vorhandene (leere) Pflichtdateien: A-M4 kommt damit bis zur Wahl des
+    Baums; was danach scheitert, ist hier nicht der Gegenstand."""
+    eingaben = []
+    for flag in ("--suite", "--spec", "--transformation-ergebnis",
+                 "--bestandsbericht-vor", "--bestandsbericht-nach"):
+        datei = tmp_path / "eingaben" / (flag.strip("-") + ".json")
+        datei.parent.mkdir(exist_ok=True)
+        datei.write_text("{}", encoding="utf-8")
+        eingaben += [flag, str(datei)]
+    return eingaben + ["--titel", "t", "--stichtag-1", "2025-12-31",
+                       "--stichtag-2", "2026-12-31",
+                       "--bericht", str(tmp_path / "bericht.html"),
+                       "--diagnostics-dir", str(tmp_path / "diagnostics")]
+
+
+@pytest.mark.parametrize("kommando", ("abnahmebericht", "extract"))
+def test_ohne_repo_root_wird_ein_fremdes_arbeitsverzeichnis_verweigert(
+        tmp_path, monkeypatch, kommando):
+    """Rot vor dem Fix: Ohne ``--repo-root`` rechnete A-M4 (und P-Q1) aus dem
+    Arbeitsverzeichnis, auch wenn es ein Baum mit veraendertem Kern war.
+    Jetzt: Exit 2 mit der Meldung von ``lebendes_repo``. Positivkontrolle:
+    aus dem Baum des Pakets kommt keine solche Meldung.
+
+    Mutationsprobe: den Rueckfall wieder auf ``Path.cwd()`` setzen -> rot."""
+    from rechner_pipeline.gates import abnahmebericht, extract
+
+    main, argv = {
+        "abnahmebericht": (abnahmebericht.main, _leere_eingaben(tmp_path)),
+        "extract": (extract.main, ["--diagnostics-dir", str(tmp_path / "diagnostics")]),
+    }[kommando]
+    klon = _klon(tmp_path, veraendert=True)
+    monkeypatch.chdir(klon)
+    ergebnis = main(argv)
+    meldung = " ".join(e["message"] for e in ergebnis.errors)
+    assert ergebnis.exit_code == 2, (ergebnis.exit_code, meldung)
+    assert "nicht das ausgefuehrte Paket" in meldung and "Arbeitsverzeichnis" in meldung, meldung
+    monkeypatch.chdir(REPO)
+    ergebnis = main(argv)
+    meldung = " ".join(e["message"] for e in ergebnis.errors)
+    assert "nicht das ausgefuehrte Paket" not in meldung, meldung
+
+
+def test_p_k1_prueft_auch_den_baum_des_pakets(tmp_path, monkeypatch):
+    """P-K1 faellt ohne ``--repo-root`` auf den Baum des Pakets zurueck; der
+    geht jetzt durch dieselbe Pruefung. Einen fremden Bytecode im
+    ausgefuehrten Paket legt der Test nicht an (er schriebe in den
+    Repo-Baum); er zeigt die Verdrahtung: verweigert ``lebendes_repo``, endet
+    P-K1 benannt mit Exit 2, statt einen Beleg zu schreiben."""
+    from rechner_pipeline.gates import generation_golden
+    from tests.e2e_fixture import bereite_pk1_fall
+
+    fall = bereite_pk1_fall(tmp_path, ("klv/tg2012",))
+
+    def _verweigert(wert):
+        raise argparse.ArgumentTypeError(f"Probe: {wert} verweigert")
+
+    monkeypatch.setattr(generation_golden, "lebendes_repo", _verweigert)
+    ergebnis = generation_golden.main(["--fall", str(fall), "--generation", "klv/tg2012"])
+    meldung = " ".join(e["message"] for e in ergebnis.errors)
+    assert ergebnis.exit_code == 2, (ergebnis.exit_code, meldung)
+    assert "Probe:" in meldung and "Baum des ausgefuehrten Pakets" in meldung, meldung

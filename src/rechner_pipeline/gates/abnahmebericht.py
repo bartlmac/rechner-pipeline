@@ -2688,7 +2688,18 @@ def main(argv: Optional[List[str]] = None):
     paths["bericht"] = str(bericht_pfad)
     if fall is not None:
         paths["fall"] = str(fall)
-    repo_root = Path(args.repo_root).resolve() if args.repo_root else Path.cwd().resolve()
+    # Ohne --repo-root das Arbeitsverzeichnis — durch DIESELBE Pruefung wie
+    # das Argument (Pruefrunde I, Nachtrag): Aus diesem Baum kommt der
+    # Systemstand, gegen den A-M4 Suite, P-B1 und Fuehrungsprobe haelt; ein
+    # fremder Baum oder fremder Bytecode im Arbeitsverzeichnis lief vorher
+    # ungeprueft in die Vorlage, die ein Mensch zeichnet.
+    import argparse
+
+    try:
+        repo_root = (Path(args.repo_root).resolve() if args.repo_root
+                     else lebendes_repo(Path.cwd()))
+    except argparse.ArgumentTypeError as exc:
+        return _usage(f"ohne --repo-root gilt das Arbeitsverzeichnis: {exc}")
     hash_basis = fall if bestands_scope else (
         repo_root if args.repo_root else None
     )

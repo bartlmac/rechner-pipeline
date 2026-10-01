@@ -337,11 +337,28 @@ def _neu_aufsetzen_unter_sperre(
     # Soll-Bindung, Nebentabellen, P-B1, Lesbarkeit), scheitert danach; dann
     # wird die eigene, nie veroeffentlichte Vorbereitung entfernt — ihre
     # Identitaet steht fest: Name dieses Aufrufs, noch ohne Provenienz.
+    #
+    # EIN Schutz um den ganzen Abschnitt vom Anlegen der Vorbereitung bis zur
+    # ersten Umbenennung (Pruefrunde I, I21): Faellt irgendeine Schreibstelle
+    # darin aus, ist nichts bewegt, solange die alte Ablage an ihrem Ort liegt
+    # und das Archiv nicht; dann wird die eigene Vorbereitung abgeraeumt und
+    # die Meldung sagt das (oder nennt den Rest). Vorher schuetzten drei
+    # Faenge je eine Stelle; das Anlegen von configs lag vor dem ersten — ein
+    # Ausfall dort liess die schon angelegte Vorbereitung ungenannt liegen,
+    # und jeder weitere Aufruf, auch der Timer, hielt an. Die Identitaet der
+    # Vorbereitung steht fest: Ihr Name existierte vor diesem Aufruf nicht
+    # (oben geprueft), dieser Aufruf haelt die Sperre der Ablage.
+    def _abbruch_vor_dem_tausch() -> Optional[str]:
+        """Abraeumen, wenn nichts bewegt ist; Rueckgabe der Satz fuer die
+        Meldung, oder None, wenn schon bewegt wurde."""
+        if not (stand.exists() and not archiv_ziel.exists()):
+            return None
+        rest = _verwirf_vorbereitung(neu_pfad, stand, mit_provenienz=True)
+        return "nichts bewegt, " + (rest if rest else f"die Vorbereitung {neu_pfad} ist entfernt")
+
     neu = Ablage(neu_pfad)
-    angelegt = False
     try:
         neu.configs.mkdir(parents=True)
-        angelegt = True
         neu.config_pfad.write_bytes(config_bytes)
         eingang = eingang_anlegen(
             neu_pfad, fall, stichtag, schluesselring=schluesselring,
@@ -354,11 +371,52 @@ def _neu_aufsetzen_unter_sperre(
             lies_uebernahme(eingang, cfg, schluesselring=zeichner.ring, ordnung=zeichner.ordnung)
         except UebernahmeError as exc:
             raise NeuaufsetzenError(f"Eingang nicht lesbar, nichts bewegt: {exc}") from exc
+        provenienz = _provenienz(stand, archiv_ziel, config_quelle, config_bytes, eingang,
+                                 stichtag, jetzt)
+        # Provenienz und erste Umbenennung gehoeren noch zur Vorbereitung
+        # (Runde G, G28).
+        (neu_pfad / PROVENIENZ_DATEI).write_text(
+            json.dumps(provenienz, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8", newline="\n",
+        )
+        # 3. Archivieren und tauschen: zwei Umbenennungen, keine Loeschung.
+        os.rename(stand, archiv_ziel)
+    except OSError as exc:
+        satz = _abbruch_vor_dem_tausch()
+        if satz is not None:
+            raise NeuaufsetzenError(
+                f"Ein-/Ausgabefehler vor dem Tausch ({type(exc).__name__}: {exc}); {satz}"
+                " — Ausweg: die Ursache beheben und denselben Aufruf wiederholen") from exc
+        raise NeuaufsetzenError(
+            f"Ein-/Ausgabefehler beim Archivieren ({type(exc).__name__}: {exc}); alte Ablage: "
+            f"{archiv_ziel if archiv_ziel.exists() else stand}, vorbereitete neue Ablage: "
+            f"{neu_pfad} — Ausweg: Timer anhalten, Lage pruefen, dann von Hand: mv {neu_pfad} "
+            f"{stand}") from exc
     except Exception:
-        if angelegt:
-            _verwirf_vorbereitung(neu_pfad, stand)
+        # Eine Verweigerung (A-B2, Eingang, Lesbarkeit): abraeumen wie oben,
+        # die Verweigerung geht vor.
+        _abbruch_vor_dem_tausch()
         raise
-    provenienz: Dict[str, Any] = {
+    try:
+        os.rename(neu_pfad, stand)
+    except OSError as exc:
+        if not neu_pfad.exists() and (stand / PROVENIENZ_DATEI).is_file() and json.loads(
+                (stand / PROVENIENZ_DATEI).read_text(encoding="utf-8")) == provenienz:
+            # Ein anderer Prozess hat genau diesen Tausch vollendet (lauf_sperre).
+            return provenienz
+        raise NeuaufsetzenError(
+            f"zweite Umbenennung fehlgeschlagen ({exc}): {stand} wurde zwischenzeitlich "
+            f"neu angelegt (ein Tageslauf gestartet?). Nichts ist verloren — alte Ablage: "
+            f"{archiv_ziel}, neue Ablage: {neu_pfad}. Ausweg: Timer anhalten, {stand} "
+            f"pruefen (nur lauf.lock?) und beiseitelegen, dann von Hand: mv {neu_pfad} {stand}"
+        ) from exc
+    return provenienz
+
+
+def _provenienz(stand: Path, archiv_ziel: Path, config_quelle: Path, config_bytes: bytes,
+                eingang: Path, stichtag: _dt.date,
+                jetzt: Optional[_dt.datetime]) -> Dict[str, Any]:
+    return {
         "schema_version": PROVENIENZ_SCHEMA_VERSION,
         "neu_aufgesetzt_am": (jetzt or _dt.datetime.now(_dt.timezone.utc)).astimezone(_dt.timezone.utc).isoformat(),
         "archiv": str(archiv_ziel),
@@ -384,51 +442,6 @@ def _neu_aufsetzen_unter_sperre(
             "--zeichnungsordnung <ordnung>",
         ],
     }
-    # Provenienz und erste Umbenennung gehoeren noch zur Vorbereitung (Runde
-    # G, G28): Faellt eine davon aus, ist nichts bewegt — die alte Ablage
-    # liegt an ihrem Ort —, und die eigene Vorbereitung wird abgeraeumt wie
-    # bei jeder anderen Verweigerung davor; wo das nicht geht, nennt die
-    # Meldung den Rest. Vorher blieb daten.neu-<zeit> mit Config, signiertem
-    # Eingang und Sperrdateien ungenannt liegen.
-    def _abbruch_vor_dem_tausch(schritt: str, exc: OSError) -> NeuaufsetzenError:
-        if stand.exists() and not archiv_ziel.exists():
-            rest = _verwirf_vorbereitung(neu_pfad, stand, mit_provenienz=True)
-            return NeuaufsetzenError(
-                f"Ein-/Ausgabefehler {schritt} ({type(exc).__name__}: {exc}); nichts bewegt, "
-                + (rest if rest else f"die Vorbereitung {neu_pfad} ist entfernt")
-                + " — Ausweg: die Ursache beheben und denselben Aufruf wiederholen")
-        return NeuaufsetzenError(
-            f"Ein-/Ausgabefehler {schritt} ({type(exc).__name__}: {exc}); alte Ablage: "
-            f"{archiv_ziel if archiv_ziel.exists() else stand}, vorbereitete neue Ablage: "
-            f"{neu_pfad} — Ausweg: Timer anhalten, Lage pruefen, dann von Hand: mv {neu_pfad} "
-            f"{stand}")
-
-    try:
-        (neu_pfad / PROVENIENZ_DATEI).write_text(
-            json.dumps(provenienz, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8", newline="\n",
-        )
-    except OSError as exc:
-        raise _abbruch_vor_dem_tausch("beim Schreiben der Provenienz", exc) from exc
-    # 3. Archivieren und tauschen: zwei Umbenennungen, keine Loeschung.
-    try:
-        os.rename(stand, archiv_ziel)
-    except OSError as exc:
-        raise _abbruch_vor_dem_tausch(f"beim Archivieren nach {archiv_ziel}", exc) from exc
-    try:
-        os.rename(neu_pfad, stand)
-    except OSError as exc:
-        if not neu_pfad.exists() and (stand / PROVENIENZ_DATEI).is_file() and json.loads(
-                (stand / PROVENIENZ_DATEI).read_text(encoding="utf-8")) == provenienz:
-            # Ein anderer Prozess hat genau diesen Tausch vollendet (lauf_sperre).
-            return provenienz
-        raise NeuaufsetzenError(
-            f"zweite Umbenennung fehlgeschlagen ({exc}): {stand} wurde zwischenzeitlich "
-            f"neu angelegt (ein Tageslauf gestartet?). Nichts ist verloren — alte Ablage: "
-            f"{archiv_ziel}, neue Ablage: {neu_pfad}. Ausweg: Timer anhalten, {stand} "
-            f"pruefen (nur lauf.lock?) und beiseitelegen, dann von Hand: mv {neu_pfad} {stand}"
-        ) from exc
-    return provenienz
 
 
 def main(argv: Optional[List[str]] = None) -> int:

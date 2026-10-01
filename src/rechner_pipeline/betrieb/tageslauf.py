@@ -107,7 +107,7 @@ try:  # Referenzumgebung ist Linux; ohne fcntl gibt es keine Prozess-Sperre.
 except ImportError:  # pragma: no cover - fremde Plattform
     fcntl = None  # type: ignore[assignment]
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import pandas as pd
 
@@ -2156,6 +2156,25 @@ def _verwaiste_staende_entfernen(ablage: Ablage) -> None:
         tmp.unlink()
 
 
+def _vorbereitungen_neben(wurzel: Path) -> List[Path]:
+    """Die Eintraege neben der Ablage, deren Name mit ``<wurzel>.neu-``
+    beginnt, sortiert — die eine Suche nach Vorbereitungen des Neuaufsetzens
+    fuer Erkennung und Vollenden.
+
+    Ohne glob-Muster (Pruefrunde I, I20): Der Name der Ablage kommt vom
+    Bediener; im Muster ``<wurzel>.neu-*`` war ``[1]`` eine Zeichenklasse.
+    Fuer ``daten[1]`` passte es nicht auf die eigene Vorbereitung (Erkennung
+    und Vollenden blind, der Tageslauf legte eine leere Ablage an), wohl aber
+    auf die der Nachbarablage ``daten1``. Der Name wird deshalb als Text
+    verglichen, nicht als Muster gelesen."""
+    praefix = f"{wurzel.name}.neu-"
+    try:
+        eintraege = list(wurzel.parent.iterdir())
+    except FileNotFoundError:
+        return []
+    return sorted(p for p in eintraege if p.name.startswith(praefix))
+
+
 def _vollende_unterbrochenes_neuaufsetzen(wurzel: Path) -> None:
     """Fehlt die Wurzel, weil ``neuaufsetzen`` zwischen seinen zwei
     Umbenennungen endete, den Tausch vollenden — statt leer neu anzulegen.
@@ -2170,7 +2189,7 @@ def _vollende_unterbrochenes_neuaufsetzen(wurzel: Path) -> None:
     """
     from rechner_pipeline.betrieb.neuaufsetzen import PROVENIENZ_DATEI
 
-    reste = sorted(p for p in wurzel.parent.glob(f"{wurzel.name}.neu-*") if p.is_dir())
+    reste = [p for p in _vorbereitungen_neben(wurzel) if p.is_dir()]
     if not reste:
         return
     fertig = []
@@ -2366,8 +2385,7 @@ def _liegengebliebene_vorbereitungen(wurzel: Path, *, abraeumen: bool) -> List[s
     Timer-Betrieb still. Verpasste Tage holt der naechste Lauf nach; das
     Anhalten kostet Zeit, keine Daten. Rueckgabe: die Saetze der entfernten.
     """
-    reste = sorted(p for p in wurzel.parent.glob(f"{wurzel.name}.neu-*")
-                   if p.is_dir() or p.is_symlink())
+    reste = [p for p in _vorbereitungen_neben(wurzel) if p.is_dir() or p.is_symlink()]
     if not reste:
         return []
     gruende = {rest: _nie_veroeffentlicht(wurzel, rest) for rest in reste}
@@ -2908,7 +2926,10 @@ def _pruefe_config_unveraendert(
         "zuruecksetzen, mit der das Protokoll gerechnet hat")
 
 
-def _fremde_abschluesse(ablage: Ablage, stichtage: List[_dt.date]) -> List[str]:
+def _fremde_abschluesse(
+    ablage: Ablage, stichtage: List[_dt.date], *,
+    nachrechnen: Callable[[_dt.date, Path], List[str]],
+) -> List[str]:
     """Vorgefundene Abschluesse fuer Stichtage, die diese Ablage ERSTMALS
     fuehrt, in einer anderen Konvention als der, in der sie schreibt.
 
@@ -2923,7 +2944,20 @@ def _fremde_abschluesse(ablage: Ablage, stichtage: List[_dt.date]) -> List[str]:
     hier in :data:`FUEHRUNGSKONVENTION`; eine Datei, die sie bricht
     (:func:`konventionsbruch`), oder deren Konvention nicht zu bestimmen ist
     (fehlende Gestalt, unbekannter Wert, zwei Werte in einer Datei), ist ein
-    Befund. Ein leerer Abschluss traegt keine Bewertung und bricht nichts.
+    Befund. Ein leerer Abschluss traegt keine Bewertung und bricht keine
+    Konvention.
+
+    Ein vorgefundener LEERER Abschluss (alte oder neue Gestalt) ist nur
+    zulaessig, wenn am Stichtag keine Vertraege in Kraft sind (ADR-020: die
+    leere Bilanz eines Unternehmens ohne Bestand). Gemessen wird das wie
+    beim Nachrechnen, mit ``nachrechnen`` (``pruefe_abschluss`` auf der Sicht
+    des Stichtags; keine Vorgabe): Findet es Vertraege in Kraft, ist der
+    Abschluss abgeschnitten und ein Befund — vor dem ersten irreversiblen
+    Schritt, mit Exit ungleich 0 (Pruefrunde I, Nachtrag). Vorher lief der
+    Tag mit Exit 0 und dem Befund nur in der Protokollzeile; im
+    Timer-Betrieb war das still, und der Abschluss ist die Grundlage des
+    Controllings.
+
     Aeltere, im Protokoll bezeugte Abschluesse beruehrt das nicht: Sie
     bleiben in der Konvention, in der sie geschrieben wurden (ADR-011).
     """
@@ -2934,14 +2968,19 @@ def _fremde_abschluesse(ablage: Ablage, stichtage: List[_dt.date]) -> List[str]:
         if not pfad.exists():
             continue
         try:
-            _, konvention = lies_abschluss(pfad)
+            tabelle, konvention = lies_abschluss(pfad)
         except AbschlussKonventionFehler as exc:
             grund = f"Konvention nicht zu bestimmen ({exc})"
         else:
             bruch = konventionsbruch([reihe, konvention])
             if bruch is None:
-                continue
-            grund = f"Konvention {konvention.name!r} ({konvention.herkunft}); {bruch}"
+                abgeschnitten = nachrechnen(stichtag, pfad) if len(tabelle) == 0 else []
+                if not abgeschnitten:
+                    continue
+                grund = "leer, obwohl am Stichtag Vertraege in Kraft sind (" + "; ".join(
+                    abgeschnitten) + ")"
+            else:
+                grund = f"Konvention {konvention.name!r} ({konvention.herkunft}); {bruch}"
         befunde.append(
             f"{pfad.name}: vorgefundener Abschluss zum {stichtag.isoformat()}, einem "
             f"Stichtag, den diese Ablage erstmals fuehrt — sie schreibt "
@@ -3129,7 +3168,20 @@ def _tageslauf_mit_config(
             # Vorgefundene Abschluesse fuer Stichtage, die diese Ablage
             # erstmals fuehrt, stehen in ihrer Konvention — sonst ein Befund,
             # VOR dem ersten irreversiblen Schritt (Pruefrunde G, Fund G06).
-            fremd = _fremde_abschluesse(ablage, stichtage)
+            def _nachgerechnet(stichtag: _dt.date, pfad: Path) -> List[str]:
+                """Ein vorgefundener Abschluss gegen die Sicht seines Stichtags
+                — derselbe Aufruf wie beim Nachrechnen unten."""
+                sicht = _stichtagssicht(tabellen, config, stichtag, betriebsbeginn)
+                return pruefe_abschluss(
+                    pfad, sicht["portfolio"], sicht["historie"], config,
+                    scheiben=sicht["scheiben"],
+                    merkmale=sicht.get("merkmale"),
+                    schichten=sicht.get("schichten"),
+                    verankerung=sicht.get("verankerung"),
+                    reduktionen=sicht.get("reduktionen"),
+                )
+
+            fremd = _fremde_abschluesse(ablage, stichtage, nachrechnen=_nachgerechnet)
             if fremd:
                 raise AbschlussError("; ".join(fremd))
             schreibe_publish_marker(ablage, heute, f"{STAND_DIR}-{kennung}")

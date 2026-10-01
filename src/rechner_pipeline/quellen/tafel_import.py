@@ -30,6 +30,9 @@ Producer-CLI (kein Gate)::
         --fall faelle/baldrian-klv-tg2015 --generation klv/tg2015 \\
         [--tafeln-xml src/rechner_pipeline/kern/tafeln.xml] [--dry-run]
 
+Exit 2: die Spez des Falls ist nicht verwendbar (Meldung des Spez-Laders);
+Exit 1: ein Fehler des Imports selbst (Provenienz, Integritaet, Konflikt).
+
 Knoten: klv
 """
 
@@ -57,6 +60,14 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 class TafelImportFehler(ValueError):
     """Fachlicher Fehler beim Import (fail-fast, kein stiller Zustand)."""
+
+
+class SpezNichtVerwendbar(TafelImportFehler):
+    """Der Spez-Lader verweigert die Spez des Falls (Version, Regelwert,
+    Schema) oder sie ist nicht lesbar: Die Eingabe ist nicht verwendbar —
+    Exit 2 mit der Meldung des Laders (Pruefrunde I, I16), wie die
+    Kommandos der Bestandsstrecke. Vorher fiel jeder Fehler des Laders hier
+    als Traceback mit Exit 1 durch."""
 
 
 def _lese_regulaere_datei_no_follow(path: Path) -> bytes:
@@ -559,7 +570,11 @@ def importiere_fuer_spez(
     """Tafel-Importe und -Ableitungen einer Spez anwenden."""
     from rechner_pipeline.spez.validierung import lade_spez
 
-    spez = lade_spez(fall, generation)
+    try:
+        spez = lade_spez(fall, generation)
+    except (OSError, ValueError) as exc:
+        raise SpezNichtVerwendbar(
+            f"Spez der Generation {generation} nicht verwendbar: {exc}") from exc
     gen_name = generation.rsplit("/", 1)[-1].upper()
     quelle_datei = f"Tarifrechner_KLV_{gen_name}.xlsm"
     vorverdichtung = (
@@ -691,6 +706,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             Path(args.fall), args.generation, Path(args.tafeln_xml),
             dry_run=args.dry_run,
         )
+    except SpezNichtVerwendbar as exc:
+        print(f"tafel_import: {exc}", file=sys.stderr)
+        return 2
     except TafelImportFehler as exc:
         print(f"tafel_import: {exc}", file=sys.stderr)
         return 1

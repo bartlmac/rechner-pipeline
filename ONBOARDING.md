@@ -53,7 +53,9 @@ features the kernel does not know yet, and the migration is an intensive,
 node-bound CODE extension of the one trunk (small increments, landing
 only with the full suite green including every other case's frozen reference values,
 `integriere-migrationsinkrement`). New products come through the T-Box
-(gate A-K1) — in either case not by translating another workbook.
+(gate A-O1, the T-Box state, signed by `mensch/architektur`); a change to
+the kernel is accepted as the kernel state under A-K2 (signed by
+`mensch/rechenkern`) — in either case not by translating another workbook.
 
 A migration case lives in a **Fall-Arbeitsbereich** (`python -m
 rechner_pipeline.fall`, ADR-002). The artifacts of this workspace belong to

@@ -201,16 +201,41 @@ def test_ein_wiederanlauf_weist_den_leeren_eroeffnungsabschluss_nicht_als_befund
     assert a_ist.get("befunde") is None, a_ist.get("befunde")
 
 
-def test_ein_leerer_abschluss_ueber_einem_gefuellten_stichtag_bleibt_ein_befund(tmp_path, monkeypatch):
-    """Das Gegenstueck: Die Datei traegt keinen Stichtag, der Dateiname sagt
-    ihn. Ein Abschluss, der leer ist, obwohl die Neuberechnung des
-    benannten Stichtags Vertraege in Kraft findet, ist abgeschnitten und
-    wird ausgewiesen — 'leer ist gueltig' darf nicht zu 'leer ist immer
-    gut' werden. Mutationsprobe: leere Datei -> immer [] -> rot."""
-    import stat
+def _leerer_abschluss(pfad, gestalt: str) -> None:
+    """Eine leere Abschlussdatei in der heutigen Gestalt oder der vor der
+    Umstellung (ohne ``bewertungskonvention``)."""
+    import pandas as pd
 
     from rechner_pipeline.bestand.parquet_io import write_portfolio
-    from rechner_pipeline.models.bestand import ABSCHLUSS_NAMES, ABSCHLUSS_SPALTEN
+    from rechner_pipeline.models.bestand import (
+        ABSCHLUSS_NAMES, ABSCHLUSS_NAMES_VOR_UMSTELLUNG, ABSCHLUSS_SPALTEN)
+
+    namen = ABSCHLUSS_NAMES if gestalt == "neu" else ABSCHLUSS_NAMES_VOR_UMSTELLUNG
+    typen = dict(ABSCHLUSS_SPALTEN)
+    pfad.parent.mkdir(parents=True, exist_ok=True)
+    write_portfolio(pd.DataFrame({n: pd.Series(dtype=typen[n]) for n in namen}), pfad)
+
+
+@pytest.mark.parametrize("gestalt", ["neu", "vor_umstellung"])
+def test_ein_leerer_abschluss_ueber_einem_gefuellten_stichtag_haelt_den_tag_an(
+        tmp_path, monkeypatch, gestalt):
+    """Das Gegenstueck: Die Datei traegt keinen Stichtag, der Dateiname sagt
+    ihn. Ein vorgefundener Abschluss fuer einen Stichtag, den die Ablage
+    erstmals fuehrt, der leer ist, obwohl am Stichtag Vertraege in Kraft
+    sind, ist abgeschnitten — 'leer ist gueltig' darf nicht zu 'leer ist
+    immer gut' werden.
+
+    Pruefrunde I (Nachtrag): Vorher lief der Tag mit Exit 0 und dem Befund
+    nur in der Protokollzeile — im Timer-Betrieb still, und der Abschluss
+    ist die Grundlage des Controllings. Jetzt dieselbe Regel wie fuer einen
+    vorgefundenen Abschluss fremder Konvention (Pruefrunde G, G06): Befund
+    mit Exit ungleich 0 vor dem ersten irreversiblen Schritt, die Datei
+    bleibt liegen, Ausweg "archivieren und neu fahren"; danach laeuft der
+    Tag und schreibt den Abschluss selbst.
+
+    Mutationsprobe: in ``_fremde_abschluesse`` die Nachrechnung des leeren
+    Abschlusses entfernen -> Exit 0 -> rot."""
+    import stat
 
     ablage = _ablage(tmp_path / "plv")
     assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
@@ -224,11 +249,30 @@ def test_ein_leerer_abschluss_ueber_einem_gefuellten_stichtag_bleibt_ein_befund(
     feb = tl.abschluss_pfad(ablage.abschluesse, dt.date(2026, 2, 1))
     assert len(tl.read_portfolio(feb)) > 0, "Voraussetzung: der Februar ist gefuellt"
     feb.chmod(stat.S_IMODE(feb.stat().st_mode) | 0o200)
-    import pandas as pd
-    write_portfolio(pd.DataFrame(
-        {n: pd.Series(dtype=d) for n, d in ABSCHLUSS_SPALTEN})[list(ABSCHLUSS_NAMES)], feb)
+    _leerer_abschluss(feb, gestalt)
+    vorher = feb.read_bytes()
+    code, zeile = tageslauf(ablage, dt.date(2026, 3, 2))
+    assert code != EXIT_OK, zeile
+    fehler = str(zeile.get("fehler"))
+    assert feb.name in fehler and "leer" in fehler and "in Kraft" in fehler, fehler
+    assert "archivieren" in fehler, fehler
+    assert feb.read_bytes() == vorher                     # die Datei bleibt liegen
+    # Der Ausweg: archivieren und neu fahren — der Lauf schreibt den Abschluss.
+    feb.rename(tmp_path / feb.name)
     code, zeile = tageslauf(ablage, dt.date(2026, 3, 2))
     assert code == EXIT_OK, zeile.get("fehler")
-    eintrag = {a["stichtag"]: a for a in zeile["abschluesse"]}["2026-02-01"]
-    assert eintrag["nachgerechnet"] is True
-    assert any("leer" in b and "2026-02-01" in b for b in eintrag.get("befunde", [])), eintrag
+    assert len(tl.read_portfolio(feb)) > 0
+
+
+@pytest.mark.parametrize("gestalt", ["neu", "vor_umstellung"])
+def test_ein_leerer_abschluss_ohne_vertraege_in_kraft_bleibt_zulaessig(tmp_path, gestalt):
+    """Positivkontrolle: Der Eroeffnungsabschluss zum Betriebsbeginn ist leer
+    (ADR-020, kein Vertrag in Kraft). Liegt er vorgefunden, laeuft der Tag
+    und weist ihn nachgerechnet ohne Befund aus."""
+    ablage = _ablage(tmp_path / "plv")
+    jan = tl.abschluss_pfad(ablage.abschluesse, dt.date(2026, 1, 1))
+    _leerer_abschluss(jan, gestalt)
+    code, zeile = tageslauf(ablage, dt.date(2026, 1, 31))
+    assert code == EXIT_OK, zeile.get("fehler")
+    eintrag = {a["stichtag"]: a for a in zeile["abschluesse"]}["2026-01-01"]
+    assert eintrag["nachgerechnet"] is True and not eintrag.get("befunde"), eintrag

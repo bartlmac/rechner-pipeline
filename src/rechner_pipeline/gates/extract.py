@@ -164,7 +164,16 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     args = parse_gate_args(parser, argv)
 
     # Defaults applied only after request merge (flags/request win over these).
-    repo_root = Path(args.repo_root) if args.repo_root else Path.cwd()
+    # Ohne --repo-root das Arbeitsverzeichnis — durch DIESELBE Pruefung wie
+    # das Argument (Pruefrunde I, Nachtrag); verweigert wird nach dem Start
+    # des Ledgers, benannt.
+    import argparse
+
+    repo_fehler: Optional[str] = None
+    try:
+        repo_root = Path(args.repo_root) if args.repo_root else lebendes_repo(Path.cwd())
+    except argparse.ArgumentTypeError as exc:
+        repo_root, repo_fehler = None, f"ohne --repo-root gilt das Arbeitsverzeichnis: {exc}"
     adapter_id = args.adapter or "auto"
     backend = args.export_backend or "openpyxl"
     strict = bool(args.strict_manifest_warnings)
@@ -193,6 +202,14 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     def _finalize(result: ToolboxResult) -> ToolboxResult:
         return finalize_gate_ledger(result)
 
+    if repo_fehler is not None:
+        return _finalize(build_result(
+            command=COMMAND,
+            gate=GATE,
+            gate_version=GATE_VERSION,
+            exit_code=Exit.USAGE,
+            errors=[_error("usage", repo_fehler)],
+        ))
     if not args.input:
         return _finalize(build_result(
             command=COMMAND,

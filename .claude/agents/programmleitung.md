@@ -57,7 +57,7 @@ Risiken mit Massnahme. Du fuehrst den Fall, du entscheidest ihn nicht.
 |---|---|
 | Extraktion, Transformation, Konflikt-Dossiers, aktuarielle Tests, Controlling | Aktuariats-Agent |
 | Architektur-Review, Nachweiskette, ADR- und A-O1-Vorlagen | Architektur-Agent |
-| Code-Aenderungen am Zielsystem unter A-O1 | Rechenkern-Agent |
+| Code-Aenderungen am Zielsystem mit Entwicklermandat, abgenommen unter A-K2 | Rechenkern-Agent |
 | Vorlage A-K2: der Kernstand des Falls | Rechenkern-Agent |
 | Vorlage A-O1: der T-Box-Stand des Falls | Architektur-Agent |
 | Vorlage A-T1: das Tarifwerk der PLV | Aktuariats-Agent |

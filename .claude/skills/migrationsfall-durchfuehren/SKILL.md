@@ -580,7 +580,8 @@ A-Box- und Systemstands, einen geltenden signierten A-Q1-Annahme-Snapshot
    + `spez.validierung.speichere_spez`. Das Struktur-Urteil
    (Parametrierung vs. neue Produktfamilie) wird BERECHNET — nimm es
    ernst: `neue_produktfamilie` oder offene Erweiterungsstellen heissen
-   STOPP und Mensch fragen (T-Box-/Kern-Erweiterung ist Gate A-O1).
+   STOPP und Mensch fragen (eine T-Box-Erweiterung ist Gate A-O1, eine
+   Kern-Aenderung Gate A-K2).
 2. Tafel-Import: `python -m rechner_pipeline.quellen.tafel_import --fall faelle/<fall> --generation <gen-id> --dry-run`,
    pruefen, dann scharf. Konflikte (wertverschiedene Tafeln gleichen
    Namens) sind ein Provenienz-Problem fuer den Menschen.

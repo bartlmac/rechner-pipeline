@@ -311,10 +311,12 @@ TEMPDATEI_STELLEN = {
         "Ziel durch schreibziel; der Lauf raeumt unter der Sperre (SCHREIBZIELE)",
     ("seite", "bereite_bestand_heute_vor", "neue_datei"):
         "Ziel durch schreibziel; raeumt selbst und der Lauf unter der Sperre",
+    # Pruefrunde I (I21): beide vorher OFFEN, jetzt mit dem Raeumer des Betriebs
+    # (tests/test_betrieb_runde_i.py, Prozessende je Schreiber).
     ("seite", "_schreibe", "neue_datei"):
-        "OFFEN, nicht gebaut: Export-Ziel ausserhalb der Ablage, kein Raeumer",
+        "raeumt vor dem Schreiben die Reste desselben Ziels (tageslauf.raeume_schreibreste_von)",
     ("zugangsprobe", "_schreibe_beleg", "name.tmp"):
-        "OFFEN, nicht gebaut: raeumt nur den Rest derselben Prozessnummer",
+        "raeumt vor dem Schreiben die Reste desselben Ziels (tageslauf.raeume_schreibreste_von)",
     ("zugangsprobe", "zugangsprobe", "mkdtemp"):
         "Arbeitsverzeichnis der Probe ausserhalb der Ablage, kein Schreibrest eines Ziels",
     ("tageslauf", "_tageslauf", "TemporaryDirectory"):
@@ -326,6 +328,18 @@ def test_ratsche_die_tempdatei_schreiber_des_betriebs():
     """Ratsche (==, je Stelle mit Anzahl 1): die Menge aus H17. Vorher baute
     ``anfangsbestand._schreibe`` seinen Tempnamen selbst und raeumte nie."""
     assert _tempdatei_stellen() == Counter({k: 1 for k in TEMPDATEI_STELLEN})
+    # Pruefrunde I (I21): kein Schreiber ist mehr offen.
+    assert not [k for k, grund in TEMPDATEI_STELLEN.items() if "OFFEN" in grund]
+    # Wer "raeumt vor dem Schreiben" sagt, ruft den Raeumer des Betriebs in
+    # genau dieser Funktion (statisch, ueber den Quelltext).
+    for (modul, funktion, _), grund in TEMPDATEI_STELLEN.items():
+        if grund.startswith("raeumt vor dem Schreiben"):
+            baum = ast.parse((BETRIEB / f"{modul}.py").read_text(encoding="utf-8"))
+            f = next(n for n in ast.walk(baum)
+                     if isinstance(n, ast.FunctionDef) and n.name == funktion)
+            gerufen = {getattr(n.func, "attr", getattr(n.func, "id", None))
+                       for n in ast.walk(f) if isinstance(n, ast.Call)}
+            assert "raeume_schreibreste_von" in gerufen, (modul, funktion)
 
 
 def test_ratsche_tempdatei_positivkontrolle(tmp_path, monkeypatch):

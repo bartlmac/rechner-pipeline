@@ -229,59 +229,129 @@ def test_heben_kennt_nur_deklarierte_uebergaenge():
 # Verhalten je Leser: fremde Version -> Verweigerung
 # --------------------------------------------------------------------------- #
 
-def _verweigert(aufruf, capsys) -> str:
-    """Die Verweigerung eines Lesers: der Fehler des Laders als Ausnahme oder
-    als Meldung eines nicht-gruenen Ergebnisses. Gruen ist ein Befund."""
-    try:
-        ergebnis = aufruf()
-    except sv.SpezVersionFehler as exc:
-        return str(exc)
-    code = getattr(ergebnis, "exit_code", ergebnis)
-    assert code != 0, "Spez fremder Version gruen verarbeitet"
-    text = json.dumps(getattr(ergebnis, "errors", []), ensure_ascii=False)
-    return text + capsys.readouterr().err
+#: Der Exit, mit dem JEDER Leser einen Fehler des Laders beendet (Pruefrunde
+#: I, I16): ein Kommando ohne Ledger-Contract mit 2 (Eingabe nicht
+#: verwendbar); ein Gate mit Ledger-Contract mit dem Code, den SEIN Vertrag
+#: fuer eine nicht verwendbare Eingabe vorsieht, benannt im Ledger. Gemessen,
+#: nicht gesetzt, beide schon auf 9fa1538: P-K1 fuehrt jeden blockierenden
+#: Befund seiner Eingaben (A-Box, Vorverdichtung, Spez) unter 30 (Code
+#: ``spez``); A-M4 fuehrt einen Bruch der Belege und ihrer Bindung unter 20
+#: (Code ``suite_scope_contract``).
+EXIT_BEI_LADERFEHLER = {
+    "quellen/tafel_import.py": 2,
+    "gates/generation_golden.py": 30,
+    "gates/abnahmebericht.py": 20,
+    "gates/bestand_uebernehmen.py": 2,
+    "gates/verankerung_belegen.py": 2,
+    "gates/aktuartest_lauf.py": 2,
+    "gates/migrationssuite_lauf.py": 2,
+    "gates/fuehrungsprobe.py": 2,
+}
 
 
-def _verweigert_benannt(aufruf, capsys) -> str:
-    """Die fuenf Kommandos der Bestandsstrecke verweigern einen Fehler des
-    Laders BENANNT: Exit 2 mit der Meldung des Laders auf stderr, keine
-    Ausnahme (Pruefrunde H: ein Traceback ist ein Fehler ohne Ausweg).
+def _verweigert_benannt(aufruf, capsys, *, exit_code: int = 2) -> str:
+    """JEDER Leser verweigert einen Fehler des Laders BENANNT: der Exit seines
+    Vertrags (:data:`EXIT_BEI_LADERFEHLER`) mit der Meldung des Laders (auf
+    stderr bzw. im Ergebnis eines Gates), keine Ausnahme (Pruefrunde H und I:
+    ein Traceback ist ein Fehler ohne Ausweg).
 
     Mutationsprobe: das Laden wieder vor den Fang ziehen -> rot."""
     ergebnis = aufruf()   # eine Ausnahme hier ist der Befund
     code = ergebnis[0] if isinstance(ergebnis, tuple) else getattr(ergebnis, "exit_code", ergebnis)
-    assert code == 2, f"erwartet Exit 2, erhalten {code!r}"
-    return capsys.readouterr().err
+    assert code == exit_code, f"erwartet Exit {exit_code}, erhalten {code!r}"
+    text = json.dumps(getattr(ergebnis, "errors", []), ensure_ascii=False)
+    return text + capsys.readouterr().err
 
 
 def _alte_spez_in(fall: Path, generation: str) -> None:
+    _stoere_spez(fall, generation, "version")
+
+
+#: Drei Fehlerklassen des Laders, je an jeder Spez herstellbar: fremde
+#: Version (SpezVersionFehler), ein Regelblock, der kein Objekt ist
+#: (SpezRegelwertFehler), ein Feld ausserhalb des Schemas (Pydantic).
+LADERFEHLER = {
+    "version": lambda d: d.__setitem__("tbox_version", "0.1.0"),
+    "regelwert": lambda d: d.__setitem__("tarifwerk", 5),
+    "schema": lambda d: d.__setitem__("feld_ausserhalb_des_schemas", 1),
+}
+
+
+def _stoere_spez(fall: Path, generation: str, art: str) -> str:
+    """Die Spez des Falls stoeren und die Meldung zurueckgeben, die der Lader
+    SELBST zu diesen Bytes gibt (erste Zeile) — gegen sie wird jeder Leser
+    gehalten."""
     pfad = sv.spez_pfad(fall, generation)
     daten = json.loads(pfad.read_bytes())
-    daten["tbox_version"] = "0.1.0"
-    pfad.write_bytes(sv.spez_bytes(daten))
+    LADERFEHLER[art](daten)
+    roh = sv.spez_bytes(daten)
+    pfad.write_bytes(roh)
+    with pytest.raises(ValueError) as exc:
+        sv.lade_spez_aus_bytes(roh)
+    return str(exc.value).splitlines()[0]
 
 
-def test_p_k1_verweigert_eine_spez_fremder_version(tmp_path, capsys):
+@pytest.fixture(scope="module")
+def pk1_basis(tmp_path_factory):
+    from tests.e2e_fixture import bereite_pk1_fall
+
+    return bereite_pk1_fall(tmp_path_factory.mktemp("pk1_basis"), ("klv/tg2012",))
+
+
+def _pk1_kopie(pk1_basis: Path, tmp_path: Path) -> Path:
+    fall = tmp_path / "fall"
+    shutil.copytree(pk1_basis, fall)
+    return fall
+
+
+@pytest.mark.parametrize("art", sorted(LADERFEHLER))
+def test_p_k1_verweigert_eine_spez_fremder_version(art, pk1_basis, tmp_path, capsys):
+    """P-K1 (Ledger-Contract): Code ``spez``, Exit 30, die Meldung des Laders."""
     from rechner_pipeline.gates.generation_golden import main as pk1
-    from tests.e2e_fixture import bereite_pk1_fall
 
-    fall = bereite_pk1_fall(tmp_path, ("klv/tg2012",))
-    _alte_spez_in(fall, "klv/tg2012")
-    meldung = _verweigert(lambda: pk1([
+    fall = _pk1_kopie(pk1_basis, tmp_path)
+    lader = _stoere_spez(fall, "klv/tg2012", art)
+    meldung = _verweigert_benannt(lambda: pk1([
         "--fall", str(fall), "--generation", "klv/tg2012",
-        "--repo-root", str(REPO)]), capsys)
-    assert "geltend sind" in meldung, meldung
+        "--repo-root", str(REPO)]), capsys,
+        exit_code=EXIT_BEI_LADERFEHLER["gates/generation_golden.py"])
+    assert lader in meldung and '"code": "spez"' in meldung, meldung
 
 
-def test_der_tafelimport_verweigert_eine_spez_fremder_version(tmp_path, capsys):
-    from rechner_pipeline.quellen.tafel_import import importiere_fuer_spez
-    from tests.e2e_fixture import bereite_pk1_fall
+@pytest.mark.parametrize("art", sorted(LADERFEHLER))
+def test_der_tafelimport_verweigert_eine_spez_fremder_version(art, pk1_basis, tmp_path, capsys):
+    """Pruefrunde I (I16): Der Tafelimport liess jeden Fehler des Laders als
+    Traceback mit Exit 1 durch (er fing nur ``TafelImportFehler``)."""
+    from rechner_pipeline.quellen.tafel_import import main as tafel_import
 
-    fall = bereite_pk1_fall(tmp_path, ("klv/tg2012",))
-    _alte_spez_in(fall, "klv/tg2012")
-    meldung = _verweigert(lambda: importiere_fuer_spez(
-        fall, "klv/tg2012", tmp_path / "tafeln.xml", dry_run=True), capsys)
-    assert "geltend sind" in meldung, meldung
+    fall = _pk1_kopie(pk1_basis, tmp_path)
+    lader = _stoere_spez(fall, "klv/tg2012", art)
+    meldung = _verweigert_benannt(lambda: tafel_import([
+        "--fall", str(fall), "--generation", "klv/tg2012",
+        "--tafeln-xml", str(tmp_path / "tafeln.xml"), "--dry-run"]), capsys,
+        exit_code=EXIT_BEI_LADERFEHLER["quellen/tafel_import.py"])
+    assert lader in meldung, meldung
+
+
+def test_der_tafelimport_endet_als_prozess_ohne_traceback(pk1_basis, tmp_path):
+    """Dasselbe als echtes Prozessende (``python -m``): Exit 2, die Meldung
+    des Laders auf stderr, kein Traceback."""
+    import os
+    import subprocess
+    import sys
+
+    fall = _pk1_kopie(pk1_basis, tmp_path)
+    lader = _stoere_spez(fall, "klv/tg2012", "regelwert")
+    umgebung = {**os.environ, "PYTHONPATH": str(REPO / "src"),
+                "PYTHONDONTWRITEBYTECODE": "1"}
+    lauf = subprocess.run(
+        [sys.executable, "-m", "rechner_pipeline.quellen.tafel_import",
+         "--fall", str(fall), "--generation", "klv/tg2012",
+         "--tafeln-xml", str(tmp_path / "tafeln.xml"), "--dry-run"],
+        capture_output=True, text=True, cwd=tmp_path, env=umgebung, timeout=300)
+    assert lauf.returncode == 2, (lauf.returncode, lauf.stderr)
+    assert "Traceback" not in lauf.stderr, lauf.stderr
+    assert lader in lauf.stderr, lauf.stderr
 
 
 @pytest.fixture(scope="module")
@@ -405,18 +475,61 @@ def test_a_m4_verweigert_eine_spez_fremder_version(kopie_mit_alter_spez):
     assert any("geltend sind" in f for f in fehler), fehler
 
 
+def test_a_m4_verweigert_eine_spez_fremder_version_benannt(kopie_mit_alter_spez, tmp_path,
+                                                          capsys):
+    """Dasselbe am Kommando (Pruefrunde I, I16): A-M4 endet ohne Ausnahme mit
+    dem Exit seines Vertrags fuer einen Bruch der Belege (20) und der Meldung
+    des Laders im Ergebnis."""
+    from rechner_pipeline.gates import abnahmebericht
+
+    e2e = _e2e()
+    # Eine eigene Kopie mit der Platzhalter-A-Box des Schnitts (er fuehrt
+    # keine; die Scope-Bindung braucht nur die Datei, wie in
+    # test_am4_fuehrungswert_und_tarifregeln) — sonst endet A-M4 schon an
+    # der Bindung, bevor es die Spez liest.
+    fall = tmp_path / "fall"
+    shutil.copytree(kopie_mit_alter_spez, fall)
+    (fall / "abgeleitet" / "abox").mkdir()
+    (fall / "abgeleitet" / "abox" / "abox.json").write_text("{}", encoding="utf-8")
+    berichte = fall / "abgeleitet" / "berichte"
+    transformation = fall / "abgeleitet" / "transformation"
+    meldung = _verweigert_benannt(lambda: abnahmebericht.main([
+        "--fall", str(fall), "--suite", str(berichte / "migrationssuite.json"),
+        "--titel", "Migrationsabnahme Testschnitt",
+        "--stichtag-1", e2e.STICHTAG_1, "--stichtag-2", e2e.STICHTAG_2,
+        "--spec", str(transformation / "abzug.spec.json"),
+        "--transformation-ergebnis", str(transformation / "ergebnis.json"),
+        "--bestandsbericht-vor", str(berichte / "bestandsbericht-vor.html"),
+        "--bestandsbericht-nach", str(berichte / "bestandsbericht-nach.html"),
+        "--repo-root", str(REPO),
+        "--diagnostics-dir", str(tmp_path / "diagnostics"),
+    ]), capsys, exit_code=EXIT_BEI_LADERFEHLER["gates/abnahmebericht.py"])
+    assert "geltend sind" in meldung, meldung
+
+
 def test_jeder_leser_hat_seinen_verhaltenstest():
     """Die Menge der Leser (Ratsche) und die Menge der Verhaltenstests sind
-    dieselbe: ein neuer Leser ohne Verhaltenstest ist rot."""
+    dieselbe: ein neuer Leser ohne Verhaltenstest ist rot. Und jeder
+    Verhaltenstest haelt seinen Leser an ``_verweigert_benannt`` mit dem Exit
+    seines Vertrags — keine Ausnahme, benannter Exit, Meldung des Laders
+    (Pruefrunde I, I16; statisch, ueber den Quelltext der Tests)."""
+    import inspect
+
     leser = {m for m, (lader, _, _) in INVENTAR.items()
              if lader and m != "spez/validierung.py"}
-    assert leser == set(VERHALTENSTESTS)
-    for name in VERHALTENSTESTS.values():
+    assert leser == set(VERHALTENSTESTS) == set(EXIT_BEI_LADERFEHLER)
+    for modul, name in VERHALTENSTESTS.items():
         assert name in globals(), name
+        quelle = inspect.getsource(globals()[name])
+        assert "_verweigert_benannt(" in quelle, name
+        if EXIT_BEI_LADERFEHLER[modul] != 2:
+            assert f'EXIT_BEI_LADERFEHLER["{modul}"]' in quelle, name
+    # Positivkontrolle: der fruehere Weg, der eine Ausnahme durchliess, ist weg.
+    assert "_verweigert" not in globals()
 
 
 VERHALTENSTESTS = {
-    "gates/abnahmebericht.py": "test_a_m4_verweigert_eine_spez_fremder_version",
+    "gates/abnahmebericht.py": "test_a_m4_verweigert_eine_spez_fremder_version_benannt",
     "gates/generation_golden.py": "test_p_k1_verweigert_eine_spez_fremder_version",
     "quellen/tafel_import.py": "test_der_tafelimport_verweigert_eine_spez_fremder_version",
     "gates/bestand_uebernehmen.py": "test_die_uebernahme_verweigert_eine_spez_fremder_version",

@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import glob
 import html as _html
 import io
 import json
@@ -666,7 +667,15 @@ def rendere_html(modell: Dict[str, Any]) -> str:
 
 
 def _schreibe(ziel: Path, text: str) -> Path:
+    """Vollstaendig daneben, dann in einem Zug an ``ziel`` — und vorher die
+    Schreibreste desselben Ziels raeumen, mit der einen Erkennung des
+    Betriebs (Pruefrunde I, I21; die Ratsche der Runde H fuehrte diesen
+    Schreiber als offen). Der Name wird maskiert: Er ist ein Name, kein
+    Muster."""
+    from rechner_pipeline.betrieb.tageslauf import raeume_schreibreste_von
+
     ziel.parent.mkdir(parents=True, exist_ok=True)
+    raeume_schreibreste_von(ziel.parent, glob.escape(ziel.name))
     tmp = neue_datei(ziel.parent, ziel.name)
     try:
         tmp.write_text(text, encoding="utf-8", newline="\n")

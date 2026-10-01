@@ -77,6 +77,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import datetime as _dt
+import glob
 import io
 import json
 import os
@@ -929,10 +930,17 @@ def _schreibe_beleg(out: Path, beleg: Mapping[str, Any]) -> None:
     Die Tempdatei entsteht mit den Rechten, die der Beleg vorher hatte
     (0666 vor der umask, wie ``write_text``) — der Beleg liegt im Fall und
     wird von anderen gelesen; ein mkstemp gaebe ihm still 0600.
+
+    Vorher die Schreibreste desselben Ziels raeumen, mit der einen Erkennung
+    des Betriebs (Pruefrunde I, I21): Geraeumt wurde nur der Rest derselben
+    Prozessnummer, der Rest eines frueheren, hart beendeten Laufs blieb fuer
+    immer neben dem Beleg im Fall. Der Name wird maskiert (ein Name, kein
+    Muster).
     """
     inhalt = (json.dumps(beleg, ensure_ascii=False, indent=2, sort_keys=True)
               + "\n").encode("utf-8")
     out.parent.mkdir(parents=True, exist_ok=True)
+    tl.raeume_schreibreste_von(out.parent, glob.escape(out.name))
     temp = out.with_name(f".{out.name}.{os.getpid()}.tmp")
     try:
         temp.unlink(missing_ok=True)

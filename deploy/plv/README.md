@@ -447,8 +447,10 @@ das nicht, bricht sie ab und nennt den Config-Abschnitt, der zu
 uebernehmen ist. Timer anhalten, Routine fahren, Erstbefuellung von Hand,
 Timer wieder einschalten:
 
-Faellt sie vorher aus (etwa beim Schreiben der Provenienz oder beim
-Archivieren der alten Ablage), ist nichts bewegt: Sie raeumt ihre eigene
+Faellt sie vorher aus (an jeder Schreibstelle zwischen dem Anlegen der
+Vorbereitung und dem Archivieren der alten Ablage, etwa beim Anlegen von
+`configs`, beim Schreiben der Provenienz oder beim Archivieren selbst), ist
+nichts bewegt: Sie raeumt ihre eigene
 Vorbereitung `daten.neu-<Zeit>` ab, sagt das in der Meldung (Exit 2; wo das
 Abraeumen nicht gelingt, nennt sie den Rest), und derselbe Aufruf liefert
 danach das Ergebnis des ungestoerten Laufs.

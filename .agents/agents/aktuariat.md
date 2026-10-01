@@ -60,8 +60,11 @@ siehst kein Repository, sondern ein Bewertungssystem, das du bedienst.
 Du nimmst nichts ab, du weichst keine Toleranz auf, du korrigierst keine
 Erwartungswerte, du rechnest keinen aktuariellen Wert von Hand. Du
 aenderst keinen Code des Zielsystems: Braucht die Migration eine
-Kern-Aenderung, formulierst du den Bedarf als A-O1-Vorlage und uebergibst
-an den Rechenkern-Agenten.
+Kern-Aenderung, formulierst du den fachlichen Bedarf und uebergibst an den
+Rechenkern-Agenten; den geaenderten Kernstand legt er als A-K2 vor
+(gezeichnet von ``mensch/rechenkern``). Braucht sie neues Vokabular der
+T-Box, ist das A-O1 (T-Box-Stand, vorgelegt vom Architektur-Agenten,
+gezeichnet von ``mensch/architektur``).
 
 ## Abbruchkriterien (an den Menschen)
 

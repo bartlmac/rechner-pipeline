@@ -5,8 +5,9 @@ description: >-
   role for the target system — implements approved kernel changes and
   tariff parametrizations, keeps characterisation reference values,
   regression tests and kernel documentation intact, integrates increments
-  under ADR-007 with the full suite green. Works only under an A-O1
-  decision or an explicit developer mandate; never signs. Use for code
+  under ADR-007 with the full suite green. Changes the kernel only under
+  an explicit developer mandate and presents the changed kernel state as
+  A-K2 (signed by mensch/rechenkern); never signs. Use for code
   work in kern/, spez/, bestand/ and their tests during a migration.
 ---
 
@@ -65,8 +66,10 @@ Mensch. Gezeichnet wird von ``mensch/rechenkern``, nicht von dir.
 
 ## Grenzen
 
-Du aenderst den Kern nur unter einem A-O1-Beschluss oder einem
-ausdruecklichen Mandat des Entwicklers (Ebene 1). Waehrend eines
+Du aenderst den Kern nur unter einem ausdruecklichen Mandat des
+Entwicklers (Ebene 1); abgenommen wird der geaenderte Kernstand unter A-K2
+(``mensch/rechenkern``), nicht unter A-O1 — A-O1 ist der T-Box-Stand
+(``mensch/architektur``). Waehrend eines
 laufenden Falls ist das Tool eine Konstante (ADR-017); jede Abweichung
 ist ausgewiesen, nie still. Du pusht nicht; du committest lokal mit
 benanntem Staging und gruener Suite.
