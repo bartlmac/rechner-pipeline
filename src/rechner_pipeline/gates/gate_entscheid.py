@@ -116,6 +116,7 @@ from rechner_pipeline.gates._fall_scope import (
     validate_scope_bindung,
 )
 from rechner_pipeline.gates import kernstand_belegen as _kernstand
+from rechner_pipeline.gates import sichten as _sichten
 from rechner_pipeline.gates import stand_belegen as _stand
 from rechner_pipeline.gates import tarifwerk_belegen as _tarifwerk
 from rechner_pipeline.gates._provenienz import (
@@ -912,7 +913,7 @@ def _kernstand_kommando(fall: Path, repo_root: object) -> str:
 
 
 def kernstand_belege_pruefen(
-    fall: Path, repo_root: Optional[Path]
+    fall: Path, repo_root: Optional[Path], *, sicht_belege: Optional[Dict[str, object]] = None,
 ) -> Tuple[List[str], Dict[str, str], Dict[str, str]]:
     """Die beiden Belege des Kernstands an ihren festen Orten pruefen.
 
@@ -942,6 +943,11 @@ def kernstand_belege_pruefen(
     if regr_fehler or regr_gelesen is None:
         return ([f"{_kernabnahme.REGRESSION_RELATIV}: {f}" for f in regr_fehler]
                 or [f"{_kernabnahme.REGRESSION_RELATIV}: Datei fehlt"]), {}, {}
+    if sicht_belege is not None:
+        # Die geparsten Belege aus DIESER Lesung fuer die Sicht-Regel
+        # (gates.sichten; T23-01: kein zweites Lesen).
+        sicht_belege.update({"kernaenderung": json.loads(kern_gelesen.text()),
+                        "regression": json.loads(regr_gelesen.text())})
     return [], {
         "kernaenderung": kern_gelesen.sha256,
         "regression": regr_gelesen.sha256,
@@ -949,7 +955,7 @@ def kernstand_belege_pruefen(
 
 
 def tbox_belege_pruefen(
-    fall: Path, repo_root: Optional[Path]
+    fall: Path, repo_root: Optional[Path], *, sicht_belege: Optional[Dict[str, object]] = None,
 ) -> Tuple[List[str], Dict[str, str]]:
     """Die beiden Belege einer T-Box-Aenderung an ihren festen Orten pruefen.
 
@@ -979,6 +985,8 @@ def tbox_belege_pruefen(
     if fehler or stellung_gelesen is None:
         return [f"die aktuarielle Stellungnahme ({_stand.TBOX_STELLUNGNAHME_RELATIV}): "
                 + "; ".join(fehler or ["Datei fehlt"])], {}
+    if sicht_belege is not None:
+        sicht_belege["tbox_aenderung"] = json.loads(aenderung_gelesen.text())
     return [], {
         "tbox_aenderung": aenderung_gelesen.sha256,
         "stellungnahme_aktuariat": stellung_gelesen.sha256,
@@ -1041,7 +1049,7 @@ def pruefe_tarifwerkaenderung(
 
 
 def tarifwerk_belege_pruefen(
-    bereich: Path, repo_root: Optional[Path]
+    bereich: Path, repo_root: Optional[Path], *, sicht_belege: Optional[Dict[str, object]] = None,
 ) -> Tuple[List[str], Dict[str, str]]:
     """Den Beleg des Tarifwerks am festen Ort pruefen — fuer A-T1 und A-M4."""
     pfad = bereich / _tarifwerkabnahme.AENDERUNG_RELATIV
@@ -1050,10 +1058,14 @@ def tarifwerk_belege_pruefen(
         pfad, bereich, text=gelesen.text() if gelesen else None, repo_root=repo_root)
     if fehler or gelesen is None:
         return [f"{_tarifwerkabnahme.AENDERUNG_RELATIV}: " + "; ".join(fehler or ["Datei fehlt"])], {}
+    if sicht_belege is not None:
+        sicht_belege["tarifwerk_aenderung"] = gelesen.json()
     return [], {"tarifwerk_aenderung": gelesen.sha256}
 
 
-def anfangsbestand_belege_pruefen(bereich: Path) -> Tuple[List[str], Dict[str, str]]:
+def anfangsbestand_belege_pruefen(
+    bereich: Path, *, sicht_belege: Optional[Dict[str, object]] = None,
+) -> Tuple[List[str], Dict[str, str]]:
     """Den Beleg des Anfangsbestands am festen Ort pruefen (A-B3): Form,
     gruene P-B1, innere Ableitungen. Gegen die Ablage haelt den Stand der
     Betrieb beim Binden — das Gate sieht die Ablage nicht (ADR-025)."""
@@ -1070,22 +1082,26 @@ def anfangsbestand_belege_pruefen(bereich: Path) -> Tuple[List[str], Dict[str, s
     fehler = _anfangsbestand.beleg_fehler(beleg)
     if fehler:
         return [f"{_anfangsbestand.BELEG_RELATIV}: " + "; ".join(fehler[:4])], {}
+    if sicht_belege is not None:
+        sicht_belege["anfangsbestand"] = beleg
     return [], {"anfangsbestand": gelesen.sha256}
 
 
-def _belege_im_fall(gate: str, fall: Path, repo_root: Optional[Path]
+def _belege_im_fall(gate: str, fall: Path, repo_root: Optional[Path], *,
+                    sicht_belege: Optional[Dict[str, object]] = None,
                     ) -> Tuple[List[str], Dict[str, str], Dict[str, str]]:
     """Die Belege des Gates am festen Ort, je Gegenstand dieselbe Gestalt —
-    im Fall wie im Linienbereich."""
+    im Fall wie im Linienbereich. ``sicht_belege``: nimmt die geparsten
+    Belege dieser Lesung fuer die Sicht-Regel auf (``gates.sichten``)."""
     if gate == "A-K2":
-        return kernstand_belege_pruefen(fall, repo_root)
+        return kernstand_belege_pruefen(fall, repo_root, sicht_belege=sicht_belege)
     if gate == "A-T1":
-        fehler, shas = tarifwerk_belege_pruefen(fall, repo_root)
+        fehler, shas = tarifwerk_belege_pruefen(fall, repo_root, sicht_belege=sicht_belege)
         return fehler, shas, {}
     if gate == "A-B3":
-        fehler, shas = anfangsbestand_belege_pruefen(fall)
+        fehler, shas = anfangsbestand_belege_pruefen(fall, sicht_belege=sicht_belege)
         return fehler, shas, {}
-    fehler, shas = tbox_belege_pruefen(fall, repo_root)
+    fehler, shas = tbox_belege_pruefen(fall, repo_root, sicht_belege=sicht_belege)
     return fehler, shas, {}
 
 
@@ -2496,6 +2512,9 @@ def main(argv: Optional[List[str]] = None):
     # Weg der Stand abgenommen ist, auf dem A-M4 gruendet.
     ak2_ausnahmen: Dict[str, str] = {}
     am4_standabnahmen: Dict[str, object] = {}
+    # Die geparsten Pflichtbelege der EINEN Lesung, aus denen die Sicht-Regel
+    # die Sicht neu erzeugt (gates.sichten; T23-01: kein zweites Lesen).
+    sicht_belege: Dict[str, object] = {}
     if args.gate in GATES_MIT_PFLICHTBELEGEN and linie_modus:
         # Der Linienbereich hat keinen Fall-Scope; sein Scope ist die Linie,
         # seine Kennzeichnung steht an der Stelle von fall.json (ADR-025).
@@ -2635,7 +2654,8 @@ def main(argv: Optional[List[str]] = None):
         # stuetzen sich allein auf ihre Belege am festen Ort, nachgerechnet
         # gegen Code bzw. Beleg — derselbe Pruefer wie im Fall.
         wurzel = Path(args.repo_root).resolve() if args.repo_root else None
-        belegfehler, belegshas, ak2_ausnahmen = _belege_im_fall(args.gate, fall, wurzel)
+        belegfehler, belegshas, ak2_ausnahmen = _belege_im_fall(
+            args.gate, fall, wurzel, sicht_belege=sicht_belege)
         if belegfehler:
             return _sperre("vorbedingung",
                            f"Annahme verweigert: {args.gate} braucht seine Belege: "
@@ -2756,7 +2776,7 @@ def main(argv: Optional[List[str]] = None):
             # Beleg ist die aktuarielle Stellungnahme). Dieselbe Pruefung
             # haelt A-M4 beim Lesen der A-O1-Annahme (tbox_belege_pruefen).
             wurzel = Path(args.repo_root).resolve() if args.repo_root else None
-            tbox_fehler, tbox_shas = tbox_belege_pruefen(fall, wurzel)
+            tbox_fehler, tbox_shas = tbox_belege_pruefen(fall, wurzel, sicht_belege=sicht_belege)
             if tbox_fehler:
                 return _sperre(
                     "vorbedingung",
@@ -2772,7 +2792,8 @@ def main(argv: Optional[List[str]] = None):
             # kann, wo es gerade passt. Dieselbe Pruefung haelt A-M4 beim
             # Lesen der A-K2-Annahme (kernstand_belege_pruefen).
             wurzel = Path(args.repo_root).resolve() if args.repo_root else None
-            kern_fehler, kern_shas, ak2_ausnahmen = kernstand_belege_pruefen(fall, wurzel)
+            kern_fehler, kern_shas, ak2_ausnahmen = kernstand_belege_pruefen(
+                fall, wurzel, sicht_belege=sicht_belege)
             if kern_fehler:
                 return _sperre(
                     "vorbedingung",
@@ -2788,7 +2809,7 @@ def main(argv: Optional[List[str]] = None):
             # mensch/aktuariat im Fall (Weg a) — derselbe Beleg und Pruefer wie
             # in der Linie; dieselbe Pruefung haelt A-M4 beim Lesen.
             wurzel = Path(args.repo_root).resolve() if args.repo_root else None
-            tw_fehler, tw_shas = tarifwerk_belege_pruefen(fall, wurzel)
+            tw_fehler, tw_shas = tarifwerk_belege_pruefen(fall, wurzel, sicht_belege=sicht_belege)
             if tw_fehler:
                 return _sperre("vorbedingung",
                                "Annahme verweigert: A-T1 braucht den Beleg des Tarifwerks: "
@@ -3510,6 +3531,19 @@ def main(argv: Optional[List[str]] = None):
                 f"{str((lebenslauf_inhalt or {}).get('fallauftrag'))[:16]}…, geltend ist "
                 f"{auftrag_spitze['snapshot_sha256'][:16]}… — Vorlage neu erzeugen (python -m "
                 "rechner_pipeline.gates.fall_belegen abbruch ...)")
+
+    # Gezeichnet wird nur, was der Mensch gesehen haben kann (Runde G, ADR-025
+    # Nachtrag "Beleg und Sicht"): Die Sicht am festen Ort muss byte-gleich die
+    # aus den gepinnten Belegen erzeugte sein — EINE Stelle fuer jedes Gate
+    # mit Sicht (Register gates.sichten), nach allen Vorbedingungen, die die
+    # Pins bestimmen, und vor jedem Schreiben.
+    if args.entscheid == "angenommen":
+        if args.gate in LEBENSLAUF_GATES and lebenslauf_inhalt is not None:
+            sicht_belege["fallauftrag" if args.gate == AUFTRAG_GATE
+                         else "fallabbruch"] = lebenslauf_inhalt
+        sicht_meldung = _sichten.sicht_fehler(args.gate, fall, pflichtbelege, sicht_belege)
+        if sicht_meldung is not None:
+            return _sperre("sicht", f"Annahme verweigert: {sicht_meldung}")
 
     verzeichnis = entscheide_verzeichnis(fall)
     verzeichnis.mkdir(parents=True, exist_ok=True)

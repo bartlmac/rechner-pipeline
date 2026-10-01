@@ -186,3 +186,52 @@ def anzeige_bindung(bindung: Mapping[str, Any]) -> str:
     return (f"Anfangsbestand abgenommen (A-B3-Snapshot "
             f"{str(bindung.get('snapshot_sha256'))[:16]}, Linie {bindung.get('linie')}, "
             f"gefuehrter Tag {(bindung.get('stand') or {}).get('gefuehrter_tag')})")
+
+
+def rendere_sicht(beleg: Mapping[str, Any]) -> str:
+    """Die Sicht des Pruefers, deterministisch aus dem Beleg.
+
+    Sie wohnt beim Vertrag, nicht beim Produzenten (Runde G, ADR-025
+    Nachtrag): Der Produzent (``betrieb.anfangsbestand belegen``) schreibt
+    sie, das Gate (``gates.sichten``) erzeugt sie beim Zeichnen von A-B3 neu
+    und vergleicht sie mit der Datei am festen Ort. ``gates`` darf ``betrieb``
+    nicht importieren (Schichtenkarte); beide erreichen ``models``. Sie
+    braucht nichts als den Beleg — eine Funktion des Vertrags.
+    """
+    st = beleg.get("ablage_stand") or {}
+    z = ["# Abnahme des Anfangsbestands A-B3", "",
+         f"Ablage `{(beleg.get('ablage') or {}).get('name')}`, gefuehrter Tag "
+         f"{st.get('gefuehrter_tag')}, letzte gruene Protokollzeile "
+         f"`{str(st.get('letzte_gruene_zeile_sha256'))[:16]}`.  ",
+         f"Config `{str(beleg.get('config_sha256'))[:16]}`, Kern-Version "
+         f"{(beleg.get('code') or {}).get('kern_version')}, Paket "
+         f"`{str((beleg.get('code') or {}).get('quellcode_sha256'))[:16]}`.", "",
+         f"Bestandswache P-B1 auf diesem Stand: **{(beleg.get('pb1') or {}).get('urteil')}**"
+         + "".join(f"; {b}" for b in (beleg.get("pb1") or {}).get("befunde") or []), "",
+         "## Kennzahlen", "", "| Kennzahl | Wert |", "|---|---:|"]
+    for name in KENNZAHLEN:
+        z.append(f"| {name} | {(beleg.get('kennzahlen') or {}).get(name)} |")
+    z.append("")
+    if beleg.get("abweichung"):
+        vorher = beleg.get("vorher") or {}
+        z += ["## Abweichung zum zuletzt abgenommenen Anfangsbestand", "",
+              f"Vergleichsstand: A-B3-Snapshot `{str(vorher.get('snapshot_sha256'))[:16]}` "
+              f"(gefuehrter Tag {(vorher.get('stand') or {}).get('gefuehrter_tag')}).", "",
+              "| Kennzahl | vorher | jetzt | Differenz |", "|---|---:|---:|---:|"]
+        for name, w in beleg["abweichung"].items():
+            z.append(f"| {name} | {w['vorher']} | {w['jetzt']} | {w['differenz']} |")
+        z.append("")
+    else:
+        z += ["Kein zuletzt abgenommener Anfangsbestand: dies ist die erste Abnahme dieser "
+              "Ablage.", ""]
+    z += ["## Tabellen des Stands", ""]
+    for name, sha in sorted((beleg.get("tabellen") or {}).items()):
+        z.append(f"- `{name}`: `{sha[:16]}`")
+    z += ["", "## Registrierte Eingaenge", ""]
+    for e in beleg.get("eingaenge") or []:
+        z.append(f"- `{e['name']}`: `{e['eingang_sha256'][:16]}`")
+    if not beleg.get("eingaenge"):
+        z.append("- keine")
+    z += ["", "Aus dem Beleg erzeugt (`betrieb.anfangsbestand belegen`); massgeblich ist "
+          "der Beleg, nicht diese Sicht.", ""]
+    return "\n".join(z)

@@ -164,6 +164,12 @@ Annahme im Fall setzt den geltenden Auftrag voraus und nennt ihn; der
 Schluessel des Vorstands gehoert deshalb in jeden Ring
 (`--freigabe-schluessel`, vor dem zeichnenden). Wird eine Quelle nachgereicht,
 gilt der Auftrag nicht mehr — Vorlage neu, der Vorstand zeichnet neu.
+Das Gate zeichnet nur eine Vorlage, deren Sicht am festen Ort die aus ihr
+erzeugte ist (ADR-025, Nachtrag "Beleg und Sicht"); verweigert es mit Code
+`sicht`, legst du die Vorlage mit demselben Kommando neu vor und haeltst
+wieder an — die Sicht reparierst du nie von Hand. Endet ein Produzent mit
+Code `ein_ausgabe` (etwa volle Platte), wiederholst du denselben Aufruf,
+sobald die Ursache behoben ist.
 
 ### Stufe 1 — Quellen -> A-Box
 
@@ -629,7 +635,12 @@ gilt genau einer von zwei Wegen:
    `python -m rechner_pipeline.gates.tarifwerk_belegen --fall faelle/<fall> --repo-root . --von <zuletzt abgenommener Stand> --begruendung "<text>"`
    (Sicht `abgeleitet/tarifwerk/aenderung.md`). Der Mensch prueft die
    Sicht und zeichnet: `gate_entscheid --gate A-K2|A-O1|A-T1` mit dem
-   Schluessel seiner Rolle — uebergeben, nicht selbst entscheiden.
+   Schluessel seiner Rolle — uebergeben, nicht selbst entscheiden. Gehoeren
+   Beleg und Sicht nicht zusammen (Code `sicht`; bei A-O1 auch eine fehlende
+   Archivkopie unter `abgeleitet/tbox/archiv/`), Vorlage neu erzeugen und
+   erneut uebergeben. Verweigert `stand_belegen tbox`, weil das Archiv einer
+   abgenommenen T-Box fehlt, ist das kein Anlass fuer "Erstabnahme": die
+   gepinnte Fassung wiederherstellen (die Meldung nennt sie).
 
 Liegt im Fall eine Kette des Gates, gilt nur Weg 2 — eine Ablehnung wird
 nicht durch einen Verweis umgangen. Die fruehere Basislinie der T-Box gibt

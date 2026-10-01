@@ -123,25 +123,78 @@ def _kennzahlen(tabellen: Mapping[str, Any], tag: str) -> Dict[str, Any]:
             "jahresbeitrag": summe("jahresbeitrag")}
 
 
+#: Der Ausweg, wenn die Vorgaenger-Bindung da, aber nicht verwendbar ist.
+_VORHER_AUSWEG = (
+    "Ausweg: die Bindung des zuletzt abgenommenen Anfangsbestands im Archiv der alten Ablage "
+    "wiederherstellen (bzw. den Schluessel bereitstellen, mit dem sie gezeichnet ist), dann "
+    "erneut belegen — die Vorlage zeigt die Abweichung dagegen (ADR-025, Abschnitt 1); eine "
+    "'erste Abnahme' waere hier eine Behauptung")
+
+
 def _vorher(ablage: tl.Ablage, zeichner: Zeichner) -> Optional[Dict[str, Any]]:
     """Der zuletzt abgenommene Anfangsbestand — aus der Bindung im Archiv der
-    alten Ablage, das ``neuaufsetzen.json`` nennt (None = es gibt keinen).
-    Gelesen wird nur eine gezeichnete Bindung; eine ungezeichnete oder
-    fremd gezeichnete waere eine Behauptung."""
+    alten Ablage, das ``neuaufsetzen.json`` nennt.
+
+    None heisst genau eines: Es gab keine Ablage davor (keine Provenienz,
+    oder sie nennt kein Archiv), oder keine Ablage der Kette davor traegt
+    eine Bindung — eine archivierte Ablage ohne Bindung hatte hoechstens
+    ihren Aufbaulauf, dann gilt die Bindung IHRER Vorgaengerin. Eine
+    Provenienz, ein Archiv oder eine Bindung, die genannt bzw. da, aber nicht
+    lesbar oder nicht pruefbar ist, ist ein benannter Fehler mit Ausweg
+    (Runde G, G25: vorher fing ein breites ``except`` sie ab, und die Sicht
+    behauptete "erste Abnahme dieser Ablage" mit Exit 0). Gelesen wird nur
+    eine gezeichnete Bindung; eine ungezeichnete oder fremd gezeichnete waere
+    eine Behauptung — und ist deshalb auch keine Abwesenheit."""
     from rechner_pipeline.betrieb.neuaufsetzen import PROVENIENZ_DATEI
 
-    prov = ablage.wurzel / PROVENIENZ_DATEI
-    if not prov.is_file():
-        return None
-    try:
-        archiv = Path(json.loads(prov.read_text(encoding="utf-8"))["archiv"])
-        bindung = json.loads((archiv / ab.BINDUNG_DATEI).read_text(encoding="utf-8"))
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
-    if betriebszeichnung_fehler(bindung, zeichner.ring, zeichner.ordnung,
-                                was="die alte Bindung") is not None:
-        return None
-    return {k: bindung.get(k) for k in ("snapshot_sha256", "beleg_sha256", "stand", "kennzahlen")}
+    wurzel, gesehen = ablage.wurzel, set()
+    while True:
+        prov = wurzel / PROVENIENZ_DATEI
+        if not prov.exists() and not prov.is_symlink():
+            return None
+        try:
+            angabe = json.loads(prov.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise AnfangsbestandFehler(
+                f"{prov}: nicht lesbar ({exc}) — ob es einen zuletzt abgenommenen "
+                f"Anfangsbestand gibt, ist nicht bestimmbar. {_VORHER_AUSWEG}") from exc
+        archiv = angabe.get("archiv") if isinstance(angabe, dict) else None
+        if archiv is None:
+            return None
+        if not isinstance(archiv, str) or not archiv:
+            raise AnfangsbestandFehler(
+                f"{prov}: 'archiv' ist kein Pfad ({archiv!r}) — der zuletzt abgenommene "
+                f"Anfangsbestand ist nicht auffindbar. {_VORHER_AUSWEG}")
+        archiv_pfad = Path(archiv)
+        if archiv_pfad.resolve() in gesehen:
+            raise AnfangsbestandFehler(
+                f"{prov}: die Kette der Archive kehrt zu {archiv_pfad} zurueck — der zuletzt "
+                f"abgenommene Anfangsbestand ist nicht bestimmbar. {_VORHER_AUSWEG}")
+        gesehen.add(archiv_pfad.resolve())
+        if not archiv_pfad.is_dir():
+            raise AnfangsbestandFehler(
+                f"{prov} nennt das Archiv der alten Ablage {archiv_pfad}, es ist nicht da — "
+                f"ob dort ein zuletzt abgenommener Anfangsbestand gebunden war, ist nicht "
+                f"bestimmbar. {_VORHER_AUSWEG}")
+        datei = archiv_pfad / ab.BINDUNG_DATEI
+        if not datei.exists() and not datei.is_symlink():
+            wurzel = archiv_pfad
+            continue
+        try:
+            bindung = json.loads(datei.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise AnfangsbestandFehler(
+                f"{datei}: die Bindung des zuletzt abgenommenen Anfangsbestands ist nicht "
+                f"lesbar ({exc}). {_VORHER_AUSWEG}") from exc
+        zf = (betriebszeichnung_fehler(bindung, zeichner.ring, zeichner.ordnung,
+                                       was="die alte Bindung")
+              if isinstance(bindung, dict) else "kein JSON-Objekt")
+        if zf is not None:
+            raise AnfangsbestandFehler(
+                f"{datei}: die Bindung des zuletzt abgenommenen Anfangsbestands ist nicht "
+                f"pruefbar: {zf}. {_VORHER_AUSWEG}")
+        return {k: bindung.get(k)
+                for k in ("snapshot_sha256", "beleg_sha256", "stand", "kennzahlen")}
 
 
 def _gesperrt(ablage: tl.Ablage, gehalten: bool):
@@ -190,45 +243,9 @@ def baue_beleg(ablage: tl.Ablage, zeichner: Zeichner, *,
     }
 
 
-def rendere_sicht(beleg: Mapping[str, Any]) -> str:
-    """Die Sicht des Pruefers, deterministisch aus dem Beleg."""
-    st = beleg.get("ablage_stand") or {}
-    z = ["# Abnahme des Anfangsbestands A-B3", "",
-         f"Ablage `{(beleg.get('ablage') or {}).get('name')}`, gefuehrter Tag "
-         f"{st.get('gefuehrter_tag')}, letzte gruene Protokollzeile "
-         f"`{str(st.get('letzte_gruene_zeile_sha256'))[:16]}`.  ",
-         f"Config `{str(beleg.get('config_sha256'))[:16]}`, Kern-Version "
-         f"{(beleg.get('code') or {}).get('kern_version')}, Paket "
-         f"`{str((beleg.get('code') or {}).get('quellcode_sha256'))[:16]}`.", "",
-         f"Bestandswache P-B1 auf diesem Stand: **{(beleg.get('pb1') or {}).get('urteil')}**"
-         + "".join(f"; {b}" for b in (beleg.get("pb1") or {}).get("befunde") or []), "",
-         "## Kennzahlen", "", "| Kennzahl | Wert |", "|---|---:|"]
-    for name in ab.KENNZAHLEN:
-        z.append(f"| {name} | {(beleg.get('kennzahlen') or {}).get(name)} |")
-    z.append("")
-    if beleg.get("abweichung"):
-        vorher = beleg.get("vorher") or {}
-        z += ["## Abweichung zum zuletzt abgenommenen Anfangsbestand", "",
-              f"Vergleichsstand: A-B3-Snapshot `{str(vorher.get('snapshot_sha256'))[:16]}` "
-              f"(gefuehrter Tag {(vorher.get('stand') or {}).get('gefuehrter_tag')}).", "",
-              "| Kennzahl | vorher | jetzt | Differenz |", "|---|---:|---:|---:|"]
-        for name, w in beleg["abweichung"].items():
-            z.append(f"| {name} | {w['vorher']} | {w['jetzt']} | {w['differenz']} |")
-        z.append("")
-    else:
-        z += ["Kein zuletzt abgenommener Anfangsbestand: dies ist die erste Abnahme dieser "
-              "Ablage.", ""]
-    z += ["## Tabellen des Stands", ""]
-    for name, sha in sorted((beleg.get("tabellen") or {}).items()):
-        z.append(f"- `{name}`: `{sha[:16]}`")
-    z += ["", "## Registrierte Eingaenge", ""]
-    for e in beleg.get("eingaenge") or []:
-        z.append(f"- `{e['name']}`: `{e['eingang_sha256'][:16]}`")
-    if not beleg.get("eingaenge"):
-        z.append("- keine")
-    z += ["", "Aus dem Beleg erzeugt (`betrieb.anfangsbestand belegen`); massgeblich ist "
-          "der Beleg, nicht diese Sicht.", ""]
-    return "\n".join(z)
+#: Die Sicht des Pruefers wohnt beim Vertrag (``models.anfangsbestand``):
+#: Das Gate erzeugt sie beim Zeichnen von A-B3 neu (``gates.sichten``).
+rendere_sicht = ab.rendere_sicht
 
 
 def _schreibe(ziel: Path, daten: bytes) -> None:
@@ -264,8 +281,12 @@ def belegen(stand: Path, linie: Path, zeichner: Zeichner, *,
     if fehler:
         raise AnfangsbestandFehler("der Anfangsbestand ist nicht abnehmbar: " + "; ".join(fehler[:3]))
     roh = (json.dumps(beleg, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    # Die Sicht aus genau den Bytes des Belegs, wie das Gate sie beim Zeichnen
+    # neu erzeugt (gates.sichten): Faellt eine der beiden Schreibstellen aus,
+    # gehoeren Beleg und Sicht nicht zusammen, und A-B3 wird nicht gezeichnet.
+    sicht = ab.rendere_sicht(json.loads(roh)).encode("utf-8")
     _schreibe(Path(linie) / ab.BELEG_RELATIV, roh)
-    _schreibe(Path(linie) / ab.SICHT_RELATIV, rendere_sicht(beleg).encode("utf-8"))
+    _schreibe(Path(linie) / ab.SICHT_RELATIV, sicht)
     return beleg
 
 

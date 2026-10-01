@@ -280,7 +280,10 @@ Bedienfolge Schritt 9); die Programmleitung hat einen eigenen Schluessel
    --fall <fall> --linie linie --gate A-M6 --entscheid angenommen
    --entscheider "<Rolle>" --begruendung "..." --repo-root .
    --zeichnungsordnung <ordnung> --freigabe-schluessel <vorstand.key>
-   [--mandat <mandat>]`.
+   [--mandat <mandat>]`. Das Gate zeichnet nur die Vorlage, deren Sicht am
+   festen Ort die aus ihr erzeugte ist (ADR-025, Nachtrag "Beleg und Sicht");
+   verweigert es mit Code `sicht`, Schritt 1 wiederholen und erneut ansehen.
+   Endet Schritt 1 mit Code `ein_ausgabe`, denselben Aufruf wiederholen.
 4. **Danach** traegt jede Zeichnung im Fall den Schluessel des Vorstands im
    Ring (`--freigabe-schluessel <vorstand.key>` vor dem zeichnenden).
    Wird eine Quelle nachgereicht, gilt der Auftrag nicht mehr: Schritte 1 bis 3
@@ -309,6 +312,8 @@ Bedienfolge Schritt 9); die Programmleitung hat einen eigenen Schluessel
    Fingerabdruck. In einem Haus mit getrennten Funktionen geht der Abbruch
    nach einer A-M4 deshalb nur gemeinsam mit dem Aktuariat (benannte Grenze,
    Nachtrag Runde G, c).
+   Wie beim Auftrag: Code `sicht` heisst Vorlage neu erzeugen, ansehen,
+   zeichnen.
 4. **Danach** ist im Fall nichts mehr zeichenbar. Ist die Migration schon
    abgenommen, zuerst A-M4 ablehnen (das Aktuariat, mit seinem Schluessel),
    dann Schritt 3 mit dem Schluessel des Aktuariats im Ring. `entscheide/`

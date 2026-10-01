@@ -130,8 +130,7 @@ AUSSERHALB = {
     ("rechner_pipeline.betrieb.anfangsbestand.belegen", "_schreibe",
      "Path(linie) / ab.BELEG_RELATIV, roh"): "Ziel im Linienbereich",
     ("rechner_pipeline.betrieb.anfangsbestand.belegen", "_schreibe",
-     "Path(linie) / ab.SICHT_RELATIV, rendere_sicht(beleg).encode('utf-8')"):
-        "Ziel im Linienbereich",
+     "Path(linie) / ab.SICHT_RELATIV, sicht"): "Ziel im Linienbereich",
 }
 #: Eine Stelle, die GENAU so zweimal in ihrer Funktion steht (die Ratsche
 #: vergleicht die Anzahl): ``run_command`` schliesst das Ledger auf zwei Wegen.

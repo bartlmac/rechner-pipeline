@@ -656,6 +656,11 @@ def test_der_erste_echte_uebergang_traegt_auf_der_echten_linie(pk1_fall):
     beleg = _aenderungsbeleg(pk1_fall, von="0.1.0")
     assert gate_entscheid.pruefe_tbox_aenderung(
         beleg, pk1_fall, repo_root=REPO_ROOT) == []
+    # Der Beleg ist von Hand geschrieben: Sicht und Archivkopie, wie der
+    # Produzent sie mitschreibt (das Gate zeichnet sonst nicht, ADR-025).
+    from tests.zeichnung_fixture import handbeleg_sicht_nachziehen
+
+    handbeleg_sicht_nachziehen(pk1_fall, "A-O1")
     ergebnis = gate_entscheid.main([
         "--fall", str(pk1_fall), "--gate", "A-O1", "--entscheid", "angenommen",
         "--entscheider", "IT-Verantwortung", "--begruendung", "T-Box 0.2.0",

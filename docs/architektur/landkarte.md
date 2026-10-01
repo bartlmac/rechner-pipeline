@@ -31,7 +31,7 @@ flowchart TD
     bestand["bestand<br/>23 Module"]
     betrieb["betrieb<br/>11 Module"]
     fall["fall<br/>1 Module"]
-    gates["gates<br/>22 Module"]
+    gates["gates<br/>23 Module"]
     kern["kern<br/>13 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
     models["models<br/>18 Module"]
@@ -48,7 +48,7 @@ flowchart TD
     gates -- 14 --> bestand
     gates -- 11 --> fall
     gates -- 10 --> kern
-    gates -- 43 --> models
+    gates -- 48 --> models
     gates -- 13 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
@@ -82,12 +82,12 @@ flowchart TD
     klv["klv<br/>93 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
-    system_entscheid["system/entscheid<br/>16 Module"]
+    system_entscheid["system/entscheid<br/>17 Module"]
     system_fall["system/fall<br/>1 Module"]
     bu -- 3 --> system_assurance
     bu -- 19 --> system_entscheid
     klv -- 9 --> system_assurance
-    klv -- 43 --> system_entscheid
+    klv -- 44 --> system_entscheid
     klv -- 10 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv

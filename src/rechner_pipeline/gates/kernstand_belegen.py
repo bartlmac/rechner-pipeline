@@ -54,6 +54,7 @@ from rechner_pipeline.gates._common import (
     Exit,
     ToolboxResult,
     build_result,
+    ein_ausgabe_benannt,
     raeume_schreibreste,
     run_command,
 )
@@ -420,6 +421,7 @@ def _json_bytes(daten: Dict[str, Any]) -> bytes:
     return (json.dumps(daten, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
+@ein_ausgabe_benannt(command=COMMAND, gate=GATE, gate_version=GATE_VERSION)
 def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     p = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.gates.kernstand_belegen",
@@ -468,7 +470,13 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     if ka.REGRESSION_AUSNAHME_ERLAUBT:
         regression = regressionsausnahme(beleg)
         ausgaben[ka.REGRESSION_RELATIV] = _json_bytes(regression)
-    ausgaben[ka.SICHT_RELATIV] = rendere_sicht(beleg, regression).encode("utf-8")
+    # Die Sicht aus genau den Bytes der Belege, wie das Gate sie beim Zeichnen
+    # neu erzeugt (gates.sichten, Runde G): Faellt eine Schreibstelle aus,
+    # gehoeren Beleg und Sicht nicht zusammen, und A-K2 wird nicht gezeichnet.
+    ausgaben[ka.SICHT_RELATIV] = rendere_sicht(
+        json.loads(ausgaben[ka.AENDERUNG_RELATIV]),
+        json.loads(ausgaben[ka.REGRESSION_RELATIV]) if regression is not None else None,
+    ).encode("utf-8")
     for relativ, daten in ausgaben.items():
         _ersetze(fall / relativ, daten)
     summary: Dict[str, Any] = {

@@ -83,6 +83,11 @@ python -m rechner_pipeline.gates.stand_belegen ordnung --linie ~/apps/plv/linie 
 # ansehen: ~/apps/plv/linie/abgeleitet/ordnung/linie.md
 ```
 
+Faellt `stand_belegen` beim Schreiben aus (Code `ein_ausgabe`), denselben
+Aufruf wiederholen: Ein Rest von `linie.json` sperrt `linie` nicht, und
+`ordnung` zieht fuer das schon liegende Glied nur die Sicht nach
+(`bereits_vorhanden`), ohne zweites Glied.
+
 Die Ordnung der PLV fuehrt den Vorstand (`mensch/vorstand`, Gates `A-Z1`
 und `A-M6`), die zeichnenden Rollen und die Betriebsrolle
 `betrieb/tageslauf`. **Welche Kommandos die Linie verlangen**
@@ -374,6 +379,13 @@ Der Beleg bindet Tabellen, Config, Code-Stand und einen neu gefahrenen
 Befund der Bestandswache P-B1 (gruen ist Voraussetzung), dazu Kennzahlen;
 nach einem Neuaufsetzen zeigt die Sicht die Abweichung zum zuletzt
 abgenommenen Anfangsbestand (aus der Bindung im Archiv der alten Ablage).
+Ist diese Bindung da, aber nicht lesbar oder nicht pruefbar (oder fehlt das
+Archiv, das `neuaufsetzen.json` nennt), verweigert `belegen` mit Exit 2 und
+Ausweg — "erste Abnahme" sagt die Sicht nur, wenn es keine abgenommene
+Vorgaengerin gibt. A-B3 zeichnet das Gate nur, wenn die Sicht am festen Ort
+die aus dem Beleg erzeugte ist (ADR-025, Nachtrag "Beleg und Sicht"); nach
+einem Ausfall beim Belegen (Code `sicht` beim Zeichnen) `belegen`
+wiederholen und erneut ansehen.
 `binden` haelt den Stand des A-B3-Snapshots per Gleichheit gegen den der
 Ablage — liegt zwischen Belegen und Binden ein Lauf, verweigert es. Der
 Linienbereich ist der Ort der Erstabnahme des Zielsystems (ADR-025); `binden`
@@ -393,6 +405,12 @@ Tarifwerk-Schalter der Config gegen den Uebernahmebeleg des Falls; passt
 das nicht, bricht sie ab und nennt den Config-Abschnitt, der zu
 uebernehmen ist. Timer anhalten, Routine fahren, Erstbefuellung von Hand,
 Timer wieder einschalten:
+
+Faellt sie vorher aus (etwa beim Schreiben der Provenienz oder beim
+Archivieren der alten Ablage), ist nichts bewegt: Sie raeumt ihre eigene
+Vorbereitung `daten.neu-<Zeit>` ab, sagt das in der Meldung (Exit 2; wo das
+Abraeumen nicht gelingt, nennt sie den Rest), und derselbe Aufruf liefert
+danach das Ergebnis des ungestoerten Laufs.
 
 Endet die Routine zwischen ihren zwei Umbenennungen (Stromausfall,
 Abbruch), fehlt `daten` kurz. Der Container legt es dann NICHT leer an

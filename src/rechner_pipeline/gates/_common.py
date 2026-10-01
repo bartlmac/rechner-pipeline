@@ -83,6 +83,7 @@ __all__ = [
     "GATE_LEDGER_SUFFIX",
     "GATE_HISTORIE_SUFFIX",
     "begin_gate_ledger_attempt",
+    "ein_ausgabe_benannt",
     "finalize_gate_ledger",
     "write_gate_ledger",
     "force_utf8_stream",
@@ -1445,6 +1446,48 @@ def _ledger_write_failure(
         metrics=result.metrics,
         diagnostics_path=result.diagnostics_path,
     )
+
+
+def ein_ausgabe_benannt(
+    *, command: str, gate_version: str, gate: Optional[str] = None
+) -> Callable[[Callable[..., "ToolboxResult"]], Callable[..., "ToolboxResult"]]:
+    """Ein Ein-/Ausgabefehler eines Produzenten ist ein benanntes Ergebnis.
+
+    Derselbe Weg wie :func:`_ledger_write_failure` fuer den Gate-Beleg: Exit
+    INTERNAL, ein Fehlerobjekt mit Code, Typ und Meldung — kein Traceback,
+    keine Ausnahme durch :func:`run_command` (Runde G, Linse betrieb-ausfall:
+    ENOSPC an einer Sicht endete mit Exit 50 und Traceback). Der Dekorator
+    sitzt am ``main`` jedes Produzenten eines Abnahmebelegs; jeder Pfad des
+    Kommandos geht durch ihn. Was der Abbruch hinterlaesst, ist nie
+    zeichenbar: Das Gate haelt Beleg und Sicht gemeinsam
+    (``gates.sichten``), und derselbe Aufruf liefert danach den Zustand
+    des ungestoerten Laufs.
+    """
+    import functools
+
+    def dekorator(main: Callable[..., "ToolboxResult"]) -> Callable[..., "ToolboxResult"]:
+        @functools.wraps(main)
+        def benannt(*args: Any, **kwargs: Any) -> "ToolboxResult":
+            try:
+                return main(*args, **kwargs)
+            except OSError as exc:
+                return build_result(
+                    command=command, gate=gate, gate_version=gate_version,
+                    exit_code=Exit.INTERNAL,
+                    errors=[{
+                        "code": "ein_ausgabe",
+                        "type": type(exc).__name__,
+                        "message": (
+                            f"Ein-/Ausgabefehler: {exc} — der Lauf ist nicht zu Ende "
+                            "geschrieben; was am festen Ort liegt, zeichnet kein Gate, "
+                            "solange Beleg und Sicht nicht zusammengehoeren. Ausweg: die "
+                            "Ursache beheben (Platz, Rechte) und denselben Aufruf "
+                            "wiederholen"),
+                    }],
+                )
+        return benannt
+
+    return dekorator
 
 
 def begin_gate_ledger_attempt(

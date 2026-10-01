@@ -472,3 +472,33 @@ def linie_anlegen(verzeichnis: Path, **kw) -> Path:
         "--vorgaenger", "keiner", "--eingetragen-am", "2026-10-01T08:00:00+00:00"])
     assert ergebnis.exit_code == 0, ergebnis.errors
     return linie
+
+
+def handbeleg_sicht_nachziehen(bereich: Path, gate: str) -> None:
+    """Fuer Tests, die einen Beleg VON HAND an den festen Ort schreiben (statt
+    ueber den Produzenten): daneben legen, was der Produzent mitschreibt — die
+    Sicht, erzeugt aus genau diesen Bytes ueber das Register
+    ``gates.sichten`` (dieselbe Renderfunktion wie Produzent und Gate), und
+    fuer A-O1 die Archivkopie des Belegs. Das Gate zeichnet eine Annahme nur,
+    wenn beides zum gepinnten Beleg gehoert (Runde G, ADR-025 Nachtrag).
+
+    Kein Weg an der Regel vorbei: Was hier entsteht, ist byte-gleich das, was
+    der Produzent schriebe; Tests, deren Gegenstand die Sicht ist, benutzen
+    den Produzenten (tests/test_sicht_beleg_ausfall.py)."""
+    from rechner_pipeline.gates import sichten, stand_belegen
+    from rechner_pipeline.gates._common import schreibe_exklusiv
+
+    eintrag = sichten.SICHTEN[gate]
+    belege = {}
+    for rolle, relativ in eintrag.belege:
+        roh = (Path(bereich) / relativ).read_bytes()
+        belege[rolle] = json.loads(roh)
+        if eintrag.archiv is not None and eintrag.archiv[0] == rolle:
+            archiv = Path(bereich) / stand_belegen.TBOX_ARCHIV_RELATIV
+            archiv.mkdir(parents=True, exist_ok=True)
+            ziel = archiv / f"{hashlib.sha256(roh).hexdigest()}.json"
+            if not ziel.exists():
+                schreibe_exklusiv(ziel, roh)
+    sicht = Path(bereich) / eintrag.sicht_relativ
+    sicht.parent.mkdir(parents=True, exist_ok=True)
+    sicht.write_text(eintrag.rendere(belege), encoding="utf-8")

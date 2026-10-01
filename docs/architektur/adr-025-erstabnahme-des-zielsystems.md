@@ -411,6 +411,13 @@ Glied, steht vor dem zeichnenden Schluessel auch der des Vorstands im Ring
 (`--freigabe-schluessel <vorstand.key>`): Jede Annahme liest die Linie mit
 ihm (Nachtrag Pruefrunde G). `--repo-root` ist der Baum des Pakets, das
 rechnet (Nachtrag Pruefrunde G).
+Gezeichnet wird nur, was
+angesehen werden konnte (Nachtrag "Beleg und Sicht" unten): Verweigert das
+Gate mit Code `sicht`, ist die Sicht nicht die aus der Vorlage erzeugte —
+die Vorlage mit demselben Kommando neu erzeugen, erneut ansehen, dann
+zeichnen. Endet ein Produzent mit Code `ein_ausgabe`, denselben Aufruf nach
+Behebung der Ursache wiederholen; er liefert den Zustand des ungestoerten
+Laufs.
 
 1. **Schluessel des Vorstands anlegen** (wie die anderen):
    `head -c 64 /dev/urandom > <schluessel>/vorstand.key && chmod 600
@@ -463,7 +470,9 @@ rechnet (Nachtrag Pruefrunde G).
    `linie/abgeleitet/ordnung/linie.md`. Nach einem Wechsel des
    Vorstandsschluessels werden der alte UND der neue genannt
    (`--vorstand-schluessel <alt.key> --vorstand-schluessel <neu.key>`, der
-   zuletzt genannte zeichnet): Der Produzent liest die Linie mit beiden.
+   zuletzt genannte zeichnet): Der Produzent liest die Linie mit beiden. Fehlt die Sicht nach einem Ausfall,
+   zieht derselbe Aufruf sie nach (`summary.bereits_vorhanden`), ohne ein
+   zweites Glied.
 
 ## Nachtrag 2026-10-01: Die Linie ist Pflicht
 
@@ -707,3 +716,111 @@ Snapshot-Schema 10: Die Gestalt des Snapshots aendert sich nicht, und unter
 5.0.0 ist noch nichts gezeichnet. Die uebrigen Kommandos mit `--repo-root`
 behalten ihre Versionen: Rot wird nur ein Aufruf, dessen Stand nie der des
 rechnenden Codes war.
+
+## Nachtrag 2026-10-01: Beleg und Sicht gehoeren zusammen (Runde G)
+
+**Befund** (blinde Pruefrunde G, Linse "Ausfaelle an den Schreibstellen").
+Jeder Produzent eines Belegs, den ein Mensch zeichnet, schrieb erst den
+Beleg bzw. die Vorlage und danach die lesbare Sicht. Fiel das Schreiben der
+Sicht aus (volle Platte), lag die neue Vorlage neben der alten Sicht, und das
+Gate zeichnete die neue Vorlage, die der Mensch nie gesehen hatte. Gemessen
+fuer A-K2, A-O1, A-T1, A-B3 (die Sicht zeigte eine andere Ablage) und fuer
+Fallauftrag und Fallabbruch (ADR-026; die Sicht nannte eine andere
+Programmleitung als die, die das Recht auf den Abbruch bekam). Kein Gate
+pinnte oder pruefte die Sicht. Vier Nachbarn derselben Linse: (a) fehlte die
+Archivkopie des T-Box-Belegs, nahm das Gate A-O1 trotzdem an, und die
+naechste Vorlage behauptete still "Erstabnahme"; (b) eine vorhandene, aber
+nicht lesbare oder nicht pruefbare Bindung des alten Anfangsbestands wurde
+zu "erste Abnahme dieser Ablage" mit Exit 0; (c) ein Schreibrest von
+`linie.json` sperrte die Wiederholung von `stand_belegen linie`; (d) ein
+Ein-/Ausgabefehler bei der Provenienz oder der ersten Umbenennung liess die
+Vorbereitung `daten.neu-<zeit>` des Neuaufsetzens ungenannt liegen. Die
+Produzenten unter `gates/` antworteten auf einen Ein-/Ausgabefehler mit
+Exit 50 und Traceback.
+
+**Entscheid.**
+
+1. **Die Invariante:** Gezeichnet wird nur eine Vorlage, deren Sicht am
+   festen Ort byte-gleich die aus genau dieser Vorlage erzeugte ist
+   (Abschnitt 1: "deterministisch aus dem Beleg erzeugt"; ADR-026: erst
+   ansehen, dann zeichnen). EINE Regel im Gate beim Zeichnen einer Annahme
+   (`gates.sichten.sicht_fehler`, eine Stelle in `gate_entscheid.main`, nach
+   allen Vorbedingungen, die die Pins bestimmen): Das Gate erzeugt die Sicht
+   aus den Belegen, die es pinnt, mit derselben Renderfunktion wie der
+   Produzent neu — aus den Bytes seiner EINEN Lesung, die den Pin ergab
+   (Review T23-01: eine Datei, deren Hash im Beleg steht, wird genau einmal
+   gelesen; die Pruefer der Belege reichen die geparsten Belege dafuer
+   durch) — und vergleicht sie mit der Datei am festen Ort; fehlt sie
+   oder weicht sie ab, verweigert es mit Code `sicht` und dem Ausweg
+   "Vorlage neu erzeugen, ansehen, zeichnen". Die Regel faengt beide
+   Richtungen (Beleg neu und Sicht alt, Sicht neu und Beleg alt) und die
+   fehlende Sicht; die Schreibreihenfolge im Produzenten ist unerheblich.
+   Eine Ablehnung zeichnet nichts ab und braucht keine Sicht. Die
+   Produzenten erzeugen die Sicht aus den Bytes, die sie schreiben, nicht
+   aus dem Objekt davor — derselbe Weg wie das Gate.
+2. **Ein Register an einer Stelle** (`gates.sichten.SICHTEN`): je Gate mit
+   Sicht die Pflichtbelege (Rolle, fester Ort), der Ort der Sicht, die
+   Renderfunktion, der Produzent; A-O1 dazu die Archivpruefung. Die Ratsche
+   haelt es mit `==` gegen die Menge der Gates, deren Produzent eine Sicht
+   schreibt (Tabelle der Gegenstaende und die Vorlagen des Lebenslaufs), und
+   gegen jede Konstante `*SICHT_RELATIV` des Pakets
+   (`tests/test_sicht_beleg_ausfall.py`). Die Ordnungsaenderung A-Z1 steht
+   nicht darin: Sie ist kein Gate dieses Kommandos, der Vorstand zeichnet das
+   Glied im Produzenten; ihre Sicht zieht derselbe Aufruf fuer das schon
+   liegende Glied nach (`stand_belegen ordnung`, `summary.bereits_vorhanden`),
+   statt mit "Vorgaenger ist nicht die Spitze" zu enden.
+3. **Schichten.** Die Renderfunktion des Anfangsbestands wohnt beim Vertrag
+   (`models.anfangsbestand.rendere_sicht`): `gates` darf `betrieb` nicht
+   importieren, beide erreichen `models`, keine neue Kante. Sie braucht nichts
+   als den Beleg; dieselbe Art Funktion steht dort schon
+   (`anzeige_bindung`).
+4. **Das Archiv der T-Box.** `stand_belegen tbox` schreibt die Archivkopie
+   ZUERST, dann Beleg und Sicht: Was am festen Ort gezeichnet werden kann,
+   hat seine Archivkopie, und ein Ausfall am Archiv bewegt nichts. Das Gate
+   zeichnet A-O1 nur, wenn die Archivkopie des gepinnten Belegs liegt und zum
+   Pin passt (`stand_belegen.tbox_archiv_fehler`, EINE Pruefung fuer
+   Produzent und Gate). Das zuletzt abgenommene Vokabular liefert die
+   juengste A-O1-ANNAHME des Bereichs (eine Ablehnung als Spitze aendert
+   nichts daran); "es gibt keine Annahme" ist der einzige Weg zu
+   "Erstabnahme". Fehlt ihr gepinnter Beleg im Archiv, passt er nicht zum Pin
+   oder fuehrt er kein Vokabular, verweigert der Produzent benannt mit dem
+   Ausweg "die gepinnte Fassung im Archiv wiederherstellen" (liegt sie noch
+   am festen Ort, sagt die Meldung das). Gate-Version von `stand_belegen`:
+   4.0.0 (ein vorher gruener Aufruf wird rot).
+5. **Der alte Anfangsbestand.** `betrieb.anfangsbestand belegen` sagt "erste
+   Abnahme" nur, wenn es keine Ablage davor gab (keine Provenienz, oder sie
+   nennt kein Archiv) oder keine Ablage der Kette davor eine Bindung traegt
+   (eine archivierte Ablage ohne Bindung hatte hoechstens ihren Aufbaulauf;
+   dann gilt die Bindung ihrer Vorgaengerin). Eine Provenienz, ein Archiv oder
+   eine Bindung, die genannt bzw. da, aber nicht lesbar oder nicht pruefbar
+   ist, ist ein benannter Fehler mit Ausweg (Exit 2).
+6. **Ausfaelle sind benannt und wiederholbar.** Jeder Produzent unter
+   `gates/`, den das Register nennt, beendet einen Ein-/Ausgabefehler wie das
+   Gate-Ledger (`gates._common.ein_ausgabe_benannt`, derselbe Weg wie
+   `_ledger_write_failure`): Exit 50, Code `ein_ausgabe`, Ausweg "denselben
+   Aufruf wiederholen", kein Traceback. `stand_belegen linie` zaehlt den
+   eigenen Schreibrest von `linie.json` (`gates._common.ist_schreibrest`)
+   nicht als Inhalt. Das Neuaufsetzen raeumt seine Vorbereitung auch bei
+   einem Ausfall an der Provenienz oder der ersten Umbenennung ab (die alte
+   Ablage liegt dann an ihrem Ort; die Identitaet der Vorbereitung steht
+   fest, weil dieser Aufruf sie unter einem vorher nicht existierenden
+   Namen angelegt hat) und nennt den Rest, wo das nicht geht.
+
+*Verworfen:* (i) **die Sicht als weiteren Pflichtbeleg pinnen** — das bindet
+die alte Sicht an den Snapshot, prueft aber nicht, dass sie zur Vorlage
+gehoert; der Fund bliebe bestehen, nur gezeichnet. (ii) **nur die
+Schreibreihenfolge drehen** (Sicht vor Beleg) — das schliesst eine Richtung;
+ein Ausfall am Beleg liesse dann die neue Sicht neben der alten Vorlage
+stehen. (iii) Fuer das Archiv: **das Gate schreibt die Archivkopie beim
+Zeichnen selbst** — ein Gate schreibt Snapshot und Ledger, keine Belege
+eines Produzenten; ein Ausfall an dieser Stelle waere ein neuer halber
+Zustand im Gate, und die Archivkopie entstuende aus Bytes, deren Ablage der
+Produzent nicht bezeugt hat. Gewaehlt: Produzent schreibt zuerst, Gate
+prueft.
+
+*Nicht gebaut, benannt:* Die anderen Produzenten unter `gates/`, die in
+`main` schreiben (unter anderem `abox_validate`, `extract`, `aktuartest`,
+`bestand_uebernehmen`, `transformation_anwenden`, `verankerung_belegen`,
+`fuehrungsprobe`), antworten auf einen Ein-/Ausgabefehler weiterhin ueber
+`run_command` mit Exit 50 und Traceback; sie legen keinen Beleg vor, den
+ein Mensch ueber eine Sicht zeichnet.

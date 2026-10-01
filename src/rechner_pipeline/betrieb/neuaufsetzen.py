@@ -179,22 +179,34 @@ def neu_aufsetzen(
         ) from exc
 
 
-def _verwirf_vorbereitung(neu_pfad: Path, stand: Path) -> None:
+def _verwirf_vorbereitung(neu_pfad: Path, stand: Path, *,
+                          mit_provenienz: bool = False) -> Optional[str]:
     """Die eigene, nie veroeffentlichte Vorbereitung entfernen (ueber
     ``betrieb._loeschen``: nur dieses Verzeichnis, neben der Ablage, ohne
     Provenienz). Scheitert das Entfernen, bleibt der Rest benannt liegen —
-    die urspruengliche Verweigerung geht vor."""
+    die urspruengliche Verweigerung geht vor. Rueckgabe: None, oder der
+    Satz, der den Rest nennt.
+
+    ``mit_provenienz``: nur fuer einen Ausfall BEIM Schreiben der Provenienz
+    oder bei der ersten Umbenennung (Runde G, G28). Dann traegt die
+    Vorbereitung ihre Provenienz (ganz oder halb), ist aber nie
+    veroeffentlicht: Ihre Identitaet steht fest, weil DIESER Aufruf sie unter
+    seinem Namen angelegt hat (der Name existierte vorher nicht) und die
+    alte Ablage an ihrem Ort liegt."""
     from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
 
     if not neu_pfad.exists():
-        return
+        return None
     try:
         entferne_verzeichnis(
             neu_pfad, innerhalb=stand.parent, name_ok=lambda n: n == neu_pfad.name,
-            ohne_marker=PROVENIENZ_DATEI,
+            ohne_marker=None if mit_provenienz else PROVENIENZ_DATEI,
             grund="Vorbereitung eines verweigerten Neuaufsetzens")
     except (LoeschFehler, OSError) as exc:  # pragma: no cover - benannter Rest
-        print(f"neuaufsetzen: Vorbereitung {neu_pfad} nicht entfernt: {exc}", file=sys.stderr)
+        rest = f"Vorbereitung {neu_pfad} nicht entfernt ({exc}) — von Hand entfernen"
+        print(f"neuaufsetzen: {rest}", file=sys.stderr)
+        return rest
+    return None
 
 
 def _protokollzeilen_formlos(pfad: Path) -> List[Dict[str, Any]]:
@@ -353,12 +365,37 @@ def _neu_aufsetzen_unter_sperre(
             "--zeichnungsordnung <ordnung>",
         ],
     }
-    (neu_pfad / PROVENIENZ_DATEI).write_text(
-        json.dumps(provenienz, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8", newline="\n",
-    )
+    # Provenienz und erste Umbenennung gehoeren noch zur Vorbereitung (Runde
+    # G, G28): Faellt eine davon aus, ist nichts bewegt — die alte Ablage
+    # liegt an ihrem Ort —, und die eigene Vorbereitung wird abgeraeumt wie
+    # bei jeder anderen Verweigerung davor; wo das nicht geht, nennt die
+    # Meldung den Rest. Vorher blieb daten.neu-<zeit> mit Config, signiertem
+    # Eingang und Sperrdateien ungenannt liegen.
+    def _abbruch_vor_dem_tausch(schritt: str, exc: OSError) -> NeuaufsetzenError:
+        if stand.exists() and not archiv_ziel.exists():
+            rest = _verwirf_vorbereitung(neu_pfad, stand, mit_provenienz=True)
+            return NeuaufsetzenError(
+                f"Ein-/Ausgabefehler {schritt} ({type(exc).__name__}: {exc}); nichts bewegt, "
+                + (rest if rest else f"die Vorbereitung {neu_pfad} ist entfernt")
+                + " — Ausweg: die Ursache beheben und denselben Aufruf wiederholen")
+        return NeuaufsetzenError(
+            f"Ein-/Ausgabefehler {schritt} ({type(exc).__name__}: {exc}); alte Ablage: "
+            f"{archiv_ziel if archiv_ziel.exists() else stand}, vorbereitete neue Ablage: "
+            f"{neu_pfad} — Ausweg: Timer anhalten, Lage pruefen, dann von Hand: mv {neu_pfad} "
+            f"{stand}")
+
+    try:
+        (neu_pfad / PROVENIENZ_DATEI).write_text(
+            json.dumps(provenienz, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8", newline="\n",
+        )
+    except OSError as exc:
+        raise _abbruch_vor_dem_tausch("beim Schreiben der Provenienz", exc) from exc
     # 3. Archivieren und tauschen: zwei Umbenennungen, keine Loeschung.
-    os.rename(stand, archiv_ziel)
+    try:
+        os.rename(stand, archiv_ziel)
+    except OSError as exc:
+        raise _abbruch_vor_dem_tausch(f"beim Archivieren nach {archiv_ziel}", exc) from exc
     try:
         os.rename(neu_pfad, stand)
     except OSError as exc:

@@ -49,6 +49,7 @@ from rechner_pipeline.gates._common import (
     Exit,
     ToolboxResult,
     build_result,
+    ein_ausgabe_benannt,
     lies_gehasht,
     run_command,
 )
@@ -262,6 +263,7 @@ def rendere_abbruch(beleg: Mapping[str, Any]) -> str:
     return "\n".join(z)
 
 
+@ein_ausgabe_benannt(command=COMMAND, gate_version=GATE_VERSION)
 def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     p = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.gates.fall_belegen",
@@ -321,16 +323,20 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
                                  pl_fingerabdruck=_sha256(pl), pl_klasse=args.pl_klasse,
                                  mandate=mandate, text=args.auftrag)
             ziel, sicht = fall / fa.AUFTRAG_RELATIV, fall / fa.AUFTRAG_SICHT_RELATIV
-            text = rendere_auftrag(beleg)
+            rendere = rendere_auftrag
         else:
             beleg = baue_abbruch(fall, repo_root=Path(args.repo_root).resolve(),
                                  grund=args.grund, bestand=args.bestand,
                                  uebergabe=args.uebergabe)
             ziel, sicht = fall / fa.ABBRUCH_RELATIV, fall / fa.ABBRUCH_SICHT_RELATIV
-            text = rendere_abbruch(beleg)
+            rendere = rendere_abbruch
     except (FallBelegFehler, fall_mod.FallFehler, OSError, ValueError, KeyError) as exc:
         return _fehler(Exit.FILE_CONTRACT, str(exc))
     daten = _stand._json_bytes(beleg)
+    # Die Sicht aus genau den Bytes der Vorlage, wie das Gate sie beim Zeichnen
+    # neu erzeugt (gates.sichten, Runde G): Gezeichnet wird nur eine Vorlage,
+    # deren Sicht am festen Ort die aus ihr erzeugte ist.
+    text = rendere(json.loads(daten))
     _stand._ersetze(ziel, daten)
     _stand._ersetze(sicht, text.encode("utf-8"))
     gate = AUFTRAG_GATE if args.aktion == "auftrag" else ABBRUCH_GATE

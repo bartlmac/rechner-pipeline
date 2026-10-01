@@ -62,6 +62,8 @@ from rechner_pipeline.gates._common import (
     Exit,
     ToolboxResult,
     build_result,
+    ein_ausgabe_benannt,
+    ist_schreibrest,
     raeume_schreibreste,
     run_command,
     schreibe_exklusiv,
@@ -73,6 +75,12 @@ from rechner_pipeline.models import standabnahme as sa
 from rechner_pipeline.models.schemas import P9Snapshot
 
 COMMAND = "stand_belegen"
+#: 4.0.0 (2026-10-01, Runde G, ADR-025 Nachtrag "Beleg und Sicht"; Major: ein
+#: vorher gruener Aufruf wird rot): ``tbox`` verweigert, wenn eine geltende
+#: A-O1-Annahme ihren gepinnten Beleg nicht im Archiv findet (statt still
+#: "Erstabnahme"); das Archiv wird VOR Beleg und Sicht geschrieben; ``ordnung``
+#: zieht fuer ein schon liegendes Glied die Sicht nach; ``linie`` zaehlt den
+#: eigenen Schreibrest nicht als Inhalt; ein Ein-/Ausgabefehler ist benannt.
 #: 3.0.0 (2026-10-01, ADR-024 dritter Nachtrag; Major: ein vorher gruener
 #: Aufruf wird rot): ``tbox --fall`` verlangt ``--vorher-linie``, ein zweites
 #: Vokabular unter einer abgenommenen Version wird verweigert, der lebende
@@ -80,7 +88,9 @@ COMMAND = "stand_belegen"
 #: 4.0.0 (2026-10-01, Pruefrunde G; Major: ein vorher gruener Aufruf wird
 #: rot): ``verweisen --snapshot`` entfaellt (G11), ``--repo-root`` muss das
 #: ausgefuehrte Paket tragen (G12), ``ordnung`` liest die Linie mit dem Ring
-#: des Vorstands (G09; ``--vorstand-schluessel`` wiederholbar).
+#: des Vorstands (G09; ``--vorstand-schluessel`` wiederholbar). ``tbox`` schreibt das Archiv zuerst und
+#: verweigert eine nicht belegbare fruehere Abnahme benannt (G24);
+#: ``ordnung`` zieht die Sicht eines liegenden Glieds nach (G26).
 GATE_VERSION = "4.0.0"
 
 #: Fester Ort des T-Box-Aenderungsbelegs (wie bisher von A-O1 gelesen).
@@ -319,26 +329,81 @@ def _vokabular_sha256(vokabular: Any) -> str:
     return hashlib.sha256(roh.encode("ascii")).hexdigest()
 
 
-def _vorher_tbox(bereiche: List[Path]) -> Optional[Dict[str, Any]]:
-    """Das zuletzt abgenommene Vokabular: der Beleg, den die geltende
-    A-O1-Spitze pinnt, aus dem Archiv seines Bereichs (None = es gibt keinen)."""
-    for bereich in bereiche:
-        spitze, fehler = geltende_spitze(bereich, "A-O1")
-        if spitze is None or spitze.get("entscheid") != "angenommen":
-            continue
-        pin = ((spitze.get("pflichtbelege") or {}).get("tbox_aenderung") or [None])[0]
-        datei = bereich / TBOX_ARCHIV_RELATIV / f"{pin}.json"
-        if not datei.is_file():
-            continue
+def tbox_archiv_fehler(bereich: Path, pin: object) -> Optional[str]:
+    """Liegt der Beleg ``pin`` im Archiv des Bereichs, byte-gleich zum Pin?
+    (None = ja). EINE Pruefung fuer den Produzenten (das zuletzt abgenommene
+    Vokabular) und das Gate (A-O1 wird nur gezeichnet, wenn die Archivkopie
+    des Belegs liegt, den es pinnt — ``gates.sichten``)."""
+    if not (isinstance(pin, str) and len(pin) == 64):
+        return f"kein Pin auf einen T-Box-Beleg ({pin!r})"
+    datei = Path(bereich) / TBOX_ARCHIV_RELATIV / f"{pin}.json"
+    try:
         roh = datei.read_bytes()
-        if hashlib.sha256(roh).hexdigest() != pin:
+    except FileNotFoundError:
+        return f"der Beleg {pin[:16]}… fehlt im Archiv ({datei})"
+    except OSError as exc:
+        return f"der Beleg {pin[:16]}… im Archiv ist nicht lesbar ({exc})"
+    if hashlib.sha256(roh).hexdigest() != pin:
+        return f"{datei} passt nicht zum Pin (SHA-256 {hashlib.sha256(roh).hexdigest()[:16]}…)"
+    return None
+
+
+def _zuletzt_angenommen(bereich: Path) -> Optional[dict]:
+    """Die zuletzt gezeichnete A-O1-ANNAHME des Bereichs (None = es gibt
+    keine). Jeder Snapshot pinnt alle frueheren als Vorgaenger: Die juengste
+    Annahme ist die mit den meisten. Eine Ablehnung als Spitze aendert nichts
+    daran, welches Vokabular zuletzt abgenommen ist."""
+    from rechner_pipeline.models.snapshot_kette import pruefe_snapshot_graph
+
+    kette, fehler = _lade_kette(bereich, "A-O1")
+    if not fehler and kette:
+        _, fehler = pruefe_snapshot_graph(kette)
+    if fehler:
+        raise StandFehler(
+            f"die A-O1-Kette in {bereich} ist nicht lesbar ({fehler[0]}) — welches Vokabular "
+            "zuletzt abgenommen ist, laesst sich nicht bestimmen")
+    annahmen = [s for s in kette.values() if s.get("entscheid") == "angenommen"]
+    return max(annahmen, key=lambda s: len(s.get("vorgaenger") or [])) if annahmen else None
+
+
+def _vorher_tbox(bereiche: List[Path]) -> Optional[Dict[str, Any]]:
+    """Das zuletzt abgenommene Vokabular: der Beleg, den die juengste
+    A-O1-Annahme pinnt, aus dem Archiv ihres Bereichs.
+
+    None heisst genau eines: In keinem der Bereiche gibt es eine A-O1-Annahme
+    (Erstabnahme). Gibt es eine, deren gepinnter Beleg im Archiv fehlt, nicht
+    zum Pin passt oder kein Vokabular fuehrt, ist das ein benannter Fehler mit
+    Ausweg (Runde G, G24): Vorher ging die Suche per ``continue`` weiter, und
+    die Sicht behauptete "Erstabnahme", obwohl die Linie die T-Box schon
+    abgenommen hatte."""
+    for bereich in bereiche:
+        annahme = _zuletzt_angenommen(bereich)
+        if annahme is None:
             continue
-        alt = json.loads(roh)
-        if isinstance(alt.get("vokabular"), dict):
-            return {"beleg_sha256": pin, "snapshot_sha256": spitze["snapshot_sha256"],
-                    "version": alt.get("nach_version"),
-                    "vokabular_sha256": _vokabular_sha256(alt["vokabular"]),
-                    "vokabular": alt["vokabular"]}
+        pin = ((annahme.get("pflichtbelege") or {}).get("tbox_aenderung") or [None])[0]
+        fehler = tbox_archiv_fehler(bereich, pin)
+        alt: Any = None
+        if fehler is None:
+            alt = json.loads((Path(bereich) / TBOX_ARCHIV_RELATIV / f"{pin}.json").read_bytes())
+            if not (isinstance(alt, dict) and isinstance(alt.get("vokabular"), dict)):
+                fehler = f"der Beleg {str(pin)[:16]}… im Archiv fuehrt kein Vokabular"
+        if fehler is not None:
+            am_ort = Path(bereich) / TBOX_AENDERUNG_RELATIV
+            noch_da = (am_ort.is_file()
+                       and hashlib.sha256(am_ort.read_bytes()).hexdigest() == pin)
+            raise StandFehler(
+                f"die T-Box ist in {bereich} abgenommen (A-O1-Snapshot "
+                f"{str(annahme.get('snapshot_sha256'))[:16]}…), aber {fehler} — das zuletzt "
+                "abgenommene Vokabular ist nicht bestimmbar, und 'Erstabnahme' waere eine "
+                "Behauptung. Ausweg: die gepinnte Fassung als "
+                f"{TBOX_ARCHIV_RELATIV}/{pin}.json wiederherstellen"
+                + (f" (sie liegt noch am festen Ort {TBOX_AENDERUNG_RELATIV}: dorthin kopieren)"
+                   if noch_da else " (aus der Sicherung des Bereichs)")
+                + ", dann die Vorlage neu erzeugen")
+        return {"beleg_sha256": pin, "snapshot_sha256": annahme["snapshot_sha256"],
+                "version": alt.get("nach_version"),
+                "vokabular_sha256": _vokabular_sha256(alt["vokabular"]),
+                "vokabular": alt["vokabular"]}
     return None
 
 
@@ -492,6 +557,7 @@ def rendere_ordnungslinie(glieder: List[Dict[str, Any]]) -> str:
     return "\n".join(z)
 
 
+@ein_ausgabe_benannt(command=COMMAND, gate_version=GATE_VERSION)
 def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     p = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.gates.stand_belegen",
@@ -542,7 +608,14 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
         linie = Path(args.linie)
         if sa.bereich_art(linie) is not None:
             return _fehler(Exit.USAGE, f"{linie} ist schon ein Fall- oder Linienbereich")
-        if linie.exists() and any(linie.iterdir()):
+        # Ein Schreibrest von linie.json ist kein Inhalt (gates._common.
+        # ist_schreibrest; Runde G, G27): Er bleibt nach einem Prozessende
+        # zwischen Tempdatei und Einhaengen, und schreibe_exklusiv raeumt ihn
+        # beim naechsten Aufruf weg — vorher verweigerte "nicht leer" diesen
+        # Aufruf fuer immer.
+        if linie.exists() and any(
+                not (ist_schreibrest(p.name) and p.name.startswith(f".{sa.LINIE_MARKER}."))
+                for p in linie.iterdir()):
             return _fehler(Exit.USAGE, f"{linie} ist nicht leer — ein Linienbereich entsteht leer")
         linie.mkdir(parents=True, exist_ok=True)
         daten = _json_bytes(sa.linie_kennung(linie.resolve().name))
@@ -577,27 +650,51 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
         glieder, lf = ol.lade_linie(linie, ring=ring)
         if lf:
             return _fehler(Exit.FILE_CONTRACT, "die Linie ist verletzt: " + "; ".join(lf[:3]))
+        vorgaenger = None if args.vorgaenger == "keiner" else args.vorgaenger
+        try:
+            ordnung_roh = quelle_pfad.read_bytes()
+        except OSError as exc:
+            return _fehler(Exit.FILE_CONTRACT, str(exc))
+        sicht_ziel = linie / "abgeleitet" / "ordnung" / "linie.md"
+        oben = glieder[-1] if glieder else None
+        if oben is not None and oben["vorgaenger"] == vorgaenger \
+                and oben["ordnung_sha256"] == hashlib.sha256(ordnung_roh).hexdigest():
+            # Derselbe Aufruf fuer das Glied, das schon die Spitze ist (Runde
+            # G, G26): Fiel nach dem Glied die Sicht aus, zieht die
+            # Wiederholung sie nach, statt mit "Vorgaenger ist nicht die
+            # Spitze" zu enden — ohne zweites Glied und ohne neue Zeichnung.
+            _ersetze(sicht_ziel, rendere_ordnungslinie(glieder).encode("utf-8"))
+            return build_result(
+                command=COMMAND, gate=ol.ORDNUNGS_GATE, gate_version=GATE_VERSION,
+                exit_code=Exit.OK,
+                paths={"glied": str(linie / ol.VERZEICHNIS / ol.dateiname(oben))},
+                summary={"nummer": oben["nummer"], "glied_sha256": oben["glied_sha256"],
+                         "ordnung_sha256": oben["ordnung_sha256"],
+                         "gezeichnet": oben["zeichnung"] is not None,
+                         "bereits_vorhanden": True,
+                         "aenderung": ordnung_sicht(
+                             ol.ordnung_aus(glieder[-2]) if len(glieder) > 1 else None,
+                             ol.ordnung_aus(oben))})
         try:
             glied = ol.neues_glied(
-                glieder, quelle_pfad.read_bytes(),
-                vorgaenger=None if args.vorgaenger == "keiner" else args.vorgaenger,
+                glieder, ordnung_roh, vorgaenger=vorgaenger,
                 eingetragen_am=args.eingetragen_am or utc_now(),
                 vorstand_schluessel=schluessel)
-        except (ol.OrdnungslinieFehler, OSError) as exc:
+        except ol.OrdnungslinieFehler as exc:
             return _fehler(Exit.FILE_CONTRACT, str(exc))
         ziel = linie / ol.VERZEICHNIS / ol.dateiname(glied)
         ziel.parent.mkdir(parents=True, exist_ok=True)
         daten = _json_bytes(glied)
         schreibe_exklusiv(ziel, daten)
         neu, _ = ol.lade_linie(linie, ring=ring)
-        _ersetze(linie / "abgeleitet" / "ordnung" / "linie.md",
-                 rendere_ordnungslinie(neu).encode("utf-8"))
+        _ersetze(sicht_ziel, rendere_ordnungslinie(neu).encode("utf-8"))
         return build_result(
             command=COMMAND, gate=ol.ORDNUNGS_GATE, gate_version=GATE_VERSION, exit_code=Exit.OK,
             paths={"glied": str(ziel)},
             summary={"nummer": glied["nummer"], "glied_sha256": glied["glied_sha256"],
                      "ordnung_sha256": glied["ordnung_sha256"],
                      "gezeichnet": glied["zeichnung"] is not None,
+                     "bereits_vorhanden": False,
                      "aenderung": ordnung_sicht(
                          ol.ordnung_aus(glieder[-1]) if glieder else None, ol.ordnung_aus(glied))},
             output_hashes={str(ziel): hashlib.sha256(daten).hexdigest()})
@@ -647,12 +744,25 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
         return _fehler(Exit.FILE_CONTRACT, str(exc))
     daten = _json_bytes(beleg)
     sha = hashlib.sha256(daten).hexdigest()
-    _ersetze(fall / TBOX_AENDERUNG_RELATIV, daten)
-    _ersetze(fall / TBOX_SICHT_RELATIV, rendere_tbox_sicht(beleg).encode("utf-8"))
+    # Das Archiv ZUERST (Runde G, G24): Was am festen Ort liegt und gezeichnet
+    # werden kann, hat damit immer seine Archivkopie; faellt das Archiv aus,
+    # ist am festen Ort nichts bewegt, und derselbe Aufruf liefert danach den
+    # Zustand des ungestoerten Laufs. Eine Kopie unter dem Namen, die nicht zum
+    # Namen passt, wird nicht stillschweigend stehen gelassen.
     archiv = fall / TBOX_ARCHIV_RELATIV / f"{sha}.json"
     archiv.parent.mkdir(parents=True, exist_ok=True)
-    if not archiv.exists():
+    if archiv.exists() or archiv.is_symlink():
+        archiv_fehler = tbox_archiv_fehler(fall, sha)
+        if archiv_fehler is not None:
+            return _fehler(Exit.FILE_CONTRACT, f"{archiv_fehler} — die Archivkopie ist "
+                           "verfaelscht; sie wird nie ueberschrieben. Ausweg: den Bereich "
+                           "aus der Sicherung wiederherstellen")
+    else:
         schreibe_exklusiv(archiv, daten)
+    # Die Sicht aus genau den Bytes des Belegs, wie das Gate sie beim Zeichnen
+    # neu erzeugt (gates.sichten).
+    _ersetze(fall / TBOX_AENDERUNG_RELATIV, daten)
+    _ersetze(fall / TBOX_SICHT_RELATIV, rendere_tbox_sicht(json.loads(daten)).encode("utf-8"))
     return build_result(
         command=COMMAND, gate_version=GATE_VERSION, exit_code=Exit.OK,
         paths={"beleg": str(fall / TBOX_AENDERUNG_RELATIV),

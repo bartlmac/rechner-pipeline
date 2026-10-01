@@ -156,8 +156,13 @@ def test_ao1_ohne_stellungnahme_wird_gesperrt(fall):
 
 
 def test_ak1_mit_beleg_pinnt_ihn_als_pflichtrolle(fall):
+    from tests.zeichnung_fixture import handbeleg_sicht_nachziehen
+
     beleg = _beleg(fall)
     stellung = _stellungnahme(fall)
+    # Der Beleg ist von Hand geschrieben: Sicht und Archivkopie, wie der
+    # Produzent sie mitschreibt (das Gate zeichnet sonst nicht, ADR-025).
+    handbeleg_sicht_nachziehen(fall, "A-O1")
     ergebnis = _ak1(fall)
     assert ergebnis.exit_code == 0, ergebnis.errors
     snapshot = json.loads(Path(ergebnis.paths["snapshot"]).read_text(encoding="utf-8"))

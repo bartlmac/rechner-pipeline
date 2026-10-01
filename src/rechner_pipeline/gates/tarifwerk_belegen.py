@@ -40,7 +40,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
-from rechner_pipeline.gates._common import Exit, ToolboxResult, build_result, run_command
+from rechner_pipeline.gates._common import (
+    Exit,
+    ToolboxResult,
+    build_result,
+    ein_ausgabe_benannt,
+    run_command,
+)
 from rechner_pipeline.gates._provenienz import (
     GitAngabeFehler,
     git_commit_von,
@@ -265,6 +271,7 @@ def rendere_sicht(beleg: Dict[str, Any]) -> str:
     return "\n".join(z)
 
 
+@ein_ausgabe_benannt(command=COMMAND, gate=GATE, gate_version=GATE_VERSION)
 def main(argv: Optional[List[str]] = None) -> ToolboxResult:
     p = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.gates.tarifwerk_belegen",
@@ -301,8 +308,11 @@ def main(argv: Optional[List[str]] = None) -> ToolboxResult:
             f"--von {args.von!r} ist kein Vorfahre des lebenden Stands — die Differenz "
             "mischte die Aenderungen dieses Zweigs mit fremden; den Zweig auf den "
             "abgenommenen Stand bringen")
-    ausgaben = {tw.AENDERUNG_RELATIV: _json_bytes(beleg),
-                tw.SICHT_RELATIV: rendere_sicht(beleg).encode("utf-8")}
+    daten = _json_bytes(beleg)
+    # Die Sicht aus genau den Bytes des Belegs, wie das Gate sie beim Zeichnen
+    # neu erzeugt (gates.sichten, Runde G).
+    ausgaben = {tw.AENDERUNG_RELATIV: daten,
+                tw.SICHT_RELATIV: rendere_sicht(json.loads(daten)).encode("utf-8")}
     for relativ, daten in ausgaben.items():
         _ersetze(bereich / relativ, daten)
     return build_result(
