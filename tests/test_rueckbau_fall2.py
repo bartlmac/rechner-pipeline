@@ -21,8 +21,9 @@ Invariante: der Kern rechnet jeden Wert der drei Regeln, beidseitig, gegen
 eine unabhaengige Handrechnung; keine Stelle verweigert eine Tarifregel mehr
 (Ratsche unten, ``==``, mit Positivkontrolle des Detektors).
 
-Die Tests, die ohne die Tafeln und die Generation keinen Gegenstand haben, stehen in
-``tests/rueckbau_fall2_ausgesetzt.txt`` (Mechanik: ``tests/rueckbau.py``).
+Die Tests, die ohne die Tafeln und die Generation keinen Gegenstand hatten, waren
+in ``tests/rueckbau_fall2_ausgesetzt.txt`` ausgesetzt (Mechanik:
+``tests/rueckbau.py``); die Liste ist mit Fall 3 geloescht.
 
 Knoten: klv
 """
@@ -48,10 +49,6 @@ KERN = REPO / "src" / "rechner_pipeline" / "kern"
 
 MP = dataclasses.replace(KLV_DEFAULT, sum_insured=50000.0, zw=1)
 GRUND = rk.Rechenkern(MP)
-
-#: Die Zahl der ausgesetzten Tests. Sie waechst nicht unbemerkt; wer einen Test
-#: aussetzt, aendert diese Zahl und sagt im Commit, warum.
-ANZAHL_AUSGESETZT = 746
 
 def _scheibe():
     return rk.Rechenkern(rk.erhoehungs_scheibe(MP, 3, 5000.0, gamma1_uebernehmen=True))
@@ -142,18 +139,30 @@ def test_positivkontrolle_die_regeln_des_eigenen_geschaefts_rechnen():
     assert danach.gesamt_vs() == pytest.approx(0.7 * MP.sum_insured)
 
 
-def test_keine_generation_der_configs_fuehrt_eine_zurueckgebaute_regel():
+def test_nur_die_uebernommene_generation_fuehrt_die_drei_regeln():
+    """Menge (==): Gemessen an den Configs fuehrt genau EINE Generation —
+    die uebernommene TG2015 — die Regelwerte scheiben_mit_gamma1, stoab_je_baustein,
+    tku_umfang = grundversicherung und red_verfahren = teilkuendigung; die eigenen
+    Generationen tragen den anderen Wert. Positivkontrolle: TG2015 ist da."""
     gesehen = 0
+    mit_regeln = []
     for pfad in sorted((REPO / "configs").glob("bestand_*.toml")):
         for generation in load_config(pfad).generationen:
             tarifwerk = generation.tarifwerk()
             gesehen += 1
-            assert generation.name != "TG2015"
-            assert tarifwerk["scheiben_mit_gamma1"] is False, generation.name
-            assert tarifwerk["stoab_je_baustein"] is False, generation.name
-            assert tarifwerk["tku_umfang"] == vf.UMFANG_ALLE, generation.name
-            assert tarifwerk["red_verfahren"] != br.TEILKUENDIGUNG, generation.name
+            fuehrt = (tarifwerk["scheiben_mit_gamma1"] is True
+                      and tarifwerk["stoab_je_baustein"] is True
+                      and tarifwerk["tku_umfang"] == vf.UMFANG_GRUND
+                      and tarifwerk["red_verfahren"] == br.TEILKUENDIGUNG)
+            teilweise = (tarifwerk["scheiben_mit_gamma1"] is True
+                         or tarifwerk["stoab_je_baustein"] is True
+                         or tarifwerk["tku_umfang"] == vf.UMFANG_GRUND
+                         or tarifwerk["red_verfahren"] == br.TEILKUENDIGUNG)
+            assert fuehrt == teilweise, generation.name
+            if fuehrt:
+                mit_regeln.append(generation.name)
     assert gesehen > 0
+    assert mit_regeln == ["TG2015"]
 
 
 def test_die_tafeln_der_quelle_kommen_nur_ueber_den_import_in_den_kern():
@@ -189,30 +198,13 @@ def test_ratsche_positivkontrolle_des_detektors():
 # Die Liste der ausgesetzten Tests
 # --------------------------------------------------------------------------- #
 
-def test_die_liste_der_ausgesetzten_tests_ist_festgehalten():
-    liste = rueckbau.ausgesetzt()
-    assert len(liste) == ANZAHL_AUSGESETZT
-    assert liste == sorted(set(liste)), "sortiert und ohne Dubletten"
-    for kennung in liste:
-        datei = kennung.split("::", 1)[0]
-        assert (REPO / datei).is_file(), kennung
-        assert not datei.endswith("test_rueckbau_fall2.py"), "der Rueckbau setzt sich nicht selbst aus"
-
-
-def test_jede_kennung_der_liste_gibt_es_in_der_suite():
-    """Die Suite eigens gesammelt (ohne die Liste abzuwaehlen ist das nicht
-    moeglich, also gegen die Meldung des Sammelns): Nennt die Liste eine
-    Kennung, die es nicht gibt, bricht das Sammeln mit Exit 4 und der
-    benannten Meldung ab."""
-    import subprocess
-    import sys
-
-    ergebnis = subprocess.run(
-        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
-         "-p", "no:xdist", str(REPO / "tests")],
-        capture_output=True, text=True, cwd=REPO)
-    assert ergebnis.returncode == 0, (ergebnis.stdout[-600:], ergebnis.stderr[-600:])
-    assert f"{ANZAHL_AUSGESETZT} deselected" in ergebnis.stdout
+def test_es_ist_kein_test_mehr_ausgesetzt():
+    """Mit den Faehigkeiten (Kern 3.22.0), den Tafeln und der Generation TG2015
+    in der Config (Fall 3, Uebergabe 10) laufen alle 746 frueher ausgesetzten
+    Tests wieder; die Liste ist geloescht. Wer wieder einen Test aussetzt,
+    legt die Liste neu an und nennt den Grund im Commit."""
+    assert rueckbau.ausgesetzt() == []
+    assert not rueckbau.LISTE.exists()
 
 
 def test_die_mechanik_trennt_ausgesetzte_von_unbekannten_kennungen():

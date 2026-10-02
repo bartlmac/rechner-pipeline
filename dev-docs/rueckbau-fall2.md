@@ -223,3 +223,25 @@ Exportmanifest in den XML-Kommentaren (die Lieferung von Fall 3 ist eine
 neu registrierte Datei; das Blatt Tafeln.csv hat denselben Hash). Verworfen:
 die Tafeln aus `cfaef32^` zurueckkopieren — sie trueg die Provenienz der alten
 Registrierung.
+
+### Generation TG2015 in der Config; Liste der ausgesetzten Tests geloescht (Fall 3, Uebergabe 10)
+
+Die Generation TG2015 steht wieder in `configs/bestand_gesamt.toml`, am Platz
+vor dem Rueckbau (nach dem BU-Abschnitt, vor dem Tagesbetrieb, damit die
+Reihenfolge der Generationen und mit ihr alle eingefrorenen Portfolio-Werte
+unveraendert bleiben). Tarifwerte und Zellen kommen aus dem Uebernahme-Vorlauf
+des Falls (`abgeleitet/bestand/generation-zellen.toml`, aus der Spez), nicht
+abgetippt; die Strukturfelder (Nummernkreis 14, Gueltigkeit 2015-01-01 bis
+2017-01-01, Endalter 90, inerte Verteilungen ohne Neuzugang) stammen aus dem
+Block vor dem Rueckbau (`git show cfaef32^:configs/bestand_gesamt.toml`) und sind
+fuer eine uebernommene Generation ohne Neuzugang ohne Wirkung auf den
+Vertragswert. Unterschied zum alten Block: nur die Schreibweise `0.0` statt `0`
+bei den Haus-Stornoabzuegen (aus der Spez), im Tarifplan neu erzeugt.
+
+Gemessen in einer Kopie des Baums ohne Liste: alle frueher ausgesetzten Tests
+laufen gruen, zwei nicht — ein Test, der die Provenienz-Hashes der FRUEHEREN
+Registrierung des Tarifrechners festhielt (`test_tafel_import`), und der
+Tarifplan-Block (Schreibweise). Beide sind nachgezogen, mit Grund im Commit.
+Die Liste `tests/rueckbau_fall2_ausgesetzt.txt` ist geloescht; die Mechanik
+(`tests/rueckbau.py`, Hook in `tests/conftest.py`) bleibt fuer den naechsten
+Rueckbau.
