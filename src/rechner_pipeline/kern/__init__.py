@@ -287,7 +287,11 @@ from rechner_pipeline.kern.vorgangsfolge import (
 #: (jeder Aufrufer nennt sie, Kern 3.20.0). ``rechenkern.faehigkeit_fehlt``
 #: entfaellt, weil keine Regel mehr verweigert wird. Fuer die eigenen
 #: Generationen (Regelwerte ``False``) aendert sich kein Wert; alle
-#: Charakterisierungs-Referenzwerte sind unveraendert.
+#: Charakterisierungs-Referenzwerte sind unveraendert. Dazu kommen die sechs
+#: Tafeln ``DAV2008_T_NR_*`` und ``DAV2008_T_R_*`` (je ``_F``, ``_M``, ``_U70``)
+#: aus dem Tarifrechner der Lieferung, eingetragen vom Tafel-Import des Falls
+#: nach der Spez (``quellen.tafel_import``, Provenienz je Tafel im XML); eine
+#: reine Datenaufnahme, kein bestehender qx-Wert bewegt sich.
 __version__ = "3.22.0"
 
 __all__ = [

@@ -211,3 +211,15 @@ Entscheide und verworfene Alternativen:
 - Tests: Die Verweigerungstests von `tests/test_rueckbau_fall2.py` sind
   Charakterisierungen der Rechnung (unabhaengige Handrechnung je Merkmal,
   beidseitig); die Ratsche haelt `==` null Verweigerungen.
+
+### Tafeln (Fall 3, nach der Spez)
+
+Die sechs Tafeln sind ueber `quellen.tafel_import` des Falls in
+`kern/tafeln.xml` eingetragen (Dry-run: 6 einzufuegen, 0 Konflikte, 4
+Kreuzproben wertgleich; danach ein zweiter Dry-run: alle 6 wertgleich
+vorhanden). Gemessen gegen den Stand vor dem Rueckbau: Die Werte sind
+gleich; es unterscheiden sich nur die Provenienz-Hashes von Tarifrechner und
+Exportmanifest in den XML-Kommentaren (die Lieferung von Fall 3 ist eine
+neu registrierte Datei; das Blatt Tafeln.csv hat denselben Hash). Verworfen:
+die Tafeln aus `cfaef32^` zurueckkopieren — sie trueg die Provenienz der alten
+Registrierung.
