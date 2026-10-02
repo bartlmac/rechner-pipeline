@@ -22,7 +22,9 @@ Test deshalb halten kann —, ist Mechanik:
   haelt an, wenn ein Ergebnis andere Bytes traegt als festgehalten.
   Den abgenommenen Stand, gegen den ein Beleg seine Aenderung zeigt, nennt
   das Rezept nicht selbst: ``abgenommen <gate>`` liest ihn aus der Linie der
-  Welt, in der nachgefahren wird.
+  Welt, in der nachgefahren wird. Hat ein Mensch an einem Haltepunkt selbst
+  gezeichnet, zeichnet das Rezept nicht noch einmal — und nie ueber eine
+  Ablehnung hinweg.
 * ``zugang.sh`` bringt den abgenommenen Bestand in die Ablage: Es haelt,
   bevor es etwas anfasst (keine Migrationsabnahme, keine Zugangsabnahme, eine
   Probe, die schon liegt, ein unsauberer Baum), und reicht je Phase den Ring,
@@ -691,19 +693,25 @@ def test_im_rezept_stehen_nur_helfer(tmp_path, welt, baum, zeile):
     assert not (baum / "faelle").exists()
 
 
-def _annahme(linie: Path, gate: str, kennung: str, entschieden_am: str, commit: str, entscheid: str = "angenommen") -> None:
+def _annahme(linie: Path, gate: str, kennung: str, entschieden_am: str, commit: str, entscheid: str = "angenommen",
+             pflichtbelege: dict | None = None) -> None:
+    """Ein Snapshot, wie ihn ein Gate schreibt — in einer Linie oder einem Fall."""
     (linie / "entscheide").mkdir(parents=True, exist_ok=True)
     (linie / "entscheide" / f"{gate}-{kennung * 64}.json").write_text(json.dumps(
-        {"gate": gate, "entscheid": entscheid, "entschieden_am": entschieden_am, "system": {"commit": commit}}))
+        {"gate": gate, "entscheid": entscheid, "entschieden_am": entschieden_am, "system": {"commit": commit},
+         "pflichtbelege": pflichtbelege or {}}))
 
 
-def test_abgenommen_nennt_den_commit_der_juengsten_annahme_des_gates_in_der_linie(tmp_path, welt, baum):
+@pytest.mark.parametrize("erste,juengste", [("a", "b"), ("b", "a")])
+def test_abgenommen_nennt_den_commit_der_juengsten_annahme_des_gates_in_der_linie(tmp_path, welt, baum, erste, juengste):
     # Ein Beleg zeigt die Aenderung gegen den abgenommenen Stand (--von). Das
     # Rezept nennt dafuer keinen Commit der Welt, in der es festgehalten wurde,
-    # sondern fragt die Linie der Welt, in der es nachgefahren wird.
+    # sondern fragt die Linie der Welt, in der es nachgefahren wird. Die
+    # juengste Annahme ist die nach der Zeit — mit beiden Namensverteilungen
+    # faellt jede Wahl nach der Reihenfolge des Verzeichnisses in einer davon.
     linie = _welt_mit_linie(welt) / "linie"
-    _annahme(linie, "A-K2", "a", "2026-10-01T10:00:00+00:00", "erste")
-    _annahme(linie, "A-K2", "b", "2026-10-02T10:00:00+00:00", "juengste")
+    _annahme(linie, "A-K2", erste, "2026-10-01T10:00:00+00:00", "erste")
+    _annahme(linie, "A-K2", juengste, "2026-10-02T10:00:00+00:00", "juengste")
     _annahme(linie, "A-K2", "c", "2026-10-03T10:00:00+00:00", "abgelehnte", entscheid="abgelehnt")
     _annahme(linie, "A-T1", "d", "2026-10-04T10:00:00+00:00", "anderes-gate")
     rezept = ('schritt "Fall anlegen" mkdir -p faelle/probe\n'
@@ -753,6 +761,155 @@ def test_der_zugang_im_rezept_ist_je_phase_ein_schritt_und_haelt_wenn_die_phase_
     assert "rechner_pipeline.betrieb.tageslauf" in aufbau and "--heute 2026-03-15" in aufbau
     assert "ok     3  Zugang: aufbau" in text
     assert (baum / "faelle" / "probe" / "spur").read_text() == "danach\n"
+
+
+@pytest.fixture
+def halbsystem(tmp_path, welt):
+    """Ein Interpreter, der die Skripte der Welt wirklich faehrt (abgenommen.py,
+    gezeichnet.py) und jedes Systemkommando nur mitschreibt — und eine Welt,
+    in der fall_zeichnen.sh bis zum Gate kommt."""
+    spur = tmp_path / "systemaufrufe.txt"
+    skript = tmp_path / "halbsystem.sh"
+    skript.write_text(f"""#!/usr/bin/env bash
+if [ "$1" = -m ]; then printf '%s\\n' "$*" >> "{spur}"; else exec "{sys.executable}" "$@"; fi
+""")
+    skript.chmod(0o755)
+    (welt / "fall.conf").write_text("FALLNAME=probe\nSTICHTAG=2026-01-01\n")
+    (tmp_path / "schluessel" / "programmleitung.key").write_bytes(b"p" * 64)
+    return skript, spur
+
+
+def _gezeichnet(spur: Path, gate: str) -> int:
+    """Wie oft das Rezept das Gate gezeichnet hat (Aufrufe des Gates)."""
+    if not spur.exists():
+        return 0
+    return sum(1 for z in spur.read_text().splitlines() if "gates.gate_entscheid" in z and f"--gate {gate} " in z)
+
+
+REZEPT_ZEICHNEN = ('schritt "Fall anlegen" mkdir -p faelle/probe/entscheide\n'
+                   'haltepunkt vor-A-M4\n'
+                   'zeichne A-M4 "das Urteil des festgehaltenen Falls"\n'
+                   "schritt \"danach\" bash -c 'echo danach >> faelle/probe/spur'\n")
+
+
+def test_das_rezept_zeichnet_was_kein_mensch_gezeichnet_hat(tmp_path, welt, baum, halbsystem):
+    skript, spur = halbsystem
+    lauf = _lauf("fall_nachfahren.sh", str(welt), str(_paket(tmp_path, REZEPT_ZEICHNEN)), baum=baum, PYTHON=str(skript))
+    text = (lauf.stdout + lauf.stderr).decode()
+    assert lauf.returncode == 0 and "ok     3  A-M4 zeichnen" in text, text
+    assert _gezeichnet(spur, "A-M4") == 1
+    aufruf = spur.read_text().splitlines()[0]
+    assert "--entscheid angenommen" in aufruf and "--begruendung das Urteil des festgehaltenen Falls" in aufruf
+
+
+def test_wer_am_haltepunkt_selbst_zeichnet_dessen_zeichnung_gilt(tmp_path, welt, baum, halbsystem):
+    skript, spur = halbsystem
+    paket = _paket(tmp_path, REZEPT_ZEICHNEN)
+    erster = _lauf("fall_nachfahren.sh", str(welt), str(paket), "--bis", "vor-A-M4", baum=baum, PYTHON=str(skript))
+    assert erster.returncode == 0, erster.stdout.decode()
+    # Der Mensch liest die Vorlage und zeichnet selbst.
+    _annahme(baum / "faelle" / "probe", "A-M4", "a", "2026-10-06T10:00:00+00:00", "x" * 40)
+    zweiter = _lauf("fall_nachfahren.sh", str(welt), str(paket), baum=baum, PYTHON=str(skript))
+    text = (zweiter.stdout + zweiter.stderr).decode()
+    assert zweiter.returncode == 0, text
+    assert "A-M4 zeichnen (liegt schon: von Hand gezeichnet)" in text
+    assert _gezeichnet(spur, "A-M4") == 0                   # das Rezept hat NICHT noch einmal gezeichnet
+    assert (baum / "faelle" / "probe" / "spur").read_text() == "danach\n"
+
+
+def test_ueber_eine_ablehnung_zeichnet_das_rezept_nie_hinweg(tmp_path, welt, baum, halbsystem):
+    skript, spur = halbsystem
+    paket = _paket(tmp_path, REZEPT_ZEICHNEN)
+    _lauf("fall_nachfahren.sh", str(welt), str(paket), "--bis", "vor-A-M4", baum=baum, PYTHON=str(skript))
+    _annahme(baum / "faelle" / "probe", "A-M4", "a", "2026-10-06T10:00:00+00:00", "x" * 40, entscheid="abgelehnt")
+    for _ in range(2):                                      # auch der zweite Versuch haelt
+        lauf = _lauf("fall_nachfahren.sh", str(welt), str(paket), baum=baum, PYTHON=str(skript))
+        text = (lauf.stdout + lauf.stderr).decode()
+        assert lauf.returncode == 1 and "Ablehnung" in text and "HALT   3  A-M4 zeichnen" in text, text
+    assert _gezeichnet(spur, "A-M4") == 0
+    assert not (baum / "faelle" / "probe" / "spur").exists()
+    # Zeichnet der Mensch danach doch an, gilt DAS — die Ablehnung liegt dann hinter einer Annahme.
+    _annahme(baum / "faelle" / "probe", "A-M4", "b", "2026-10-06T11:00:00+00:00", "x" * 40)
+    lauf = _lauf("fall_nachfahren.sh", str(welt), str(paket), baum=baum, PYTHON=str(skript))
+    assert lauf.returncode == 0 and _gezeichnet(spur, "A-M4") == 0
+
+
+def test_die_k_te_zeichnung_des_rezepts_gilt_als_geleistet_wenn_k_annahmen_liegen(tmp_path, welt, baum, halbsystem):
+    # Der Auftrag wird nach jeder Nachlieferung neu gezeichnet: Eine Annahme
+    # von Hand ersetzt genau EINE Zeichnung des Rezepts, nicht alle — auch wenn
+    # der Lauf dazwischen an einem Haltepunkt endete.
+    skript, spur = halbsystem
+    rezept = ('schritt "Fall anlegen" mkdir -p faelle/probe/entscheide\n'
+              'haltepunkt auftrag\n'
+              'zeichne A-M6 "erster Auftrag"\n'
+              'haltepunkt nachlieferung\n'
+              'zeichne A-M6 "Neubeauftragung"\n')
+    paket = _paket(tmp_path, rezept)
+    _lauf("fall_nachfahren.sh", str(welt), str(paket), "--bis", "auftrag", baum=baum, PYTHON=str(skript))
+    _annahme(baum / "faelle" / "probe", "A-M6", "a", "2026-10-06T10:00:00+00:00", "x" * 40)
+    mitte = _lauf("fall_nachfahren.sh", str(welt), str(paket), "--bis", "nachlieferung", baum=baum, PYTHON=str(skript))
+    assert mitte.returncode == 0 and b"von Hand gezeichnet" in mitte.stdout and _gezeichnet(spur, "A-M6") == 0
+    ende = _lauf("fall_nachfahren.sh", str(welt), str(paket), baum=baum, PYTHON=str(skript))
+    text = (ende.stdout + ende.stderr).decode()
+    assert ende.returncode == 0 and "ok     5  A-M6 zeichnen" in text, text
+    assert _gezeichnet(spur, "A-M6") == 1
+    assert "--begruendung Neubeauftragung" in spur.read_text()
+
+
+@pytest.mark.parametrize("ablehnung,annahme", [("a", "b"), ("b", "a")])
+def test_die_juengste_zeichnung_entscheidet_nach_der_zeit(tmp_path, welt, baum, halbsystem, ablehnung, annahme):
+    # Erst angenommen, spaeter abgelehnt: Fuer die ZWEITE Zeichnung des Rezepts
+    # liegt eine Annahme zu wenig, und die juengste Zeichnung ist die
+    # Ablehnung — Halt. "Juengste" heisst nach der Zeit der Zeichnung, nicht
+    # nach der Reihenfolge, in der das Verzeichnis seine Dateien nennt: Mit
+    # beiden Namensverteilungen faellt jede Wahl nach Position in einer davon.
+    skript, spur = halbsystem
+    rezept = ('schritt "Fall anlegen" mkdir -p faelle/probe/entscheide\n'
+              'zeichne A-M6 "erster Auftrag"\n'
+              'zeichne A-M6 "Neubeauftragung"\n')
+    fall = baum / "faelle" / "probe"
+    _annahme(fall, "A-M6", ablehnung, "2026-10-06T11:00:00+00:00", "x" * 40, entscheid="abgelehnt")
+    _annahme(fall, "A-M6", annahme, "2026-10-06T10:00:00+00:00", "x" * 40)
+    lauf = _lauf("fall_nachfahren.sh", str(welt), str(_paket(tmp_path, rezept)), baum=baum, PYTHON=str(skript))
+    text = (lauf.stdout + lauf.stderr).decode()
+    assert lauf.returncode == 1 and "HALT   3  A-M6 zeichnen" in text and "Ablehnung" in text, text
+    assert "A-M6 zeichnen (liegt schon: von Hand gezeichnet)" in text       # die erste war geleistet
+    assert _gezeichnet(spur, "A-M6") == 0
+
+
+@pytest.mark.parametrize("lage", ["nur_erstabnahme", "von_hand", "abgelehnt"])
+def test_der_anfangsbestand_gilt_als_gezeichnet_wenn_eine_annahme_genau_diesen_beleg_pinnt(tmp_path, welt, baum, halbsystem, lage):
+    # Die Linie traegt schon eine A-B3 (die Erstabnahme der Welt): Zaehlen
+    # hilft hier nicht. Gezeichnet ist der Anfangsbestand, wenn eine Annahme
+    # den Beleg pinnt, der jetzt in der Linie liegt.
+    skript, spur = halbsystem
+    linie = welt / "linie"
+    (linie / "abgeleitet" / "anfangsbestand").mkdir(parents=True)
+    beleg = linie / "abgeleitet" / "anfangsbestand" / "beleg.json"
+    beleg.write_text('{"stand": "nach dem Zugang"}')
+    _annahme(linie, "A-B3", "a", "2026-10-01T10:00:00+00:00", "x" * 40, pflichtbelege={"anfangsbestand": ["0" * 64]})
+    summe = hashlib.sha256(beleg.read_bytes()).hexdigest()
+    if lage == "von_hand":
+        _annahme(linie, "A-B3", "b", "2026-10-06T10:00:00+00:00", "x" * 40, pflichtbelege={"anfangsbestand": [summe]})
+    if lage == "abgelehnt":
+        _annahme(linie, "A-B3", "b", "2026-10-06T10:00:00+00:00", "x" * 40, entscheid="abgelehnt",
+                 pflichtbelege={"anfangsbestand": [summe]})
+    (baum / "configs").mkdir()
+    (baum / "configs" / "bestand_gesamt.toml").write_text("# Config\n")
+    _git(baum, "add", "-A")
+    _git(baum, "commit", "--quiet", "-m", "config")
+    rezept = ('schritt "Fall anlegen" mkdir -p faelle/probe/entscheide\n'
+              "schritt \"abgenommen\" bash -c 'echo {} > faelle/probe/entscheide/A-M4-" + "a" * 64 + ".json'\n"
+              'zugang ab3 "das Urteil des festgehaltenen Falls"\n')
+    lauf = _lauf("fall_nachfahren.sh", str(welt), str(_paket(tmp_path, rezept)), baum=baum, PYTHON=str(skript))
+    text = (lauf.stdout + lauf.stderr).decode()
+    if lage == "nur_erstabnahme":
+        assert lauf.returncode == 0 and "ok     3  Zugang: ab3" in text and _gezeichnet(spur, "A-B3") == 1, text
+    elif lage == "von_hand":
+        assert lauf.returncode == 0 and "Zugang: ab3 (liegt schon: von Hand gezeichnet)" in text, text
+        assert _gezeichnet(spur, "A-B3") == 0
+    else:
+        assert lauf.returncode == 1 and "Ablehnung" in text and _gezeichnet(spur, "A-B3") == 0, text
 
 
 def test_eine_welt_faehrt_ein_paket_nach_und_wechselt_den_fall_nur_auf_wunsch(tmp_path, welt, baum):

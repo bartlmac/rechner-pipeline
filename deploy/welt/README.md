@@ -23,6 +23,7 @@ Protokoll in der Welt. Sie rechnen und pruefen nichts selbst.
 | `paket_bauen.sh` | aus einem gefuehrten Fall das Paket zum Nachfahren bauen |
 | `laufzeit_aufstellen.sh` | Welt und festgehaltenen Fall in einem Aufruf: die Welt auf dem Stand vor dem Fall, der Fall auf dem Stand danach |
 | `abgenommen.py` | der Commit, auf dem eine Linie ein Gate angenommen hat (gelesen von den Skripten) |
+| `gezeichnet.py` | ob ein Mensch ein Gate schon selbst gezeichnet hat (gelesen vom Nachfahren) |
 | `fall-baldrian-klv-tg2015.conf` | der Fall der Vorfuehrung: Lieferung, Stichtag, Auftrag |
 | `einstellungen.beispiel.conf` | Vorlage der Einstellungen fuer eine Welt mit vorhandenen Schluesseln |
 | `mandat.vorlage.txt` | Vorlage des Mandats der simulierten Rollen |
@@ -194,7 +195,7 @@ mit `\`); eine andere Zeile verweigert das Skript, bevor es beginnt:
 | `schritt "<name>" <kommando ...>` | ein Kommando fahren; ein Exit ungleich null haelt an |
 | `entscheide <diskrepanz> <wert> "<begruendung>" [--beleg <pfad>]` | eine Diskrepanz der Quellen endgueltig aufloesen, als Aktuariat |
 | `entscheide_alle <quelle> "<begruendung>"` | alle vorlaeufig aufgeloesten Diskrepanzen zur Lesart dieser Quelle entscheiden |
-| `zeichne <gate> "<begruendung>"` | das Gate annehmen, mit dem Ring der Welt |
+| `zeichne <gate> "<begruendung>"` | das Gate annehmen, mit dem Ring der Welt — es sei denn, ein Mensch hat es schon selbst gezeichnet |
 | `zugang <phase> [argument]` | eine Phase des Zugangs fahren (`zugang.sh`): `probe`, `aufsetzen`, `aufbau [<heute>]`, `belegen`, `ab3 "<begruendung>"`, `binden` |
 | `haltepunkt <name>` | hier endet ein Lauf mit `--bis <name>` |
 | `erwarte <pfad im fall>` | die Datei gegen `ERWARTUNG` halten; andere Bytes halten an |
@@ -223,6 +224,18 @@ zuletzt angenommen hat.
   Fall: mit `erwarte` (Spez, Tabellen, Abnahmebericht) oder mit einem
   Schritt, der Fingerabdruecke vergleicht (Kern, Tarifwerk). Weicht der
   Gegenstand ab, haelt der Lauf — dann urteilt ein Mensch.
+- **Wer selbst zeichnet, dessen Zeichnung gilt.** An einem Haltepunkt kann
+  ein Mensch die Vorlage lesen und das Gate selbst zeichnen
+  (`fall_zeichnen.sh <welt> <gate> angenommen "<begruendung>"`, fuer den
+  Anfangsbestand `zugang.sh <welt> ab3 "<begruendung>"`). Faehrt der Lauf
+  danach weiter, zeichnet das Rezept dieses Gate nicht noch einmal: Die
+  k-te Zeichnung eines Gates im Rezept gilt als geleistet, wenn im Fall k
+  Annahmen liegen; der Anfangsbestand, wenn eine Annahme genau den Beleg
+  pinnt, der in der Linie liegt. Ist die juengste Zeichnung des Gates eine
+  **Ablehnung**, haelt der Lauf — ueber eine Ablehnung zeichnet das Rezept
+  nie hinweg; danach fuehrt ein Mensch den Fall weiter. Das ist eine
+  Anzeige, kein Urteil: Ob eine Zeichnung gilt, pruefen die Gates der
+  folgenden Schritte.
 - **Das Rezept nennt keinen Commit.** Ein Beleg, der die Aenderung des
   Zielsystems gegen den abgenommenen Stand zeigt (`kernstand_belegen`,
   `tarifwerk_belegen`), bekommt sein `--von` aus der Linie der Welt:

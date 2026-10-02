@@ -27,7 +27,8 @@
 #                                       eine Diskrepanz der Quellen endgueltig aufloesen (als Aktuariat)
 #   entscheide_alle <quelle> "<begruendung>"
 #                                       alle vorlaeufig aufgeloesten zur Lesart dieser Quelle entscheiden
-#   zeichne <gate> "<begruendung>"      das Gate annehmen, mit dem Ring der Welt
+#   zeichne <gate> "<begruendung>"      das Gate annehmen, mit dem Ring der Welt — es sei denn, ein Mensch
+#                                       hat es an einem Haltepunkt schon selbst gezeichnet (siehe unten)
 #   zugang <phase> [argument]           eine Phase des Zugangs in die Ablage der Welt fahren (zugang.sh):
 #                                       probe, aufsetzen, aufbau [<heute>], belegen, ab3 "<begruendung>", binden
 #   haltepunkt <name>                   hier endet ein Lauf mit --bis <name>
@@ -40,6 +41,12 @@
 # Linie der Welt das Gate zuletzt angenommen hat — das --von eines Belegs, der
 # die Aenderung gegen den abgenommenen Stand zeigt. Ein Rezept nennt so keinen
 # Commit der Welt, in der es festgehalten wurde.
+#
+# An einem Haltepunkt kann ein Mensch selbst zeichnen (fall_zeichnen.sh, fuer
+# A-B3 zugang.sh ab3): Liegt die Annahme, die das Rezept als naechste leisten
+# wuerde, schon im Fall, zeichnet es nicht noch einmal. Ist die juengste
+# Zeichnung des Gates eine Ablehnung, haelt der Lauf — ueber eine Ablehnung
+# zeichnet das Rezept nie hinweg.
 #
 # Ein Lauf merkt sich, wie weit er kam (<welt>/nachfahren.stand). Ein zweiter
 # Aufruf faehrt hinter dem letzten erledigten Schritt weiter: nach einem
@@ -191,15 +198,34 @@ entscheide_alle() {
       --alle-vorlaeufigen --quelle "$quelle" --begruendung "$grund"
 }
 
+# Wer an einem Haltepunkt selbst gezeichnet hat, dessen Zeichnung gilt: Das
+# Rezept zeichnet nicht ein zweites Mal, und nie ueber eine Ablehnung hinweg.
+declare -A ZEICHNUNGEN=()   # je Gate: die wievielte Zeichnung des Rezepts
+von_hand() {  # von_hand <name> <gezeichnet.py-Argumente...>: wahr, wenn der Schritt entfaellt
+  local name="$1" lage; shift
+  lage="$("$PY" "$HIER/gezeichnet.py" "$@")" || bruch "$name: die Zeichnungen lassen sich nicht lesen"
+  case "$lage" in
+    gezeichnet) printf '  -    %3d  %s (liegt schon: von Hand gezeichnet)\n' "$NR" "$name"; return 0 ;;
+    abgelehnt)  bruch "$name: die juengste Zeichnung ist eine Ablehnung — das Rezept zeichnet nicht ueber sie hinweg; nach einer Ablehnung fuehrt ein Mensch den Fall weiter" ;;
+  esac
+  return 1
+}
+
 zeichne() {
-  local gate="$1" grund="${2:-}"; erledigt "$gate zeichnen" && return 0
+  local gate="$1" grund="${2:-}"
+  ZEICHNUNGEN[$gate]=$(( ${ZEICHNUNGEN[$gate]:-0} + 1 ))
+  erledigt "$gate zeichnen" && return 0
   [ -n "$grund" ] || bruch "zeichne $gate: Begruendung fehlt"
+  von_hand "$gate zeichnen" "$BAUM/$F/entscheide" "$gate" "${ZEICHNUNGEN[$gate]}" && return 0
   fahre "$gate zeichnen" bash "$HIER/fall_zeichnen.sh" "$WELT" "$gate" angenommen "$grund"
 }
 
 zugang() {
   local phase="${1:-}"; erledigt "Zugang: $phase" && return 0
   [ -n "$phase" ] || bruch "zugang: Phase fehlt"
+  if [ "$phase" = ab3 ]; then
+    von_hand "Zugang: ab3" "$LINIE/entscheide" A-B3 --beleg anfangsbestand "$LINIE/abgeleitet/anfangsbestand/beleg.json" && return 0
+  fi
   fahre "Zugang: $phase" bash "$HIER/zugang.sh" "$WELT" "$@"
 }
 
