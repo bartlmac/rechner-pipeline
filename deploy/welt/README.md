@@ -141,7 +141,7 @@ deploy/welt/zugang.sh <welt> binden
 
 | Phase | Was geschieht | Vor dem naechsten Schritt lesen |
 |---|---|---|
-| `probe` | Zugangsprobe auf einer leeren Ablage mit der Config des Falls: zwei Laeufe vom Betriebsbeginn ueber den Stichtag, mit und ohne Zugang | `faelle/<name>/abgeleitet/berichte/zugangsprobe.json`, dann A-B2 zeichnen |
+| `probe` | Zugangsprobe auf einer leeren Ablage mit der Config des Falls: zwei Laeufe vom Betriebsbeginn ueber den Stichtag, mit und ohne Zugang | `faelle/<name>/abgeleitet/berichte/zugangsprobe.json` — als Lesefassung: `python werkzeuge/lagebild.py zugangsprobe --fall faelle/<name>` —, dann A-B2 zeichnen |
 | `aufsetzen` | die Ablage der Welt neu aufsetzen; die bisherige wird zu `<welt>/daten.archiv-<zeit>` und bleibt der Vergleichsstand ohne den uebernommenen Bestand | |
 | `aufbau` | Aufbaulauf vom Betriebsbeginn bis `<heute>` (ohne Angabe: der heutige Tag) | |
 | `belegen` | den Anfangsbestand der neuen Ablage belegen | `<welt>/linie/abgeleitet/anfangsbestand/beleg.md` |

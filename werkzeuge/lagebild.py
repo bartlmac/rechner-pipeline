@@ -19,6 +19,7 @@ Sichten:
     python werkzeuge/lagebild.py entscheide --fall faelle/<fall> [--linie <linie>] [-n 12]
     python werkzeuge/lagebild.py system [--linie <linie>] [--stand <ablage>]
     python werkzeuge/lagebild.py rolle <rolle> --fall faelle/<fall> [--linie <linie>] [--stand <ablage>]
+    python werkzeuge/lagebild.py zugangsprobe --fall faelle/<fall>
 """
 
 from __future__ import annotations
@@ -243,6 +244,59 @@ def sicht_laufzeit(ablage: Path) -> List[str]:
     return zeilen
 
 
+#: Der Beleg der Zugangsprobe im Fall (``betrieb.zugangsprobe`` schreibt ihn).
+ZUGANGSPROBE = Path("abgeleitet") / "berichte" / "zugangsprobe.json"
+
+
+def _betrag(wert: object) -> str:
+    """Eine Zahl zum Lesen: Stueckzahlen ganz, Betraege mit zwei Stellen."""
+    if isinstance(wert, bool) or wert is None:
+        return "-"
+    if isinstance(wert, int):
+        return f"{wert:,}".replace(",", ".")
+    if isinstance(wert, float):
+        if wert != 0 and abs(wert) < 0.005:      # nie eine Abweichung auf null runden
+            return f"{wert:.1e}".replace(".", ",")
+        return f"{wert:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+    return str(wert)
+
+
+def sicht_zugangsprobe(fall: Path) -> List[str]:
+    """Der Beleg der Zugangsprobe als Lesefassung fuer die Zugangsabnahme A-B2:
+    Urteil, Folgetermin und je Vergleich Soll, Ist und Differenz. Der Beleg
+    selbst traegt dazu je Lauf Hunderte Pruefsummen der Abschluesse — die
+    zeigt die Sicht nicht. "Bestanden" steht hier nur, wenn der Beleg es
+    woertlich sagt; ein Vergleich ohne Soll ist als solcher ausgewiesen, nie
+    als bestanden."""
+    datei = Path(fall) / ZUGANGSPROBE
+    zeilen = [f"Zugangsprobe des Falls {Path(fall).name}", VERMERK, ""]
+    if not datei.is_file():
+        return zeilen + [f"Beleg     nicht vorhanden ({ZUGANGSPROBE})"]
+    try:
+        beleg = json.loads(datei.read_text(encoding="utf-8"))
+        vergleiche = list(beleg.get("vergleiche") or [])
+        befunde = list(beleg.get("befunde") or [])
+    except (ValueError, AttributeError, TypeError):
+        return zeilen + [f"Beleg     unlesbar ({ZUGANGSPROBE})"]
+    rot = [v for v in vergleiche if v.get("ok") is False]
+    urteil = "BESTANDEN" if beleg.get("bestanden") is True else "NICHT bestanden"
+    zeilen += [f"Urteil    {urteil} — {len(vergleiche)} Vergleiche, {len(rot)} rot, {len(befunde)} Befunde",
+               f"Stichtag  {beleg.get('stichtag')}, gefuehrt bis {beleg.get('bis')}, Kern {beleg.get('kern_version')}"]
+    folge = beleg.get("folgetermin")
+    if isinstance(folge, dict):
+        gedeckt = "gedeckt" if folge.get("gedeckt") is True else f"NICHT gedeckt ({folge.get('grund')})"
+        zeilen.append(f"Folgetermin {folge.get('stichtag')}: {gedeckt}")
+    zeilen += ["", f"{'Groesse':<24}{'Termin':<17}{'Stichtag':<12}{'Soll':>18}{'Ist':>18}{'Differenz':>12}  Urteil"]
+    for v in vergleiche:
+        ok = v.get("ok")
+        wort = "ok" if ok is True else "ROT" if ok is False else "ohne Soll"
+        zeilen.append(f"{str(v.get('groesse')):<24}{str(v.get('termin')):<17}{str(v.get('stichtag') or '-'):<12}"
+                      f"{_betrag(v.get('soll')):>18}{_betrag(v.get('ist')):>18}{_betrag(v.get('differenz')):>12}  {wort}"
+                      + (f" ({v.get('abweichend_anzahl')} Vertraege)" if ok is False else ""))
+    zeilen += [f"Befund    {str(b)[:160]}" for b in befunde]
+    return zeilen
+
+
 def sicht_rolle(rolle: str, fall: Path, linie: Optional[Path],
                 ablage: Optional[Path]) -> List[str]:
     zeilen = [f"Rolle {rolle}: Gates und Belege im Fall {Path(fall).name}", VERMERK, ""]
@@ -281,6 +335,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             s.add_argument("-n", type=int, default=12, dest="anzahl")
         s.add_argument("--fall", type=Path, required=True)
         s.add_argument("--linie", type=Path, default=None)
+    s = sub.add_parser("zugangsprobe")
+    s.add_argument("--fall", type=Path, required=True)
     s = sub.add_parser("system")
     s.add_argument("--linie", type=Path, default=None)
     s.add_argument("--stand", type=Path, default=None, help="Ablage der Laufzeit")
@@ -294,6 +350,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         zeilen = sicht_entscheide(args.fall, args.linie, args.anzahl)
     elif args.sicht == "rolle":
         zeilen = sicht_rolle(args.rolle, args.fall, args.linie, args.stand)
+    elif args.sicht == "zugangsprobe":
+        zeilen = sicht_zugangsprobe(args.fall)
     else:
         zeilen = sicht_system(args.linie, args.stand)
     print("\n".join(zeilen))

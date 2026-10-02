@@ -355,12 +355,20 @@ python werkzeuge/lagebild.py lebenslauf --fall faelle/<fall> --linie <linie>
 python werkzeuge/lagebild.py entscheide --fall faelle/<fall> --linie <linie> -n 12
 python werkzeuge/lagebild.py system --linie <linie> --stand <ablage>
 python werkzeuge/lagebild.py rolle <rolle> --fall faelle/<fall> --linie <linie>
+python werkzeuge/lagebild.py zugangsprobe --fall faelle/<fall>
 ```
 
 Das Lagebild ist eine Anzeige, kein Urteil. Es liest die Entscheid-Snapshots
 ohne Schluessel und prueft weder Signatur noch Rolle noch Beleg — das tun
 die Gates. Zwei Spitzen einer Kette zeigt es als `mehrdeutig`, eine nicht
 lesbare Datei als `unlesbar`, nie als `offen`.
+
+Die Sicht `zugangsprobe` ist keine der Anzeigen rechts: Sie zeigt den Beleg
+der Zugangsprobe als Lesefassung fuer die Zugangsabnahme A-B2 — Urteil,
+Folgetermin und je Vergleich Soll, Ist und Differenz —, ohne die Pruefsummen
+der Abschluesse, die den Beleg selbst unlesbar gross machen. "Bestanden"
+steht dort nur, wenn der Beleg es woertlich sagt; ein Vergleich ohne Soll
+ist als solcher ausgewiesen.
 
 ### Aufzeichnen
 

@@ -99,8 +99,60 @@ def test_eine_abnahme_der_linie_erscheint_im_lebenslauf_als_solche(tmp_path):
 
 def test_jede_sicht_sagt_dass_sie_nicht_prueft(tmp_path):
     for zeilen in (lb.sicht_lebenslauf(tmp_path, None), lb.sicht_entscheide(tmp_path, None, 5),
-                   lb.sicht_rolle("aktuariat", tmp_path, None, None)):
+                   lb.sicht_rolle("aktuariat", tmp_path, None, None), lb.sicht_zugangsprobe(tmp_path)):
         assert lb.VERMERK in zeilen
+
+
+def _zugangsprobe(fall: Path, **felder) -> None:
+    datei = fall / lb.ZUGANGSPROBE
+    datei.parent.mkdir(parents=True, exist_ok=True)
+    datei.write_text(json.dumps(felder), encoding="utf-8")
+
+
+def _vergleich(groesse: str, soll, ist, ok, **mehr) -> dict:
+    return dict(groesse=groesse, termin="zugangsstichtag", stichtag="2026-01-01", soll=soll, ist=ist,
+                differenz=None if soll is None else ist - soll, ok=ok, abweichend_anzahl=0, **mehr)
+
+
+def test_die_zugangsprobe_zeigt_je_vergleich_soll_ist_und_urteil_und_keine_pruefsummen(tmp_path):
+    _zugangsprobe(tmp_path, bestanden=True, stichtag="2026-01-01", bis="2026-02-01", kern_version="3.22.0",
+                  befunde=[], folgetermin={"stichtag": "2027-01-01", "gedeckt": False, "grund": "kein Abschluss"},
+                  vergleiche=[_vergleich("in_kraft", 834, 834, True),
+                              _vergleich("deckungskapital", 34784446.77739142, 34784446.77739142, True),
+                              _vergleich("rueckkaufswert", None, 34941635.493469484, None)],
+                  laeufe={"mit": {"abschluesse": {f"abschluss_{i}": "a" * 64 for i in range(380)}}})
+    zeilen = lb.sicht_zugangsprobe(tmp_path)
+    text = "\n".join(zeilen)
+    assert "Urteil    BESTANDEN — 3 Vergleiche, 0 rot, 0 Befunde" in text
+    assert "Folgetermin 2027-01-01: NICHT gedeckt (kein Abschluss)" in text
+    kapital = next(z for z in zeilen if z.startswith("deckungskapital"))
+    assert kapital.split()[-4:] == ["34.784.446,78", "34.784.446,78", "0,00", "ok"]
+    # Ein Vergleich ohne Soll ist kein bestandener: Er steht als solcher da.
+    assert next(z for z in zeilen if z.startswith("rueckkaufswert")).endswith("ohne Soll")
+    # Die Lesefassung bleibt lesbar: Die Pruefsummen der Abschluesse zeigt sie nicht.
+    assert len(zeilen) < 15 and "a" * 64 not in text
+
+
+def test_die_zugangsprobe_nennt_einen_roten_vergleich_und_rundet_keine_abweichung_weg(tmp_path):
+    _zugangsprobe(tmp_path, bestanden=False, stichtag="2026-01-01", bis="2026-02-01", kern_version="3.22.0",
+                  befunde=["deckungskapital weicht ab"],
+                  vergleiche=[_vergleich("deckungskapital", 100.0, 100.001, False) | {"abweichend_anzahl": 7}])
+    zeilen = lb.sicht_zugangsprobe(tmp_path)
+    assert "Urteil    NICHT bestanden — 1 Vergleiche, 1 rot, 1 Befunde" in zeilen
+    rot = next(z for z in zeilen if z.startswith("deckungskapital"))
+    assert rot.endswith("ROT (7 Vertraege)") and "1,0e-03" in rot and " 0,00 " not in rot
+    assert "Befund    deckungskapital weicht ab" in zeilen
+
+
+@pytest.mark.parametrize("inhalt,wort", [(None, "nicht vorhanden"), ("{kein json", "unlesbar"), ("[1, 2]", "unlesbar"),
+                                          ('{"vergleiche": []}', "NICHT bestanden"),
+                                          ('{"bestanden": "ja", "vergleiche": []}', "NICHT bestanden")])
+def test_die_zugangsprobe_sagt_nie_bestanden_wenn_der_beleg_es_nicht_sagt(tmp_path, inhalt, wort):
+    if inhalt is not None:
+        (tmp_path / lb.ZUGANGSPROBE).parent.mkdir(parents=True)
+        (tmp_path / lb.ZUGANGSPROBE).write_text(inhalt, encoding="utf-8")
+    text = "\n".join(lb.sicht_zugangsprobe(tmp_path))
+    assert wort in text and "BESTANDEN" not in text
 
 
 def test_die_entscheide_stehen_juengster_zuerst(tmp_path):
