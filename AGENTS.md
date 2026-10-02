@@ -208,7 +208,9 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `tageslauf._STANDARD_BETRIEBSZEICHNUNG` and an intake acceptance via
   `uebernahme._STANDARD_ZUGANGSABNAHME` (tests/conftest.py,
   tests/zugangsabnahme_testhelfer.py). Runtime
-  environment and image: `deploy/plv/`.
+  environment and image: `deploy/plv/`. A self-contained installation
+  for a machine without access to this repository (demo, workshop):
+  `deploy/workshop/`.
 - Navigate and scope changes via the ontology index (ADR-005;
   fundstellen are derived, not searched):
   `python -m rechner_pipeline.ontologie.code_index --tests tests`,
