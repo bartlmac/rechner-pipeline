@@ -13,6 +13,9 @@ wo ein Fehler etwas Falsches BEHAUPTET:
 * Die Aufzeichnung setzt Ausgabe und Zeitmarken zusammen. Passen sie nicht
   zueinander, wird verweigert statt eine verschobene Aufnahme zu schreiben;
   eine Terminalgroesse wird nie geraten.
+* Die Sitzungsprobe sagt, ob ein Agenten-Werkzeug die Sitzungen traegt. Sie
+  darf weder Ruhe melden, solange sich der Bildschirm bewegt, noch die
+  Anzeige des eigenen Auftrags fuer die Antwort halten.
 
 Knoten: system/betrieb
 """
@@ -20,7 +23,9 @@ Knoten: system/betrieb
 from __future__ import annotations
 
 import json
+import shlex
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -30,6 +35,7 @@ sys.path.insert(0, str(REPO / "werkzeuge"))
 
 import aufzeichnung as az  # noqa: E402
 import lagebild as lb  # noqa: E402
+import sitzungsprobe as sp  # noqa: E402
 import vorfuehrung as vf  # noqa: E402
 
 
@@ -267,3 +273,63 @@ def test_aufgenommen_wird_die_ganze_session_im_klassischen_format():
     kommando = az.aufnahme_kommando("vorfuehrung", Path("runs/fall3"))
     assert kommando[:4] == ["script", "-q", "-m", "classic"]
     assert kommando[-1] == "tmux attach -t vorfuehrung"
+
+
+# --------------------------------------------------------------------------- #
+# Sitzungsprobe
+# --------------------------------------------------------------------------- #
+
+def test_ruhe_braucht_genug_gleiche_blicke():
+    genug = sp.RUHE_BLICKE
+    assert not sp.ruhig(["x"] * (genug - 1))                 # zu wenige Blicke sind kein Urteil
+    assert sp.ruhig(["a", "b"] + ["x"] * genug)
+    assert not sp.ruhig(["x"] * genug + ["y"])               # der letzte Blick bewegt sich wieder
+    assert not sp.ruhig(["x", "y"] * genug)
+
+
+def test_bewegte_zeilen_sind_die_die_nicht_in_jedem_blick_stehen():
+    blicke = ["kopf\n> frage\n  arbeitet (1s)", "kopf\n> frage\n  arbeitet (2s)", "kopf\n> frage\nantwort"]
+    assert sp.bewegte_zeilen(blicke) == ["  arbeitet (1s)", "  arbeitet (2s)", "antwort"]
+    assert sp.bewegte_zeilen(["nur ein Blick"]) == []
+
+
+def test_die_anzeige_des_auftrags_gilt_nicht_als_antwort():
+    paare = ((sp.AUFTRAG_EINGABE, sp.ANTWORT_EINGABE), (sp.AUFTRAG_WEITERGABE, sp.ANTWORT_WEITERGABE))
+    weitergabe = sp.weitergabe_auftrag(Path("/x/sitzungsprobe.py"), "s")
+    for auftrag, antwort in paare:
+        assert not sp.beantwortet(f"> {auftrag}\n", antwort)
+        assert not sp.beantwortet(f"> {weitergabe}\n", antwort)
+        assert sp.beantwortet(f"> {auftrag}\n{antwort}\n", antwort)
+    # Ein Chat darf die Antwort mit Leerzeichen schreiben oder umbrechen ...
+    assert sp.beantwortet("> frage\n42 BLAU\n", sp.ANTWORT_EINGABE)
+    # ... aber ein Zaehler oder eine Uhrzeit auf dem Bildschirm ist keine.
+    assert not sp.beantwortet("> frage\n42 tokens  14:42\n", sp.ANTWORT_EINGABE)
+
+
+def test_gesendet_wird_erst_der_text_woertlich_dann_enter():
+    assert sp.sende_kommandos("s", "b", "eine Zeile; $HOME") == [
+        ["send-keys", "-t", "s:b", "-l", "eine Zeile; $HOME"], ["send-keys", "-t", "s:b", "Enter"]]
+
+
+@pytest.mark.parametrize("text", ["zwei\nZeilen", "mit\rRuecklauf", "   "],
+                         ids=["zeilenumbruch", "wagenruecklauf", "leer"])
+def test_ein_mehrzeiler_oder_leerer_auftrag_wird_verweigert(text):
+    with pytest.raises(sp.ProbeFehler):
+        sp.sende_kommandos("s", "b", text)
+
+
+def test_der_weitergabe_auftrag_ist_ein_einzeiler_mit_dem_eigenen_sende_kommando():
+    auftrag = sp.weitergabe_auftrag(Path("/ein pfad/sitzungsprobe.py"), "meine session")
+    assert sp.sende_kommandos("s", "a", auftrag)             # selbst ein zulaessiger Einzeiler
+    kommando = auftrag.split(": ", 1)[1]
+    assert shlex.split(kommando) == ["python3", "/ein pfad/sitzungsprobe.py", "sende", "b",
+                                     sp.AUFTRAG_WEITERGABE, "--session", "meine session"]
+
+
+def test_der_bericht_zeigt_ein_nein_als_nein_samt_bildschirm():
+    zeilen = sp.bericht_zeilen("codex", "s", datetime(2026, 10, 2, 14, 0),
+                               [("START", "ja", "x"), ("WEITERGABE", "NEIN", "y")],
+                               ["  arbeitet (1s)"], [("Fenster a", "Rueckfrage: erlauben?")])
+    text = "\n".join(zeilen)
+    assert "| WEITERGABE | NEIN | y |" in text
+    assert "  arbeitet (1s)" in text and "Rueckfrage: erlauben?" in text

@@ -40,7 +40,9 @@ Im Abbild liegen NICHT:
 - **Unveroeffentlichte Arbeit**, es sei denn, der Bau wurde ausdruecklich
   so aufgerufen (`--unveroeffentlicht`).
 - Ein Agenten-Werkzeug (Claude Code, Codex). Wer agentisch arbeitet,
-  installiert es in der Umgebung und meldet sich dort an.
+  installiert es in der Umgebung und meldet sich dort an. Ob es die
+  Sitzungen der Vorfuehrung traegt, zeigt `werkzeuge/sitzungsprobe.py`
+  (`werkzeuge/README.md`).
 
 ## Das Abbild bauen
 
