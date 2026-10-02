@@ -35,8 +35,10 @@ EINST="$WELT/einstellungen.conf"
 [ -f "$EINST" ] || { echo "HALT: $EINST fehlt — erst die Welt aufstellen (welt_aufstellen.sh)"; exit 2; }
 [ -d "$BAUM/src/rechner_pipeline" ] || { echo "HALT: $BAUM ist kein Codebaum dieses Repositorys"; exit 2; }
 [ -x "$PY" ] || { echo "HALT: Interpreter $PY fehlt"; exit 2; }
+WELT_AUFRUF="$WELT"
 # shellcheck disable=SC1090
 . "$EINST"
+[ "$WELT" = "$WELT_AUFRUF" ] || { echo "HALT: $EINST gehoert zur Welt $WELT, aufgerufen wurde $WELT_AUFRUF — eine verschobene oder kopierte Welt wird nicht gefuehrt"; exit 2; }
 [ -d "$LINIE/ordnung" ] || { echo "HALT: Linie $LINIE nicht gefunden — erst die Welt aufstellen"; exit 2; }
 export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$BAUM/src"
 

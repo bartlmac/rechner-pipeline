@@ -133,8 +133,10 @@ EOF
 
 lade_einstellungen() {
   [ -f "$EINST" ] || { echo "HALT: $EINST fehlt — Phase schluessel fahren oder die Datei nach einstellungen.beispiel.conf anlegen"; return 2; }
+  local aufruf="$WELT"
   # shellcheck disable=SC1090
   . "$EINST"
+  [ "$WELT" = "$aufruf" ] || { echo "HALT: $EINST gehoert zur Welt $WELT, aufgerufen wurde $aufruf — eine verschobene oder kopierte Welt wird nicht gefuehrt"; return 2; }
   local v
   for v in LINIE BIS ORDNUNG BETRIEB_KEY; do
     [ -n "${!v}" ] || { echo "HALT: $v fehlt in $EINST"; return 2; }

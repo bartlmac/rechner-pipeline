@@ -18,6 +18,7 @@ Protokoll in der Welt. Sie rechnen und pruefen nichts selbst.
 | `welt_aufstellen.sh` | Schluessel und Ordnung (fuer eine Welt mit eigenen Schluesseln), Ablage, Linie, Erstabnahmen |
 | `fall_starten.sh` | Fall anlegen, Lieferung registrieren, Vorlage des Fallauftrags |
 | `fall_zeichnen.sh` | ein Gate des Falls zeichnen, mit dem Ring, den das Gate braucht |
+| `fall_nachfahren.sh` | einen festgehaltenen Fall (ein Paket) ohne Agenten nachfahren, bis zum Ende oder bis zu einem Haltepunkt |
 | `fall-baldrian-klv-tg2015.conf` | der Fall der Vorfuehrung: Lieferung, Stichtag, Auftrag |
 | `einstellungen.beispiel.conf` | Vorlage der Einstellungen fuer eine Welt mit vorhandenen Schluesseln |
 | `mandat.vorlage.txt` | Vorlage des Mandats der simulierten Rollen |
@@ -117,12 +118,74 @@ brauchen (`ontologie.entscheide`, die Kommandos des Zugangs). Was vor einer
 Zeichnung vorliegen muss, sagt der Skill `migrationsfall-durchfuehren`; das
 Gate prueft es und nennt, was fehlt.
 
+## Einen festgehaltenen Fall nachfahren
+
+Ein Fall, der einmal gefuehrt wurde, laesst sich ohne Agenten wiederholen:
+Was Agenten und Menschen darin erarbeitet haben, wird mitgebracht; was das
+System rechnet, rechnet es neu; gezeichnet wird neu, mit den Schluesseln der
+Welt. So wird eine Laufzeit aus dem Stand des Repositorys neu aufgestellt,
+ein Fall nach einer Code-Aenderung gegengeprueft oder in einer Uebung an
+eine bestimmte Stelle "vorgespult".
+
+```
+deploy/welt/fall_nachfahren.sh <welt> <paket> [--bis <haltepunkt>] [--wechseln]
+```
+
+Das **Paket** ist ein Verzeichnis:
+
+| Im Paket | Was |
+|---|---|
+| `fall.conf` | der Fall: Name, Lieferung, Stichtag, Auftrag |
+| `rezept.sh` | die Schritte in ihrer Reihenfolge |
+| `erarbeitet/` | was im Fall erarbeitet wurde und kein Kommando neu erzeugt, unter demselben Pfad wie im Fall |
+| `nachlieferung/` | was die Quelle im Lauf des Falls nachgeliefert hat |
+| `ERWARTUNG` | `<sha256>  <pfad im fall>` je Ergebnis, das byteweise gleich sein muss |
+| `SHA256SUMS` | Pruefsummen aller Dateien des Pakets |
+
+Im Paket liegen keine Schluessel und keine Zeichnungen. Das Skript faehrt
+nur ein Paket, das seinen Pruefsummen entspricht und keine Datei darueber
+hinaus traegt.
+
+Im **Rezept** stehen nur diese Helfer, je Zeile einer (Fortsetzungszeilen
+mit `\`); eine andere Zeile verweigert das Skript, bevor es beginnt:
+
+| Helfer | Wirkung |
+|---|---|
+| `anlegen` | Fall anlegen, Lieferung laut `fall.conf` registrieren |
+| `vorlage` | die Vorlage des Auftrags erzeugen (auch neu, nach einer Nachlieferung) |
+| `registriere <pfad>` | `nachlieferung/<pfad>` im Fall registrieren |
+| `einlegen <pfad>` | `erarbeitet/<pfad>` in den Fall legen, nie ueber eine andere Datei hinweg |
+| `schritt "<name>" <kommando ...>` | ein Kommando fahren; ein Exit ungleich null haelt an |
+| `zeichne <gate> "<begruendung>"` | das Gate annehmen, mit dem Ring der Welt |
+| `haltepunkt <name>` | hier endet ein Lauf mit `--bis <name>` |
+| `erwarte <pfad im fall>` | die Datei gegen `ERWARTUNG` halten; andere Bytes halten an |
+
+In den Kommandos stehen `$PY` (der Interpreter), `$F` (`faelle/<name>`),
+`$A` (`$F/abgeleitet`), `$WELT`, `$LINIE`, `$ORDNUNG`, `$STICHTAG`, `$PAKET`
+und `$(ring <gate>)` fuer Kommandos, die den Ring eines Gates brauchen.
+
+- **Nichts laeuft doppelt.** Ein Lauf merkt sich, wie weit er kam
+  (`<welt>/nachfahren.stand`). Derselbe Aufruf faehrt hinter dem letzten
+  erledigten Schritt weiter — nach einem Haltepunkt ebenso wie nach einem
+  behobenen Fehler. Protokoll: `<welt>/nachfahren.log`.
+- **Verglichen werden Ergebnisse, nicht Zeichnungen.** `erwarte` haelt
+  Bytes gegen den festgehaltenen Fall; Snapshots und Belege tragen die
+  Schluessel und Zeiten des Laufs und sind deshalb nie gleich.
+- **Der Fall der Welt.** Fuehrt die Welt schon einen anderen Fall, haelt
+  das Skript an. `--wechseln` legt dessen Falldatei beiseite
+  (`<welt>/fall-frueher-<name>.conf`) und macht den nachgefahrenen Fall zum
+  Fall der Welt; der fruehere Fall bleibt liegen. Eine Welt faehrt EIN Paket
+  nach.
+
 ## Grenzen
 
 - Die Skripte fuehren bis zur Zeichnung im Fall. Der Zugang des abgenommenen
   Bestands in die Ablage (Probe, A-B2, Neuaufsetzen, A-B3) ist hier nicht
   gefasst; seine Bedienfolge steht in `deploy/plv/README.md`.
-- Eine Welt fuehrt einen Fall. Ein zweiter Fall bekommt eine zweite Welt.
+- Eine Welt fuehrt einen Fall zur Zeit. Ein zweiter bekommt eine zweite
+  Welt — oder loest den ersten ab, wenn er nachgefahren wird (`--wechseln`).
+- Das Skript zum Nachfahren faehrt ein Paket. Ein Paket fuer den Fall der
+  Vorfuehrung ist nicht Teil dieses Stands.
 - Mandat und Stellungnahme sind Vorlagen der Vorfuehrung. Wer eine Welt fuer
   einen anderen Zweck aufstellt, schreibt beide selbst und nennt sie in den
   Einstellungen.

@@ -25,8 +25,11 @@ BAUM="$(realpath -m "${BAUM:-$HIER/../..}")"
 PY="${PYTHON:-$BAUM/.venv/bin/python}"
 EINST="$WELT/einstellungen.conf"
 [ -f "$EINST" ] && [ -f "$WELT/fall.conf" ] || { echo "HALT: $EINST oder $WELT/fall.conf fehlt — Welt aufstellen, dann Fall anlegen"; exit 2; }
+WELT_AUFRUF="$WELT"
 # shellcheck disable=SC1090,SC1091
-. "$EINST"; . "$WELT/fall.conf"
+. "$EINST"
+[ "$WELT" = "$WELT_AUFRUF" ] || { echo "HALT: $EINST gehoert zur Welt $WELT, aufgerufen wurde $WELT_AUFRUF — eine verschobene oder kopierte Welt wird nicht gefuehrt"; exit 2; }
+. "$WELT/fall.conf"
 [ -n "$AUFRUF_ENTSCHEIDER" ] && ENTSCHEIDER="$AUFRUF_ENTSCHEIDER"
 for v in FALLNAME LINIE ORDNUNG MANDAT_FALL VORSTAND_KEY AKTUARIAT_KEY ARCHITEKTUR_KEY RECHENKERN_KEY BETRIEB_MENSCH_KEY PROGRAMMLEITUNG_KEY ENTSCHEIDER; do
   [ -n "${!v}" ] || { echo "HALT: $v fehlt in den Einstellungen der Welt"; exit 2; }

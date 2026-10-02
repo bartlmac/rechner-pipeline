@@ -16,6 +16,10 @@ Test deshalb halten kann —, ist Mechanik:
   verweigert das Gate erst beim Zeichnen, mitten im Fall.
 * ``fall_starten.sh`` haelt an, bevor es etwas anlegt, und ein gescheitertes
   Anlegen blockiert keinen zweiten Versuch.
+* ``fall_nachfahren.sh`` faehrt ein Paket Schritt fuer Schritt: Es faehrt
+  nichts doppelt (auch nach Haltepunkt oder Fehler nicht), legt nie ueber eine
+  andere Datei, nimmt nur ein Paket, das seinen Pruefsummen entspricht, und
+  haelt an, wenn ein Ergebnis andere Bytes traegt als festgehalten.
 * Jedes Systemkommando, das ein Skript faehrt, nimmt der Parser seines Moduls
   an (dieselbe Pruefung wie fuer die Dokumente,
   ``tests/test_dokumentierte_kommandos.py``): Ein Skript, das einen entfallenen
@@ -223,6 +227,25 @@ def test_ein_wert_der_in_den_einstellungen_code_wuerde_wird_verweigert_bevor_etw
     assert not list(tmp_path.rglob("gekapert"))
 
 
+def test_eine_kopierte_welt_wird_von_keinem_skript_gefuehrt(tmp_path, welt, baum):
+    # Die Einstellungen nennen ihre Welt. Wuerde ein Skript ihnen folgen statt
+    # dem Aufruf, arbeitete es in der ALTEN Welt, waehrend der Mensch die neue meint.
+    (welt / "linie" / "ordnung").mkdir(parents=True)
+    shutil.copy(FALLDATEI, welt / "fall.conf")
+    kopie = tmp_path / "kopie"
+    shutil.copytree(welt, kopie)
+    paket = _paket(tmp_path, 'schritt "Fall anlegen" mkdir -p faelle/probe\n')
+    laeufe = {
+        "welt_aufstellen.sh": _lauf("welt_aufstellen.sh", str(kopie), "linie", baum=baum),
+        "fall_starten.sh": _lauf("fall_starten.sh", str(kopie), "vorlage", baum=baum),
+        "fall_zeichnen.sh": _lauf("fall_zeichnen.sh", str(kopie), "ring", "A-M6", baum=baum),
+        "fall_nachfahren.sh": _lauf("fall_nachfahren.sh", str(kopie), str(paket), baum=baum),
+    }
+    for skript, lauf in laeufe.items():
+        assert lauf.returncode == 2 and b"gehoert zur Welt" in lauf.stdout, (skript, lauf.stdout)
+    assert not (baum / "faelle").exists()
+
+
 def test_ein_unsauberer_codebaum_haelt_an(tmp_path, baum):
     (baum / "neu.txt").write_text("nicht committet\n")
     lauf = _lauf("welt_aufstellen.sh", str(tmp_path / "welt"), "schluessel", baum=baum,
@@ -361,10 +384,182 @@ def test_ohne_aufgestellte_welt_startet_kein_fall(tmp_path, welt, baum):
     assert not (welt / "fall.conf").exists()
 
 
-@pytest.mark.parametrize("skript", ["welt_aufstellen.sh", "fall_starten.sh", "fall_zeichnen.sh"])
+@pytest.mark.parametrize("skript", ["welt_aufstellen.sh", "fall_starten.sh", "fall_zeichnen.sh", "fall_nachfahren.sh"])
 def test_shell_skripte_sind_syntaktisch_gueltig(skript):
     lauf = subprocess.run(["bash", "-n", str(WELT_SKRIPTE / skript)], capture_output=True, text=True)
     assert lauf.returncode == 0, lauf.stderr
+
+
+# --------------------------------------------------------------------------- #
+# fall_nachfahren.sh: ein Paket Schritt fuer Schritt
+# --------------------------------------------------------------------------- #
+
+def _paket(wo: Path, rezept: str, *, erarbeitet: dict | None = None, erwartung: dict | None = None,
+           fallname: str = "probe") -> Path:
+    """Ein Paket mit gueltigen Pruefsummen. Das Rezept der Tests nutzt nur
+    Shell-Kommandos: Was die Systemkommandos tun, ist nicht Sache des Skripts."""
+    p = wo / f"paket-{fallname}"
+    p.mkdir()
+    (p / "fall.conf").write_text(f'FALLNAME={fallname}\nSTICHTAG=2026-01-01\n')
+    (p / "rezept.sh").write_text(rezept)
+    for rel, inhalt in (erarbeitet or {}).items():
+        ziel = p / "erarbeitet" / rel
+        ziel.parent.mkdir(parents=True, exist_ok=True)
+        ziel.write_text(inhalt)
+    (p / "ERWARTUNG").write_text("".join(
+        f"{hashlib.sha256(inhalt.encode()).hexdigest()}  {rel}\n" for rel, inhalt in (erwartung or {}).items()))
+    _summen(p)
+    return p
+
+
+def _summen(p: Path) -> None:
+    dateien = sorted(d for d in p.rglob("*") if d.is_file() and d.name != "SHA256SUMS")
+    (p / "SHA256SUMS").write_text("".join(
+        f"{hashlib.sha256(d.read_bytes()).hexdigest()}  {d.relative_to(p)}\n" for d in dateien))
+
+
+def _nachfahren(welt: Path, paket: Path, baum: Path, *args: str) -> subprocess.CompletedProcess:
+    lauf = _lauf("fall_nachfahren.sh", str(welt), str(paket), *args, baum=baum)
+    lauf.text = (lauf.stdout + lauf.stderr).decode()  # type: ignore[attr-defined]
+    return lauf
+
+
+REZEPT = """# Probe
+schritt "Fall anlegen" mkdir -p faelle/probe/abgeleitet
+schritt "eins" bash -c 'echo eins >> faelle/probe/spur'
+einlegen abgeleitet/abox/abox.json
+haltepunkt mitte
+schritt "zwei, ueber zwei Zeilen" bash -c \\
+    'echo zwei >> faelle/probe/spur'
+schritt "Ergebnis" bash -c 'printf ergebnis > faelle/probe/abgeleitet/bericht.txt'
+erwarte abgeleitet/bericht.txt
+haltepunkt ende
+"""
+
+
+def test_nachfahren_faehrt_das_rezept_in_reihenfolge_bis_zum_ende(tmp_path, welt, baum):
+    paket = _paket(tmp_path, REZEPT, erarbeitet={"abgeleitet/abox/abox.json": "{}"},
+                   erwartung={"abgeleitet/bericht.txt": "ergebnis"})
+    lauf = _nachfahren(welt, paket, baum)
+    assert lauf.returncode == 0, lauf.text
+    fall = baum / "faelle" / "probe"
+    assert (fall / "spur").read_text() == "eins\nzwei\n"
+    assert (fall / "abgeleitet" / "abox" / "abox.json").read_text() == "{}"
+    assert "NACHGEFAHREN: probe, 8 Schritte" in lauf.text and "erwarte abgeleitet/bericht.txt (byte-gleich)" in lauf.text
+
+
+def test_ein_haltepunkt_endet_den_lauf_und_der_naechste_faehrt_nichts_doppelt(tmp_path, welt, baum):
+    paket = _paket(tmp_path, REZEPT, erarbeitet={"abgeleitet/abox/abox.json": "{}"},
+                   erwartung={"abgeleitet/bericht.txt": "ergebnis"})
+    fall = baum / "faelle" / "probe"
+    erster = _nachfahren(welt, paket, baum, "--bis", "mitte")
+    assert erster.returncode == 0 and "Haltepunkt mitte erreicht" in erster.text, erster.text
+    assert (fall / "spur").read_text() == "eins\n"
+    assert not (fall / "abgeleitet" / "bericht.txt").exists()
+    zweiter = _nachfahren(welt, paket, baum)
+    assert zweiter.returncode == 0, zweiter.text
+    # "eins" lief genau einmal: Der zweite Lauf setzt hinter dem Haltepunkt an.
+    assert (fall / "spur").read_text() == "eins\nzwei\n"
+    assert zweiter.text.count("(schon gefahren)") == 4
+    # Ein Haltepunkt, der schon hinter dem Lauf liegt, wird benannt verweigert.
+    dritter = _nachfahren(welt, paket, baum, "--bis", "mitte")
+    assert dritter.returncode == 2 and "liegt schon hinter diesem Lauf" in dritter.text
+
+
+def test_einen_haltepunkt_den_das_rezept_nicht_kennt_gibt_es_nicht(tmp_path, welt, baum):
+    paket = _paket(tmp_path, REZEPT, erarbeitet={"abgeleitet/abox/abox.json": "{}"},
+                   erwartung={"abgeleitet/bericht.txt": "ergebnis"})
+    lauf = _nachfahren(welt, paket, baum, "--bis", "gibtsnicht")
+    assert lauf.returncode == 2 and "gibt es im Rezept nicht" in lauf.text and "mitte" in lauf.text
+    assert not (baum / "faelle").exists()
+
+
+def test_nach_einem_fehler_faehrt_derselbe_aufruf_beim_gescheiterten_schritt_weiter(tmp_path, welt, baum):
+    rezept = ('schritt "Fall anlegen" mkdir -p faelle/probe\n'
+              "schritt \"eins\" bash -c 'echo eins >> faelle/probe/spur'\n"
+              'schritt "braucht eine Datei" test -f faelle/probe/behoben\n'
+              "schritt \"drei\" bash -c 'echo drei >> faelle/probe/spur'\n")
+    paket = _paket(tmp_path, rezept)
+    erster = _nachfahren(welt, paket, baum)
+    assert erster.returncode == 1 and "HALT   3  braucht eine Datei (Exit 1)" in erster.text, erster.text
+    assert (baum / "faelle" / "probe" / "spur").read_text() == "eins\n"
+    (baum / "faelle" / "probe" / "behoben").write_text("")
+    zweiter = _nachfahren(welt, paket, baum)
+    assert zweiter.returncode == 0, zweiter.text
+    assert (baum / "faelle" / "probe" / "spur").read_text() == "eins\ndrei\n"
+
+
+def test_einlegen_legt_nie_ueber_eine_andere_datei(tmp_path, welt, baum):
+    rezept = ('schritt "Fall anlegen" mkdir -p faelle/probe/abgeleitet/abox\n'
+              "schritt \"fremde Datei\" bash -c 'printf anders > faelle/probe/abgeleitet/abox/abox.json'\n"
+              "einlegen abgeleitet/abox\n")
+    paket = _paket(tmp_path, rezept, erarbeitet={"abgeleitet/abox/abox.json": "aus dem Paket",
+                                                 "abgeleitet/abox/fragmente/a.json": "a"})
+    lauf = _nachfahren(welt, paket, baum)
+    assert lauf.returncode == 1 and "im Fall liegt schon eine andere Datei" in lauf.text, lauf.text
+    assert (baum / "faelle" / "probe" / "abgeleitet" / "abox" / "abox.json").read_text() == "anders"
+    # Dieselbe Datei noch einmal einzulegen ist kein Fehler (Fortsetzung nach einem Abbruch).
+    (baum / "faelle" / "probe" / "abgeleitet" / "abox" / "abox.json").write_text("aus dem Paket")
+    lauf = _nachfahren(welt, paket, baum)
+    assert lauf.returncode == 0, lauf.text
+    assert (baum / "faelle" / "probe" / "abgeleitet" / "abox" / "fragmente" / "a.json").read_text() == "a"
+
+
+@pytest.mark.parametrize("fall", ["andere_bytes", "nicht_entstanden", "ohne_erwartung"])
+def test_erwarte_haelt_an_wenn_das_ergebnis_nicht_das_festgehaltene_ist(tmp_path, welt, baum, fall):
+    schreibt = {"andere_bytes": "printf anders", "nicht_entstanden": "true", "ohne_erwartung": "printf ergebnis"}[fall]
+    rezept = ('schritt "Fall anlegen" mkdir -p faelle/probe/abgeleitet\n'
+              f"schritt \"Ergebnis\" bash -c '{schreibt} > faelle/probe/abgeleitet/"
+              f"{'anderswo' if fall == 'nicht_entstanden' else 'bericht'}.txt'\n"
+              "erwarte abgeleitet/bericht.txt\n"
+              "schritt \"danach\" bash -c 'echo danach >> faelle/probe/spur'\n")
+    erwartung = {} if fall == "ohne_erwartung" else {"abgeleitet/bericht.txt": "ergebnis"}
+    paket = _paket(tmp_path, rezept, erwartung=erwartung)
+    lauf = _nachfahren(welt, paket, baum)
+    assert lauf.returncode == 1, lauf.text
+    assert {"andere_bytes": "andere Bytes als im festgehaltenen Fall", "nicht_entstanden": "ist nicht entstanden",
+            "ohne_erwartung": "steht nichts in ERWARTUNG"}[fall] in lauf.text
+    assert not (baum / "faelle" / "probe" / "spur").exists()
+
+
+@pytest.mark.parametrize("eingriff", ["veraendert", "dazugelegt"])
+def test_ein_paket_das_nicht_seinen_pruefsummen_entspricht_wird_nicht_gefahren(tmp_path, welt, baum, eingriff):
+    paket = _paket(tmp_path, 'schritt "Fall anlegen" mkdir -p faelle/probe\n',
+                   erarbeitet={"abgeleitet/abox/abox.json": "{}"})
+    if eingriff == "veraendert":
+        (paket / "erarbeitet" / "abgeleitet" / "abox" / "abox.json").write_text('{"x": 1}')
+    else:
+        (paket / "erarbeitet" / "abgeleitet" / "abox" / "untergeschoben.json").write_text("{}")
+    lauf = _nachfahren(welt, paket, baum)
+    assert lauf.returncode == 2, lauf.text
+    assert ("stimmt nicht mit seinen Pruefsummen" if eingriff == "veraendert" else "ohne Pruefsumme") in lauf.text
+    assert not (baum / "faelle").exists() and not (welt / "nachfahren.stand").exists()
+
+
+@pytest.mark.parametrize("zeile", ["rm -rf faelle", "PY=/bin/false", "echo hallo; schritt \"x\" true"])
+def test_im_rezept_stehen_nur_helfer(tmp_path, welt, baum, zeile):
+    paket = _paket(tmp_path, f'schritt "Fall anlegen" mkdir -p faelle/probe\n{zeile}\n')
+    lauf = _nachfahren(welt, paket, baum)
+    assert lauf.returncode == 2 and "kein Helfer" in lauf.text, lauf.text
+    assert not (baum / "faelle").exists()
+
+
+def test_eine_welt_faehrt_ein_paket_nach_und_wechselt_den_fall_nur_auf_wunsch(tmp_path, welt, baum):
+    # Die Welt fuehrt schon einen anderen Fall: Halt, bis --wechseln es erlaubt.
+    (welt / "fall.conf").write_text("FALLNAME=live\n")
+    paket = _paket(tmp_path, 'schritt "Fall anlegen" mkdir -p faelle/probe\nhaltepunkt eins\n'
+                             "schritt \"zwei\" bash -c 'echo zwei >> faelle/probe/spur'\n")
+    lauf = _nachfahren(welt, paket, baum)
+    assert lauf.returncode == 2 and "fuehrt den Fall live" in lauf.text and "--wechseln" in lauf.text
+    assert (welt / "fall.conf").read_text() == "FALLNAME=live\n" and not (baum / "faelle").exists()
+    lauf = _nachfahren(welt, paket, baum, "--wechseln", "--bis", "eins")
+    assert lauf.returncode == 0, lauf.text
+    assert (welt / "fall-frueher-live.conf").read_text() == "FALLNAME=live\n"
+    # Ein anderes Paket in derselben Welt: verweigert, der Stand gehoert dem ersten.
+    anderes = _paket(tmp_path, 'schritt "Fall anlegen" mkdir -p faelle/zweiter\n', fallname="zweiter")
+    lauf = _nachfahren(welt, anderes, baum, "--wechseln")
+    assert lauf.returncode == 2 and "gehoert zu einem anderen Paket oder Fall" in lauf.text
+    assert not (baum / "faelle" / "zweiter").exists()
 
 
 # --------------------------------------------------------------------------- #
@@ -407,7 +602,7 @@ def _systemkommandos(text: str, name: str) -> list[Kommando]:
 
 
 SKRIPT_KOMMANDOS = {name: _systemkommandos((WELT_SKRIPTE / name).read_text(encoding="utf-8"), f"deploy/welt/{name}")
-                    for name in ("welt_aufstellen.sh", "fall_starten.sh", "fall_zeichnen.sh")}
+                    for name in ("welt_aufstellen.sh", "fall_starten.sh", "fall_zeichnen.sh", "fall_nachfahren.sh")}
 
 
 @pytest.mark.parametrize("kommando", [k for ks in SKRIPT_KOMMANDOS.values() for k in ks], ids=str)
@@ -420,7 +615,7 @@ def test_der_detektor_sieht_jedes_kommando_und_faellt_was_falsch_ist():
     # Die Menge, mit == gehalten: Ein Kommando, das die Extraktion nicht mehr
     # sieht, faellt hier auf statt still aus der Pruefung.
     assert {name: len(ks) for name, ks in SKRIPT_KOMMANDOS.items()} == {
-        "welt_aufstellen.sh": 10, "fall_starten.sh": 4, "fall_zeichnen.sh": 1}
+        "welt_aufstellen.sh": 10, "fall_starten.sh": 4, "fall_zeichnen.sh": 1, "fall_nachfahren.sh": 1}
     module = {k.modul for ks in SKRIPT_KOMMANDOS.values() for k in ks}
     assert {"rechner_pipeline.betrieb.tageslauf", "rechner_pipeline.gates.gate_entscheid",
             "rechner_pipeline.gates.fall_belegen", "rechner_pipeline.fall"} <= module
