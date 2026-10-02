@@ -19,7 +19,9 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.betrieb import seite as st
+from rechner_pipeline.models.schemas import P9_SNAPSHOT_SCHEMA_VERSION
 from rechner_pipeline.betrieb.tageslauf import EXIT_OK, Ablage, lies_protokoll, tageslauf
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLV = REPO_ROOT / "configs" / "bestand_gesamt.toml"
@@ -153,11 +155,11 @@ def test_uebernahme_traegt_rolle_und_schluesselklasse_der_zeichnung(tmp_path):
     # ein frei erfundener, wie ihn dieser Test frueher schrieb, wird
     # abgewiesen — siehe test_betrieb_uebernahme).
     fall = tu._fall(tmp_path)
-    ziel = ueb.eingang_anlegen(tmp_path / "daten", fall, dt.date(2026, 1, 1))
+    ziel = ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, dt.date(2026, 1, 1))
     eingang = json.loads((ziel / "eingang.json").read_text("utf-8"))
     z = eingang["zeichnung"]
-    assert z["rolle"] == "mensch/aktuar" and z["entscheider"] == "Verantwortlicher Aktuar"
-    assert z["schluesselklasse"] == "mensch" and z["schema_version"] == 7
+    assert z["rolle"] == "mensch/aktuariat" and z["entscheider"] == "Verantwortlicher Aktuar"
+    assert z["schluesselklasse"] == "mensch" and z["schema_version"] == P9_SNAPSHOT_SCHEMA_VERSION
     assert len(z["schluessel_sha256"]) == 16 and z["signatur_verifiziert"] is True
     gelesen = ueb.lies_uebernahmen(tmp_path / "daten" / "uebernahme",
                                    __import__("rechner_pipeline.bestand.config", fromlist=["load_config"]).load_config(PLV))
@@ -175,7 +177,7 @@ def test_uebernahme_traegt_rolle_und_schluesselklasse_der_zeichnung(tmp_path):
         "uebernahmen": [{"fall": "probe", "stichtag": "2026-01-01", "vertraege": 3,
                          "snapshot_sha256": eingang["snapshot_sha256"], "zeichnung": z}],
     })
-    assert "<td>mensch/aktuar</td><td>Verantwortlicher Aktuar</td><td>mensch</td>" in html
+    assert "<td>mensch/aktuariat</td><td>Verantwortlicher Aktuar</td><td>mensch</td>" in html
     assert "Signatur hier nicht verifiziert" in html
 
 
@@ -385,3 +387,226 @@ def test_ein_zweiter_lauf_an_der_lesenaht_ergibt_keinen_mischstand(tmp_path, mon
     letzte = [b["buchungsdatum"] for b in modell["buchungen"]["letzte"]]
     assert letzte and max(letzte) <= "2026-02-03", (
         f"die Seite zeigt Buchungen nach ihrem eigenen Stand: {max(letzte)}")
+
+
+# --------------------------------------------------------------------------- #
+# RC08 / RC09 (Angriffsrunde C): die Seite nennt nur, was das Protokoll fuehrt
+# --------------------------------------------------------------------------- #
+
+
+def _seiten_stand(ablage: Ablage) -> str:
+    html = (ablage.wurzel / "seite" / "index.html").read_text("utf-8")
+    return re.search(r"<title>Bestand heute — Stand (\d{4}-\d{2}-\d{2})</title>", html).group(1)
+
+
+@pytest.fixture()
+def am_31_1(tmp_path):
+    ablage = _ablage(tmp_path / "plv")
+    assert tageslauf(ablage, dt.date(2026, 1, 31))[0] == EXIT_OK
+    assert _seiten_stand(ablage) == "2026-01-31"
+    return ablage
+
+
+def test_die_seite_wird_erst_nach_der_protokollzeile_veroeffentlicht(am_31_1, monkeypatch):
+    """Aus einem unterbrochenen Lauf wird nichts nach aussen sichtbar: Die
+    Seite wird neben sich gerendert, die Zeile angefuegt, ERST DANN ersetzt.
+    Vorher stand die neue Seite schon, wenn die Zeile scheiterte.
+    Mutationsprobe: die Seite wieder vor _anfuegen ersetzen -> rot."""
+    from rechner_pipeline.betrieb import tageslauf as tl
+
+    gesehen: list = []
+    echt = tl._anfuegen
+
+    def beobachtet(pfad, zeile, *a, **k):
+        gesehen.append(_seiten_stand(am_31_1))     # die Seite, WAEHREND die Zeile geschrieben wird
+        return echt(pfad, zeile, *a, **k)
+
+    monkeypatch.setattr(tl, "_anfuegen", beobachtet)
+    code, zeile = tageslauf(am_31_1, dt.date(2026, 2, 3))
+    monkeypatch.undo()
+    assert code == EXIT_OK and zeile["seite"] == "index.html"
+    assert gesehen == ["2026-01-31"], "die Seite war vor der Zeile schon veroeffentlicht"
+    assert _seiten_stand(am_31_1) == "2026-02-03"
+    assert not list((am_31_1.wurzel / "seite").glob(".*"))
+
+
+@pytest.mark.parametrize("ausfall", [OSError(28, "No space left on device"),
+                                     KeyboardInterrupt("Prozessende")])
+def test_scheitert_die_zeile_bleibt_die_alte_seite_stehen(am_31_1, monkeypatch, ausfall):
+    """Ist: Exit 2 'Protokollzeile nicht geschrieben', die Seite zeigte den
+    Tag aber gruen; das Protokoll fuehrt den Vortag, und die seite-CLI
+    ('Protokoll und Stand passen nicht zusammen') liess sie stehen.
+    Mutationsprobe: wie oben -> rot."""
+    from rechner_pipeline.betrieb import tageslauf as tl
+
+    vor = (am_31_1.wurzel / "seite" / "index.html").read_bytes()
+
+    def scheitert(*_a, **_k):
+        raise ausfall
+
+    monkeypatch.setattr(tl, "_anfuegen", scheitert)
+    with pytest.raises((tl.TageslaufError, KeyboardInterrupt)):
+        tageslauf(am_31_1, dt.date(2026, 2, 3))
+    monkeypatch.undo()
+    assert (am_31_1.wurzel / "seite" / "index.html").read_bytes() == vor
+    assert not list((am_31_1.wurzel / "seite").glob(".*")), "die Tempdatei blieb liegen"
+    # Die seite-CLI laesst die (wahre) Seite des Vortags stehen ...
+    assert st.main(["--stand", str(am_31_1.wurzel)]) == 2
+    assert (am_31_1.wurzel / "seite" / "index.html").read_bytes() == vor
+    # ... und der naechste Lauf fuehrt den Tag und heilt sie.
+    assert tageslauf(am_31_1, dt.date(2026, 2, 3))[0] == EXIT_OK
+    assert _seiten_stand(am_31_1) == "2026-02-03"
+
+
+def _lauf_zwischen_lesung_und_schreiben(ablage, monkeypatch, ergebnis: dict):
+    """Das Rennen deterministisch: Zwischen der Lesung des Stands und dem
+    Schreiben der Seite (rendere_html laeuft dazwischen) fuehrt ein
+    Tageslauf den naechsten Tag."""
+    from rechner_pipeline.betrieb import tageslauf as tl
+
+    echt = st.rendere_html
+    begonnen: list = []
+
+    def mit_lauf(modell):
+        if not begonnen:
+            begonnen.append(True)      # der Lauf rendert selbst: nicht erneut dazwischenfahren
+            try:
+                ergebnis["code"] = tageslauf(ablage, dt.date(2026, 2, 3))[0]
+            except tl.TageslaufError as exc:
+                ergebnis["fehler"] = str(exc)
+        return echt(modell)
+
+    monkeypatch.setattr(st, "rendere_html", mit_lauf)
+
+
+def test_der_seiten_befehl_rendert_unter_der_lauf_sperre(am_31_1, monkeypatch):
+    """Ist: Der seite-CLI las den Vortag, ein Tageslauf fuehrte den naechsten
+    Tag und rendert dessen Seite, dann ersetzte der CLI sie durch seine
+    aeltere Lesung — Exit 0 beide, Seite 31.1., Protokoll 3.2.
+    Soll: Rendern und Lauf schliessen sich aus.
+    Mutationsprobe: main rendert wieder ohne lauf_sperre -> rot."""
+    ergebnis: dict = {}
+    _lauf_zwischen_lesung_und_schreiben(am_31_1, monkeypatch, ergebnis)
+    assert st.main(["--stand", str(am_31_1.wurzel)]) == 0
+    monkeypatch.undo()
+    assert "Sperre" in ergebnis.get("fehler", ""), ergebnis
+    # Ohne Ueberlappung fuehrt der Lauf den Tag, die Seite folgt ihm.
+    assert tageslauf(am_31_1, dt.date(2026, 2, 3))[0] == EXIT_OK
+    assert st.main(["--stand", str(am_31_1.wurzel)]) == 0
+    assert _seiten_stand(am_31_1) == lies_protokoll(am_31_1.protokoll_pfad)[-1]["heute"] == "2026-02-03"
+
+
+def test_eine_aeltere_lesung_ersetzt_keine_juengere_seite(am_31_1, monkeypatch):
+    """Auch ohne Sperre (Bibliotheksaufruf): Ersetzt wird nur, wenn der
+    gelesene Stand nicht aelter ist als der, den die vorhandene Seite nennt.
+    Mutationsprobe: die Pruefung in veroeffentliche_seite entfernen -> rot."""
+    ergebnis: dict = {}
+    _lauf_zwischen_lesung_und_schreiben(am_31_1, monkeypatch, ergebnis)
+    with pytest.raises(st.SeiteError, match="juengere Seite"):
+        st.rendere_bestand_heute(am_31_1)
+    monkeypatch.undo()
+    assert ergebnis["code"] == EXIT_OK
+    assert _seiten_stand(am_31_1) == "2026-02-03"
+    assert not list((am_31_1.wurzel / "seite").glob(".*")), "die Tempdatei blieb liegen"
+    # Gleicher Stand ersetzt (idempotent), der juengere ebenso.
+    st.rendere_bestand_heute(am_31_1)
+    assert _seiten_stand(am_31_1) == "2026-02-03"
+
+
+def test_die_meldung_zur_juengeren_seite_nennt_einen_ausweg_der_traegt(am_31_1, monkeypatch):
+    """Die Meldung schickte den Menschen zu 'erneut starten' — der Befehl
+    scheitert dann wieder, solange die juengere Seite steht. Tragende Auswege:
+    den naechsten Tageslauf abwarten oder anstossen (er fuehrt den Stand und
+    ersetzt die Seite) oder die Seite beiseitelegen. Der Ausweg wird
+    nachgefahren: Seite beiseitegelegt, dann rendert derselbe Aufruf.
+    Mutationsprobe: die alte Meldung ('den Befehl erneut starten') zurueck
+    -> rot."""
+    ergebnis: dict = {}
+    _lauf_zwischen_lesung_und_schreiben(am_31_1, monkeypatch, ergebnis)
+    with pytest.raises(st.SeiteError) as fehler:
+        st.rendere_bestand_heute(am_31_1)
+    monkeypatch.undo()
+    text = str(fehler.value)
+    assert "erneut starten" not in text
+    assert "Tageslauf" in text and "beiseite" in text
+    # Der Ausweg traegt: die Seite beiseitelegen, dann rendert der Befehl ...
+    seite = am_31_1.wurzel / "seite" / "index.html"
+    seite.rename(seite.with_name("index.html.beiseite"))
+    assert st.main(["--stand", str(am_31_1.wurzel)]) == 0
+    assert _seiten_stand(am_31_1) == lies_protokoll(am_31_1.protokoll_pfad)[-1]["heute"]
+
+
+def test_der_seiten_befehl_legt_auf_einer_fehlenden_wurzel_nichts_an(tmp_path, capsys):
+    """Ist: 'seite --stand <tippfehler>' legte die Wurzel samt lauf.lock an
+    (lauf_sperre legt sie an) und scheiterte erst danach an der fehlenden
+    Nachweiszeile — ein Tippfehler hinterliess eine halbe Ablage, die der
+    naechste Tageslauf fuer eine eigene hielt. Soll: vor der Sperre
+    pruefen, dass Wurzel und Protokoll existieren; sonst Exit 2 mit Meldung
+    und unverandertes Dateisystem. Kontrolle: eine Wurzel ohne Protokoll
+    (leer angelegt) bleibt leer.
+    Mutationsprobe: die Vorpruefung entfernen -> rot."""
+    fehlt = tmp_path / "gibt-es-nicht"
+    assert st.main(["--stand", str(fehlt)]) == 2
+    assert not fehlt.exists(), "der Befehl hat eine Wurzel angelegt"
+    assert "gibt-es-nicht" in capsys.readouterr().err
+    assert list(tmp_path.iterdir()) == []
+    leer = tmp_path / "leer"
+    leer.mkdir()
+    assert st.main(["--stand", str(leer)]) == 2
+    assert list(leer.iterdir()) == [], "der Befehl hat in einer leeren Wurzel etwas angelegt"
+    assert "Protokoll" in capsys.readouterr().err
+
+
+_KIND_SEITE = '''
+import datetime as dt, os, sys
+from pathlib import Path
+from rechner_pipeline.betrieb import tageslauf as tl
+
+tl._anfuegen = lambda *a, **k: os._exit(137)    # Prozessende vor der Protokollzeile
+# Der Kindprozess hat die Test-Naht des Betriebsschluessels nicht (conftest
+# lebt im Elternprozess): Schluessel und Ordnung kommen als Argumente mit.
+tl.tageslauf(tl.Ablage(Path(sys.argv[1])), dt.date(2026, 2, 3),
+             schluessel=Path(sys.argv[2]), zeichnungsordnung=Path(sys.argv[3]))
+'''
+
+
+def test_ein_prozessende_vor_der_protokollzeile_laesst_im_ausgelieferten_verzeichnis_nichts_liegen(
+        am_31_1, tmp_path):
+    """Ist: Die Seite wurde als Punktdatei in seite/ vorbereitet; ein hartes
+    Prozessende (kein finally) zwischen Vorbereiten und Protokollzeile liess
+    sie im ausgelieferten Verzeichnis liegen, das ein Caddy read-only
+    ausliefert. Soll: Vorbereitet wird unter <wurzel>/seite.neu/ (gleiches
+    Dateisystem, os.replace nach seite/), seite/ bleibt unberuehrt; der Rest
+    unter seite.neu/ wird vom naechsten Render weggeraeumt.
+    Mutationsprobe: wieder in seite/ vorbereiten -> rot."""
+    import os
+    import subprocess
+    import sys
+
+    kind = tmp_path / "kind_seite.py"
+    kind.write_text(_KIND_SEITE, encoding="utf-8")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)
+    from rechner_pipeline.betrieb import tageslauf as tl
+
+    schluessel, ordnung = tl._STANDARD_BETRIEBSZEICHNUNG
+    # Der Kindprozess hat auch die Naht des Anfangsbestands nicht (ADR-025):
+    # Die Abnahme wird vorher im Elternprozess gebunden, wie im Betrieb.
+    from tests.anfangsbestand_testhelfer import schreibe_anfangsbestand
+
+    with tl.lauf_sperre(am_31_1):
+        schreibe_anfangsbestand(am_31_1, tl.betriebszeichner(am_31_1))
+    lauf = subprocess.run([sys.executable, str(kind), str(am_31_1.wurzel),
+                           str(schluessel), str(ordnung)],
+                          cwd=REPO_ROOT, env=env, capture_output=True, text=True)
+    assert lauf.returncode == 137, lauf.stderr
+    seite = am_31_1.wurzel / "seite"
+    assert sorted(p.name for p in seite.iterdir()) == ["index.html"], "Rest im ausgelieferten Verzeichnis"
+    assert _seiten_stand(am_31_1) == "2026-01-31"
+    # Der Rest liegt an dem Ort, der das aushaelt — und der naechste Render raeumt ihn.
+    reste = list((am_31_1.wurzel / "seite.neu").glob(".*"))
+    assert len(reste) == 1, reste
+    assert tageslauf(am_31_1, dt.date(2026, 2, 3))[0] == EXIT_OK
+    assert _seiten_stand(am_31_1) == "2026-02-03"
+    assert list((am_31_1.wurzel / "seite.neu").iterdir()) == []
+    assert sorted(p.name for p in seite.iterdir()) == ["index.html"]

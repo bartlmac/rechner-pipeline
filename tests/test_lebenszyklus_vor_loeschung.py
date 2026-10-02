@@ -40,6 +40,7 @@ from rechner_pipeline.betrieb.uebernahme import (
 )
 
 from tests.test_betrieb_uebernahme import STICHTAG, _fall
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -71,11 +72,11 @@ def test_ein_neuer_eingang_loescht_keinen_fremden(tmp_path, erst, zweit):
     Arbeitsrest und Eingang.
     """
     stand = tmp_path / "daten"
-    ziel_erst = ueb.eingang_anlegen(stand, _fall(tmp_path, erst), STICHTAG)
+    ziel_erst = ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path, erst), STICHTAG)
     inhalt_vorher = sorted(p.name for p in ziel_erst.iterdir())
     assert EINGANG_DATEI in inhalt_vorher
 
-    ziel_zweit = ueb.eingang_anlegen(stand, _fall(tmp_path, zweit), STICHTAG)
+    ziel_zweit = ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path, zweit), STICHTAG)
 
     assert ziel_erst.is_dir(), f"{erst} wurde beim Anlegen von {zweit} geloescht"
     assert sorted(p.name for p in ziel_erst.iterdir()) == inhalt_vorher
@@ -114,7 +115,7 @@ def test_ein_abgebrochenes_anlegen_blockiert_den_leser_nicht(tmp_path, monkeypat
     from tests.test_betrieb_uebernahme import _kleine_config
 
     stand = tmp_path / "daten"
-    gut = ueb.eingang_anlegen(stand, _fall(tmp_path, "gut"), STICHTAG)
+    gut = ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path, "gut"), STICHTAG)
 
     aufrufe = {"n": 0}
     echt = ueb.write_portfolio
@@ -131,7 +132,7 @@ def test_ein_abgebrochenes_anlegen_blockiert_den_leser_nicht(tmp_path, monkeypat
 
     monkeypatch.setattr(ueb, "write_portfolio", _bricht)
     with pytest.raises(OSError):
-        ueb.eingang_anlegen(stand, _fall(tmp_path, "abgebrochen"), STICHTAG)
+        ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path, "abgebrochen"), STICHTAG)
     monkeypatch.undo()
 
     rest = stand / STAGING_DIR / "abgebrochen"

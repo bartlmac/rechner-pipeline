@@ -27,7 +27,7 @@ from rechner_pipeline.ontologie.abox import lade
 from rechner_pipeline.ontologie.aussage import Aussage, Zustand
 from rechner_pipeline.ontologie.befuellung import QuellFragment, baue_abox
 from rechner_pipeline.ontologie.merge import werte_gleich
-from rechner_pipeline.ontologie.tbox import ABox
+from rechner_pipeline.ontologie.tbox import ABox, GENERATIONS_BLOECKE
 from rechner_pipeline.models.manifest import lies_gehasht
 
 FRAGMENTE_ORDNER = "fragmente"
@@ -267,4 +267,21 @@ def pruefe_kette(
                 f"{gen_id}/unisex", ist.unisex, soll.unisex,
                 aufgeloeste, fehler,
             )
+        # Generationsweite Bloecke (Tarifwerk, Quellverfahren; T-Box 0.2.0)
+        # folgen aus den Fragmenten wie jedes Zellfeld — ein von Hand
+        # gesetztes Tarifwerk waere eine Aussage ohne Extraktion.
+        for block in GENERATIONS_BLOECKE:
+            soll_b, ist_b = soll.block(block), ist.block(block)
+            if set(soll_b) != set(ist_b):
+                fehler.append(
+                    f"{gen_id}/{block}: Merkmalsmenge veraendert "
+                    f"(+{sorted(set(ist_b) - set(soll_b))} "
+                    f"-{sorted(set(soll_b) - set(ist_b))})"
+                )
+                continue
+            for merkmal in sorted(soll_b):
+                _vergleiche_aussage(
+                    f"{gen_id}/{block}/{merkmal}", ist_b[merkmal],
+                    soll_b[merkmal], aufgeloeste, fehler,
+                )
     return fehler

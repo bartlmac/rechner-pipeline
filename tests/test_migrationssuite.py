@@ -64,11 +64,12 @@ def _pruefung(
         police_id="P-1", model_point=MP,
         monate_stichtag_1=S1, monate_stichtag_2=S2,
         dk_erwartet_1=dk1, dk_erwartet_2=dk2, gevos=gevos,
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
     )
 
 
 def test_ohne_gevos_bestanden() -> None:
-    urteil = pruefe_vertrag(_pruefung())
+    urteil = pruefe_vertrag(_pruefung(), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
     groessen = [p["groesse"] for p in urteil["pruefungen"]]
     assert groessen == ["dk_stichtag_1", "dk_stichtag_2"]
@@ -76,7 +77,7 @@ def test_ohne_gevos_bestanden() -> None:
 
 def test_toleranzverletzung_mit_residuum() -> None:
     urteil = pruefe_vertrag(_pruefung(dk1=round(
-        KERN.monatsreserve(S1).vx_mrv, 2) + 500.0))
+        KERN.monatsreserve(S1).vx_mrv, 2) + 500.0), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
     p = urteil["pruefungen"][0]
     assert not p["ok"] and p["residuum"] == pytest.approx(-500.0, abs=0.01)
@@ -85,7 +86,7 @@ def test_toleranzverletzung_mit_residuum() -> None:
 def test_sto_terminal_mit_betragspruefung() -> None:
     m_sto = S1 + 4
     gevo = GeVoErwartung("STO", m_sto, round(KERN.monatsreserve(m_sto).rkw, 2))
-    urteil = pruefe_vertrag(_pruefung(gevos=(gevo,), dk2_fehlt=True))
+    urteil = pruefe_vertrag(_pruefung(gevos=(gevo,), dk2_fehlt=True), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
     assert any(p["groesse"].startswith("gevo_sto") and p["ok"]
                for p in urteil["pruefungen"])
@@ -93,13 +94,13 @@ def test_sto_terminal_mit_betragspruefung() -> None:
 
 def test_terminal_mit_folgewert_ist_befund() -> None:
     gevo = GeVoErwartung("TOD", S1 + 3, float(KLV_DEFAULT.sum_insured))
-    urteil = pruefe_vertrag(_pruefung(gevos=(gevo,)))
+    urteil = pruefe_vertrag(_pruefung(gevos=(gevo,)), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
     assert any("abgegangen" in b for b in urteil["befunde"])
 
 
 def test_fehlender_folgewert_ohne_abgang_ist_befund() -> None:
-    urteil = pruefe_vertrag(_pruefung(dk2_fehlt=True))
+    urteil = pruefe_vertrag(_pruefung(dk2_fehlt=True), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
     assert any("keinen Abgang" in b for b in urteil["befunde"])
 
@@ -109,36 +110,36 @@ def test_pex_track_am_folgestichtag() -> None:
     gevos = (GeVoErwartung("PEX", 12 * a0,
                            round(KERN.beitragsfreie_summe(a0), 2)),)
     dk2 = round(KERN.monatsreserve_beitragsfrei(a0, S2), 2)
-    urteil = pruefe_vertrag(_pruefung(dk2=dk2, gevos=gevos))
+    urteil = pruefe_vertrag(_pruefung(dk2=dk2, gevos=gevos), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
 
 
 def test_pex_unterjaehrig_ist_befund() -> None:
     gevos = (GeVoErwartung("PEX", S1 + 2, 1000.0),)
-    urteil = pruefe_vertrag(_pruefung(gevos=gevos))
+    urteil = pruefe_vertrag(_pruefung(gevos=gevos), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
     assert any("Vertragsjahrestag" in b for b in urteil["befunde"])
 
 
 def test_erh_wird_vertragsweit_geprueft() -> None:
     a, s_neu = 10, 5000.0
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a, s_neu))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a, s_neu, gamma1_uebernehmen=False))
     dk2 = round(vertrags_monatsreserve(KERN, [(a, scheibe)], S2).vx_mrv, 2)
     gevos = (GeVoErwartung("ERH", 12 * a, s_neu),)
-    urteil = pruefe_vertrag(_pruefung(dk2=dk2, gevos=gevos))
+    urteil = pruefe_vertrag(_pruefung(dk2=dk2, gevos=gevos), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
     # Ohne Scheibenberuecksichtigung schluege der Vergleich fehl:
     falsch = round(KERN.monatsreserve(S2).vx_mrv, 2)
-    urteil2 = pruefe_vertrag(_pruefung(dk2=falsch, gevos=gevos))
+    urteil2 = pruefe_vertrag(_pruefung(dk2=falsch, gevos=gevos), red_verfahren="prospektiv")
     assert not urteil2["bestanden"]
 
 
 def test_erh_befunde() -> None:
     unterjaehrig = pruefe_vertrag(_pruefung(
-        gevos=(GeVoErwartung("ERH", S1 + 1, 5000.0),)))
+        gevos=(GeVoErwartung("ERH", S1 + 1, 5000.0),)), red_verfahren="prospektiv")
     assert any("Vertragsjahrestag" in b for b in unterjaehrig["befunde"])
     ohne_summe = pruefe_vertrag(_pruefung(
-        gevos=(GeVoErwartung("ERH", 12 * 10, None),)))
+        gevos=(GeVoErwartung("ERH", 12 * 10, None),)), red_verfahren="prospektiv")
     assert any("ohne Erhöhungssumme" in b for b in ohne_summe["befunde"])
 
 
@@ -162,7 +163,7 @@ def test_fehlender_betrag_eines_betragsgevo_ist_konkrete_pruefluecke(
     vertrag = dataclasses.replace(
         vertrag, bjb_erwartet_1=round(KERN.gross_annual_premium(), 2))
 
-    ergebnis = pruefe_bestand([vertrag], erwartete_anzahl=1)
+    ergebnis = pruefe_bestand([vertrag], erwartete_anzahl=1, red_verfahren="prospektiv")
 
     luecke = f"gevo_{art.lower()}_monat_{monat}"
     urteil = ergebnis["vertraege"][0]
@@ -178,7 +179,7 @@ def test_fehlender_betrag_eines_betragsgevo_ist_konkrete_pruefluecke(
 
 def test_gevo_ausserhalb_der_stichtage_ist_befund() -> None:
     gevos = (GeVoErwartung("TOD", S1 - 1, 1.0),)
-    urteil = pruefe_vertrag(_pruefung(gevos=gevos))
+    urteil = pruefe_vertrag(_pruefung(gevos=gevos), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
     assert any("zwischen den Stichtagen" in b for b in urteil["befunde"])
 
@@ -194,6 +195,7 @@ def _ablauf_pruefung(
         monate_stichtag_1=s1, monate_stichtag_2=ABLAUF,
         dk_erwartet_1=round(KERN.monatsreserve(s1).vx_mrv, 2),
         dk_erwartet_2=dk2, gevos=gevos,
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
     )
 
 
@@ -201,13 +203,13 @@ def test_abl_terminal_mit_gesamtversicherungssumme() -> None:
     """ABL zahlt S^ges und beendet den Vertrag (Tarifplan, GeVo-Katalog)."""
     vs = float(KLV_DEFAULT.sum_insured)
     urteil = pruefe_vertrag(_ablauf_pruefung(
-        (GeVoErwartung("ABL", ABLAUF, vs),)))
+        (GeVoErwartung("ABL", ABLAUF, vs),)), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
     assert [p["groesse"] for p in urteil["pruefungen"]] == [
         "dk_stichtag_1", f"gevo_abl_monat_{ABLAUF}"]
     # Kontrollrechnung: ein anderer Betrag darf NICHT durchgehen.
     falsch = pruefe_vertrag(_ablauf_pruefung(
-        (GeVoErwartung("ABL", ABLAUF, vs + 1000.0),)))
+        (GeVoErwartung("ABL", ABLAUF, vs + 1000.0),)), red_verfahren="prospektiv")
     assert not falsch["bestanden"]
 
 
@@ -216,12 +218,12 @@ def test_abl_summiert_die_erhoehungsscheiben() -> None:
     gevos = (GeVoErwartung("ERH", 12 * a, s_neu),
              GeVoErwartung("ABL", ABLAUF,
                            float(KLV_DEFAULT.sum_insured) + s_neu))
-    urteil = pruefe_vertrag(_ablauf_pruefung(gevos))
+    urteil = pruefe_vertrag(_ablauf_pruefung(gevos), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
     # Ohne die Scheibe (nur GrundVS) schlüge die Ablaufleistung fehl:
     ohne = (gevos[0], GeVoErwartung("ABL", ABLAUF,
                                     float(KLV_DEFAULT.sum_insured)))
-    assert not pruefe_vertrag(_ablauf_pruefung(ohne))["bestanden"]
+    assert not pruefe_vertrag(_ablauf_pruefung(ohne), red_verfahren="prospektiv")["bestanden"]
 
 
 def test_abl_nach_pex_zahlt_die_beitragsfreie_summe() -> None:
@@ -229,20 +231,20 @@ def test_abl_nach_pex_zahlt_die_beitragsfreie_summe() -> None:
     s_bfr = round(KERN.beitragsfreie_summe(a0), 2)
     gevos = (GeVoErwartung("PEX", 12 * a0, s_bfr),
              GeVoErwartung("ABL", ABLAUF, s_bfr))
-    urteil = pruefe_vertrag(_ablauf_pruefung(gevos, s1=12 * 14 + 5))
+    urteil = pruefe_vertrag(_ablauf_pruefung(gevos, s1=12 * 14 + 5), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
     # Kontrolle: nach PEX ist NICHT mehr die GrundVS die Ablaufleistung.
     mit_vs = (gevos[0], GeVoErwartung("ABL", ABLAUF,
                                       float(KLV_DEFAULT.sum_insured)))
     assert not pruefe_vertrag(
-        _ablauf_pruefung(mit_vs, s1=12 * 14 + 5))["bestanden"]
+        _ablauf_pruefung(mit_vs, s1=12 * 14 + 5), red_verfahren="prospektiv")["bestanden"]
 
 
 def test_abl_mit_folgewert_ist_befund() -> None:
     """Abgelaufen und trotzdem im Folgeabzug — Lieferung inkonsistent."""
     urteil = pruefe_vertrag(_ablauf_pruefung(
         (GeVoErwartung("ABL", ABLAUF, float(KLV_DEFAULT.sum_insured)),),
-        dk2=12345.67))
+        dk2=12345.67), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
     assert any("abgegangen" in b for b in urteil["befunde"])
 
@@ -250,14 +252,14 @@ def test_abl_mit_folgewert_ist_befund() -> None:
 def test_abl_vor_dem_ablauf_ist_befund() -> None:
     urteil = pruefe_vertrag(_pruefung(
         gevos=(GeVoErwartung("ABL", S1 + 4,
-                             float(KLV_DEFAULT.sum_insured)),)))
+                             float(KLV_DEFAULT.sum_insured)),)), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
     assert any("Versicherungsdauer" in b for b in urteil["befunde"])
 
 
 def test_leere_pruefmenge_ist_keine_bestandene_abnahme() -> None:
     with pytest.raises(ValueError, match="leere Prüfmenge"):
-        pruefe_bestand([])
+        pruefe_bestand([], red_verfahren="prospektiv")
 
 
 def test_ausnahme_eines_vertrags_bleibt_dessen_befund() -> None:
@@ -268,7 +270,7 @@ def test_ausnahme_eines_vertrags_bleibt_dessen_befund() -> None:
         _pruefung(),
         kaputt,
         dataclasses.replace(_pruefung(), police_id="P-3"),
-    ])
+    ], red_verfahren="prospektiv")
     assert (ergebnis["anzahl"], ergebnis["bestanden"],
             ergebnis["fehlgeschlagen"]) == (3, 2, 1)
     assert not ergebnis["suite_bestanden"]
@@ -291,14 +293,14 @@ def test_programmierfehler_bricht_den_lauf_ab() -> None:
     """Kein blindes Fangen: was keine Lieferung erzeugen kann, fliegt."""
     with pytest.raises(AttributeError):
         pruefe_bestand([dataclasses.replace(
-            _pruefung(), gevos=(_GeVoOhneMonat(),))])
+            _pruefung(), gevos=(_GeVoOhneMonat(),))], red_verfahren="prospektiv")
 
 
 def test_bestand_zusammenfassung() -> None:
     ergebnis = pruefe_bestand([
         _pruefung(),
         dataclasses.replace(_pruefung(dk1=1.0), police_id="P-2"),
-    ])
+    ], red_verfahren="prospektiv")
     assert (ergebnis["anzahl"], ergebnis["bestanden"],
             ergebnis["fehlgeschlagen"]) == (2, 1, 1)
     assert not ergebnis["suite_bestanden"]
@@ -323,9 +325,9 @@ def test_relative_toleranzgrenze_traegt_und_schneidet() -> None:
     """
     dk = KERN.monatsreserve(S1).vx_mrv
     assert REL_TOL * dk > ABS_TOL, "hier muss die RELATIVE Schranke greifen"
-    innen = pruefe_vertrag(_pruefung(dk1=dk * (1.0 - 0.9 * REL_TOL)))
+    innen = pruefe_vertrag(_pruefung(dk1=dk * (1.0 - 0.9 * REL_TOL)), red_verfahren="prospektiv")
     assert innen["pruefungen"][0]["ok"]
-    aussen = pruefe_vertrag(_pruefung(dk1=dk * (1.0 - 1.5 * REL_TOL)))
+    aussen = pruefe_vertrag(_pruefung(dk1=dk * (1.0 - 1.5 * REL_TOL)), red_verfahren="prospektiv")
     assert not aussen["pruefungen"][0]["ok"]
     assert not aussen["bestanden"]
 
@@ -347,7 +349,8 @@ def test_absolute_untergrenze_traegt_kleine_betraege() -> None:
             monate_stichtag_1=monate, monate_stichtag_2=S2,
             dk_erwartet_1=erwartet,
             dk_erwartet_2=round(KERN.monatsreserve(S2).vx_mrv, 2),
-        ))
+            scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
+        ), red_verfahren="prospektiv")
 
     assert _urteil(dk + 0.5 * ABS_TOL)["pruefungen"][0]["ok"]
     assert not _urteil(dk + 1.5 * ABS_TOL)["pruefungen"][0]["ok"]
@@ -361,14 +364,14 @@ def test_absolute_untergrenze_traegt_kleine_betraege() -> None:
 def test_gelieferter_jahresbeitrag_wird_geprueft() -> None:
     v = dataclasses.replace(
         _pruefung(), bjb_erwartet_1=round(KERN.gross_annual_premium(), 2))
-    urteil = pruefe_vertrag(v)
+    urteil = pruefe_vertrag(v, red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
     assert [p["groesse"] for p in urteil["pruefungen"]] == [
         "dk_stichtag_1", "bjb_stichtag_1", "dk_stichtag_2"]
     assert urteil["nicht_geprueft"] == []
     # Kontrolle: ein anderer Jahresbeitrag darf NICHT durchgehen.
     falsch = dataclasses.replace(v, bjb_erwartet_1=v.bjb_erwartet_1 + 100.0)
-    assert not pruefe_vertrag(falsch)["bestanden"]
+    assert not pruefe_vertrag(falsch, red_verfahren="prospektiv")["bestanden"]
 
 
 def test_jahresbeitrag_ist_null_nach_ende_der_beitragszahlung() -> None:
@@ -387,13 +390,14 @@ def test_jahresbeitrag_ist_null_nach_ende_der_beitragszahlung() -> None:
         dk_erwartet_1=round(KERN.monatsreserve(monate).vx_mrv, 2),
         dk_erwartet_2=round(KERN.monatsreserve(monate + 12).vx_mrv, 2),
         bjb_erwartet_1=0.0,
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
     )
-    assert pruefe_vertrag(v)["bestanden"]
+    assert pruefe_vertrag(v, red_verfahren="prospektiv")["bestanden"]
     assert KERN.gross_annual_premium() > 0.0
     # Kontrolle: der Jahresbeitrag der Beitragsphase ist hier falsch.
     falsch = dataclasses.replace(
         v, bjb_erwartet_1=round(KERN.gross_annual_premium(), 2))
-    assert not pruefe_vertrag(falsch)["bestanden"]
+    assert not pruefe_vertrag(falsch, red_verfahren="prospektiv")["bestanden"]
 
 
 def test_altersversatz_faellt_am_beitrag_auf_wo_das_deckungskapital_schweigt(
@@ -427,13 +431,16 @@ def test_altersversatz_faellt_am_beitrag_auf_wo_das_deckungskapital_schweigt(
         monate_stichtag_1=S1, monate_stichtag_2=S2,
         dk_erwartet_1=round(k_r.monatsreserve(S1).vx_mrv, 2),
         dk_erwartet_2=round(k_r.monatsreserve(S2).vx_mrv, 2),
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None,
+        dk_am_jahrestag=False,
     )
-    nur_dk = pruefe_vertrag(VertragsPruefung(**lieferung))
+    nur_dk = pruefe_vertrag(VertragsPruefung(**lieferung), red_verfahren="prospektiv")
     assert math.isclose(
         nur_dk["pruefungen"][0]["system"], nur_dk["pruefungen"][0]["erwartet"],
         rel_tol=5e-4, abs_tol=ABS_TOL), "alte Toleranz haette das gedeckt"
     mit_bjb = pruefe_vertrag(VertragsPruefung(
-        **lieferung, bjb_erwartet_1=round(k_r.gross_annual_premium(), 2)))
+        **lieferung, bjb_erwartet_1=round(k_r.gross_annual_premium(), 2)),
+        red_verfahren="prospektiv")
     assert not mit_bjb["bestanden"]
     schlecht = [p["groesse"] for p in mit_bjb["pruefungen"] if not p["ok"]]
     assert "bjb_stichtag_1" in schlecht
@@ -441,7 +448,7 @@ def test_altersversatz_faellt_am_beitrag_auf_wo_das_deckungskapital_schweigt(
 
 def test_fehlender_jahresbeitrag_ist_eine_ausgewiesene_luecke() -> None:
     """Nicht geliefert heisst nicht geprueft — und wird gesagt."""
-    ergebnis = pruefe_bestand([_pruefung()], erwartete_anzahl=1)
+    ergebnis = pruefe_bestand([_pruefung()], erwartete_anzahl=1, red_verfahren="prospektiv")
     assert ergebnis["suite_bestanden"]                 # kein Fehlschlag ...
     assert ergebnis["vollstaendig_geprueft"] is False  # ... aber auch nicht
     assert ergebnis["vertraege"][0]["nicht_geprueft"] == ["bjb_stichtag_1"]
@@ -451,7 +458,7 @@ def test_fehlender_jahresbeitrag_ist_eine_ausgewiesene_luecke() -> None:
     voll = pruefe_bestand(
         [dataclasses.replace(
             _pruefung(), bjb_erwartet_1=round(KERN.gross_annual_premium(), 2))],
-        erwartete_anzahl=1)
+        erwartete_anzahl=1, red_verfahren="prospektiv")
     assert voll["pruefluecken"] == [] and voll["vollstaendig_geprueft"]
 
 
@@ -463,7 +470,7 @@ def test_fehlender_jahresbeitrag_ist_eine_ausgewiesene_luecke() -> None:
 def test_unvollstaendige_pruefmenge_ist_keine_bestandene_abnahme() -> None:
     ergebnis = pruefe_bestand(
         [_pruefung(), dataclasses.replace(_pruefung(), police_id="P-2")],
-        erwartete_anzahl=500)
+        erwartete_anzahl=500, red_verfahren="prospektiv")
     assert ergebnis["bestanden"] == 2 and ergebnis["fehlgeschlagen"] == 0
     assert ergebnis["suite_bestanden"] is False
     assert len(ergebnis["mengenbefunde"]) == 1
@@ -474,14 +481,14 @@ def test_unvollstaendige_pruefmenge_ist_keine_bestandene_abnahme() -> None:
 def test_zu_viele_vertraege_sind_ebenfalls_ein_mengenbefund() -> None:
     ergebnis = pruefe_bestand(
         [_pruefung(), dataclasses.replace(_pruefung(), police_id="P-2")],
-        erwartete_anzahl=1)
+        erwartete_anzahl=1, red_verfahren="prospektiv")
     assert ergebnis["suite_bestanden"] is False
     assert "1 Verträge zu viel" in ergebnis["mengenbefunde"][0]
 
 
 def test_doppelte_policennummer_ist_ein_harter_befund() -> None:
     """Derselbe Vertrag dreimal ist kein dreifacher Beleg."""
-    ergebnis = pruefe_bestand([_pruefung()] * 3, erwartete_anzahl=3)
+    ergebnis = pruefe_bestand([_pruefung()] * 3, erwartete_anzahl=3, red_verfahren="prospektiv")
     assert ergebnis["anzahl"] == 3 and ergebnis["fehlgeschlagen"] == 0
     assert ergebnis["suite_bestanden"] is False       # trotz 3 von 3 bestanden
     assert len(ergebnis["mengenbefunde"]) == 1
@@ -490,12 +497,12 @@ def test_doppelte_policennummer_ist_ein_harter_befund() -> None:
     # Ohne Duplikat ist die Menge sauber:
     sauber = pruefe_bestand(
         [_pruefung(), dataclasses.replace(_pruefung(), police_id="P-2")],
-        erwartete_anzahl=2)
+        erwartete_anzahl=2, red_verfahren="prospektiv")
     assert sauber["mengenbefunde"] == [] and sauber["suite_bestanden"]
 
 
 def test_ohne_erwartete_anzahl_ist_die_vollstaendigkeit_eine_luecke() -> None:
-    ergebnis = pruefe_bestand([_pruefung()])
+    ergebnis = pruefe_bestand([_pruefung()], red_verfahren="prospektiv")
     assert ergebnis["erwartete_anzahl"] is None
     assert ergebnis["mengenbefunde"] == []            # kein Befund ...
     assert any("Vollständigkeit" in l for l in ergebnis["pruefluecken"])
@@ -518,7 +525,7 @@ def test_tod_nach_erhoehung_zahlt_die_summe_beider_scheiben() -> None:
     vs_ges = float(KLV_DEFAULT.sum_insured) + s_neu
     gevos = (GeVoErwartung("ERH", 12 * a, s_neu),
              GeVoErwartung("TOD", 12 * a + 3, vs_ges))
-    urteil = pruefe_vertrag(_pruefung(gevos=gevos, dk2_fehlt=True))
+    urteil = pruefe_vertrag(_pruefung(gevos=gevos, dk2_fehlt=True), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
     assert any(p["groesse"].startswith("gevo_tod") and p["ok"]
                for p in urteil["pruefungen"])
@@ -526,7 +533,7 @@ def test_tod_nach_erhoehung_zahlt_die_summe_beider_scheiben() -> None:
     ohne = (gevos[0], GeVoErwartung("TOD", 12 * a + 3,
                                     float(KLV_DEFAULT.sum_insured)))
     assert not pruefe_vertrag(
-        _pruefung(gevos=ohne, dk2_fehlt=True))["bestanden"]
+        _pruefung(gevos=ohne, dk2_fehlt=True), red_verfahren="prospektiv")["bestanden"]
 
 
 def test_tod_nach_beitragsfreistellung_zahlt_die_beitragsfreie_summe() -> None:
@@ -542,7 +549,7 @@ def test_tod_nach_beitragsfreistellung_zahlt_die_beitragsfreie_summe() -> None:
     s_bfr = round(KERN.beitragsfreie_summe(a0), 2)
     gevos = (GeVoErwartung("PEX", 12 * a0, s_bfr),
              GeVoErwartung("TOD", 12 * a0 + 2, s_bfr))
-    urteil = pruefe_vertrag(_pruefung(gevos=gevos, dk2_fehlt=True))
+    urteil = pruefe_vertrag(_pruefung(gevos=gevos, dk2_fehlt=True), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
     assert any(p["groesse"].startswith("gevo_tod") and p["ok"]
                for p in urteil["pruefungen"])
@@ -552,7 +559,7 @@ def test_tod_nach_beitragsfreistellung_zahlt_die_beitragsfreie_summe() -> None:
     assert abs(s_bfr - vs_ges) > 1.0
     mit_vs = (gevos[0], GeVoErwartung("TOD", 12 * a0 + 2, vs_ges))
     assert not pruefe_vertrag(
-        _pruefung(gevos=mit_vs, dk2_fehlt=True))["bestanden"]
+        _pruefung(gevos=mit_vs, dk2_fehlt=True), red_verfahren="prospektiv")["bestanden"]
 
 
 def test_tod_nach_erh_und_pex_summiert_die_beitragsfreien_summen() -> None:
@@ -564,7 +571,7 @@ def test_tod_nach_erh_und_pex_summiert_die_beitragsfreien_summen() -> None:
     """
     a_erh, a_pex, s_neu = 8, 10, 5000.0
     m1, m2 = 12 * 7 + 5, 12 * 11 + 5
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a_erh, s_neu))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a_erh, s_neu, gamma1_uebernehmen=False))
     s_bfr = round(KERN.beitragsfreie_summe(a_pex)
                   + scheibe.beitragsfreie_summe(a_pex - a_erh), 2)
     gevos = (GeVoErwartung("ERH", 12 * a_erh, s_neu),
@@ -576,7 +583,8 @@ def test_tod_nach_erh_und_pex_summiert_die_beitragsfreien_summen() -> None:
             police_id="P-ERH-PEX-TOD", model_point=MP,
             monate_stichtag_1=m1, monate_stichtag_2=m2,
             dk_erwartet_1=round(KERN.monatsreserve(m1).vx_mrv, 2),
-            dk_erwartet_2=None, gevos=gevos_))
+            dk_erwartet_2=None, gevos=gevos_,
+            scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False), red_verfahren="prospektiv")
 
     urteil = _urteil(gevos)
     assert urteil["bestanden"], urteil["befunde"]
@@ -595,13 +603,14 @@ def test_tod_bei_anfangs_beitragsfreiem_vertrag_zahlt_die_bfr_summe() -> None:
     s_bfr = round(KERN.beitragsfreie_summe(a0), 2)
     urteil = pruefe_vertrag(_beitragsfrei_pruefung(
         a0, dk_erwartet_2=None,
-        gevos=(GeVoErwartung("TOD", S1 + 3, s_bfr),)))
+        gevos=(GeVoErwartung("TOD", S1 + 3, s_bfr),)), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
     # Kontrolle: die Gesamt-VS faellt durch.
     assert not pruefe_vertrag(_beitragsfrei_pruefung(
         a0, dk_erwartet_2=None,
         gevos=(GeVoErwartung("TOD", S1 + 3,
-                             float(KLV_DEFAULT.sum_insured)),)))["bestanden"]
+                             float(KLV_DEFAULT.sum_insured)),)),
+                             red_verfahren="prospektiv")["bestanden"]
 
 
 # --------------------------------------------------------------------------- #
@@ -619,7 +628,7 @@ def _terminal_urteil(art: str, dk2: Optional[float]) -> Dict[str, Any]:
         return pruefe_vertrag(_ablauf_pruefung(
             (GeVoErwartung(
                 "ABL", ABLAUF, float(KLV_DEFAULT.sum_insured)),),
-            dk2=dk2))
+            dk2=dk2), red_verfahren="prospektiv")
     # PEX, ERH und RED wirken am Vertragsjahrestag; sie hier unterjaehrig
     # abzulegen erzeugte einen zweiten Befund und der Test bestuende aus
     # dem falschen Grund.
@@ -635,12 +644,12 @@ def _terminal_urteil(art: str, dk2: Optional[float]) -> Dict[str, Any]:
         # sie braucht, ist der fortgefuehrte Anteil.
         return pruefe_vertrag(_pruefung(
             dk2=dk2, dk2_fehlt=dk2 is None,
-            gevos=(GeVoErwartung("RED", monate, None, anteil=0.6),)))
+            gevos=(GeVoErwartung("RED", monate, None, anteil=0.6),)), red_verfahren="prospektiv")
     else:  # TOD
         betrag = float(KLV_DEFAULT.sum_insured)
     return pruefe_vertrag(_pruefung(
         dk2=dk2, dk2_fehlt=dk2 is None,
-        gevos=(GeVoErwartung(art, monate, betrag),)))
+        gevos=(GeVoErwartung(art, monate, betrag),)), red_verfahren="prospektiv")
 
 
 @pytest.mark.parametrize("art", TERMINAL)
@@ -673,7 +682,7 @@ def test_terminaler_gevo_mit_befund_beendet_den_vertrag_nicht() -> None:
     urteil = pruefe_vertrag(_pruefung(
         dk2_fehlt=True,
         gevos=(GeVoErwartung("ABL", S1 + 4,
-                             float(KLV_DEFAULT.sum_insured)),)))
+                             float(KLV_DEFAULT.sum_insured)),)), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
     assert any("Versicherungsdauer" in b for b in urteil["befunde"])
     assert any("keinen Abgang" in b for b in urteil["befunde"]), urteil
@@ -692,14 +701,15 @@ def test_abgang_ist_die_pruefung_der_abbruch_ist_die_luecke() -> None:
                    gevos=(GeVoErwartung(
                        "STO", S1 + 4,
                        round(KERN.monatsreserve(S1 + 4).rkw, 2)),))],
-        erwartete_anzahl=1)
+        erwartete_anzahl=1, red_verfahren="prospektiv")
     urteil = abgegangen["vertraege"][0]
     assert urteil["bestanden"], urteil["befunde"]
     assert urteil["nicht_geprueft"] == ["bjb_stichtag_1"]
 
     kaputt = dataclasses.replace(
         _pruefung(), police_id="P-ABBRUCH", monate_stichtag_2=ABLAUF + 12)
-    abbruch = pruefe_bestand([kaputt], erwartete_anzahl=1)["vertraege"][0]
+    abbruch = pruefe_bestand([kaputt], erwartete_anzahl=1,
+        red_verfahren="prospektiv")["vertraege"][0]
     assert not abbruch["bestanden"]
     assert abbruch["nicht_geprueft"] == [
         "dk_stichtag_1", "bjb_stichtag_1", "dk_stichtag_2"]
@@ -710,7 +720,7 @@ def test_pex_nach_erhoehung_versetzt_den_jahrestag_der_scheibe() -> None:
     a_erh, a_pex, s_neu = 8, 10, 5000.0
     # Beide Jahrestage muessen zwischen die Stichtage passen:
     m1, m2 = 12 * 7 + 5, 12 * 11 + 5
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a_erh, s_neu))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, a_erh, s_neu, gamma1_uebernehmen=False))
     s_bfr = round(KERN.beitragsfreie_summe(a_pex)
                   + scheibe.beitragsfreie_summe(a_pex - a_erh), 2)
     gevos = (GeVoErwartung("ERH", 12 * a_erh, s_neu),
@@ -725,7 +735,8 @@ def test_pex_nach_erhoehung_versetzt_den_jahrestag_der_scheibe() -> None:
             police_id="P-ERH-PEX", model_point=MP,
             monate_stichtag_1=m1, monate_stichtag_2=m2,
             dk_erwartet_1=round(KERN.monatsreserve(m1).vx_mrv, 2),
-            dk_erwartet_2=dk2, gevos=gevos_))
+            dk_erwartet_2=dk2, gevos=gevos_,
+            scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False), red_verfahren="prospektiv")
 
     urteil = _urteil(gevos)
     assert urteil["bestanden"], urteil["befunde"]
@@ -754,6 +765,9 @@ def _beitragsfrei_pruefung(a0: int, **override) -> VertragsPruefung:
         police_id="P-BFR", model_point=MP,
         monate_stichtag_1=S1, monate_stichtag_2=S2,
         bjb_erwartet_1=0.0, beitragsfrei_seit_jahr=a0,
+        # Die Regeln des EIGENEN Geschaefts, ausdruecklich (Pruefrunde H).
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None,
+        dk_am_jahrestag=False,
     )
     basis.update(override)
     if "dk_erwartet_1" not in basis:
@@ -767,18 +781,18 @@ def _beitragsfrei_pruefung(a0: int, **override) -> VertragsPruefung:
 
 def test_bereits_beitragsfreier_vertrag_laeuft_auf_dem_bfr_track() -> None:
     a0 = 5
-    urteil = pruefe_vertrag(_beitragsfrei_pruefung(a0))
+    urteil = pruefe_vertrag(_beitragsfrei_pruefung(a0), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
     # Kontrolle: der beitragspflichtige Track ergibt andere Werte —
     # ein Vertrag, der als aktiv bewertet wuerde, faellt durch.
     aktiv_1 = round(KERN.monatsreserve(S1).vx_mrv, 2)
     assert aktiv_1 != round(KERN.monatsreserve_beitragsfrei(a0, S1), 2)
     assert not pruefe_vertrag(
-        _beitragsfrei_pruefung(a0, dk_erwartet_1=aktiv_1))["bestanden"]
+        _beitragsfrei_pruefung(a0, dk_erwartet_1=aktiv_1), red_verfahren="prospektiv")["bestanden"]
     # ... und beitragsfrei heisst: kein Jahresbeitrag.
     assert not pruefe_vertrag(_beitragsfrei_pruefung(
         a0, bjb_erwartet_1=round(KERN.gross_annual_premium(), 2)
-    ))["bestanden"]
+    ), red_verfahren="prospektiv")["bestanden"]
 
 
 def test_beitragsfreistellung_nach_dem_stichtag_ist_kein_anfangszustand(
@@ -787,12 +801,12 @@ def test_beitragsfreistellung_nach_dem_stichtag_ist_kein_anfangszustand(
     zu_spaet = _beitragsfrei_pruefung(
         S1 // 12 + 1, dk_erwartet_1=1.0, dk_erwartet_2=1.0)
     with pytest.raises(ValueError, match="als PEX-GeVo liefern"):
-        pruefe_vertrag(zu_spaet)
+        pruefe_vertrag(zu_spaet, red_verfahren="prospektiv")
     with pytest.raises(ValueError, match="kein Vertragsjahr"):
         pruefe_vertrag(_beitragsfrei_pruefung(
-            0, dk_erwartet_1=1.0, dk_erwartet_2=1.0))
+            0, dk_erwartet_1=1.0, dk_erwartet_2=1.0), red_verfahren="prospektiv")
     # Die Suite macht daraus den Befund GENAU DIESES Vertrags:
-    ergebnis = pruefe_bestand([zu_spaet], erwartete_anzahl=1)
+    ergebnis = pruefe_bestand([zu_spaet], erwartete_anzahl=1, red_verfahren="prospektiv")
     assert ergebnis["fehlgeschlagen"] == 1
     assert any("als PEX-GeVo liefern" in b
                for b in ergebnis["vertraege"][0]["befunde"])
@@ -800,7 +814,7 @@ def test_beitragsfreistellung_nach_dem_stichtag_ist_kein_anfangszustand(
 
 def test_zweite_beitragsfreistellung_ist_ein_befund() -> None:
     urteil = pruefe_vertrag(_beitragsfrei_pruefung(
-        5, gevos=(GeVoErwartung("PEX", 12 * 10, 1000.0),)))
+        5, gevos=(GeVoErwartung("PEX", 12 * 10, 1000.0),)), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
     assert any("bereits seit Jahr 5 beitragsfrei" in b
                for b in urteil["befunde"]), urteil["befunde"]
@@ -809,7 +823,7 @@ def test_zweite_beitragsfreistellung_ist_ein_befund() -> None:
 def test_erhoehung_nach_bereits_erfolgter_beitragsfreistellung_ist_befund(
 ) -> None:
     urteil = pruefe_vertrag(_beitragsfrei_pruefung(
-        5, gevos=(GeVoErwartung("ERH", 12 * 10, 5000.0),)))
+        5, gevos=(GeVoErwartung("ERH", 12 * 10, 5000.0),)), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
     assert any("nur auf dem beitragspflichtigen Track" in b
                for b in urteil["befunde"]), urteil["befunde"]
@@ -828,7 +842,7 @@ def test_suite_schreibt_scope_bindung_nur_als_vollstaendigen_vertrag() -> None:
         stichtag_1="2026-01-01",
         stichtag_2="2027-01-01",
         bestand_sha256="a" * 64,
-        system=system,
+        system=system, red_verfahren="prospektiv",
     )
     assert {
         name: ergebnis[name]
@@ -840,14 +854,14 @@ def test_suite_schreibt_scope_bindung_nur_als_vollstaendigen_vertrag() -> None:
     }
     assert ergebnis["system"] == system
     with pytest.raises(ValueError, match="verlangt gemeinsam"):
-        pruefe_bestand([_pruefung()], stichtag_1="2026-01-01")
+        pruefe_bestand([_pruefung()], stichtag_1="2026-01-01", red_verfahren="prospektiv")
     with pytest.raises(ValueError, match="muss nach"):
         pruefe_bestand(
             [_pruefung()], stichtag_1="2027-01-01", stichtag_2="2026-01-01",
-            bestand_sha256="a" * 64,
+            bestand_sha256="a" * 64, red_verfahren="prospektiv",
         )
     with pytest.raises(ValueError, match="system muss exakt"):
-        pruefe_bestand([_pruefung()], system={"commit": "abc"})
+        pruefe_bestand([_pruefung()], system={"commit": "abc"}, red_verfahren="prospektiv")
 
 
 # --------------------------------------------------------------------------- #
@@ -858,7 +872,8 @@ def test_suite_schreibt_scope_bindung_nur_als_vollstaendigen_vertrag() -> None:
 def _red_urteil(monate: int = 12 * 10, anteil: Optional[float] = 0.6,
                 vorher: Tuple[GeVoErwartung, ...] = ()) -> Dict[str, Any]:
     return pruefe_vertrag(_pruefung(
-        gevos=vorher + (GeVoErwartung("RED", monate, None, anteil=anteil),)))
+        gevos=vorher + (GeVoErwartung("RED", monate, None, anteil=anteil),)),
+        red_verfahren="prospektiv")
 
 
 def _zweiteilung_dk2(anteil: float, red_jahr: int, monate: int = S2) -> float:
@@ -871,7 +886,7 @@ def _zweiteilung_dk2(anteil: float, red_jahr: int, monate: int = S2) -> float:
     """
     from rechner_pipeline.kern.beitragsreduktion import reduziere
 
-    r = reduziere(KERN, red_jahr, anteil)
+    r = reduziere(KERN, red_jahr, anteil, verfahren="prospektiv")
     bfr_teil = r.vs_neu - anteil * r.vs_alt
     a, rest = divmod(monate, 12)
     satz = KERN.verlaufszeile(a).vx_bfr
@@ -890,7 +905,8 @@ def test_red_mit_anteil_rechnet_den_folgestichtag() -> None:
     """
     dk2 = round(_zweiteilung_dk2(0.6, 10), 2)
     urteil = pruefe_vertrag(_pruefung(
-        dk2=dk2, gevos=(GeVoErwartung("RED", 12 * 10, None, anteil=0.6),)))
+        dk2=dk2, gevos=(GeVoErwartung("RED", 12 * 10, None, anteil=0.6),)),
+        red_verfahren="prospektiv")
 
     assert urteil["bestanden"], urteil["befunde"]
     assert "dk_stichtag_2" in [p["groesse"] for p in urteil["pruefungen"]]
@@ -933,7 +949,8 @@ def test_red_folgestichtag_folgt_der_jahrestags_konvention() -> None:
         monate_stichtag_1=S1, monate_stichtag_2=S2,
         dk_erwartet_1=dk1_jt, dk_erwartet_2=dk2_jt,
         gevos=gevos, dk_am_jahrestag=True,
-    ))
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None,
+    ), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
 
     # Mutationsfaenger: dieselbe Erwartung kalendertaeglich gerechnet
@@ -942,34 +959,55 @@ def test_red_folgestichtag_folgt_der_jahrestags_konvention() -> None:
         police_id="P-1", model_point=MP,
         monate_stichtag_1=S1, monate_stichtag_2=S2,
         dk_erwartet_1=dk1_jt, dk_erwartet_2=dk2_jt, gevos=gevos,
-    ))
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
+    ), red_verfahren="prospektiv")
     dk2 = next(p for p in kalendertag["pruefungen"]
                if p["groesse"] == "dk_stichtag_2")
     assert not dk2["ok"]
 
 
-def test_gevo_nach_red_im_pruefzeitraum_ist_ein_befund() -> None:
-    """Folge-GeVos eines frisch herabgesetzten Vertrags sind noch nicht
-    abgebildet — ein Befund, kein stiller falscher Wert."""
-    urteil = pruefe_vertrag(_pruefung(gevos=(
+def test_red_und_pex_am_selben_jahrestag_rechnet_die_folge() -> None:
+    """Folge-GeVos werden gerechnet (Entscheid des Maintainers 2026-10-01:
+    beliebig viele Vorgaenge in jeder Reihenfolge); vorher ein Befund "noch
+    nicht abgebildet". Am selben Jahrestag gilt die Reihenfolge der Engine:
+    erst die Beitragsfreistellung, dann die Absetzung — und eine gelieferte
+    Absetzung nach der Freistellung ist eine Teilkuendigung der
+    beitragsfreien Summe (Annahme B5). Kontrolle aus Kern-Primitiven:
+    PEX-Betrag = beitragsfreie Summe des Kerns, Folgewert = f x beitragsfreie
+    Reserve."""
+    summe = KERN.beitragsfreie_summe(10)
+    dk2 = 0.6 * KERN.monatsreserve_beitragsfrei(10, S2)
+    urteil = pruefe_vertrag(_pruefung(dk2=round(dk2, 2), gevos=(
         GeVoErwartung("RED", 12 * 10, None, anteil=0.6),
-        GeVoErwartung("PEX", 12 * 10, 50000.0),
-    )))
+        GeVoErwartung("PEX", 12 * 10, round(summe, 2)),
+    )), red_verfahren="prospektiv")
+    assert urteil["bestanden"], urteil["befunde"]
+    assert {p["groesse"] for p in urteil["pruefungen"]} >= {"gevo_pex_monat_120", "dk_stichtag_2"}
+    # Mutationsfaenger: der ungekuerzte beitragsfreie Wert besteht NICHT.
+    falsch = pruefe_vertrag(_pruefung(
+        dk2=round(KERN.monatsreserve_beitragsfrei(10, S2), 2), gevos=(
+            GeVoErwartung("RED", 12 * 10, None, anteil=0.6),
+            GeVoErwartung("PEX", 12 * 10, round(summe, 2)))), red_verfahren="prospektiv")
+    assert not falsch["bestanden"]
 
-    assert not urteil["bestanden"]
-    assert any("nach Herabsetzung" in b for b in urteil["befunde"]), urteil
 
+def test_red_und_erh_am_selben_jahrestag_rechnet_die_folge() -> None:
+    """Herabsetzung und Erhoehung am selben Jahrestag: erst die Herabsetzung,
+    dann die neue, ungekuerzte Scheibe (Reihenfolge der Engine). Vorher ein
+    Befund "Ausgestaltung offen". Kontrolle UNABHAENGIG von der
+    Vorgangsfolge: der geteilte Vertrag (``ReduzierterVertrag``) plus die
+    Scheibe an ihrem versetzten Stichtag."""
+    from rechner_pipeline.kern import erhoehungs_scheibe
+    from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
 
-def test_red_nach_erhoehungsscheibe_ist_ein_befund() -> None:
-    """Herabsetzung eines Vertrags mit Scheiben: Ausgestaltung offen."""
-    urteil = pruefe_vertrag(_pruefung(gevos=(
+    rv = ReduzierterVertrag.nach(KERN, 10, 0.6, verfahren="prospektiv")
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 10, 5000.0, gamma1_uebernehmen=False))
+    dk2 = rv.monatsreserve(S2).vx_mrv + scheibe.monatsreserve(S2 - 120).vx_mrv
+    urteil = pruefe_vertrag(_pruefung(dk2=round(dk2, 2), gevos=(
         GeVoErwartung("ERH", 12 * 10, 5000.0),
         GeVoErwartung("RED", 12 * 10, None, anteil=0.6),
-    )))
-
-    assert not urteil["bestanden"]
-    assert any("Erhöhungsscheiben" in b or "Erhoehungsscheiben" in b
-               for b in urteil["befunde"]), urteil
+    )), red_verfahren="prospektiv")
+    assert urteil["bestanden"], urteil["befunde"]
 
 
 def test_red_am_ersten_stichtag_wird_weiter_geprueft() -> None:
@@ -986,13 +1024,19 @@ def test_red_unterjaehrig_ist_ein_befund() -> None:
     assert any("Vertragsjahrestag" in b for b in urteil["befunde"]), urteil
 
 
-def test_red_nach_beitragsfreistellung_ist_ein_befund() -> None:
-    """Ein beitragsfreier Vertrag hat keinen Beitrag, den man senken kann."""
-    pex = GeVoErwartung("PEX", 12 * 10, round(KERN.beitragsfreie_summe(10), 2))
-    urteil = _red_urteil(monate=12 * 10, vorher=(pex,))
-
-    assert not urteil["bestanden"]
-    assert any("beitragsfrei" in b for b in urteil["befunde"]), urteil
+def test_red_nach_beitragsfreistellung_ist_eine_teilkuendigung() -> None:
+    """Ein beitragsfreier Vertrag hat keinen Beitrag, den man senken kann —
+    eine gelieferte Absetzung danach war eine Teilkuendigung (Annahme B5,
+    die EINE Uebersetzungsregel). Vorher ein Befund. Mit der Freistellung als
+    Anfangszustand: Folgewert f x beitragsfreie Reserve; eine echte
+    Herabsetzung danach verweigert der Kern benannt (Ausweg TKU)."""
+    dk1 = KERN.monatsreserve_beitragsfrei(8, S1)
+    dk2 = 0.6 * KERN.monatsreserve_beitragsfrei(8, S2)
+    urteil = pruefe_vertrag(_pruefung_mit(
+        dk_erwartet_1=round(dk1, 2), dk_erwartet_2=round(dk2, 2),
+        beitragsfrei_seit_jahr=8,
+        gevos=(GeVoErwartung("RED", 12 * 10, None, anteil=0.6),)), red_verfahren="prospektiv")
+    assert urteil["bestanden"], urteil["befunde"]
 
 
 def test_red_ohne_anteil_ist_eine_luecke_kein_befund() -> None:
@@ -1008,7 +1052,7 @@ def test_red_mit_unmoeglichem_anteil_ist_ein_befund(anteil: float) -> None:
     urteil = _red_urteil(anteil=anteil)
 
     assert not urteil["bestanden"]
-    assert any("[0, 1]" in b for b in urteil["befunde"]), urteil
+    assert any("(0, 1]" in b for b in urteil["befunde"]), urteil
 
 
 def test_red_beendet_den_vertrag_nicht() -> None:
@@ -1029,6 +1073,9 @@ def _pruefung_mit(**kwargs) -> VertragsPruefung:
         police_id="P-1", model_point=MP,
         monate_stichtag_1=S1, monate_stichtag_2=S2,
         dk_erwartet_1=0.0, dk_erwartet_2=0.0,
+        # Die Regeln des EIGENEN Geschaefts, ausdruecklich (Pruefrunde H).
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None,
+        dk_am_jahrestag=False,
     )
     basis.update(kwargs)
     return VertragsPruefung(**basis)
@@ -1040,7 +1087,7 @@ def test_alt_scheiben_gehen_in_beide_stichtage_und_den_beitrag_ein():
     from rechner_pipeline.kern import erhoehungs_scheibe
 
     erh_jahr, erh_summe = 6, 20000.0
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, erh_jahr, erh_summe))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, erh_jahr, erh_summe, gamma1_uebernehmen=False))
     dk1 = KERN.monatsreserve(S1).vx_mrv + scheibe.monatsreserve(
         S1 - 12 * erh_jahr).vx_mrv
     dk2 = KERN.monatsreserve(S2).vx_mrv + scheibe.monatsreserve(
@@ -1051,7 +1098,7 @@ def test_alt_scheiben_gehen_in_beide_stichtage_und_den_beitrag_ein():
         dk_erwartet_1=round(dk1, 2), dk_erwartet_2=round(dk2, 2),
         bjb_erwartet_1=round(bjb, 2),
         scheiben=((erh_jahr, erh_summe),),
-    ))
+    ), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
 
 
@@ -1061,7 +1108,7 @@ def test_alt_scheibe_ohne_scheibenwert_wuerde_auffallen():
         dk_erwartet_1=round(KERN.monatsreserve(S1).vx_mrv, 2),
         dk_erwartet_2=round(KERN.monatsreserve(S2).vx_mrv, 2),
         scheiben=((6, 20000.0),),
-    ))
+    ), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
 
 
@@ -1069,13 +1116,13 @@ def test_alt_reduktion_bewertet_den_geteilten_vertrag():
     """dk an beiden Stichtagen und der Beitrag folgen der Zweiteilung."""
     from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
 
-    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6, verfahren="prospektiv")
     urteil = pruefe_vertrag(_pruefung_mit(
         dk_erwartet_1=round(rv.monatsreserve(S1).vx_mrv, 2),
         dk_erwartet_2=round(_zweiteilung_dk2(0.6, 8), 2),
         bjb_erwartet_1=round(0.6 * KERN.gross_annual_premium(), 2),
         reduktion=(8, 0.6),
-    ))
+    ), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
 
 
@@ -1084,7 +1131,7 @@ def test_alt_reduktion_faellt_nicht_auf_den_unreduzierten_wert():
         dk_erwartet_1=round(KERN.monatsreserve(S1).vx_mrv, 2),
         dk_erwartet_2=round(KERN.monatsreserve(S2).vx_mrv, 2),
         reduktion=(8, 0.6),
-    ))
+    ), red_verfahren="prospektiv")
     assert not urteil["bestanden"]
 
 
@@ -1092,7 +1139,7 @@ def test_pex_auf_alt_reduktion_fixiert_beide_teile():
     """Der gelieferte Fall (PEX auf Alt-RED): Betrag und Folgewert."""
     from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
 
-    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6, verfahren="prospektiv")
     pex_monat = 12 * 10
     summe = rv.beitragsfreie_summe(10)
     dk2 = rv.reserve_beitragsfrei(10, S2)
@@ -1101,7 +1148,7 @@ def test_pex_auf_alt_reduktion_fixiert_beide_teile():
         dk_erwartet_2=round(dk2, 2),
         reduktion=(8, 0.6),
         gevos=(GeVoErwartung("PEX", pex_monat, round(summe, 2)),),
-    ))
+    ), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
 
 
@@ -1111,9 +1158,9 @@ def test_erh_auf_alt_reduktion_traegt_die_scheibe_neben_der_teilung():
     from rechner_pipeline.kern import erhoehungs_scheibe
     from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
 
-    rv = ReduzierterVertrag.nach(KERN, 8, 0.6)
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6, verfahren="prospektiv")
     erh_monat, erh_summe = 12 * 10, 15000.0
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 10, erh_summe))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, 10, erh_summe, gamma1_uebernehmen=False))
     dk2 = rv.monatsreserve(S2).vx_mrv + scheibe.monatsreserve(
         S2 - erh_monat).vx_mrv
     urteil = pruefe_vertrag(_pruefung_mit(
@@ -1121,25 +1168,61 @@ def test_erh_auf_alt_reduktion_traegt_die_scheibe_neben_der_teilung():
         dk_erwartet_2=round(dk2, 2),
         reduktion=(8, 0.6),
         gevos=(GeVoErwartung("ERH", erh_monat, erh_summe),),
-    ))
+    ), red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
 
 
-def test_mehrere_anfangszustaende_zugleich_fallen_hart():
-    with pytest.raises(ValueError, match="mehrere Anfangszustaende"):
-        pruefe_vertrag(_pruefung_mit(
-            reduktion=(8, 0.6), beitragsfrei_seit_jahr=7,
-        ))
+def test_beitragsfrei_mit_scheiben_laeuft_ueber_die_folge():
+    """Pruefrunde J, J04: Beitragsfrei UND Scheiben ist seit der Bausteinfuehrung
+    der beitragsfrei gelieferten Serie ein gueltiger Anfangszustand (Tarifwerk
+    mit Regel je Baustein) — er laeuft ueber die Vorgangsfolge, statt
+    verweigert zu werden. Vorher: "mehrere Anfangszustaende"."""
+    from rechner_pipeline.qa.migrationssuite import _mit_vorgangsfolge
+
+    v = _pruefung_mit(scheiben=((5, 4000.0),), beitragsfrei_seit_jahr=7)
+    assert _mit_vorgangsfolge(v)
+    assert not _mit_vorgangsfolge(_pruefung_mit(scheiben=((5, 4000.0),)))
+    pruefe_vertrag(v, red_verfahren="prospektiv")
 
 
-def test_zweite_herabsetzung_auf_alt_reduktion_ist_ein_befund():
+def test_alt_reduktion_nach_der_freistellung_ist_eine_teilkuendigung():
+    """Herabsetzung UND Freistellung als Anfangszustand: vorher "mehrere
+    Anfangszustaende", jetzt die Folge. Die Absetzung im Jahr 8 liegt nach der
+    Freistellung im Jahr 7 und war damit eine Teilkuendigung (B5).
+    Kontrolle: f x beitragsfreie Reserve aus dem Kern."""
     urteil = pruefe_vertrag(_pruefung_mit(
-        dk_erwartet_1=0.0, dk_erwartet_2=0.0,
-        reduktion=(8, 0.6),
-        gevos=(GeVoErwartung("RED", 12 * 10, None, anteil=0.5),),
-    ))
-    assert not urteil["bestanden"]
-    assert any("zweite Herabsetzung" in b for b in urteil["befunde"]), urteil
+        dk_erwartet_1=round(0.6 * KERN.monatsreserve_beitragsfrei(7, S1), 2),
+        dk_erwartet_2=round(0.6 * KERN.monatsreserve_beitragsfrei(7, S2), 2),
+        reduktion=(8, 0.6), beitragsfrei_seit_jahr=7,
+    ), red_verfahren="prospektiv")
+    assert urteil["bestanden"], urteil["befunde"]
+
+
+def test_zweite_herabsetzung_auf_alt_reduktion_wird_gerechnet():
+    """Vorher ein Befund "zweite Herabsetzung ... nicht abgebildet". Der
+    Stichtagswert vor dem zweiten Vorgang kommt aus dem geteilten Vertrag
+    (``ReduzierterVertrag``, unabhaengig von der Folge), der Folgewert aus
+    der Vorgangsfolge des Kerns — derselbe Zustand, den Fuehrung und
+    Bewertung lesen (die Suite ist ein eigener Leser mit eigener Schleife).
+    Mutationsfaenger: der Folgewert NUR der ersten Herabsetzung besteht
+    nicht."""
+    from rechner_pipeline.kern import Vorgangsfolge, vorgang
+    from rechner_pipeline.kern.beitragsreduktion import ReduzierterVertrag
+
+    rv = ReduzierterVertrag.nach(KERN, 8, 0.6, verfahren="prospektiv")
+    folge = Vorgangsfolge(KERN, [], [vorgang(8, 0.6, "prospektiv"), vorgang(10, 0.5, "prospektiv")],
+                          stoab_je_baustein=False, tku_umfang="alle_bausteine")
+    dk2 = folge.stand_am(S2).werte(S2)["vx_mrv"]
+    gevos = (GeVoErwartung("RED", 12 * 10, None, anteil=0.5),)
+    urteil = pruefe_vertrag(_pruefung_mit(
+        dk_erwartet_1=round(rv.monatsreserve(S1).vx_mrv, 2),
+        dk_erwartet_2=round(dk2, 2), reduktion=(8, 0.6), gevos=gevos), red_verfahren="prospektiv")
+    assert urteil["bestanden"], urteil["befunde"]
+    nur_erste = pruefe_vertrag(_pruefung_mit(
+        dk_erwartet_1=round(rv.monatsreserve(S1).vx_mrv, 2),
+        dk_erwartet_2=round(rv.monatsreserve(S2).vx_mrv, 2), reduktion=(8, 0.6), gevos=gevos),
+        red_verfahren="prospektiv")
+    assert not nur_erste["bestanden"]
 
 
 def test_alt_reduktion_folgt_dem_verfahren_des_falls():
@@ -1158,7 +1241,7 @@ def test_alt_reduktion_folgt_dem_verfahren_des_falls():
     assert urteil["bestanden"], urteil["befunde"]
     # Mit dem Zielverfahren (prospektiv, Default) traefe dieselbe
     # Erwartung NICHT — die Verfahrensdifferenz ist der Stornoabzug.
-    assert not pruefe_vertrag(auftrag)["bestanden"]
+    assert not pruefe_vertrag(auftrag, red_verfahren="prospektiv")["bestanden"]
 
     ergebnis = pruefe_bestand([auftrag], erwartete_anzahl=1,
                               red_verfahren="mit_abzug")
@@ -1183,14 +1266,14 @@ def test_luecke_und_urteil_bleiben_getrennte_aussagen() -> None:
     """
     # _pruefung() liefert keinen bjb_erwartet_1 — genau der Fall.
     ohne_beitrag = _pruefung()
-    urteil = pruefe_vertrag(ohne_beitrag)
+    urteil = pruefe_vertrag(ohne_beitrag, red_verfahren="prospektiv")
 
     assert urteil["bestanden"] is True
     assert urteil["befunde"] == []
     assert any("bjb" in luecke for luecke in urteil["nicht_geprueft"])
 
     # Auf Laufebene faellt die Luecke sehr wohl ins Gewicht.
-    bericht = pruefe_bestand([ohne_beitrag], erwartete_anzahl=1)
+    bericht = pruefe_bestand([ohne_beitrag], erwartete_anzahl=1, red_verfahren="prospektiv")
     assert bericht["bestanden"] == 1
     assert bericht["vollstaendig_geprueft"] is False
     assert bericht["pruefluecken"]
@@ -1213,7 +1296,7 @@ def _mit_schicht(delta: float = -850.0):
     e, = uebernehmen([
         Uebernahme(police_id=1, model_point=dict(MP),
                    monate_ta=ta, dk_ist=prosp + delta)
-    ])
+    ], formfunktion="proportional_zur_basis")
     return e.parameter, ta, delta
 
 
@@ -1248,16 +1331,18 @@ def test_korrekturschicht_absorbiert_das_verankerungsresiduum() -> None:
         monate_stichtag_1=S1, monate_stichtag_2=S2,
         dk_erwartet_1=geliefert_1, dk_erwartet_2=geliefert_2,
         schicht=parameter, monate_ta=ta,
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
     )
-    urteil = pruefe_vertrag(mit)
+    urteil = pruefe_vertrag(mit, red_verfahren="prospektiv")
     assert urteil["bestanden"], urteil["befunde"]
 
     ohne = VertragsPruefung(
         police_id="P-1", model_point=MP,
         monate_stichtag_1=S1, monate_stichtag_2=S2,
         dk_erwartet_1=geliefert_1, dk_erwartet_2=geliefert_2,
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
     )
-    urteil_ohne = pruefe_vertrag(ohne)
+    urteil_ohne = pruefe_vertrag(ohne, red_verfahren="prospektiv")
     assert not urteil_ohne["bestanden"]
     dk1 = next(p for p in urteil_ohne["pruefungen"]
                if p["groesse"] == "dk_stichtag_1")
@@ -1271,9 +1356,10 @@ def test_schicht_ohne_monate_ta_faellt_hart() -> None:
         monate_stichtag_1=S1, monate_stichtag_2=S2,
         dk_erwartet_1=1.0, dk_erwartet_2=1.0,
         schicht=parameter,
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
     )
     with pytest.raises(ValueError, match="ohne monate_ta"):
-        pruefe_vertrag(v)
+        pruefe_vertrag(v, red_verfahren="prospektiv")
 
 
 def test_dk_am_jahrestag_ist_lieferungseigenschaft() -> None:
@@ -1292,16 +1378,17 @@ def test_dk_am_jahrestag_ist_lieferungseigenschaft() -> None:
         police_id="P-1", model_point=MP,
         monate_stichtag_1=S1, monate_stichtag_2=S2,
         dk_erwartet_1=geliefert_1, dk_erwartet_2=geliefert_2,
-        dk_am_jahrestag=True,
+        dk_am_jahrestag=True, scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None,
     )
-    assert pruefe_vertrag(jahrestag)["bestanden"]
+    assert pruefe_vertrag(jahrestag, red_verfahren="prospektiv")["bestanden"]
 
     kalendertag = VertragsPruefung(
         police_id="P-1", model_point=MP,
         monate_stichtag_1=S1, monate_stichtag_2=S2,
         dk_erwartet_1=geliefert_1, dk_erwartet_2=geliefert_2,
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
     )
-    urteil = pruefe_vertrag(kalendertag)
+    urteil = pruefe_vertrag(kalendertag, red_verfahren="prospektiv")
     assert not urteil["bestanden"]
     dk1 = next(p for p in urteil["pruefungen"]
                if p["groesse"] == "dk_stichtag_1")
@@ -1331,6 +1418,7 @@ def test_teilkuendigung_gevo_fuehrt_zustandslos_fort() -> None:
         dk_erwartet_2=dk2_erwartet,
         gevos=(GeVoErwartung(art="RED", monate=red_monat,
                              betrag_erwartet=None, anteil=f),),
+                             scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
     ), red_verfahren="teilkuendigung")
     assert urteil["bestanden"], urteil["befunde"]
 
@@ -1339,7 +1427,7 @@ def test_teilkuendigung_gevo_fuehrt_zustandslos_fort() -> None:
     from rechner_pipeline.kern import erhoehungs_scheibe
 
     erh_jahr, summe = 5, 4000.0
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, erh_jahr, summe))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, erh_jahr, summe, gamma1_uebernehmen=False))
     dk1 = round(KERN.monatsreserve(S1).vx_mrv
                 + scheibe.monatsreserve(S1 - 12 * erh_jahr).vx_mrv, 2)
     dk2 = round(Rechenkern(klein).monatsreserve(S2).vx_mrv
@@ -1351,6 +1439,7 @@ def test_teilkuendigung_gevo_fuehrt_zustandslos_fort() -> None:
         scheiben=((erh_jahr, summe),),
         gevos=(GeVoErwartung(art="RED", monate=red_monat,
                              betrag_erwartet=None, anteil=f),),
+                             scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
     ), red_verfahren="teilkuendigung")
     assert urteil2["bestanden"], urteil2["befunde"]
 
@@ -1377,6 +1466,7 @@ def test_zweite_teilkuendigung_kettet_die_anteile() -> None:
         dk_erwartet_1=dk1,
         dk_erwartet_2=round(Rechenkern(kette).monatsreserve(s2).vx_mrv, 2),
         gevos=gevos,
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
     ), red_verfahren="teilkuendigung")
     assert urteil["bestanden"], urteil["befunde"]
 
@@ -1391,6 +1481,7 @@ def test_zweite_teilkuendigung_kettet_die_anteile() -> None:
         dk_erwartet_2=round(
             Rechenkern(nur_f2).monatsreserve(s2).vx_mrv, 2),
         gevos=gevos,
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
     ), red_verfahren="teilkuendigung")
     assert not urteil_falsch["bestanden"]
 
@@ -1420,9 +1511,11 @@ def test_komponentenzahl_skaliert_die_suite_toleranz() -> None:
         monate_stichtag_1=S1, monate_stichtag_2=S2,
         dk_erwartet_1=daneben,
         dk_erwartet_2=round(kern_klein.monatsreserve(S2).vx_mrv, 2),
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None,
+        dk_am_jahrestag=False,
     )
-    eng = pruefe_vertrag(VertragsPruefung(**basis))
+    eng = pruefe_vertrag(VertragsPruefung(**basis), red_verfahren="prospektiv")
     assert not eng["bestanden"]
     weit = pruefe_vertrag(VertragsPruefung(
-        **basis, quell_komponenten=6))
+        **basis, quell_komponenten=6), red_verfahren="prospektiv")
     assert weit["bestanden"], weit["befunde"]

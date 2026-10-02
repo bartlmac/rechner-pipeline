@@ -89,7 +89,8 @@ def test_die_uebernahme_bindet_ihre_eingaben(tmp_path):
     entstanden ist, bindet die Uebernahme an nichts."""
     from rechner_pipeline.fall import anlegen, registrieren
     from rechner_pipeline.gates import bestand_uebernehmen
-    from tests.test_bestand_uebernehmen import ZEILE
+    from tests.tarifregeln_testhelfer import lege_spez
+    from tests.test_bestand_uebernehmen import GRUNDLAGEN, ZEILE
 
     fall = tmp_path / "fall"
     anlegen(fall, scope="bestand")
@@ -100,11 +101,13 @@ def test_die_uebernahme_bindet_ihre_eingaben(tmp_path):
     zeilen = tmp_path / "zeilen.json"
     zeilen.write_text(json.dumps([dict(ZEILE)]), encoding="utf-8")
     ziel = fall / "abgeleitet" / "bestand"
+    lege_spez(fall, GRUNDLAGEN)
 
     assert bestand_uebernehmen.main([
         "--fall", str(fall), "--zeilen", str(zeilen),
         "--tarif-generation", "TG2015", "--stichtag", "2026-01-01",
         "--vorgeschichte", "gevo_metadaten.csv",
+        "--generation-spez", "klv/tg2015",
         "--anfangszustand", "grundvertrag",
         "--out-dir", str(ziel),
     ]) == 0

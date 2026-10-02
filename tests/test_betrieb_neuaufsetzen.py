@@ -25,6 +25,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from tests.freigabe_testschluessel import betriebsargs, linieargs
+
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.betrieb import neuaufsetzen as na
 from rechner_pipeline.betrieb import uebernahme as ueb
@@ -35,6 +37,7 @@ from rechner_pipeline.models.bestand import (
 )
 from tests.test_betrieb_seite import _ablage
 from tests.test_betrieb_uebernahme import STICHTAG, _beleg_neu, _fall
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -76,7 +79,8 @@ def _fall_mit_nebentabellen(tmp_path: Path, *, tarifwerk: dict | None = None) ->
     write_portfolio(_scheiben(7_000_001), quelle / "scheiben.parquet")
     write_portfolio(_schichten(7_000_001), quelle / "schichten.parquet")
     write_portfolio(_verankerung(7_000_001), quelle / "verankerung.parquet")
-    beleg = {"schema_version": 1, "anfangszustand": "materialisieren"}
+    beleg = json.loads((quelle / "uebernahme.json").read_text(encoding="utf-8"))
+    beleg["anfangszustand"] = "materialisieren"
     if tarifwerk is not None:
         beleg["tarifwerk"] = tarifwerk
     (quelle / "uebernahme.json").write_text(json.dumps(beleg), encoding="utf-8")
@@ -108,7 +112,7 @@ def _ziel(ablage, quelle_nr: int) -> int:
 def test_eingang_registriert_bausteine_schicht_und_beleg(tmp_path):
     fall = _fall_mit_nebentabellen(tmp_path)
     stand = tmp_path / "daten"
-    ziel = ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     eingang = json.loads((ziel / "eingang.json").read_text(encoding="utf-8"))
     assert {"scheiben.parquet", "schichten.parquet", "uebernahme.json"} <= set(eingang["dateien"])
     ablage = _ablage(stand)
@@ -119,14 +123,17 @@ def test_eingang_registriert_bausteine_schicht_und_beleg(tmp_path):
 
 
 def test_eingang_ohne_nebentabellen_bleibt_lesbar(tmp_path):
-    """Zugaenge vor der Freischaltung tragen weder Bausteine noch Beleg."""
+    """Zugaenge vor der Freischaltung tragen keine Bausteine. Den Beleg
+    traegt jeder Zugang — er nennt das Tarifwerk der Abnahme (Angriffsrunde
+    nach T27: ein fehlender Beleg umging die Tarifwerk-Pruefung)."""
     fall = _fall(tmp_path)
     stand = tmp_path / "daten"
-    ziel = ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     ablage = _ablage(stand)
     from rechner_pipeline.bestand.config import load_config
     u = ueb.lies_uebernahme(ziel, load_config(ablage.config_pfad))
-    assert u.scheiben is None and u.schichten is None and u.beleg == {}
+    assert u.scheiben is None and u.schichten is None
+    assert u.beleg["anfangszustand"] == "ohne_bausteine" and isinstance(u.beleg["tarifwerk"], dict)
 
 
 def test_tarifwerk_der_config_wird_gegen_den_beleg_gehalten(tmp_path):
@@ -136,14 +143,27 @@ def test_tarifwerk_der_config_wird_gegen_den_beleg_gehalten(tmp_path):
         "scheiben_mit_gamma1": False, "stoab_je_baustein": True, "red_verfahren": "prospektiv",
     })
     stand = tmp_path / "daten"
-    ziel = ueb.eingang_anlegen(stand, fall, STICHTAG)
+    # Schon die Registrierung verweigert (RC16) ...
+    with pytest.raises(ueb.UebernahmeError, match="nichts registriert.*Tarifwerk|nichts registriert"):
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
+    # ... und der Leser haelt dieselbe Pruefung, falls ein Eingang an ihr
+    # vorbei entstanden ist (Tiefe: die Registrierung von Hand umgangen).
+    mp = pytest.MonkeyPatch()
+    mp.setattr(ueb, "_pruefe_tarifwerk_gegen_ablage", lambda *a, **k: None)
+    try:
+        ziel = ueb.eingang_anlegen(stand, fall, STICHTAG)
+    finally:
+        mp.undo()
     ablage = _ablage(stand)
     from rechner_pipeline.bestand.config import load_config
     with pytest.raises(ueb.UebernahmeError, match="Tarifwerk"):
         ueb.lies_uebernahme(ziel, load_config(ablage.config_pfad))
-    # Der passende Beleg ist kein Befund.
+    # Der passende Beleg ist kein Befund — er nennt das GANZE Tarifwerk, wie
+    # die Uebernahme es schreibt (Pruefrunde G: ein Beleg mit drei der vier
+    # Merkmalen bezeugt den Umfang der Teilkuendigung nicht).
     passend = ueb.tarifwerk_fehler(load_config(ablage.config_pfad), ["KLV-2017"], {
-        "tarifwerk": {"scheiben_mit_gamma1": False, "stoab_je_baustein": False, "red_verfahren": "prospektiv"},
+        "tarifwerk": {"scheiben_mit_gamma1": False, "stoab_je_baustein": False,
+                      "red_verfahren": "prospektiv", "tku_umfang": "alle_bausteine"},
     })
     assert passend == []
 
@@ -159,7 +179,7 @@ def test_tageslauf_fuehrt_die_uebernommenen_bausteine_im_stand(tmp_path, monkeyp
     from rechner_pipeline.betrieb import tageslauf as tl_modul
     fall = _fall_mit_nebentabellen(tmp_path)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     ablage = _ablage(stand)
     gesehen = {}
     echt = tl_modul.fortschreiben
@@ -233,10 +253,11 @@ def test_neuaufsetzen_verweigert_unter_lauf_sperre_und_bei_falscher_config(gefue
     with pytest.raises(na.NeuaufsetzenError, match="nichts bewegt") as info:
         na.neu_aufsetzen(ablage.wurzel, _fall_mit_nebentabellen(tmp_path / "c"), dt.date(2026, 3, 1))
     assert ablage.stand.exists() and not list(tmp_path.glob("daten.archiv-*"))
-    # Die vorbereitete Ablage bleibt als benannter Rest liegen (die Routine
-    # loescht nichts) und wird in der Meldung genannt.
-    [rest] = list(tmp_path.glob("daten.neu-*"))
-    assert str(rest) in str(info.value)
+    # Die eigene, nie veroeffentlichte Vorbereitung bleibt NICHT liegen
+    # (Angriffsrunde 2026-10-01; vorher blieb sie als benannter Rest, und der
+    # naechste Aufruf verweigerte "Rest eines abgebrochenen Aufbaus").
+    assert "bestandszugang" in str(info.value)
+    assert not list(tmp_path.glob("daten.neu-*"))
     # Ein anderer Prozess haelt die Sperre (flock, wie der Tageslauf).
     import fcntl
     halter = open(ablage.sperre, "a+", encoding="utf-8")
@@ -253,10 +274,11 @@ def test_neuaufsetzen_verweigert_unter_lauf_sperre_und_bei_falscher_config(gefue
 def test_neuaufsetzen_cli(gefuehrt, tmp_path):
     fall = _fall_mit_nebentabellen(tmp_path)
     rc = na.main(["--stand", str(gefuehrt.wurzel), "--fall", str(fall), "--stichtag", STICHTAG.isoformat(),
-                  "--archiv", str(tmp_path / "archiv")])
+                  "--archiv", str(tmp_path / "archiv"), *betriebsargs("--betriebsschluessel"), *linieargs()])
     assert rc == 0
     assert (tmp_path / "archiv" / "journal").is_dir()
-    assert na.main(["--stand", str(tmp_path / "gibt-es-nicht"), "--fall", str(fall), "--stichtag", "2026-01-01"]) == 2
+    assert na.main(["--stand", str(tmp_path / "gibt-es-nicht"), "--fall", str(fall), "--stichtag", "2026-01-01",
+                    *betriebsargs("--betriebsschluessel"), *linieargs()]) == 2
 
 
 def test_neuaufsetzen_loescht_nichts():

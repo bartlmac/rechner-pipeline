@@ -1,0 +1,75 @@
+
+[meta]
+seed = 7
+beschreibung = "Uebernahme"
+referenzstichtag = 2026-01-01
+
+[[generation]]
+name = "klv/zellen"
+knoten = "klv/zellen"
+gueltig_von = 2000-01-01
+gueltig_bis = 2040-12-31
+max_endalter = 85
+zins = 0.0125
+tafel = "DAV2008_T_NR_U70"
+alpha = 0.025
+beta1 = 0.03
+gamma1 = 0.001
+gamma2 = 0.00125
+gamma3 = 0.0025
+policy_fee = 12.0
+min_alter_flex = 60
+min_rlz_flex = 5
+
+[generation.verteilungen.entry_age]
+typ = "normal_trunc"
+mean = 40.0
+sd = 12.0
+min = 18.0
+max = 62.0
+round = 0
+
+[generation.verteilungen.sex]
+typ = "empirical_discrete"
+values = ["M", "F"]
+probs = [0.5, 0.5]
+
+[generation.verteilungen.duration]
+typ = "empirical_discrete"
+values = [25]
+probs = [1.0]
+
+[generation.verteilungen.premium_duration]
+typ = "empirical_discrete"
+values = [25]
+probs = [1.0]
+
+[generation.verteilungen.sum_insured]
+typ = "lognormal"
+meanlog = 11.2
+sdlog = 0.5
+round = -3
+
+[generation.verteilungen.zahlweise]
+typ = "empirical_discrete"
+values = [1]
+probs = [1.0]
+
+[annahmen.tod]
+a = 0.0
+b = 1.0
+
+[annahmen.storno]
+a = 0.02
+b = 0.0
+
+[annahmen.beitragsfreistellung]
+a = 0.02
+b = 0.0
+
+[annahmen]
+erh_prozent = 0.05
+
+[annahmen.erhoehung]
+a = 0.05
+b = 0.0

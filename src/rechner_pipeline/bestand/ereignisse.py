@@ -51,6 +51,19 @@ Model (Stufe 1, annual):
   draw. Runs of different configs on the same portfolio are therefore
   pathwise comparable as long as their event histories agree (e.g. the
   lapse set at storno_rate=0.02 is a subset of the one at 0.03).
+* Beitragsherabsetzung (``RED``) und Teilkuendigung (``TKU``): zwei
+  Geschaeftsvorfaelle (Entscheid des Maintainers 2026-10-01, ADR-023), je
+  mit EIGENEM Substrom (``HERABSETZUNG_STREAM``, ``TEILKUENDIGUNG_STREAM``,
+  Register ``bestand.zufallsstroeme``). Die Herabsetzung zieht je Jahr
+  ``j+1 < t`` eines beitragspflichtigen Vertrags (nur solange ein Beitrag
+  laeuft, nie nach PEX) und nur in einem Tarif, der sie kennt (nicht bei
+  ``red_verfahren = teilkuendigung``, dem uebernommenen Tarif); die
+  Teilkuendigung je Jahr ``j+1 < n``, beitragspflichtig, ausfinanziert UND
+  nach einer Beitragsfreistellung. Beliebig viele Vorgaenge je Vertrag, in
+  jeder Reihenfolge (Entscheid des Maintainers 2026-10-01): Jeder gezogene
+  Vorgang wird ausgefuehrt, auf dem Zustand, den der Vertrag dann hat
+  (``kern.vorgangsfolge``). Mit beiden Raten 0 (Vorgabe) ist jede Welt
+  bitgleich zum Stand davor.
 * Stornoabschlag bei Scheiben: WO die Tarif-Grenzen (stoab_min/max)
   greifen und ob eine Scheibe gamma1 traegt, sagt das Tarifwerk der
   GENERATION (``TarifGeneration.tarifwerk()``, Freischaltung Schritt 4):
@@ -88,12 +101,12 @@ from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
 from rechner_pipeline.bestand.schichten import schichten_je_police
-from rechner_pipeline.kern.beitragsreduktion import (
-    TEILKUENDIGUNG,
-    ReduzierterVertrag,
-    absorbierte_schicht,
-    reduzierte_teile,
-    vertrags_monatsreserve_reduziert,
+from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
+from rechner_pipeline.kern.vorgangsfolge import (
+    Vertragsstand,
+    Vorgangsergebnis,
+    tku_umfang_fuer,
+    vorgang,
 )
 from rechner_pipeline.kern.korrekturschicht import (
     schicht_traegt,
@@ -111,7 +124,9 @@ from rechner_pipeline.models.bestand import (
     STATUS_HISTORIE_SPALTEN,
     bu_model_point_kwargs,
     model_point_kwargs,
+    reduktion_ereignis,
 )
+from rechner_pipeline.bestand.zufallsstroeme import STROEME
 
 #: SeedSequence-Konstante: separates event streams from the generator's
 #: generation streams ([seed, gen_index]) — never reuse for other purposes.
@@ -119,14 +134,17 @@ from rechner_pipeline.models.bestand import (
 #: [seed, X] == [seed, X, 0]): police_id must be > 0 (enforced in
 #: :func:`fortschreiben`; the generator issues >= 10_000_001) and gen_index
 #: stays small — a third stream family needs a NEW distinct constant.
-EREIGNIS_STREAM = 424242
+EREIGNIS_STREAM = STROEME["ereignis"]  # Register: bestand.zufallsstroeme
 #: EIGENER Substrom der Herabsetzung. Die feste Draw-Reihenfolge des
 #: Hauptstroms ist der Grund, warum Laeufe verschiedener Configs
 #: pfadweise vergleichbar sind — ein neuer Draw in ihr haette JEDEN
 #: bestehenden Bestand verschoben, obwohl sich fachlich nichts aendert.
 #: Das Haus fuehrt eigene Stroeme je Familie (NEUZUGANG_STREAM,
 #: MELDEVERZUG_STREAM); dies ist einer davon.
-HERABSETZUNG_STREAM = 606606
+HERABSETZUNG_STREAM = STROEME["herabsetzung"]  # Register: bestand.zufallsstroeme
+#: EIGENER Substrom der Teilkuendigung (eigener Geschaeftsvorfall TKU seit
+#: dem Entscheid des Maintainers 2026-10-01) — aus demselben Grund.
+TEILKUENDIGUNG_STREAM = STROEME["teilkuendigung"]  # Register: bestand.zufallsstroeme
 
 #: Betrags-Art der BU-GeVos: die von diesem Geschaeftsvorfall betroffene
 #: versicherte Jahresrente (Bezugsgroesse der Nachweisung) — bei
@@ -218,11 +236,6 @@ def _leerer_frame(spalten) -> pd.DataFrame:
     return pd.DataFrame({name: pd.Series(dtype=dtype) for name, dtype in spalten})
 
 
-#: Tarifwerk des eigenen Geschaefts (Tarifplan KLV): die Vorgabe, wenn
-#: kein Generations-Tarifwerk uebergeben wird.
-TARIFWERK_VORGABE = {"scheiben_mit_gamma1": False, "stoab_je_baustein": False}
-
-
 class _Vertrag:
     """Grundscheibe + Erhoehungsscheiben eines Vertrags (Schichtungsprinzip).
 
@@ -238,13 +251,21 @@ class _Vertrag:
         self,
         mp: ModelPoint,
         *,
-        tarifwerk: Mapping[str, Any] | None = None,
+        tarifwerk: Mapping[str, Any],
         mitgebracht: List[Tuple[int, float, Rechenkern]] = (),
         schicht: Tuple[Any, int] | None = None,
     ) -> None:
         self.grund_mp = mp
         self.grund = Rechenkern(mp)
-        self.tarifwerk = dict(tarifwerk or TARIFWERK_VORGABE)
+        # Das Tarifwerk der Generation hat keine Vorgabe (Pruefrunde I, I14):
+        # Wer den Vertrag fuehrt, nennt es — vorher galt ohne Angabe still das
+        # des eigenen Geschaefts.
+        self.tarifwerk = dict(tarifwerk)
+        # Der Umfang der Teilkuendigung ist der des Bedingungswerks, das das
+        # Verfahren nennt, wenn ihn das Tarifwerk nicht ausdrueckt (Entscheid
+        # B1 vom 2026-10-01; dieselbe Regel wie ``TarifGeneration.tarifwerk``).
+        self.tarifwerk.setdefault("tku_umfang", tku_umfang_fuer(
+            str(self.tarifwerk["red_verfahren"])))
         self.scheiben: List[Tuple[int, float, Rechenkern]] = [
             (int(jahr), float(vs), kern) for jahr, vs, kern in mitgebracht
         ]  # (jahr, vs, kern)
@@ -255,53 +276,71 @@ class _Vertrag:
         #: Terminalbedingung), eine Beitragsfreistellung absorbiert — nach
         #: ihr gibt es kein Storno mehr, die Schicht ist damit erledigt.
         self.schicht = schicht
-        #: (jahr, anteil, verfahren) der Herabsetzung, sobald eine
-        #: gezogen wurde — danach rechnet der Vertrag ueber
-        #: ``self.reduziert`` und nicht mehr ueber die Grundscheiben.
-        self.reduktion: Tuple[int, float, str] | None = None
-        self.reduziert: List[Tuple[int, ReduzierterVertrag]] = []
+        #: Der Zustand in der Vorgangsfolge (``kern.vorgangsfolge``), sobald
+        #: der erste Herabsetzungs- oder Teilkuendigungsvorgang gebucht ist —
+        #: ab dann rechnet der Vertrag ueber ihn. Davor None: Ein Vertrag
+        #: ohne Vorgang rechnet unveraendert ueber seine Bausteine.
+        self.stand: Vertragsstand | None = None
 
-    def herabsetzen(
-        self, jahr: int, anteil: float, verfahren: str
-    ) -> Tuple[float, float, float]:
-        """Den Vertrag herabsetzen; liefert (absorbierte Schicht, neue
-        Summe, Auszahlung).
+    @property
+    def kennt_herabsetzung(self) -> bool:
+        """Ob der Tarif eine Beitragsherabsetzung kennt. Der uebernommene
+        Tarif (``red_verfahren = teilkuendigung``) kennt nur EINEN Vorgang —
+        bei der Quelle "Herabsetzung" genannt, im Vokabular der PLV die
+        Teilkuendigung (Entscheid des Maintainers 2026-10-01)."""
+        return str(self.tarifwerk["red_verfahren"]) != TEILKUENDIGUNG
 
-        Die Korrekturschicht geht VOLLSTAENDIG in die Neuberechnung ein
-        (Entscheid des Maintainers 2026-09-15): Die Herabsetzung
-        garantiert die Tat, nicht den Wert. Sie ist eine Neuvereinbarung
-        — das Gesamt-Deckungskapital einschliesslich Schicht ist der
-        Startwert, danach fuehrt allein die Logik des Zielsystems, und
-        einen Korrekturtermin gibt es nicht mehr. Deshalb faellt
-        ``self.schicht`` hier weg: nicht verloren, sondern aufgegangen.
+    def _stand(self, beitragsfrei_ab: int | None) -> Vertragsstand:
+        if self.stand is None:
+            stand = Vertragsstand.anfang(
+                self.grund, [(j, k) for j, _, k in self.scheiben],
+                stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]),
+                tku_umfang=str(self.tarifwerk["tku_umfang"]),
+                schicht=self.schicht)
+            if beitragsfrei_ab is not None:
+                stand = stand.nach_pex(beitragsfrei_ab)
+            self.stand = stand
+        return self.stand
 
-        Bei den PLV-Verfahren geht sie in die beitragsfreie Summe des
-        umgewandelten Teils (Auszahlung 0). Bei der TEILKUENDIGUNG
-        (Bedingungswerk Ziffer 6, Bauauftrag T26-12) gibt es keinen
-        umgewandelten Teil: Der Anteil (1-f) der GRUNDVERSICHERUNG wird
-        gekuendigt und AUSGEZAHLT — sein Rueckkaufswert (die
-        Grundscheibe allein, mit ihrem Abzug) plus die vollstaendig
-        absorbierte Schicht (9.7: Rueckkauf wertkontinuierlich). Die
-        Scheiben laufen unveraendert, der Vertrag danach ist f x S ohne
-        Schicht.
+    def vorgang(
+        self, jahr: int, anteil: float, verfahren: str, beitragsfrei_ab: int | None,
+    ) -> Vorgangsergebnis:
+        """Eine Beitragsherabsetzung oder Teilkuendigung ausfuehren — auf dem
+        Zustand, den der Vertrag JETZT hat (``kern.vorgangsfolge``: jeder
+        Vorgang wirkt proportional auf den aktuellen Zustand).
+
+        Die Korrekturschicht geht beim ersten Vorgang nach der Verankerung
+        VOLLSTAENDIG in die Neuberechnung ein (Entscheid des Maintainers
+        2026-09-15): bei der Herabsetzung in die beitragsfreie Summe des
+        umgewandelten Teils der Grundversicherung, bei der Teilkuendigung in
+        die Auszahlung. Danach traegt der Vertrag keine Schicht mehr.
         """
-        zusatz = absorbierte_schicht(self.grund, jahr, self.schicht)
-        auszahlung = 0.0
-        if verfahren == TEILKUENDIGUNG:
-            rkw_grund = vertrags_rkw(
-                self.grund, [], jahr,
-                stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]))
-            auszahlung = (1.0 - anteil) * rkw_grund + zusatz
-        self.reduziert = reduzierte_teile(
-            self.grund, [(j, k) for j, _, k in self.scheiben], jahr, anteil,
-            verfahren, schicht=self.schicht)
-        self.reduktion = (jahr, anteil, verfahren)
-        self.schicht = None
-        return zusatz, sum(r.reduktion.vs_neu for _, r in self.reduziert), auszahlung
+        stand, ergebnis = self._stand(beitragsfrei_ab).nach_vorgang(
+            vorgang(jahr, anteil, verfahren))
+        self.stand = stand
+        self.schicht = stand.schicht
+        return ergebnis
+
+    def pex(self, jahr: int) -> float:
+        """Die Beitragsfreistellung buchen; liefert die beitragsfreie Summe."""
+        if self.stand is not None:
+            self.stand = self.stand.nach_pex(jahr)
+            return self.stand.vs_bfr()
+        return self.beitragsfreie_summe(jahr)
+
+    def leistung(self, pex_summe: float | None) -> float:
+        """Todesfall- bzw. Ablaufleistung: die gefuehrte Summe, nach der
+        Beitragsfreistellung die beitragsfreie Summe — nach Vorgaengen die
+        des Zustands."""
+        if self.stand is not None:
+            return self.stand.leistung()
+        if pex_summe is not None:
+            return pex_summe
+        return self.gesamt_vs()
 
     def gesamt_vs(self) -> float:
-        if self.reduziert:
-            return sum(r.reduktion.vs_neu for _, r in self.reduziert)
+        if self.stand is not None:
+            return self.stand.gesamt_vs()
         return self.grund_mp.sum_insured + sum(vs for _, vs, _ in self.scheiben)
 
     def erhoehe(self, jahr: int, vs: float) -> ModelPoint:
@@ -312,14 +351,16 @@ class _Vertrag:
             gamma1_uebernehmen=bool(self.tarifwerk["scheiben_mit_gamma1"]),
         )
         self.scheiben.append((jahr, vs, Rechenkern(mp)))
+        if self.stand is not None:
+            # Nach Vorgaengen ist die neue Scheibe ein weiterer, gewoehnlicher
+            # Baustein des Vertrags in seinem aktuellen Zustand.
+            self.stand = self.stand.nach_erhoehung(jahr, self.scheiben[-1][2])
         return mp
 
     def rkw(self, jahr: int) -> float:
-        if self.reduziert:
-            # Der herabgesetzte Vertrag traegt seinen eigenen Verlauf;
-            # eine Korrekturschicht hat er nicht mehr.
-            return vertrags_monatsreserve_reduziert(
-                self.reduziert, 12 * jahr).rkw
+        if self.stand is not None:
+            # Der Vertrag rechnet ueber seinen Zustand in der Vorgangsfolge.
+            return self.stand.rkw(jahr)
         wert = vertrags_rkw(
             self.grund, [(erh_jahr, kern) for erh_jahr, _, kern in self.scheiben], jahr,
             stoab_je_baustein=bool(self.tarifwerk["stoab_je_baustein"]),
@@ -330,12 +371,6 @@ class _Vertrag:
         return wert
 
     def beitragsfreie_summe(self, a0: int) -> float:
-        if self.reduziert:
-            # Nach einer Herabsetzung fuehrt jede Schicht ihren fixierten
-            # beitragsfreien Teil mit; die Schicht steckt dort schon drin.
-            return sum(
-                v.beitragsfreie_summe(a0 - erh_jahr)
-                for erh_jahr, v in self.reduziert)
         summe = self.grund.beitragsfreie_summe(a0) + sum(
             kern.beitragsfreie_summe(a0 - erh_jahr)
             for erh_jahr, _, kern in self.scheiben
@@ -392,7 +427,7 @@ def _simuliere_vertrag(
     ab_jahr: int = 0,
     pex_jahr: int | None = None,
     *,
-    tarifwerk: Mapping[str, Any] | None = None,
+    tarifwerk: Mapping[str, Any],
     mitgebracht: List[Tuple[int, float, Rechenkern]] = (),
     schicht: Tuple[Any, int] | None = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -428,6 +463,10 @@ def _simuliere_vertrag(
         np.random.PCG64(
             np.random.SeedSequence([seed, HERABSETZUNG_STREAM, police_id]))
     )
+    rng_tk = np.random.Generator(
+        np.random.PCG64(
+            np.random.SeedSequence([seed, TEILKUENDIGUNG_STREAM, police_id]))
+    )
 
     def buche(
         code: str, jahr: int, art: str, betrag: float, status: Any = _KEIN_ARGUMENT
@@ -435,6 +474,44 @@ def _simuliere_vertrag(
         events.append(
             _event(police_id, code, jahr, _add_years(start, jahr), art, betrag, status)
         )
+
+    def reduziere_vertrag(jahr: int, anteil: float, verfahren: str) -> None:
+        """Herabsetzung (RED) oder Teilkuendigung (TKU) ausfuehren und buchen
+        — welcher Vorgang, sagt das Verfahren (``reduktion_ereignis``). Der
+        Vorgang wirkt auf den Zustand, den der Vertrag jetzt hat; frueheren
+        Vorgaengen folgt er, statt verworfen zu werden (Entscheid des
+        Maintainers 2026-10-01: beliebig viele, in jeder Reihenfolge)."""
+        code = reduktion_ereignis(verfahren)
+        ergebnis = vertrag.vorgang(jahr, anteil, verfahren, beitragsfrei_ab)
+        # Die neue Gesamtsumme (nach einer Beitragsfreistellung die neue
+        # beitragsfreie Summe). Kein Statuswechsel.
+        buche(code, jahr,
+              "VS_teilkuendigung" if code == "TKU" else "VS_herabsetzung",
+              ergebnis.vs_neu, status=None)
+        if ergebnis.absorbiert:
+            # Die absorbierte Korrekturschicht als eigene Zeile. Ohne sie
+            # verschwaende der Betrag aus dem Ausweis: Die Spalte
+            # korrekturschicht des Abschlusses faellt ab hier auf null
+            # (dieselbe Konstruktion wie dDK_uebernahme beim Zugang).
+            buche(code, jahr, "dDK_absorption", ergebnis.absorbiert, status=None)
+        if code == "TKU":
+            # Der gekuendigte Anteil wird AUSGEZAHLT — Rueckkaufswert des
+            # betroffenen Teils plus die vollstaendig absorbierte
+            # Korrekturschicht. IMMER gebucht (Angriffsrunde 4 der Pruefrunde
+            # T27). Faellt die Summe unter null, wird auf NULL GEKAPPT
+            # (Entscheid des Maintainers 2026-09-26), und der gekappte
+            # Betrag steht als Kappung_teilkuendigung im Ledger.
+            auszahlung = float(ergebnis.auszahlung)
+            buche(code, jahr, "RKW_teilkuendigung", max(0.0, auszahlung), status=None)
+            if auszahlung < 0.0:
+                buche(code, jahr, "Kappung_teilkuendigung", -auszahlung, status=None)
+        reduktionen.append({
+            "police_id": police_id,
+            "reduktion_jahr": jahr,
+            "reduktion_datum": pd.Timestamp(_add_years(start, jahr)),
+            "anteil": anteil,
+            "verfahren": verfahren,
+        })
 
     # Ein beitragsfrei uebernommener Vertrag bringt seinen Zustand mit.
     # Die beitragsfreie Summe wurde bei der Beitragsfreistellung fixiert
@@ -464,10 +541,8 @@ def _simuliere_vertrag(
             vertrag.grund.basis.qx_at(x + j) if annahmen.tod.b else 0.0
         )
         if rng.random() < annahmen.tod(qx_erste_ordnung):
-            if beitragsfrei_ab is None:
-                buche("TOD", j + 1, "Todesfallleistung", vertrag.gesamt_vs())
-            else:
-                buche("TOD", j + 1, "Todesfallleistung", pex_summe)
+            buche("TOD", j + 1, "Todesfallleistung", vertrag.leistung(
+                pex_summe if beitragsfrei_ab is not None else None))
             return events, scheiben, reduktionen
 
         if beitragsfrei_ab is None:
@@ -478,53 +553,50 @@ def _simuliere_vertrag(
             # 3. Beitragsfreistellung (nur solange Beitraege laufen):
             if j + 1 < t and rng.random() < annahmen.beitragsfreistellung(0.0):
                 beitragsfrei_ab = j + 1
-                pex_summe = vertrag.beitragsfreie_summe(j + 1)
+                pex_summe = vertrag.pex(j + 1)
                 buche("PEX", j + 1, "VS_bfr", pex_summe)
         if beitragsfrei_ab is None:
-            # 4. Herabsetzung des Beitrags (nur beitragspflichtig, nur
-            #    einmal je Vertrag). Der Draw kommt aus einem EIGENEN
-            #    Strom (HERABSETZUNG_STREAM) — in der Reihenfolge oben
-            #    haette er jeden bestehenden Bestand verschoben. Die
-            #    Pruefung auf eine schon erfolgte Reduktion steht NACH
-            #    dem Draw, damit der Strom unabhaengig vom Ausgang
-            #    gleich weit laeuft.
-            if (j + 1 < t
-                    and rng_red.random() < annahmen.herabsetzung(0.0)
-                    and vertrag.reduktion is None):
-                verfahren = str(vertrag.tarifwerk["red_verfahren"])
-                absorbiert, vs_neu, auszahlung = vertrag.herabsetzen(
-                    j + 1, float(annahmen.red_anteil), verfahren)
-                # Die neue Gesamtsumme — fortgefuehrter plus umgewandelter
-                # Teil. Kein Statuswechsel: Der Vertrag bleibt POL.
-                buche("RED", j + 1, "VS_herabsetzung", vs_neu, status=None)
-                if absorbiert:
-                    # Die absorbierte Korrekturschicht als eigene Zeile.
-                    # Ohne sie verschwaende der Betrag aus dem Ausweis:
-                    # Die Spalte korrekturschicht des Abschlusses faellt
-                    # ab hier auf null, und niemand saehe, wohin er ging
-                    # (dieselbe Konstruktion wie dDK_uebernahme beim
-                    # Migrationszugang — eine Umbuchung ohne Zahlung).
-                    buche("RED", j + 1, "dDK_absorption", absorbiert,
-                          status=None)
-                if auszahlung > 0.0:
-                    # Teilkuendigung (Ziffer 6): Der gekuendigte Anteil der
-                    # Grundversicherung wird AUSGEZAHLT — Rueckkaufswert
-                    # dieses Anteils plus die vollstaendig absorbierte
-                    # Korrekturschicht. Eine Zahlung, kein Statuswechsel.
-                    buche("RED", j + 1, "RKW_teilkuendigung", auszahlung,
-                          status=None)
-                reduktionen.append({
-                    "police_id": police_id,
-                    "reduktion_jahr": j + 1,
-                    "reduktion_datum": pd.Timestamp(_add_years(start, j + 1)),
-                    "anteil": float(annahmen.red_anteil),
-                    "verfahren": verfahren,
-                })
+            # 4. Beitragsherabsetzung (nur ohne PEX, NUR solange Beitraege
+            #    laufen: j + 1 < t, und nur in einem Tarif, der sie kennt). Der
+            #    Draw kommt aus einem EIGENEN Strom (HERABSETZUNG_STREAM) — in
+            #    der Reihenfolge oben haette er jeden bestehenden Bestand
+            #    verschoben. Beliebig viele je Vertrag (Entscheid 2026-10-01):
+            #    eine zweite Herabsetzung wirkt auf den herabgesetzten Vertrag.
+            #
+            #    ZUSICHERUNG, kein Stilmittel: Die Ziehung steht im and-Band
+            #    HINTER der Jahresbedingung (Kurzschluss), und ``rng_red``
+            #    wird nur hier verbraucht, chronologisch je Vertragsjahr. Nur
+            #    so bleiben die Ziehungen frueherer Jahre bitgleich, wenn sich
+            #    die Bedingung spaeterer Jahre aendert.
+            #
+            #    Der uebernommene Tarif (``red_verfahren = teilkuendigung``)
+            #    kennt keine Beitragsherabsetzung: Was die Quelle dort
+            #    "Herabsetzung" nennt, ist die Teilkuendigung der PLV und kommt
+            #    allein aus deren Strom (4b). Sein Herabsetzungsstrom wird
+            #    nicht gezogen — der fruehere zweite Weg (Wunsch als TKU
+            #    ausgefuehrt, Annahme A1) entfaellt mit der doppelten Rate.
+            if (vertrag.kennt_herabsetzung and (j + 1 < t)
+                    and rng_red.random() < annahmen.herabsetzung(0.0)):
+                reduziere_vertrag(j + 1, float(annahmen.red_anteil),
+                                  str(vertrag.tarifwerk["red_verfahren"]))
+        # 4b. Teilkuendigung (eigener Geschaeftsvorfall TKU, Entscheid des
+        #    Maintainers 2026-10-01): in JEDER Generation, beitragspflichtig,
+        #    ausfinanziert UND nach einer Beitragsfreistellung, in jedem
+        #    Vertragsjahr vor dem Ablauf (j + 1 < n). EIGENER Strom
+        #    (TEILKUENDIGUNG_STREAM), Ziehung hinter der Jahresbedingung wie
+        #    oben: Mit Rate 0 (Vorgabe) ist sie latent, und kein anderer Strom
+        #    verschiebt sich. Beliebig viele je Vertrag: jede wirkt auf den
+        #    Zustand, den der Vertrag dann hat (auch nach einer Herabsetzung,
+        #    einer frueheren Teilkuendigung oder der Beitragsfreistellung).
+        if ((j + 1 < n)
+                and rng_tk.random() < annahmen.teilkuendigung(0.0)):
+            reduziere_vertrag(j + 1, float(annahmen.tk_anteil), TEILKUENDIGUNG)
         if beitragsfrei_ab is None:
             # 5. Dynamische Erhoehung (nur beitragspflichtig, solange
             #    Beitraege laufen): neue Scheibe, kein Statuswechsel.
-            if (j + 1 < t and rng.random() < annahmen.erhoehung(0.0)
-                    and vertrag.reduktion is None):
+            # Auch nach Vorgaengen (Entscheid 2026-09-26): die Erhoehung
+            # bezieht sich auf die gefuehrte Summe danach.
+            if j + 1 < t and rng.random() < annahmen.erhoehung(0.0):
                 betrag = annahmen.erh_prozent * vertrag.gesamt_vs()
                 mp_s = vertrag.erhoehe(j + 1, betrag)
                 scheiben.append(
@@ -553,10 +625,8 @@ def _simuliere_vertrag(
 
     if not horizont_erreicht:
         # Ablauf: alle n Jahre ueberlebt und insurance_end <= bis.
-        if beitragsfrei_ab is None:
-            buche("ABL", n, "Ablaufleistung", vertrag.gesamt_vs())
-        else:
-            buche("ABL", n, "Ablaufleistung", pex_summe)
+        buche("ABL", n, "Ablaufleistung", vertrag.leistung(
+            pex_summe if beitragsfrei_ab is not None else None))
     return events, scheiben, reduktionen
 
 

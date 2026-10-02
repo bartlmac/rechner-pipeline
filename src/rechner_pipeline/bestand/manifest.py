@@ -92,6 +92,40 @@ PFLICHT_ROLLEN: Tuple[str, ...] = ("portfolio", "historie", "ledger", "scheiben"
 NEBENTABELLEN: Tuple[str, ...] = tuple(r for r in ROLLEN_DATEIEN if r not in PFLICHT_ROLLEN)
 
 
+#: Rollen, die ein Bericht OHNE Ledger ueber ihr eigenes Flag liest — er
+#: verwirft sie nicht still. Runde E, Klasse geschlossen ("Bericht ohne
+#: Journal"): Jede andere Rolle neben dem Stamm veraendert den gefuehrten
+#: Zustand (Buchungen, Scheiben, Herabsetzungen, Korrekturschicht) und wird
+#: von einem Bericht, der nur den Stamm liest, ungelesen gelassen — dann
+#: bewertet er einen Zustand, den es so nicht gibt.
+OHNE_JOURNAL_GELESEN: Mapping[str, str] = {
+    "merkmale": "die Zellwahl der Tarifgeneration; der Bericht liest sie ueber "
+                "--merkmale und verlangt sie, sobald eine Generation in Zellen "
+                "aufgeteilt ist — sie wird nie still uebergangen",
+}
+
+#: Es gibt KEINE Ausnahme fuer das Portfolio des Migrationszugangs. Bis zur
+#: Nachbesserung der Runde E durften ``schichten`` und ``verankerung`` neben
+#: ``bestand.parquet`` ohne Journal liegen (Anfangszustand, keine Bewegung).
+#: Die Ausnahme griff in der echten Verzeichnisform nie: ``bestand_uebernehmen``
+#: schreibt ``historie.parquet`` und ``ledger.parquet`` immer daneben
+#: (gemessen am Baldrian-2-Fixture: Exit 2 mit "historie.parquet,
+#: ledger.parquet, scheiben.parquet gehoert zu diesem Portfolio"). Eine
+#: Ausnahme fuer eine Form, die es nicht gibt, ist nur eine zweite Menge, die
+#: auseinanderlaufen kann; sie ist gestrichen. Der VOR-Bericht des Skills
+#: ``migrationsfall-durchfuehren`` nennt den Lauf (``--historie``, ``--ledger``).
+
+
+def journal_pflichtige_rollen() -> Tuple[str, ...]:
+    """Die Rollen, die neben einem Stamm NICHT ohne Journal stehen duerfen
+    (Bericht ohne Ledger weist sie ab) — aus ``ROLLEN_DATEIEN`` abgeleitet,
+    nicht abgetippt: alle Rollen ausser dem Portfolio und den benannten
+    Ausnahmen (:data:`OHNE_JOURNAL_GELESEN`). Fuer jedes Portfolio dieselbe
+    Menge, gleich ob Nachbardatei oder ausdrueckliches Flag."""
+    return tuple(r for r in ROLLEN_DATEIEN
+                 if r != "portfolio" and r not in OHNE_JOURNAL_GELESEN)
+
+
 def rollen_dateien(erzeuger: str = ERZEUGER) -> Mapping[str, str]:
     """Die Rollentabelle DIESES Erzeugers (Rolle -> Dateiname).
 

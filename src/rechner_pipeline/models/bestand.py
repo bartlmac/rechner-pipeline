@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import dataclasses as _dc
 import datetime as _dt
-from typing import Any, Dict, List, Mapping, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 import numpy as _np
 
@@ -186,12 +186,12 @@ LEDGER_SPALTEN: Tuple[Tuple[str, str], ...] = (
     # GeVo-Code: meist der resultierende status_code, faellt aber davon ab,
     # wo der GeVo einen ANDEREN Zustand herstellt (INV -> BU, REA -> POL)
     # oder gar keinen (ERH/ZUG).
-    ("ereignis", "object"),          # PEX|STO|TOD|ABL|ERH|ZUG|INV|REA|RED
+    ("ereignis", "object"),          # PEX|STO|TOD|ABL|ERH|ZUG|INV|REA|RED|TKU
     ("vertragsjahr", "int64"),       # booked anniversary (completed years; ZUG: 0)
     ("status_date", "datetime64[ns]"),
     # Bezugsgroesse des Betrags — je Produkt verschieden: KLV fuehrt
     # Versicherungssummen/Rueckkaufswerte, BU die betroffene Jahresrente.
-    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung | VS_herabsetzung | dDK_absorption | RKW_teilkuendigung | VS (ZUG) | BU_Jahresrente
+    ("betrag_art", "object"),        # RKW | VS_bfr | Todesfallleistung | Ablaufleistung | VS_erhoehung | VS_herabsetzung | VS_teilkuendigung | dDK_absorption | RKW_teilkuendigung | Kappung_teilkuendigung | VS (ZUG) | BU_Jahresrente
     ("betrag", "float64"),
     # Woher der BETRAG stammt. Im eigenen Bestand ist er immer
     # ``gerechnet`` — der Kern erzeugt ihn, und das ist der Normalfall.
@@ -215,8 +215,17 @@ BETRAG_HERKUNFT = ("geliefert", "gerechnet")
 #: GeVo-Codes des Ledgers. ``kennzahlen.EREIGNIS_REIHENFOLGE`` ist die
 #: Ausgabereihenfolge DERSELBEN Menge (Test haelt beide deckungsgleich).
 EREIGNIS_VALUES: Tuple[str, ...] = (
-    "ZUG", "MIG", "ERH", "RED", "PEX", "INV", "REA", "STO", "TOD", "ABL",
+    "ZUG", "MIG", "ERH", "RED", "TKU", "PEX", "INV", "REA", "STO", "TOD", "ABL",
 )
+#: Die beiden Geschaeftsvorfaelle, die eine Summe eines laufenden Vertrags
+#: senken (Entscheid des Maintainers 2026-10-01, ADR-023): die
+#: BEITRAGSHERABSETZUNG ``RED`` (Beitrag auf f, Umwandlung in beitragsfreie
+#: Summe, keine Zahlung, nur solange ein Beitrag laeuft) und die
+#: TEILKUENDIGUNG ``TKU`` (Summenanteil gekuendigt, Rueckkaufswert
+#: ausgezahlt, in jedem Vertragsjahr vor dem Ablauf). Beide registriert die
+#: Nebentabelle ``reduktionen``; welcher Vorgang es war, sagt dort das
+#: Verfahren (:func:`reduktion_ereignis`) und im Ledger der Code.
+REDUKTION_EREIGNISSE: Tuple[str, ...] = ("RED", "TKU")
 
 #: Welche GeVo einen ZUGANG zum Bestand bilden und welche eine LEISTUNG.
 #: Die Zuordnung ist fachlich und vom Maintainer abgenommen (2026-09-17);
@@ -236,6 +245,14 @@ EREIGNIS_VALUES: Tuple[str, ...] = (
 #: Periode.
 ZUGANG_EREIGNISSE: Tuple[str, ...] = ("ZUG", "ERH")
 LEISTUNG_EREIGNISSE: Tuple[str, ...] = ("ABL", "STO", "TOD", "INV", "REA")
+#: Vorfaelle, die NUR MIT einer Zahlung eine Leistung sind: Ereignis -> die
+#: Betragsarten, die die Zahlung tragen. Die Teilkuendigung (``TKU``) zahlt
+#: den gekuendigten Grundanteil aus; die Beitragsherabsetzung (``RED``)
+#: wandelt nur um und zahlt nie (seit dem Entscheid 2026-10-01 zwei
+#: Vorgaenge mit eigenem Code; vorher buchten beide ``RED``). Gezaehlt wird
+#: der VORFALL (Police, Ereignis, Wirkungstag), nicht die Zeile (Pruefrunde
+#: T27, Befund 15).
+LEISTUNG_BEI_ZAHLUNG: Mapping[str, Tuple[str, ...]] = {"TKU": ("RKW_teilkuendigung",)}
 
 #: GeVo, die WEDER Zugang NOCH Leistung sind — je mit Grund. Hier stehen
 #: nur begruendete Ausnahmen: Eine Liste, die Ausnahmen und Versehen
@@ -246,8 +263,12 @@ LEISTUNG_EREIGNISSE: Tuple[str, ...] = ("ABL", "STO", "TOD", "INV", "REA")
 WEDER_ZUGANG_NOCH_LEISTUNG: Mapping[str, str] = {
     "PEX": "Beitragsfreistellung wandelt um, sie zahlt nicht aus und "
            "bringt nichts hinzu",
-    "RED": "Herabsetzung senkt die Summe eines laufenden Vertrags; kein "
-           "Zugang, und ausgezahlt wird nichts",
+    "RED": "Beitragsherabsetzung senkt Beitrag und Summe eines laufenden "
+           "Vertrags und wandelt um; sie zahlt nicht aus und bringt nichts "
+           "hinzu (die Teilkuendigung, die auszahlt, ist TKU)",
+    "TKU": "Teilkuendigung senkt die Summe und zahlt den gekuendigten Anteil "
+           "aus; als Leistung zaehlt der Vorfall ueber LEISTUNG_BEI_ZAHLUNG, "
+           "wenn die Auszahlung positiv ist (eine auf null gekappte zahlt nicht)",
     "MIG": "im Ledger nicht als eigene Art gebucht — ein Migrationszugang "
            "ist ein ZUG mit Quelle 'uebernahme'",
 }
@@ -269,13 +290,19 @@ BETRAG_ART_JE_EREIGNIS: Dict[str, Tuple[str, ...]] = {
     "ZUG": ("VS", "BU_Jahresrente", "BJB"),
     "MIG": ("dDK_uebernahme",),
     "ERH": ("VS_erhoehung", "BJB"),
-    # Zwei Zeilen: die neue Gesamtsumme, und — bei einem uebernommenen
-    # Vertrag — die Korrekturschicht, die in die Neuberechnung eingegangen
-    # ist. Eine Umbuchung ohne Zahlung, wie dDK_uebernahme beim Zugang.
-    # Dritte Zeile bei der TEILKUENDIGUNG (Bedingungswerk Ziffer 6,
-    # Bauauftrag T26-12): die Auszahlung des gekuendigten Grundanteils —
-    # Rueckkaufswert plus absorbierte Schicht. Eine Zahlung, wie RKW.
-    "RED": ("VS_herabsetzung", "dDK_absorption", "RKW_teilkuendigung"),
+    # Beitragsherabsetzung: die neue Gesamtsumme, und — bei einem
+    # uebernommenen Vertrag — die Korrekturschicht, die in die
+    # Neuberechnung eingegangen ist. Eine Umbuchung ohne Zahlung, wie
+    # dDK_uebernahme beim Zugang.
+    "RED": ("VS_herabsetzung", "dDK_absorption"),
+    # Teilkuendigung (eigener Vorfall seit 2026-10-01; Bedingungswerk
+    # Ziffer 6, Bauauftrag T26-12): die neue Gesamtsumme, die absorbierte
+    # Schicht, die Auszahlung des gekuendigten Grundanteils (Rueckkaufswert
+    # plus Schicht, eine Zahlung wie RKW) und — nur wenn die Auszahlung auf
+    # null gekappt wurde — der gekappte Betrag, positiv, eine Umbuchung
+    # zulasten des Unternehmens.
+    "TKU": ("VS_teilkuendigung", "dDK_absorption", "RKW_teilkuendigung",
+            "Kappung_teilkuendigung"),
     "PEX": ("VS_bfr", "VS"),
     "INV": ("BU_Jahresrente",),
     "REA": ("BU_Jahresrente",),
@@ -285,12 +312,686 @@ BETRAG_ART_JE_EREIGNIS: Dict[str, Tuple[str, ...]] = {
 }
 
 #: Welchen Zustand ein GeVo herstellt (Historienzeile desselben Datums).
-#: ERH, RED, ZUG und MIG stellen keinen her: Sie aendern Summe, Beitrag
+#: ERH, RED, TKU, ZUG und MIG stellen keinen her: Sie aendern Summe, Beitrag
 #: oder Zugehoerigkeit, nicht den Zustand.
 EREIGNIS_ZUSTAND: Dict[str, str] = {
     "PEX": "PEX", "STO": "STO", "TOD": "TOD", "ABL": "ABL",
     "INV": "BU", "REA": "POL",
 }
+
+#: Welche Erfahrungsannahme (``bestand.config.Annahmen``) welches GeVo des
+#: Ledgers zieht: Annahmenfeld -> (Produkt, Ereignis). Runde E, Klasse
+#: geschlossen ("Bindung Ereignisart -> Rate"): Die Bindung der Herabsetzung
+#: an ihre Rate (Runde C, RC05) war der erste Fall einer Regel, die fuer JEDE
+#: Ereignisart gilt — eine Config, deren Annahme ein Ereignis nicht erzeugen
+#: kann, belegt keine gebuchte Zeile dieser Art. Die Menge der Schluessel ist
+#: die Menge der Annahme-Felder der Dataclass; ein Test haelt beide mit ``==``
+#: gleich, damit ein neues Annahmenfeld hier eingeordnet werden MUSS.
+#:
+#: ``aktivensterblichkeit`` und ``invalidensterblichkeit`` ziehen beide ``TOD``
+#: des BU-Produkts; welche gilt, entscheidet der Zustand VOR dem Ereignis
+#: (:data:`BU_TOD_JE_ZUSTAND`).
+ANNAHME_ERZEUGT: Mapping[str, Tuple[str, str]] = {
+    "tod": ("klv", "TOD"),
+    "storno": ("klv", "STO"),
+    "beitragsfreistellung": ("klv", "PEX"),
+    "erhoehung": ("klv", "ERH"),
+    "herabsetzung": ("klv", "RED"),
+    "teilkuendigung": ("klv", "TKU"),
+    "invalidisierung": ("bu", "INV"),
+    "reaktivierung": ("bu", "REA"),
+    "aktivensterblichkeit": ("bu", "TOD"),
+    "invalidensterblichkeit": ("bu", "TOD"),
+}
+
+#: (Produkt, Ereignis), das von MEHR als einer Annahme gezogen wird — dort
+#: entscheidet der Zustand vor dem Ereignis. Aus :data:`ANNAHME_ERZEUGT`
+#: abgeleitet, nicht abgetippt.
+ZUSTANDSABHAENGIG: frozenset = frozenset(
+    pe for pe in ANNAHME_ERZEUGT.values()
+    if list(ANNAHME_ERZEUGT.values()).count(pe) > 1)
+
+#: BU-Tod: welche Annahme zieht ihn, je nachdem, ob der Vertrag vor dem
+#: Ereignis im Leistungsbezug stand (Schluessel True) oder Anwaerter war.
+BU_TOD_JE_ZUSTAND: Mapping[bool, str] = {
+    False: "aktivensterblichkeit",
+    True: "invalidensterblichkeit",
+}
+
+#: Annahmen mit einer Rechnungsgrundlage erster Ordnung: Die Rate ist
+#: ``a + b * q`` (q die Wahrscheinlichkeit der Tafel), sie ist nur dann
+#: sicher null, wenn ``a`` UND ``b`` null sind. Alle anderen ziehen mit
+#: ``annahme(0.0)`` — dort ist ``b`` ohne Wirkung (TOML-Default b = 1 ist
+#: kein Zeichen einer Rate). Die Engine ruft sie so (``ereignisse``).
+ANNAHME_MIT_ERSTER_ORDNUNG: frozenset = frozenset({
+    "tod", "invalidisierung", "reaktivierung",
+    "aktivensterblichkeit", "invalidensterblichkeit",
+})
+
+#: Ereignisse, die aus KEINER Annahme gezogen werden — je mit Grund. Stehen
+#: nur begruendete Ausnahmen hier; ein Test haelt die Menge zusammen mit
+#: den Zielen von :data:`ANNAHME_ERZEUGT` gleich ``EREIGNIS_VALUES``.
+EREIGNIS_OHNE_ANNAHME: Mapping[str, str] = {
+    "ZUG": "Zugang: Neugeschaeft oder Uebernahme, keine Erfahrungsannahme",
+    "MIG": "Residuum der Uebernahme, eine Rechnung und kein Ereignis",
+    "ABL": "Ablauf folgt aus der Laufzeit des Vertrags, nicht aus einer Rate",
+}
+
+
+class EreignisOhneZuordnung(ValueError):
+    """Ein (Produkt, Ereignis)-Paar ist weder Ziel einer Annahme noch
+    Ausnahme (Runde E, Nachbesserung)."""
+
+
+def ereignis_zuordnungsfehler(produkt: str, ereignis: str) -> Optional[str]:
+    """Der Befundtext, wenn das Paar (Produkt, Ereignis) weder das Ziel einer
+    Annahme (:data:`ANNAHME_ERZEUGT`) noch eine Ausnahme
+    (:data:`EREIGNIS_OHNE_ANNAHME`) ist — sonst None.
+
+    Runde E, Nachbesserung: ``annahme_fuer_ereignis`` gab fuer ein solches
+    Paar still None zurueck, und ``None`` heisst "Ausnahme, keine Annahme".
+    Ein Produkt, das eine neue Ereignisart bucht (oder ein Ledger, das eine
+    Art einem Produkt zuschreibt, das sie nicht kennt, z. B. INV an einer
+    KLV-Police), lief so ohne Bindung an irgendeine Rate durch. Die Menge
+    der Ausnahmen gilt fuer alle Produkte; die Ziele sind je Produkt."""
+    if ereignis in EREIGNIS_OHNE_ANNAHME:
+        return None
+    if any(pe == (produkt, ereignis) for pe in ANNAHME_ERZEUGT.values()):
+        return None
+    return (f"Ereignis {ereignis} fuer Produkt {produkt} ist keiner Annahme und "
+            "keiner Ausnahme zugeordnet — in ANNAHME_ERZEUGT oder "
+            "EREIGNIS_OHNE_ANNAHME eintragen")
+
+
+def annahme_fuer_ereignis(
+    produkt: str, ereignis: str, im_leistungsbezug: bool = False
+) -> Optional[str]:
+    """Das Annahmenfeld, das dieses GeVo des Produkts zieht — oder None,
+    wenn es aus keiner Annahme gezogen wird (:data:`EREIGNIS_OHNE_ANNAHME`).
+    Ein Paar, das weder Ziel noch Ausnahme ist, wirft
+    :class:`EreignisOhneZuordnung` (fail-fast mit Ausweg, der Text kommt aus
+    :func:`ereignis_zuordnungsfehler`) — ``None`` ist nur noch die benannte
+    Ausnahme. Ledgerweit meldet es :func:`unzugeordnete_ereignisse`."""
+    fehler = ereignis_zuordnungsfehler(produkt, ereignis)
+    if fehler is not None:
+        raise EreignisOhneZuordnung(fehler)
+    treffer = [f for f, pe in ANNAHME_ERZEUGT.items() if pe == (produkt, ereignis)]
+    if len(treffer) > 1:
+        return BU_TOD_JE_ZUSTAND[bool(im_leistungsbezug)]
+    return treffer[0] if treffer else None
+
+
+def unzugeordnete_ereignisse(stamm: Any, ledger: Any) -> List[str]:
+    """Befunde zu Ledgerzeilen, deren (Produkt, Ereignis)-Paar weder Ziel einer
+    Annahme noch Ausnahme ist: je Paar ein Text mit Zeilenzahl und Policen.
+
+    Dieselbe Regel fuer P-B1 und die Fuehrungsprobe (Runde E, Nachbesserung).
+    Sie gilt fuer JEDE Zeile, unabhaengig von Raten, Zugang und Horizont —
+    ob eine Art einem Produkt ueberhaupt zugeordnet ist, ist keine Frage des
+    Ortes. Das Produkt einer Police steht im Stamm (``produkt``; ohne die
+    Spalte gilt ``klv``, wie in :func:`unbelegte_ereignisse`); Policen
+    ausserhalb des Stamms pruefen andere Regeln."""
+    if len(ledger) == 0:
+        return []
+    produkt_je = (stamm.set_index("police_id")["produkt"].astype(str).to_dict()
+                  if "produkt" in stamm.columns else {})
+    bekannt = set(int(p) for p in stamm["police_id"])
+    gefunden: Dict[Tuple[str, str], List[int]] = {}
+    zeilen = ledger[["police_id", "ereignis"]].drop_duplicates()
+    anzahl = ledger.groupby(["police_id", "ereignis"]).size().to_dict()
+    for pid, art in zip(zeilen["police_id"], zeilen["ereignis"]):
+        if int(pid) not in bekannt:
+            continue
+        paar = (produkt_je.get(int(pid), "klv"), str(art))
+        if ereignis_zuordnungsfehler(*paar) is not None:
+            gefunden.setdefault(paar, []).extend([int(pid)] * int(anzahl[(pid, art)]))
+    befunde = []
+    for (produkt, art), policen in sorted(gefunden.items()):
+        beispiele = ", ".join(str(p) for p in sorted(set(policen))[:3])
+        befunde.append(
+            f"ledger: {ereignis_zuordnungsfehler(produkt, art)} ({len(policen)} "
+            f"Zeile(n), police {beispiele}{' ...' if len(set(policen)) > 3 else ''})")
+    return befunde
+
+
+def annahme_erzeugt_nicht(annahmen: Any, feld: str) -> bool:
+    """Die Annahme kann ihr Ereignis nicht erzeugen (Rate null)."""
+    annahme = getattr(annahmen, feld)
+    if feld in ANNAHME_MIT_ERSTER_ORDNUNG:
+        return not (float(annahme.a) or float(annahme.b))
+    return not float(annahme(0.0))
+
+
+def unbelegte_ereignisse(
+    stamm: Any,
+    ledger: Any,
+    annahmen: Any,
+    *,
+    leistungsbezug: Optional[Any] = None,
+) -> Dict[str, List[Tuple[int, int]]]:
+    """Gebuchte Fortschreibungszeilen, die ihre Erfahrungsannahme nicht
+    erzeugen kann: Annahmenfeld -> [(Police, Vertragsjahr), ...].
+
+    Runde E, Klasse geschlossen ("Bindung Ereignisart -> Rate"): Die Engine
+    zieht jedes Ereignis aus einer Annahme der Config
+    (:data:`ANNAHME_ERZEUGT`); eine Annahme mit Rate null
+    kann es nicht gezogen haben. Vorher band nur die Herabsetzung ihre Rate
+    (Runde C, RC05) — eine Config ohne Storno-, Beitragsfreistellungs-,
+    Erhoehungs- oder Sterblichkeitsannahme belegte trotzdem jede
+    Storno-, PEX-, ERH- und TOD-Zeile des Ledgers, und der Lauf galt als
+    durch die Config erzeugt, die ihn nicht erzeugt hat.
+
+    Geprueft werden die Buchungen NACH dem Bestandszugang des Vertrags; was
+    am oder vor dem Zugangstag steht, schreibt die Uebernahme und faellt
+    unter die Regel des Buchungsfensters
+    (:func:`buchungsfenster_verstoesse`). Ereignisse ohne
+    Annahme (:data:`EREIGNIS_OHNE_ANNAHME`) sind ausgenommen.
+    Beim BU-Tod entscheidet der Zustand VOR dem Ereignis
+    (``leistungsbezug(police, datum) -> bool``, aus der Statushistorie: P-B1
+    gibt ``ledger_bindung.zustand_vor`` mit), ob die Sterblichkeit des
+    Anwaerters oder des Leistungsbeziehers die Rate ist. Ohne Angabe gilt der
+    Anwaerter — die Fuehrungsprobe ist ein KLV-Werkzeug.
+
+    Jede Art hat genau EINE erzeugende Annahme je Zustand. Der fruehere
+    zweite Weg der Teilkuendigung (Herabsetzungswunsch des uebernommenen
+    Tarifs, Annahme A1) ist mit dem Entscheid vom 2026-10-01 entfallen.
+    """
+    import pandas as pd
+
+    if len(ledger) == 0:
+        return {}
+    null_felder = {f for f in ANNAHME_ERZEUGT if annahme_erzeugt_nicht(annahmen, f)}
+    if not null_felder:
+        return {}
+    arten = {ANNAHME_ERZEUGT[f][1] for f in null_felder}
+    kandidaten = ledger[ledger["ereignis"].isin(arten)]
+    if len(kandidaten) == 0:
+        return {}
+    haupt = stamm.set_index("police_id")
+    produkt_je = haupt["produkt"].astype(str).to_dict() if "produkt" in haupt.columns else {}
+    zugang_je = haupt["bestandszugang"].to_dict()
+    treffer: Dict[str, set] = {}
+    for z in kandidaten.itertuples(index=False):
+        pid = int(z.police_id)
+        if pid not in zugang_je or pd.Timestamp(z.status_date) <= pd.Timestamp(zugang_je[pid]):
+            continue
+        produkt = produkt_je.get(pid, "klv")
+        art = str(z.ereignis)
+        im_bezug = ((produkt, art) in ZUSTANDSABHAENGIG
+                    and leistungsbezug is not None
+                    and bool(leistungsbezug(pid, pd.Timestamp(z.status_date))))
+        if ereignis_zuordnungsfehler(produkt, art) is not None:
+            continue      # ohne Zuordnung: Befund von unzugeordnete_ereignisse
+        feld = annahme_fuer_ereignis(produkt, art, im_bezug)
+        if feld in null_felder:
+            treffer.setdefault(feld, set()).add((pid, int(z.vertragsjahr)))
+    return {f: sorted(v) for f, v in treffer.items()}
+
+
+def unbelegte_ereignisse_text(feld: str, eintraege: List[Tuple[int, int]]) -> str:
+    """Die Meldung zu einem Annahmenfeld — dieselbe fuer P-B1 und die
+    Fuehrungsprobe."""
+    art = ANNAHME_ERZEUGT[feld][1]
+    beispiele = "; ".join(f"police {p} Jahr {j}" for p, j in eintraege[:3])
+    return (
+        f"ledger: {len(eintraege)} {art}-Buchung(en), die die Annahmen nicht "
+        f"erzeugen koennen (annahmen.{feld}: die Rate ist null) — z. B. "
+        f"{beispiele}{' ...' if len(eintraege) > 3 else ''}. Ein Ereignis, "
+        "das die Erfahrungsannahme der Config nicht zieht, ist keine Buchung "
+        "dieses Laufs; Ausweg: die Config angeben, mit der der Lauf entstand, "
+        "oder die Buchung streichen")
+
+
+#: Ereignisse, die AM Zugangstag eines Vertrags stehen duerfen — je mit
+#: Grund. Runde E, Klasse geschlossen ("Buchungsfenster"): Jede
+#: Fortschreibungsbuchung liegt echt NACH dem Bestandszugang; am Zugangstag
+#: selbst stehen nur die Buchungen, die der Zugang schreibt.
+ZUGANGSTAG_EREIGNISSE: Mapping[str, str] = {
+    "ZUG": "die Zugangsbuchung selbst",
+    "MIG": "Residuum der Uebernahme, gebucht zum Zugangsstichtag",
+    "PEX": "Umbuchung eines beitragsfrei uebernommenen Vertrags zum "
+           "Zugangsstichtag (nur bei uebernommenem Vertrag)",
+}
+
+#: Teilmenge von :data:`ZUGANGSTAG_EREIGNISSE`, die nur bei einem
+#: UEBERNOMMENEN Vertrag (Bestandszugang nach Versicherungsbeginn) am
+#: Zugangstag stehen darf: Beim eigenen Geschaeft gibt es am Beginn keine
+#: Umbuchung eines mitgebrachten Zustands.
+ZUGANGSTAG_NUR_UEBERNOMMEN: Tuple[str, ...] = ("PEX",)
+
+#: Die gelieferte Vorgeschichte eines uebernommenen Vertrags steht in der
+#: Statushistorie, NICHT im Ledger (Grundsatzdokumentation 9.14; der
+#: Migrationszugang bucht nur Zugang, Umbuchung und Residuum zum
+#: Stichtag). Eine Ledgerzeile VOR dem Bestandszugang hat deshalb keine
+#: Ausnahme: Was die abgebende Gesellschaft erlebt hat, ist im Journal des
+#: aufnehmenden Unternehmens keine Bewegung.
+
+#: Ereignisse, die HINTER dem Horizont stehen duerfen, wenn sie am Zugangstag
+#: des Vertrags liegen — je mit Grund. Der Horizont des Laufs ist das Datum,
+#: bis zu dem er Jahrestage simuliert hat; ein Neugeschaeft, dessen Beginn
+#: auf den Monatsersten NACH dem Laufdatum faellt (Antrag heute, Beginn
+#: morgen), ist im Bestand und damit im Ledger, ohne dass der Lauf ein
+#: Vertragsjahr gefahren hat (Tageslauf, Erstbefuellung bis 31.1. mit Beginn
+#: 1.2.). Es ist der Zugang selbst; jede andere Buchung dahinter ist
+#: unbelegt.
+#:
+#: Die Ausnahme ist nach oben BEGRENZT (Runde E, Nachbesserung): Ein Vertrag
+#: beginnt am Monatsersten STRENG nach dem Verkaufstag, also hoechstens am
+#: ersten Monatsersten nach dem Horizont (:func:`monatserster_nach`). Ein
+#: Zugang, der weiter dahinter steht, ist kein Neugeschaeft dieses Laufs.
+ZUGANG_HINTER_HORIZONT: Mapping[str, str] = {
+    "ZUG": "Neugeschaeft mit Beginn nach dem Laufdatum — der Zugang, kein "
+           "gefahrenes Vertragsjahr",
+}
+
+
+def monatserster_nach(datum: Any) -> Any:
+    """Der erste Monatserste STRENG nach ``datum`` (auch wenn ``datum`` selbst
+    ein Monatserster ist): der Beginn eines Vertrags, der an diesem Tag
+    verkauft wurde (Tageslauf, ADR-020)."""
+    import pandas as pd
+
+    ts = pd.Timestamp(datum)
+    return (ts.to_period("M") + 1).to_timestamp()
+
+
+def zugangsbuchungen(ledger: Any, stamm: Any) -> Any:
+    """Je Ledgerzeile: ist sie eine Buchung, die der ZUGANG schreibt? Boolesches
+    Feld — die EINE Definition (Pruefrunde I, Fund I10).
+
+    Eine Zugangsbuchung steht am Zugangstag des Vertrags (``status_date`` gleich
+    ``bestandszugang``) und ist eine Art aus :data:`ZUGANGSTAG_EREIGNISSE`; die
+    Arten aus :data:`ZUGANGSTAG_NUR_UEBERNOMMEN` nur bei einem uebernommenen
+    Vertrag (Bestandszugang nach Versicherungsbeginn). Das Merkmal setzt der
+    Produzent selbst: ``gates.bestand_uebernehmen`` bucht Zugang und Umbuchung
+    zum Zugangsstichtag, die Fortschreibung bucht jeden Vorgang echt NACH dem
+    Bestandszugang (:func:`buchungsfenster_verstoesse`).
+
+    Eine solche Zeile uebernimmt einen bestehenden Zustand in die Fuehrung des
+    Zielsystems; sie ist kein Vorgang im Zugangsjahr. Ihr ``vertragsjahr`` ist
+    das des Zugangs, nicht das des Vorgangs — das Jahr einer mitgebrachten
+    Beitragsfreistellung steht in der Statushistorie (``validate_ledger``
+    verlangt dort eine Freistellung am oder vor der Umbuchung). Die Policen der
+    Zeilen muessen im Stamm stehen.
+    """
+    stamm_idx = stamm.set_index("police_id")
+    pids = ledger["police_id"].to_numpy()
+    zugang = stamm_idx.loc[pids, "bestandszugang"].to_numpy()
+    beginn = stamm_idx.loc[pids, "insurance_start"].to_numpy()
+    datum = ledger["status_date"].to_numpy()
+    art = ledger["ereignis"].to_numpy()
+    uebernommen = zugang > beginn
+    darf_am_tag = _np.isin(art, list(ZUGANGSTAG_EREIGNISSE)) & (
+        ~_np.isin(art, list(ZUGANGSTAG_NUR_UEBERNOMMEN)) | uebernommen)
+    return (datum == zugang) & darf_am_tag
+
+
+def buchungsfenster_verstoesse(
+    ledger: Any, stamm: Any, horizont: Any = None
+) -> Tuple[Any, Any]:
+    """Je Ledgerzeile: liegt sie nicht nach dem Bestandszugang, liegt sie
+    hinter dem belegten Horizont? Rueckgabe: zwei boolesche Felder.
+
+    Die EINE Regel fuer P-B1 (``validate_ledger``) und die Fuehrungsprobe
+    (Runde E, Klasse geschlossen): vorher stand die Wache nur im RED-Block
+    und liess STO, TOD, ABL, ERH und PEX vor dem Zugang und hinter dem
+    Horizont durch. Die Ausnahmen sind benannt
+    (:data:`ZUGANGSTAG_EREIGNISSE`, :data:`ZUGANG_HINTER_HORIZONT`, der
+    Zugang hinter dem Horizont hoechstens am Monatsersten nach ihm);
+    ``horizont`` None heisst: der Lauf belegt keinen, dann gibt es keine
+    obere Grenze. Die Policen der Zeilen muessen im Stamm stehen.
+    """
+    import pandas as pd
+
+    stamm_idx = stamm.set_index("police_id")
+    pids = ledger["police_id"].to_numpy()
+    zugang = stamm_idx.loc[pids, "bestandszugang"].to_numpy()
+    datum = ledger["status_date"].to_numpy()
+    art = ledger["ereignis"].to_numpy()
+    am_zugangstag = datum == zugang
+    vor_zugang = (datum < zugang) | (am_zugangstag & ~zugangsbuchungen(ledger, stamm))
+    if horizont is None:
+        hinter = _np.zeros(len(ledger), dtype=bool)
+    else:
+        grenze = _np.datetime64(monatserster_nach(horizont))
+        zugang_darf_dahinter = (_np.isin(art, list(ZUGANG_HINTER_HORIZONT))
+                                & am_zugangstag & (datum <= grenze))
+        hinter = (datum > _np.datetime64(pd.Timestamp(horizont))) & ~zugang_darf_dahinter
+    return vor_zugang, hinter
+
+
+#: Der Zeitpunkt, an dem ein Ausnahme-Ereignis (aus keiner Annahme gezogen,
+#: :data:`EREIGNIS_OHNE_ANNAHME`) im Ledger stehen darf. Runde E,
+#: Nachbesserung: ZUG, MIG und ABL waren nach dem Zugang an keinen Zeitpunkt
+#: gebunden — eine Ausnahmemenge ohne Wache fuer ihren Grund ist keine
+#: geschlossene Klasse. Der Grund steht in :data:`EREIGNIS_OHNE_ANNAHME`; hier
+#: steht, was er fuer den Ort der Buchung heisst. Ein Test haelt beide Mengen
+#: mit ``==`` gleich, damit ein neues Ausnahme-Ereignis seine Regel bekommen MUSS.
+ZEITPUNKT_ZUGANGSTAG = "zugangstag"
+ZEITPUNKT_VERTRAGSENDE = "vertragsende"
+AUSNAHME_ZEITPUNKT: Mapping[str, str] = {
+    "ZUG": ZEITPUNKT_ZUGANGSTAG,       # die Zugangsbuchung steht am Zugang
+    "MIG": ZEITPUNKT_ZUGANGSTAG,       # das Residuum der Uebernahme zum Zugangsstichtag
+    "ABL": ZEITPUNKT_VERTRAGSENDE,     # der Ablauf folgt aus der Laufzeit
+}
+
+#: Ausnahme-Ereignisse, die je Police (und Betragsart) genau einmal stehen: ein
+#: Vertrag kommt einmal zu.
+AUSNAHME_EINMAL_JE_POLICE: Tuple[str, ...] = ("ZUG",)
+
+#: Ausnahme-Ereignisse, die es nur bei einem UEBERNOMMENEN Vertrag gibt (Zugang
+#: nach Versicherungsbeginn): Beim eigenen Geschaeft gibt es kein Residuum einer
+#: Uebernahme.
+AUSNAHME_NUR_UEBERNOMMEN: Tuple[str, ...] = ("MIG",)
+
+
+def ausnahme_ereignis_verstoesse(
+    ledger: Any, stamm: Any, schon_gemeldet: Any = None
+) -> Dict[str, Any]:
+    """Je Regel eine boolesche Maske je Ledgerzeile: Regel -> Zeilen, die
+    gegen sie verstossen.
+
+    Die EINE Regel fuer P-B1 (``validate_ledger``) und die Fuehrungsprobe
+    (Runde E, Nachbesserung). ``zeitpunkt``: die Zeile steht nicht an dem
+    Zeitpunkt, den :data:`AUSNAHME_ZEITPUNKT` fuer ihre Art vorsieht
+    (Zugangstag des Vertrags; Vertragsende: ``status_date == insurance_end``
+    und ``vertragsjahr == duration``). ``einmal``: die Zeile ist eine
+    Wiederholung — :data:`AUSNAHME_EINMAL_JE_POLICE` je Police und Betragsart,
+    gezaehlt unter den Zeilen am richtigen Zeitpunkt. ``uebernommen``: die Art
+    steht an einem eigenen Geschaeft, obwohl sie nur bei einem uebernommenen
+    Vertrag vorkommt (:data:`AUSNAHME_NUR_UEBERNOMMEN`).
+
+    ``schon_gemeldet``: Zeilen, die das Buchungsfenster
+    (:func:`buchungsfenster_verstoesse`) bereits beanstandet — ein Fehler, ein
+    Befund; sie scheiden hier aus. Die Policen der Zeilen muessen im Stamm
+    stehen.
+    """
+    import pandas as pd
+
+    stamm_idx = stamm.set_index("police_id")
+    pids = ledger["police_id"].to_numpy()
+    zugang = stamm_idx.loc[pids, "bestandszugang"].to_numpy()
+    beginn = stamm_idx.loc[pids, "insurance_start"].to_numpy()
+    ende = stamm_idx.loc[pids, "insurance_end"].to_numpy()
+    dauer = stamm_idx.loc[pids, "duration"].to_numpy()
+    datum = ledger["status_date"].to_numpy()
+    jahr = ledger["vertragsjahr"].to_numpy()
+    art = ledger["ereignis"].to_numpy()
+    offen = (_np.ones(len(ledger), dtype=bool) if schon_gemeldet is None
+             else ~_np.asarray(schon_gemeldet, dtype=bool))
+
+    hat_regel = _np.isin(art, list(AUSNAHME_ZEITPUNKT))
+    zeitpunkt_der_art = _np.array([AUSNAHME_ZEITPUNKT.get(a, "") for a in art], dtype=object)
+    am_platz = _np.where(zeitpunkt_der_art == ZEITPUNKT_ZUGANGSTAG,
+                         datum == zugang, (datum == ende) & (jahr == dauer))
+    zeitpunkt = hat_regel & ~am_platz & offen
+
+    uebernommen = _np.isin(art, list(AUSNAHME_NUR_UEBERNOMMEN)) & ~(zugang > beginn) & offen
+
+    einmal = _np.zeros(len(ledger), dtype=bool)
+    kandidat = _np.isin(art, list(AUSNAHME_EINMAL_JE_POLICE)) & offen & ~zeitpunkt
+    if kandidat.any():
+        schluessel = pd.DataFrame({
+            "p": pids[kandidat], "e": art[kandidat],
+            "b": ledger["betrag_art"].to_numpy()[kandidat]})
+        einmal[_np.flatnonzero(kandidat)] = schluessel.duplicated(keep="first").to_numpy()
+    return {"zeitpunkt": zeitpunkt, "einmal": einmal, "uebernommen": uebernommen}
+
+
+def ausnahme_ereignis_text(regel: str, art: str, policen: List[int]) -> str:
+    """Die Meldung zu einem Verstoss gegen eine Ausnahmeregel — dieselbe fuer
+    P-B1 (mit dem Praefix ``ledger: ``) und die Fuehrungsprobe. Sie nennt Art,
+    Regel, Policen und den Ausweg, und sie teilt keine Woerter mit dem Text
+    des Buchungsfensters (ein Fehler, ein Befund, unterscheidbar)."""
+    beispiele = ", ".join(str(p) for p in policen[:5])
+    if regel == "zeitpunkt":
+        if AUSNAHME_ZEITPUNKT[art] == ZEITPUNKT_ZUGANGSTAG:
+            was = "steht nicht am Zugangstag des Vertrags"
+            soll = f"{EREIGNIS_OHNE_ANNAHME[art]}; sie wird am Zugangstag gebucht"
+        else:
+            was = ("steht nicht am Vertragsende (status_date gleich insurance_end, "
+                   "vertragsjahr gleich duration)")
+            soll = f"{EREIGNIS_OHNE_ANNAHME[art]}"
+    elif regel == "einmal":
+        was = "steht mehr als einmal je Police und Betragsart"
+        soll = "ein Vertrag kommt einmal zu"
+    elif regel == "uebernommen":
+        was = "steht an einem eigenen Geschaeft"
+        soll = ("es gibt sie nur bei einem uebernommenen Vertrag (Zugang nach "
+                "Versicherungsbeginn)")
+    else:
+        raise KeyError(regel)
+    return (f"{art}-Buchung {was} (police [{beispiele}]) — {soll}. "
+            "Ausweg: die Buchung streichen oder an den Platz legen, den der "
+            "Erzeuger bucht")
+
+#: Betragsart des gebuchten Bruttojahresbeitrags (Zugang und Erhoehung).
+BEITRAG_BETRAG_ART = "BJB"
+
+#: Die Ereignisarten, deren Vorfall einen Beitrag bewegt: HERGELEITET aus dem
+#: Vokabular der Betragsarten, nicht abgetippt (Runde F, Klasse "Paarbuchung").
+#: Die Engine bucht je solchem Vorfall ein PAAR: die Summenzeile und die
+#: Beitragszeile (``BJB``), beide fuer dieselbe Police am selben Tag. Ein Test
+#: haelt diese Menge mit ``==`` gegen die Stellen, an denen die Engine
+#: (``bestand.ereignisse``) die Beitragszeile bucht — ein neues Beitragsereignis
+#: muss hier, im Vokabular und in der Engine zugleich auftauchen.
+BEITRAGSEREIGNISSE: Tuple[str, ...] = tuple(
+    e for e, arten in BETRAG_ART_JE_EREIGNIS.items() if BEITRAG_BETRAG_ART in arten)
+
+#: Beitragsereignisse, die bei einem UEBERNOMMENEN Vertrag (Bestandszugang nach
+#: Versicherungsbeginn) KEINE Beitragszeile buchen — je mit Grund. Der Zugang
+#: eines uebernommenen Vertrags bucht nur die gelieferte Summe; sein
+#: Jahresbeitrag steht in der Lieferung und laeuft im aktuariellen Test mit
+#: (``gates.bestand_uebernehmen``), nicht im Ledger des aufnehmenden
+#: Unternehmens. Eine Beitragszeile dort ist keine Buchung des Erzeugers.
+BEITRAGSEREIGNIS_OHNE_BJB_UEBERNOMMEN: Mapping[str, str] = {
+    "ZUG": "der Zugang eines uebernommenen Vertrags bucht nur die gelieferte "
+           "Summe; sein Jahresbeitrag steht in der Lieferung",
+}
+
+#: Die Verstoesse gegen die Paarbuchung, je Vorfall (Police, Wirkungstag, Art).
+PAAR_BJB_ZUVIEL = "bjb_zuviel"
+PAAR_BJB_FEHLT = "bjb_fehlt"
+PAAR_SUMME_ZUVIEL = "summe_zuviel"
+PAAR_SUMME_FEHLT = "summe_fehlt"
+PAAR_TAG_VERSCHOBEN = "tag_verschoben"
+
+
+def beitragspaar_verstoesse(
+    ledger: Any, stamm: Any, schon_gemeldet: Any = None
+) -> Dict[Tuple[str, str], List[int]]:
+    """Je (Ereignisart, Verstoss) die Policen, deren Vorfall die Paarbuchung
+    verletzt — Runde F, Klasse "Paarbuchung".
+
+    Die Engine bucht je Vorfall einer Art aus :data:`BEITRAGSEREIGNISSE`
+    GENAU eine Summenzeile und GENAU eine Beitragszeile ``BJB`` am selben Tag
+    fuer dieselbe Police (bei einem uebernommenen Vertrag fuer die Arten aus
+    :data:`BEITRAGSEREIGNIS_OHNE_BJB_UEBERNOMMEN` keine Beitragszeile). Vorher
+    pruefte P-B1 den BETRAG vorhandener Beitragszeilen und band nur die
+    Summenzeile der Erhoehung an ihre Scheibe: Eine verdoppelte oder gestrichene
+    Beitragszeile einer Erhoehung (und eine fehlende des Zugangs) bemerkten
+    weder P-B1 noch die Fuehrungsprobe, noch der Bericht. Gezaehlt wird je
+    Vorfall (Police, Art, Vertragsjahr); die Kennzahlen zaehlen Vorfaelle je
+    (Police, Wirkungstag, Art) — beide Einheiten fallen zusammen, solange das
+    Paar am selben Tag steht (sonst meldet ``tag_verschoben``).
+
+    Verstoesse: ``bjb_zuviel`` (mehr Beitragszeilen als erlaubt), ``bjb_fehlt``,
+    ``summe_zuviel`` (mehr als eine Summenzeile), ``summe_fehlt`` (Beitragszeile
+    ohne Summenzeile), ``tag_verschoben`` (Summen- und Beitragszeile desselben
+    Vorfalls stehen auf verschiedenen Tagen).
+    ``schon_gemeldet``: Zeilen, die eine andere Regel schon beanstandet
+    (Buchungsfenster, Ausnahme-Ereignisse, Wirkungstag) — ein Fehler, ein
+    Befund; eine gemeldete Zeile nimmt ihren GANZEN Vorfall (Police, Art,
+    Vertragsjahr) aus, die Partnerzeile bringt keinen zusaetzlichen Befund.
+    Ein in der Zeit getrenntes Paar (Teilverschiebung) ist EIN Befund fuer den
+    Vorfall (``tag_verschoben``), nicht 'Beitragszeile fehlt' und 'Summenzeile
+    fehlt' zugleich; ein Paar in zwei Vertragsjahren sind zwei unvollstaendige
+    Vorfaelle. Die Policen der Zeilen muessen im Stamm stehen.
+    """
+    import pandas as pd
+
+    art = ledger["ereignis"].to_numpy()
+    beitrag = _np.isin(art, list(BEITRAGSEREIGNISSE))
+    if not beitrag.any():
+        return {}
+    gemeldet = (_np.zeros(len(ledger), dtype=bool) if schon_gemeldet is None
+                else _np.asarray(schon_gemeldet, dtype=bool))
+    alle = pd.DataFrame({
+        "police": ledger["police_id"].to_numpy()[beitrag].astype("int64"),
+        "art": art[beitrag],
+        "jahr": ledger["vertragsjahr"].to_numpy()[beitrag].astype("int64"),
+        "tag": ledger["status_date"].to_numpy()[beitrag],
+        "bjb": (ledger["betrag_art"].to_numpy()[beitrag] == BEITRAG_BETRAG_ART),
+        "gemeldet": gemeldet[beitrag],
+    })
+    # Der Vorfall ist (Police, Art, Vertragsjahr): Die Engine bucht je Vertragsjahr
+    # EIN Paar. Meldet eine andere Regel EINE Zeile des Vorfalls, scheidet der
+    # ganze Vorfall hier aus — die Partnerzeile bringt keinen zusaetzlichen
+    # Befund (Runde F, Nachbesserung: ein Vorfall, ein Befund).
+    schluessel = ["police", "art", "jahr"]
+    zeilen = alle[~alle.groupby(schluessel)["gemeldet"].transform("any")]
+    if zeilen.empty:
+        return {}
+    je_vorfall = zeilen.groupby(schluessel, sort=True).agg(
+        n_bjb=("bjb", "sum"), n=("bjb", "size"), n_tage=("tag", "nunique")).reset_index()
+    je_vorfall["n_summe"] = je_vorfall["n"] - je_vorfall["n_bjb"]
+    # Summen- und Beitragszeile eines Vorfalls auf verschiedenen Tagen: EIN
+    # Befund fuer den ganzen Vorfall, die Anzahlregeln gelten dort nicht.
+    getrennt = je_vorfall["n_tage"].to_numpy() > 1
+    stamm_idx = stamm.set_index("police_id")
+    uebernommen = (
+        stamm_idx.loc[je_vorfall["police"].to_numpy(), "bestandszugang"].to_numpy()
+        > stamm_idx.loc[je_vorfall["police"].to_numpy(), "insurance_start"].to_numpy())
+    ohne_bjb = uebernommen & je_vorfall["art"].isin(
+        list(BEITRAGSEREIGNIS_OHNE_BJB_UEBERNOMMEN)).to_numpy()
+    soll_bjb = _np.where(ohne_bjb, 0, 1)
+    ist_bjb = je_vorfall["n_bjb"].to_numpy()
+    ist_summe = je_vorfall["n_summe"].to_numpy()
+    faelle = {
+        PAAR_BJB_ZUVIEL: (ist_bjb > soll_bjb) & ~getrennt,
+        PAAR_BJB_FEHLT: (ist_bjb < soll_bjb) & ~getrennt,
+        PAAR_SUMME_ZUVIEL: (ist_summe > 1) & ~getrennt,
+        PAAR_SUMME_FEHLT: (ist_summe < 1) & ~getrennt,
+        PAAR_TAG_VERSCHOBEN: getrennt,
+    }
+    aus: Dict[Tuple[str, str], List[int]] = {}
+    for verstoss, maske in faelle.items():
+        for a in sorted(set(je_vorfall.loc[maske, "art"])):
+            zeile = maske & (je_vorfall["art"] == a).to_numpy()
+            aus[(str(a), verstoss)] = sorted(set(
+                int(p) for p in je_vorfall.loc[zeile, "police"]))
+    return aus
+
+
+def beitragspaar_text(art: str, verstoss: str, policen: List[int]) -> str:
+    """Die Meldung zu einem Verstoss gegen die Paarbuchung — dieselbe fuer
+    P-B1 (mit dem Praefix ``ledger: ``) und die Fuehrungsprobe."""
+    beispiele = ", ".join(str(p) for p in policen[:5])
+    was = {
+        PAAR_BJB_ZUVIEL: "mehr Beitragszeilen (BJB) als der Vorfall bucht",
+        PAAR_BJB_FEHLT: "ohne die Beitragszeile (BJB) des Vorfalls",
+        PAAR_SUMME_ZUVIEL: "mit mehr als einer Summenzeile",
+        PAAR_SUMME_FEHLT: "mit Beitragszeile (BJB) ohne Summenzeile",
+        PAAR_TAG_VERSCHOBEN: "mit Summen- und Beitragszeile auf verschiedenen Tagen",
+    }[verstoss]
+    if art in BEITRAGSEREIGNIS_OHNE_BJB_UEBERNOMMEN and verstoss == PAAR_BJB_ZUVIEL:
+        grund = " (bei einem uebernommenen Vertrag: " + (
+            BEITRAGSEREIGNIS_OHNE_BJB_UEBERNOMMEN[art] + ")")
+    else:
+        grund = ""
+    return (f"{art}-Buchung {was}{grund} (police [{beispiele}]) — die Engine "
+            "bucht je Vorfall ein Paar aus Summenzeile und Beitragszeile am "
+            "selben Tag. Ausweg: die Zeile streichen bzw. nachtragen, die der "
+            "Erzeuger bucht")
+
+
+#: Der Schluessel einer Buchung: je Schluessel steht GENAU eine Zeile im Ledger.
+BUCHUNG_SCHLUESSEL: Tuple[str, ...] = ("police_id", "ereignis", "status_date", "betrag_art")
+
+
+def doppelte_buchungen(
+    ledger: Any, schon_gemeldet: Any = None,
+    ohne_arten: Iterable[str] = BEITRAGSEREIGNISSE,
+) -> Any:
+    """Je Ledgerzeile: ist sie die ueberzaehlige Wiederholung einer Buchung?
+    Boolesches Feld — Runde F, Nachbesserung, Klasse "Eindeutigkeit je Buchung".
+
+    Die Engine bucht je (Police, Ereignis, Wirkungstag, Betragsart)
+    (:data:`BUCHUNG_SCHLUESSEL`) GENAU eine Zeile. Die Paarregel
+    (:func:`beitragspaar_verstoesse`) zaehlte das nur fuer ZUG und ERH; eine
+    verdoppelte Zeile jeder anderen Art — ein zweiter Storno, Tod, Ablauf, eine
+    zweite Beitragsfreistellung oder Herabsetzungszeile — bemerkten weder P-B1
+    noch die Fuehrungsprobe noch der Bericht, und die Probe rechnete die Zeile
+    zweimal nach und zaehlte sie zweimal als geprueft. Gemeldet wird die
+    ZWEITE und jede weitere Zeile eines Schluessels; die erste bleibt die
+    Buchung (die Probe rechnet sie nach, genau einmal).
+
+    ``ohne_arten``: Arten, deren Verdopplung eine andere Regel meldet — im
+    Standard :data:`BEITRAGSEREIGNISSE` (die Paarregel meldet deren ``zuviel``
+    mit eigenem Text; ein Fehler, ein Befund). Der Ledger der Uebernahme, den
+    die Paarregel nicht ansieht, ruft mit ``ohne_arten=()``.
+    ``schon_gemeldet``: Zeilen, die eine Regel oben schon beanstandet
+    (Buchungsfenster, Ausnahme-Ereignisse) — sie scheiden aus. Die Regel nennt
+    keine Ereignisart im Klartext; sie gilt fuer jede.
+    """
+    n = len(ledger)
+    offen = _np.ones(n, dtype=bool) if schon_gemeldet is None \
+        else ~_np.asarray(schon_gemeldet, dtype=bool)
+    offen &= ~_np.isin(ledger["ereignis"].to_numpy(), list(ohne_arten))
+    pos = _np.flatnonzero(offen)
+    mehrfach = _np.zeros(n, dtype=bool)
+    if len(pos):
+        wiederholt = ledger.iloc[pos].duplicated(
+            subset=list(BUCHUNG_SCHLUESSEL), keep="first").to_numpy()
+        mehrfach[pos[wiederholt]] = True
+    return mehrfach
+
+
+def doppelte_buchung_text(art: str, policen: List[int]) -> str:
+    """Die Meldung zur Eindeutigkeitsregel — dieselbe fuer P-B1 (mit dem
+    Praefix ``ledger: ``) und die Fuehrungsprobe."""
+    beispiele = ", ".join(str(p) for p in policen[:5])
+    return (f"{art}-Buchung mehrfach gebucht (police [{beispiele}]) — je Police, "
+            "Ereignis, Wirkungstag und Betragsart steht genau eine Zeile; die "
+            "Wiederholung ist keine zweite Buchung. Ausweg: die doppelte Zeile "
+            "streichen")
+
+
+def reduktion_jahrestag(beginn: Any, jahr: Any) -> Any:
+    """Der Jahrestag des Vertragsjahres ``jahr`` — der EINE Wirkungstag einer
+    Herabsetzung und jeder Buchung, die die Engine zum Jahreswechsel zieht.
+    Dieselbe Regel in ``validate_reduktionen`` (Fund N16) und in der
+    Fuehrungsprobe (Runde F)."""
+    import pandas as pd
+
+    return pd.Timestamp(beginn) + pd.DateOffset(years=int(jahr))
+
+
+def jahrestag_verstoesse(ledger: Any, stamm: Any) -> Any:
+    """Je Ledgerzeile: steht sie NICHT am Jahrestag ihres Vertragsjahres
+    (``insurance_start`` plus ``vertragsjahr`` Jahre)? Boolesches Feld.
+
+    Runde F: Die Engine bucht jedes GeVo am Jahrestag; ``validate_ledger``
+    prueft nur, dass ``vertragsjahr`` die Zahl der vollendeten Jahre ist, und
+    der Monatserste genuegt — ein Wirkungstag zwei Monate neben dem Jahrestag
+    ging durch. Ausgenommen sind die Zugangsbuchungen am Zugangstag
+    (:data:`ZUGANGSTAG_EREIGNISSE`): Ein uebernommener Vertrag kommt am
+    Stichtag zu, der kein Jahrestag sein muss. Die Policen der Zeilen muessen
+    im Stamm stehen.
+    """
+    stamm_idx = stamm.set_index("police_id")
+    pids = ledger["police_id"].to_numpy()
+    beginn = stamm_idx.loc[pids, "insurance_start"].to_numpy()
+    zugang = stamm_idx.loc[pids, "bestandszugang"].to_numpy()
+    datum = ledger["status_date"].to_numpy()
+    jahr = ledger["vertragsjahr"].to_numpy()
+    art = ledger["ereignis"].to_numpy()
+    soll = _np.array([
+        _np.datetime64(reduktion_jahrestag(b, j)) for b, j in zip(beginn, jahr)],
+        dtype="datetime64[ns]")
+    am_zugang = _np.isin(art, list(ZUGANGSTAG_EREIGNISSE)) & (datum == zugang)
+    return (datum != soll) & ~am_zugang
+
 
 #: Erhoehungsscheiben (dynamische Erhoehung): each row is an own layer of a
 #: contract, actuarially an own model point (Schichtungsprinzip). The base
@@ -323,11 +1024,16 @@ SCHEIBEN_SPALTEN: Tuple[Tuple[str, str], ...] = (
 #: Beitragsanteil und daneben die dort fixierte beitragsfreie Summe
 #: (``kern.beitragsreduktion.ReduzierterVertrag``, Tarifplan klv.md 7.1).
 #:
-#: Persistiert werden genau die drei Felder, aus denen sich dieser
-#: Vertrag rekonstruieren laesst — ``ReduzierterVertrag.nach(kern, jahr,
-#: anteil, verfahren=...)``. Mehr braucht die Folgebewertung nicht, und
-#: weniger reichte nicht: Ohne das Verfahren waere derselbe Anteil je
-#: nach Bedingungswerk ein anderer Vertrag.
+#: Persistiert werden Jahr, Anteil und Verfahren — je VORGANG eine Zeile:
+#: Die Tabelle fuehrt die FOLGE der Beitragsherabsetzungen (``RED``) und
+#: Teilkuendigungen (``TKU``) einer Police, beliebig viele, in jeder
+#: Reihenfolge (Entscheid des Maintainers 2026-10-01). Rekonstruiert wird
+#: der Vertrag daraus zusammen mit den Scheiben, der Beitragsfreistellung
+#: der Statushistorie und der Korrekturschicht —
+#: ``kern.vorgangsfolge.Vorgangsfolge``, EINE Darstellung fuer alle Leser.
+#: Verfahren und Anteil muessen dem Tarifwerk der Generation und den
+#: Annahmen entsprechen (P-B1 prueft es): Ohne das Verfahren waere derselbe
+#: Anteil je nach Bedingungswerk ein anderer Vertrag.
 #:
 #: NEBENTABELLE wie ``scheiben``: Keine Datei heisst, der Bestand hat
 #: keine Herabsetzungen — nicht, dass niemand nachgesehen hat.
@@ -430,7 +1136,48 @@ ABSCHLUSS_SPALTEN: Tuple[Tuple[str, str], ...] = (
     ("vs_bfr", "float64"),
     ("jahresbeitrag", "float64"),
     ("kern_version", "object"),
+    # Die Bewertungskonvention, in der die Zahlen dieser Datei stehen
+    # (BEWERTUNGSKONVENTIONEN; gelesen wird sie nur ueber
+    # abschluss_konvention). Seit 2026-10-01 — aeltere Abschluesse tragen
+    # die Spalte nicht, und gerade das Fehlen ist ihre Aussage.
+    ("bewertungskonvention", "object"),
 )
+
+#: Die Bewertungskonventionen eines Abschlusses (Entscheid des Maintainers
+#: 2026-10-01, ADR-011 Nachtrag): WIE die Fuehrung das Deckungskapital, den
+#: Rueckkaufswert und die Korrekturschicht eines Vertrags am Bewertungs-
+#: stichtag aus dem Kern liest.
+#:
+#: * ``jahreszeile`` — der Wert zum letzten Vertragsjahrestag (die Zeile des
+#:   angebrochenen Vertragsjahres). So fuehrte der Abschluss bis 2026-10-01;
+#:   unterjaehrig wies er bis zu 11/12 des Jahreszuwachses zu wenig aus. Die
+#:   Korrekturschicht einer nicht beitragsfreien Police stand schon damals
+#:   monatsgenau darin — die Konvention ist die des damaligen Schreibers,
+#:   nicht eine bereinigte.
+#: * ``monatsgenau`` — die unterjaehrige Mischung des Kerns: linear zwischen
+#:   den beiden Vertragsjahrestagen, die den Bewertungsstichtag einschliessen
+#:   (``Rechenkern.monatsreserve`` und Geschwister), ohne Beitragsuebertrag
+#:   (zurueckgestellt, dev-docs/offene-punkte.md).
+KONVENTION_JAHRESZEILE = "jahreszeile"
+KONVENTION_MONATSGENAU = "monatsgenau"
+BEWERTUNGSKONVENTIONEN: Tuple[str, ...] = (KONVENTION_JAHRESZEILE, KONVENTION_MONATSGENAU)
+#: Die Konvention, in der die Fuehrung heute festschreibt.
+FUEHRUNGSKONVENTION = KONVENTION_MONATSGENAU
+#: Wie eine Konvention je PRODUKT rechnet. Die BU bleibt auch unter
+#: ``monatsgenau`` bei der Jahreszeile: Der Kern fuehrt fuer sie keine
+#: unterjaehrige Reserve (``kern.produkte.bu`` kennt nur Vertragsjahre),
+#: und eine Mischung in der Bestandsschicht waere eine Formel ausserhalb
+#: des Kerns. Benannt statt still gemischt.
+KONVENTION_JE_PRODUKT: Dict[str, Dict[str, str]] = {
+    KONVENTION_JAHRESZEILE: {"klv": KONVENTION_JAHRESZEILE, "bu": KONVENTION_JAHRESZEILE},
+    KONVENTION_MONATSGENAU: {"klv": KONVENTION_MONATSGENAU, "bu": KONVENTION_JAHRESZEILE},
+}
+#: Die Herkunft der Konvention eines gelesenen Abschlusses.
+HERKUNFT_SPALTE = "spalte"
+HERKUNFT_VOR_UMSTELLUNG = (
+    "Jahreszeile, vor der Umstellung geschrieben (die Datei traegt keine Spalte "
+    "bewertungskonvention)")
+HERKUNFT_LEER = "leer: ein Abschluss ohne Zeile traegt keine Bewertung"
 
 #: Tagesjournal des Tagesbetriebs (Fachkonzept docs/simulation/tagesbetrieb.md,
 #: Abschnitt 3): je Zeile ein Verweis auf genau eine Ledger-Zeile (Police,
@@ -460,6 +1207,12 @@ STATUS_HISTORIE_NAMES: Tuple[str, ...] = tuple(n for n, _ in STATUS_HISTORIE_SPA
 LEDGER_NAMES: Tuple[str, ...] = tuple(n for n, _ in LEDGER_SPALTEN)
 SCHEIBEN_NAMES: Tuple[str, ...] = tuple(n for n, _ in SCHEIBEN_SPALTEN)
 ABSCHLUSS_NAMES: Tuple[str, ...] = tuple(n for n, _ in ABSCHLUSS_SPALTEN)
+#: Die Gestalt eines Abschlusses VOR der Umstellung (bis 2026-10-01): dieselben
+#: Spalten ohne ``bewertungskonvention``. In der Laufzeit liegen solche Dateien
+#: festgeschrieben (ADR-011); sie werden gelesen und nachgerechnet, nie
+#: umgeschrieben.
+ABSCHLUSS_NAMES_VOR_UMSTELLUNG: Tuple[str, ...] = tuple(
+    n for n in ABSCHLUSS_NAMES if n != "bewertungskonvention")
 
 #: Die BEWERTUNGSGROESSEN des Abschlusses — jede Zahl, die ein Bilanzwert
 #: ist, abgeleitet statt aufgezaehlt (Review T25-09).
@@ -517,6 +1270,75 @@ ZUSTAENDE_TA: Tuple[str, ...] = ("beitragspflichtig", "beitragsfrei")
 #: ``tests/test_models_vokabel_kern.py``, nicht erst vier Schichten
 #: tiefer mit "unbekanntes Verfahren".
 RED_VERFAHREN: Tuple[str, ...] = ("prospektiv", "mit_abzug", "teilkuendigung")
+#: Das Verfahren der Nebentabelle ``reduktionen``, das eine TEILKUENDIGUNG
+#: registriert (Ledger-Code ``TKU``); jedes andere registriert eine
+#: Beitragsherabsetzung (``RED``). Literal aus demselben Grund wie
+#: :data:`RED_VERFAHREN`.
+TEILKUENDIGUNG_VERFAHREN = "teilkuendigung"
+
+
+def reduktion_ereignis(verfahren: str) -> str:
+    """Der Ledger-Code des Vorgangs, den eine Zeile der Nebentabelle
+    ``reduktionen`` registriert: ``TKU`` fuer die Teilkuendigung, ``RED`` fuer
+    die Beitragsherabsetzung (Entscheid des Maintainers 2026-10-01, ADR-023:
+    zwei Geschaeftsvorfaelle). Die EINE Zuordnung fuer P-B1, die
+    Fuehrungsprobe, die Auswertung und den Tagesbetrieb."""
+    return "TKU" if str(verfahren) == TEILKUENDIGUNG_VERFAHREN else "RED"
+
+
+def alt_absetzung_ist_teilkuendigung(
+    quell_verfahren: str, jahr: int, beitragsdauer: int, *,
+    beitragsfrei_ab: Optional[int],
+) -> bool:
+    """Welcher Vorgang des Zielsystems eine GELIEFERTE Absetzung der Quelle
+    war — die EINE Uebersetzungsregel vom Vokabular der Quelle in das des
+    Zielsystems (Grundsatzdokumentation 7.1; Tarifplan KLV 7.2, Annahmen A2
+    und B5; ADR-023, Nachtrag 2026-10-01).
+
+    Die Quelle bucht ihre Absetzungen mit EINEM Code (``RED``, so bleibt er
+    als Provenienzname stehen). Das Zielsystem kennt zwei Vorgaenge mit
+    eigenem Code; welcher es war, sagt diese Regel, und zwar in dieser
+    Reihenfolge:
+
+    * Rechnet die Quelle eine Absetzung als Teilkuendigung (Verfahren der
+      Quelle ``teilkuendigung``, Beleg der Migration ``--red-verfahren``),
+      war JEDE ihrer Absetzungen eine Teilkuendigung — vor und nach dem
+      Beitragsende, vor und nach einer Beitragsfreistellung. So der
+      uebernommene Tarif der zweiten Lieferung (Bedingungswerk Ziffer 6).
+    * Kennt die Quelle eine echte Beitragsherabsetzung (Annahme B5), war eine
+      Absetzung VOR dem Beitragsende und vor einer Beitragsfreistellung eine
+      Herabsetzung; ab dem Beitragsende (``jahr >= beitragsdauer``) oder ab
+      der Beitragsfreistellung (``jahr >= beitragsfrei_ab``) eine
+      Teilkuendigung — es gab keinen Beitrag mehr, den eine Herabsetzung
+      haette senken koennen.
+
+    ``beitragsfrei_ab`` hat keinen Default: Wer die Regel fragt, sagt, ob
+    der Vertrag beitragsfrei gestellt war (``None``: nicht).
+
+    Das ist KEINE Umdeutung eines Vorgangs des Zielsystems; die Regel liest
+    nur, was eine Lieferung mit dem einen Code meint."""
+    if str(quell_verfahren) == TEILKUENDIGUNG_VERFAHREN:
+        return True
+    if int(jahr) >= int(beitragsdauer):
+        return True
+    return beitragsfrei_ab is not None and int(jahr) >= int(beitragsfrei_ab)
+
+
+def zielverfahren(
+    quell_verfahren: str, jahr: int, beitragsdauer: int, *,
+    beitragsfrei_ab: Optional[int],
+) -> str:
+    """Das Verfahren des Zielvorgangs einer gelieferten Absetzung —
+    ``teilkuendigung`` oder das Herabsetzungsverfahren der Quelle; dieselbe
+    Regel wie :func:`alt_absetzung_ist_teilkuendigung`, in der Form, in der
+    eine Zeile der Nebentabelle ``reduktionen`` sie traegt (der Code folgt
+    daraus, :func:`reduktion_ereignis`)."""
+    if alt_absetzung_ist_teilkuendigung(
+            quell_verfahren, jahr, beitragsdauer, beitragsfrei_ab=beitragsfrei_ab):
+        return TEILKUENDIGUNG_VERFAHREN
+    return str(quell_verfahren)
+
+
 #: ``verankerungszustand`` (schichten.parquet): der Startzustand der
 #: Korrekturschicht — ein ERLEBENSzustand des Zustandsmodells, mit dem sie
 #: bewertet wird ("aktiv" fuer Kapitalversicherungen, "aktiv"/"bu" fuer die
@@ -846,8 +1668,33 @@ def _nichtendlich(reihe: Any) -> bool:
     return bool((~_np.isfinite(werte)).any())
 
 
+def weicht_ab(ist: Any, soll: Any, toleranz: float) -> bool:
+    """Weichen Ist- und Soll-Wert um mehr als ``toleranz`` voneinander ab?
+
+    Runde F, Nachbesserung (Befund F5 als Klasse): ``abs(ist - soll) > toleranz``
+    ist bei NaN auf EINER der beiden Seiten immer falsch — der Wert galt als
+    uebereinstimmend, und ``abs(inf - inf)`` ist NaN statt null. Die Regel:
+    Ein nicht endlicher Wert (NaN, +/-inf, ein fehlender oder nicht
+    umwandelbarer Wert) auf der Ist- ODER der Soll-Seite ist eine Abweichung,
+    nie eine Uebereinstimmung. Die Fuehrungsprobe vergleicht Betraege NUR
+    durch diese Funktion (statische Ratsche in
+    ``tests/test_klasse_probe_abweichung_f.py``); wer eine weitere
+    Vergleichsstelle baut, ruft sie, statt ``abs(...) > TOLERANZ`` zu schreiben.
+    Ausweg fuer einen Wert, der legitim fehlen darf: vor dem Vergleich
+    entscheiden und nicht vergleichen — nie ein NaN mit Absicht durchreichen.
+    """
+    try:
+        ist, soll = float(ist), float(soll)
+    except (TypeError, ValueError):
+        return True
+    if not (_np.isfinite(ist) and _np.isfinite(soll)):
+        return True
+    return bool(abs(ist - soll) > toleranz)
+
+
 def validate_ledger(
-    stamm: Any, ledger: Any, historie: Any = None, scheiben: Any = None
+    stamm: Any, ledger: Any, historie: Any = None, scheiben: Any = None,
+    horizont: Any = None,
 ) -> List[str]:
     """Semantik des Ereignis-Ledgers gegen Stamm, Journal und Scheiben.
 
@@ -881,7 +1728,42 @@ def validate_ledger(
       Erhoehungsjahr, und jede Scheibe ihre Buchung. Vorher passierten
       zwei zwischen Policen vertauschte Scheibenbetraege (3.850 gegen
       2.350) mit null Befunden; der Abschluss verschob sich um 63,70 EUR,
-      weil die Summen danach auf anderen Vertragsaltern lagen.
+      weil die Summen danach auf anderen Vertragsaltern lagen;
+    * JEDE Buchung liegt NACH dem Bestandszugang des Vertrags und, mit
+      ``horizont`` (dem im Laufmanifest BELEGTEN Horizont, nicht einem
+      Aufrufwert), nicht dahinter (Pruefrunde T27, Runde C, Befund RC02,
+      Runde E, Klasse geschlossen): Die Engine simuliert einen
+      uebernommenen Vertrag erst ab seinem Zugangsjahr und nie ueber den
+      Horizont. Eine Buchung davor ist Vorgeschichte der abgebenden
+      Gesellschaft, eine dahinter ist nicht gefahren — beide sind keine
+      Buchung dieses Laufs und damit unbelegt. Vorher galt die Wache nur
+      fuer ``RED``: Eine Teilkuendigung vom 2025-01-01 vor dem Zugang vom
+      2026-01-01 ging mit null Befunden durch und kuerzte die Summe eines
+      Vertrags am Stichtag von 43.000 auf 25.800 EUR; ein Storno, Tod, Ablauf,
+      eine Erhoehung oder Beitragsfreistellung am selben Ort ebenso.
+      Die Menge der Ereignisarten ist ``EREIGNIS_VALUES``; ausgenommen sind
+      nur die benannten Zugangsbuchungen am Zugangstag
+      (:data:`ZUGANGSTAG_EREIGNISSE`) und der Zugang eines Neugeschaefts
+      mit Beginn nach dem Laufdatum (:data:`ZUGANG_HINTER_HORIZONT`, hoechstens
+      am Monatsersten nach dem Horizont); die gelieferte Vorgeschichte steht
+      in der Historie, nicht im Ledger. Die Ausnahme-Ereignisse stehen an
+      ihrem Zeitpunkt (:func:`ausnahme_ereignis_verstoesse`: ZUG einmal und am
+      Zugangstag, MIG am Zugangstag eines uebernommenen Vertrags, ABL am
+      Vertragsende).
+      Dieselbe Regel, als :func:`buchungsfenster_verstoesse`, prueft die
+      Fuehrungsprobe;
+    * Paarbuchung (Runde F, Klasse): je Vorfall einer Ereignisart mit
+      Beitragswirkung (:data:`BEITRAGSEREIGNISSE`, aus dem Vokabular
+      hergeleitet) genau eine Summenzeile und genau eine Beitragszeile
+      ``BJB`` — der Zugang eines uebernommenen Vertrags bucht nur die Summe
+      (:data:`BEITRAGSEREIGNIS_OHNE_BJB_UEBERNOMMEN`). Vorher bemerkte keine
+      Wache eine verdoppelte oder gestrichene Beitragszeile einer Erhoehung
+      (:func:`beitragspaar_verstoesse`, ebenfalls in der Fuehrungsprobe);
+    * Eindeutigkeit (Runde F, Nachbesserung): je (Police, Ereignis,
+      Wirkungstag, Betragsart) genau eine Zeile, fuer jede Ereignisart
+      (:func:`doppelte_buchungen`; die Beitragsereignisse zaehlt die
+      Paarregel). Vorher bemerkte keine Wache eine verdoppelte Storno-, Tod-,
+      Ablauf- oder Freistellungszeile.
     """
     errors: List[str] = []
     cols = list(ledger.columns)
@@ -965,14 +1847,71 @@ def validate_ledger(
             f"{_policen(unendlich)}) — ein Buchungsbetrag ist endlich"
         )
     else:
-        negativ = (ledger["betrag"] < 0.0) & (ledger["ereignis"] != "MIG")
+        # Umbuchungen tragen ein Vorzeichen: das Migrations-Residuum (MIG)
+        # und die absorbierte Korrekturschicht (dDK_absorption) — eine
+        # negative Schicht ist ein negatives Residuum, kein Fehler. Der
+        # Erzeuger buchte sie so, sein eigenes Gate wies den korrekten Lauf
+        # ab (Angriffsrunde 2, Fund N15).
+        negativ = ((ledger["betrag"] < 0.0) & (ledger["ereignis"] != "MIG")
+                   & (ledger["betrag_art"] != "dDK_absorption"))
         if negativ.any():
             errors.append(
-                f"ledger: betrag < 0 (police {_policen(negativ)}) — nur das "
-                "Migrations-Residuum MIG traegt ein Vorzeichen"
+                f"ledger: betrag < 0 (police {_policen(negativ)}) — nur die "
+                "Umbuchungen MIG und dDK_absorption tragen ein Vorzeichen"
             )
     if not (ledger["status_date"].dt.day == 1).all():
         errors.append("ledger: status_date nicht auf Monatsersten normalisiert")
+
+    # Jede Buchung liegt im Lauf: echt nach dem Zugang (ausser den benannten
+    # Zugangsbuchungen), nicht hinter dem belegten Horizont — fuer JEDE
+    # Ereignisart (Runde E, Klasse geschlossen), nicht nur fuer RED.
+    vor_zugang, hinter = buchungsfenster_verstoesse(ledger, stamm, horizont)
+    arten = ledger["ereignis"].to_numpy()
+    for art in sorted(set(arten[vor_zugang])):
+        maske = vor_zugang & (arten == art)
+        errors.append(
+            f"ledger: {art}-Buchung nicht nach dem Bestandszugang des Vertrags "
+            f"(police {_policen(maske)}) — Vorgeschichte der abgebenden "
+            "Gesellschaft, keine Buchung dieses Laufs; die Engine simuliert "
+            "einen uebernommenen Vertrag erst ab seinem Zugangsjahr. Am "
+            f"Zugangstag stehen nur {sorted(ZUGANGSTAG_EREIGNISSE)}")
+    if horizont is not None:
+        import pandas as pd
+
+        for art in sorted(set(arten[hinter])):
+            maske = hinter & (arten == art)
+            errors.append(
+                f"ledger: {art}-Buchung nach dem belegten Horizont "
+                f"{pd.Timestamp(horizont).date()} (police {_policen(maske)}) — "
+                "der Lauf hat sie nicht gefahren, sie ist unbelegt")
+
+    # Die Ausnahme-Ereignisse (ZUG, MIG, ABL) stehen an ihrem Zeitpunkt (Runde E,
+    # Nachbesserung): eine Ausnahmemenge ohne Wache fuer ihren Grund ist keine
+    # geschlossene Klasse. Zeilen, die das Fenster schon beanstandet, scheiden
+    # aus — ein Fehler, ein Befund.
+    ausnahmen = ausnahme_ereignis_verstoesse(ledger, stamm, vor_zugang | hinter)
+    gemeldet = vor_zugang | hinter
+    for regel, maske in ausnahmen.items():
+        gemeldet = gemeldet | maske
+        for art in sorted(set(arten[maske])):
+            errors.append("ledger: " + ausnahme_ereignis_text(
+                regel, str(art), _policen(maske & (arten == art))))
+
+    # Die Paarbuchung (Runde F, Klasse): je Vorfall mit Beitragswirkung genau
+    # eine Summenzeile und eine Beitragszeile. Zeilen, die eine Regel oben
+    # schon beanstandet, scheiden aus — ein Fehler, ein Befund.
+    for (art, verstoss), policen in sorted(
+            beitragspaar_verstoesse(ledger, stamm, gemeldet).items()):
+        errors.append("ledger: " + beitragspaar_text(art, verstoss, policen))
+
+    # Die Eindeutigkeit (Runde F, Nachbesserung, Klasse): je Schluessel (Police,
+    # Ereignis, Wirkungstag, Betragsart) genau eine Zeile, fuer JEDE Ereignisart.
+    # Die Verdopplung der Beitragsereignisse meldet die Paarregel oben; Zeilen,
+    # die eine Regel oben beanstandet, scheiden aus — ein Fehler, ein Befund.
+    doppelt = doppelte_buchungen(ledger, gemeldet)
+    for art in sorted(set(arten[doppelt])):
+        errors.append("ledger: " + doppelte_buchung_text(
+            art, _policen(doppelt & (arten == art))))
 
     # Zeilenweise gegen den Stammsatz: Generation, Laufzeit, Vertragsjahr.
     haupt = stamm.set_index("police_id")
@@ -1313,8 +2252,17 @@ def validate_abschluss(df: Any) -> List[str]:
     """
     errors: List[str] = []
     cols = list(df.columns)
-    if cols != list(ABSCHLUSS_NAMES):
-        return [f"abschluss: Spalten {cols} != erwartet {list(ABSCHLUSS_NAMES)}"]
+    # Zwei Gestalten sind gueltig: die heutige und die vor der Umstellung
+    # (ohne bewertungskonvention). Eine dritte ist keine.
+    if cols not in (list(ABSCHLUSS_NAMES), list(ABSCHLUSS_NAMES_VOR_UMSTELLUNG)):
+        return [f"abschluss: Spalten {cols} != erwartet {list(ABSCHLUSS_NAMES)} "
+                f"(oder vor der Umstellung {list(ABSCHLUSS_NAMES_VOR_UMSTELLUNG)})"]
+    if "bewertungskonvention" in cols and len(df):
+        werte = sorted({str(v) for v in df["bewertungskonvention"]})
+        if len(werte) != 1 or werte[0] not in BEWERTUNGSKONVENTIONEN:
+            errors.append(
+                f"abschluss: bewertungskonvention {werte} — erwartet genau eine aus "
+                f"{list(BEWERTUNGSKONVENTIONEN)} je Datei")
     if len(df) == 0:
         # Leer ist seit ADR-020 eine gueltige Eroeffnungsbilanz (der Vertrag
         # der DATEI ist mit null Zeilen erfuellt); ob er an DIESEM Stichtag
@@ -1337,6 +2285,79 @@ def validate_abschluss(df: Any) -> List[str]:
             "Bilanzwert ist endlich"
         )
     return errors
+
+
+class AbschlussKonventionFehler(ValueError):
+    """Die Konvention eines gelesenen Abschlusses ist nicht zu bestimmen."""
+
+
+@_dc.dataclass(frozen=True)
+class AbschlussKonvention:
+    """Die Bewertungskonvention eines gelesenen Abschlusses.
+
+    ``name`` ist die Konvention, in der die Zahlen der Datei stehen und in
+    der sie nachgerechnet werden (``None`` nur fuer einen leeren Abschluss:
+    ohne Zeile gibt es keine Bewertung); ``herkunft`` sagt, woher die
+    Aussage stammt — aus der Spalte, oder aus ihrem Fehlen.
+    """
+
+    name: Optional[str]
+    herkunft: str
+
+    @property
+    def vor_umstellung(self) -> bool:
+        return self.herkunft == HERKUNFT_VOR_UMSTELLUNG
+
+
+def abschluss_konvention(df: Any) -> AbschlussKonvention:
+    """Die Konvention eines gelesenen Abschlusses — die EINE Stelle, die sie sagt.
+
+    Jeder Leser einer Abschlussdatei fragt hier (ueber
+    ``bestand.abschluss.lies_abschluss``), keiner liest die Spalte selbst:
+    Seit der Umstellung (2026-10-01) gibt es zwei Gestalten, und eine
+    Reihe aus beiden ist an der Naht nicht vergleichbar.
+
+    * Spalte vorhanden: ihr Wert — genau einer je Datei, aus
+      :data:`BEWERTUNGSKONVENTIONEN`; sonst ein harter Fehler.
+    * Spalte FEHLT (Gestalt :data:`ABSCHLUSS_NAMES_VOR_UMSTELLUNG`): die
+      Jahreszeile, benannt als vor der Umstellung geschrieben. Das Fehlen
+      ist eine Aussage ueber den Schreiber, kein Default.
+    * Jede andere Spaltenmenge: harter Fehler — das ist kein Abschluss.
+    """
+    cols = list(df.columns)
+    if cols == list(ABSCHLUSS_NAMES_VOR_UMSTELLUNG):
+        if len(df) == 0:
+            return AbschlussKonvention(None, HERKUNFT_LEER)
+        return AbschlussKonvention(KONVENTION_JAHRESZEILE, HERKUNFT_VOR_UMSTELLUNG)
+    if cols != list(ABSCHLUSS_NAMES):
+        raise AbschlussKonventionFehler(
+            f"abschluss: Spalten {cols} sind weder die heutige Gestalt noch die vor "
+            "der Umstellung — die Bewertungskonvention ist nicht zu bestimmen")
+    if len(df) == 0:
+        return AbschlussKonvention(None, HERKUNFT_LEER)
+    werte = sorted({str(v) for v in df["bewertungskonvention"]})
+    if len(werte) != 1 or werte[0] not in BEWERTUNGSKONVENTIONEN:
+        raise AbschlussKonventionFehler(
+            f"abschluss: bewertungskonvention {werte} — erwartet genau eine aus "
+            f"{list(BEWERTUNGSKONVENTIONEN)}; eine Datei in zwei Konventionen ist "
+            "keine Bilanz")
+    return AbschlussKonvention(werte[0], HERKUNFT_SPALTE)
+
+
+def konventionsbruch(konventionen: Iterable[AbschlussKonvention]) -> Optional[str]:
+    """Der Bruch einer Reihe von Abschluessen (None: eine Konvention).
+
+    Wer Abschluesse verschiedener Stichtage in eine Reihe legt, fragt hier:
+    Leere Abschluesse tragen keine Bewertung und brechen nichts; zwei
+    verschiedene Konventionen sind ein Bruch, den der Leser kennzeichnet
+    oder mit diesem Text verweigert.
+    """
+    namen = sorted({k.name for k in konventionen if k.name is not None})
+    if len(namen) <= 1:
+        return None
+    return (f"Konventionsbruch: die Reihe mischt Abschluesse in {namen} — an der Naht "
+            "springt das Deckungskapital ohne Geschaeftsvorfall (Umstellung "
+            "2026-10-01, ADR-011 Nachtrag)")
 
 
 def validate_scheiben(stamm: Any, scheiben: Any, historie: Any = None) -> List[str]:
@@ -1511,24 +2532,54 @@ def bu_model_point_kwargs(
 
 
 def validate_reduktionen(
-    stamm: Any, reduktionen: Any, historie: Any = None
+    stamm: Any, reduktionen: Any, historie: Any = None, horizont: Any = None
 ) -> List[str]:
-    """Herabsetzungen gegen den Stamm pruefen (leer = gueltig).
+    """Herabsetzungen und Teilkuendigungen gegen den Stamm pruefen (leer = gueltig).
 
-    Jede Zeile gehoert zu einem bekannten Vertrag, das Reduktionsjahr
-    liegt in der Beitragszahlungsdauer, und der fortgefuehrte Anteil
-    liegt echt zwischen 0 und 1: ``1.0`` ist keine Herabsetzung, ``0.0``
-    ist eine Beitragsfreistellung und wird als PEX gefuehrt.
+    Zwei Geschaeftsvorfaelle in einer Tabelle, unterschieden am Verfahren
+    (ADR-023; ``reduktion_ereignis``): Die Beitragsherabsetzung (RED) liegt
+    in der Beitragszahlungsdauer (``0 < Jahr < t``), die Teilkuendigung
+    (TKU, Verfahren ``teilkuendigung``) in der Versicherungsdauer
+    (``0 < Jahr < n``). Jede Zeile gehoert zu einem bekannten Vertrag, das
+    Datum ist der Jahrestag, und der fortgefuehrte Anteil liegt echt
+    zwischen 0 und 1: ``1.0`` ist kein Vorgang, ``0.0`` ist eine
+    Beitragsfreistellung bzw. ein Rueckkauf.
 
-    **Hoechstens EINE Reduktion je Police.** Der Kern traegt den
-    herabgesetzten Vertrag als EINEN Vertrag mit geknicktem Verlauf
-    (``kern.beitragsreduktion.ReduzierterVertrag``); eine zweite
-    Herabsetzung darauf ist nicht definiert. Lieber ein benannter Fehler
-    als eine Zahl, die niemand herleiten kann.
+    **Beliebig viele Vorgaenge je Police, in jeder Reihenfolge** (Entscheid
+    des Maintainers 2026-10-01; klv.md 7.3). Die Tabelle fuehrt die FOLGE:
+    je Police so viele Zeilen wie Vorgaenge. Der Kern faltet sie in Zustaende
+    (``kern.vorgangsfolge.Vorgangsfolge``); am selben Jahrestag gilt die
+    Reihenfolge der Engine (Herabsetzung vor Teilkuendigung). Eindeutig ist
+    deshalb (Police, Jahr, Vorgang): Zwei gleiche Vorgaenge am selben
+    Jahrestag haetten keine bestimmte Reihenfolge — ein benannter Fehler
+    statt einer Zahl, die niemand herleiten kann. (Bis 2026-10-01: hoechstens
+    ein Vorgang je Police, Annahme A4 — ersetzt.)
 
-    Mit ``historie`` zusaetzlich die Reihenfolge: Eine Herabsetzung setzt
-    einen laufenden Beitrag voraus, liegt also echt VOR einer
-    Beitragsfreistellung und vor jedem Endzustand.
+    Mit ``historie`` zusaetzlich die Reihenfolge gegen die Zustaende: Eine
+    BEITRAGSHERABSETZUNG setzt einen laufenden Beitrag voraus, liegt also
+    echt VOR einer Beitragsfreistellung (PEX-Jahr > Jahr; eine Herabsetzung
+    nach der Beitragsfreistellung gibt es in der Welt der PLV nicht, Ausweg
+    die Teilkuendigung). Die TEILKUENDIGUNG ist auch NACH einer
+    Beitragsfreistellung moeglich, auch im Jahr der Freistellung selbst (sie
+    folgt ihr am selben Jahrestag) — sie kuendigt einen Anteil der
+    beitragsfreien Summe (klv.md 7.2). Beide liegen vor jedem Endzustand.
+    (Bis 2026-10-01 schloss die Beitragsfreistellung auch die
+    Teilkuendigung aus, Pruefrunde T27, Befund RC03 — der Kern hatte fuer sie
+    keine Regel; die hat er jetzt, Entscheid B3 vom 2026-10-01.)
+
+    **Der beitragsfrei AUSFINANZIERTE Nachlauf ist kein PEX.** Nach dem
+    Ende der Beitragszahlung (``premium_duration`` <= Jahr < ``duration``)
+    ist der Vertrag nicht beitragsfrei GESTELLT: Dort gibt es die
+    Teilkuendigung, die einen Summenanteil kuendigt und keinen laufenden
+    Beitrag voraussetzt (Entscheid des Maintainers 2026-10-01, klv.md 7.2);
+    Kern, Engine und Bewertung tragen sie bis zur Versicherungsdauer.
+
+    **Die Herabsetzung liegt im Lauf** (Runde C, Befund RC02): nach dem
+    Bestandszugang des Vertrags (``bestandszugang``; beim eigenen Geschaeft
+    der Beginn) und, mit ``horizont`` (dem im Laufmanifest belegten, nicht
+    einem Aufrufwert), nicht dahinter. Was davor liegt, ist Vorgeschichte
+    der abgebenden Gesellschaft; was dahinter liegt, hat der Lauf nicht
+    gefahren. Beides ist keine Buchung dieses Laufs und unbelegt.
     """
     errors: List[str] = []
     cols = list(reduktionen.columns)
@@ -1549,15 +2600,21 @@ def validate_reduktionen(
         errors.append(
             f"reduktionen: police_ids ausserhalb des Bestands: "
             f"{sorted(unbekannt)[:5]}")
-    if reduktionen["police_id"].duplicated().any():
-        doppelt = sorted(
-            reduktionen.loc[reduktionen["police_id"].duplicated(), "police_id"]
-        )[:5]
+    import pandas as pd
+
+    vorgang_je_zeile = reduktionen["verfahren"].map(reduktion_ereignis)
+    schluessel = pd.DataFrame({"police_id": reduktionen["police_id"],
+                               "reduktion_jahr": reduktionen["reduktion_jahr"],
+                               "vorgang": vorgang_je_zeile})
+    if schluessel.duplicated().any():
+        doppelt = schluessel[schluessel.duplicated()].head(5)
         errors.append(
-            f"reduktionen: mehrere Herabsetzungen je Police: {doppelt} — der "
-            "Kern fuehrt den herabgesetzten Vertrag als EINEN Vertrag mit "
-            "geknicktem Verlauf; eine zweite Reduktion darauf ist nicht "
-            "definiert")
+            "reduktionen: zwei gleiche Vorgaenge am selben Jahrestag: "
+            + ", ".join(f"police {int(p)} {v} Jahr {int(j)}" for p, j, v in zip(
+                doppelt["police_id"], doppelt["reduktion_jahr"], doppelt["vorgang"]))
+            + " — je Jahrestag hoechstens eine Herabsetzung und eine "
+            "Teilkuendigung, sonst ist ihre Reihenfolge nicht bestimmt; Ausweg: "
+            "die Anteile zu einem Vorgang zusammenfassen (f = f1 x f2)")
     ausser = [
         float(a) for a in reduktionen["anteil"] if not 0.0 < float(a) < 1.0]
     if ausser:
@@ -1572,35 +2629,107 @@ def validate_reduktionen(
         errors.append(
             f"reduktionen: verfahren {fremd} unbekannt (bekannt: "
             f"{list(RED_VERFAHREN)})")
+    import pandas as pd
+
     haupt = stamm.set_index("police_id")
-    for pid, jahr in zip(reduktionen["police_id"],
-                         reduktionen["reduktion_jahr"]):
+    for pid, jahr, verfahren, datum in zip(
+            reduktionen["police_id"], reduktionen["reduktion_jahr"],
+            reduktionen["verfahren"], reduktionen["reduktion_datum"]):
         pid, jahr = int(pid), int(jahr)
         if pid not in haupt.index:
             continue
-        t = int(haupt.loc[pid, "premium_duration"])
-        if not 0 < jahr < t:
+        if str(haupt.loc[pid].get("produkt", "klv")) != "klv":
+            # Die Herabsetzung ist ein GeVo der Kapitalversicherung (klv.md
+            # 7.1); eine BU fuehrt eine Jahresrente, keine Summe. Vorher
+            # blieb eine RED-Zeile auf einem BU-Vertrag ungeprueft und
+            # zaehlte trotzdem als hergeleitet.
             errors.append(
-                f"reduktionen: police {pid}: Reduktionsjahr {jahr} ausserhalb "
-                f"der Beitragszahlungsdauer (0, {t}) — ohne laufenden Beitrag "
-                "gibt es nichts herabzusetzen")
+                f"reduktionen: police {pid}: Herabsetzung auf einem Vertrag des "
+                f"Produkts {haupt.loc[pid].get('produkt')!r} — nur die "
+                "Kapitalversicherung kennt sie")
+            continue
+        t = int(haupt.loc[pid, "premium_duration"])
+        n = int(haupt.loc[pid, "duration"])
+        if reduktion_ereignis(verfahren) == "TKU":
+            # Teilkuendigung (eigener Vorfall, ADR-023): kuendigt einen
+            # Summenanteil und setzt keinen laufenden Beitrag voraus — die
+            # Grenze ist die Versicherungsdauer (Kern 3.4.0, Fund N6).
+            if not 0 < jahr < n:
+                errors.append(
+                    f"reduktionen: police {pid}: Teilkuendigung im Jahr {jahr} "
+                    f"ausserhalb der Versicherungsdauer (0, {n}) — nach dem "
+                    "Ablauf gibt es nichts mehr zu kuendigen")
+        elif not 0 < jahr < t:
+            errors.append(
+                f"reduktionen: police {pid}: Beitragsherabsetzung im Jahr {jahr} "
+                f"ausserhalb der Beitragszahlungsdauer (0, {t}) — ohne laufenden "
+                "Beitrag gibt es nichts herabzusetzen; Ausweg: die Teilkuendigung "
+                "(Verfahren teilkuendigung, Ledger TKU)")
+        # Der Wirkungstag ist der Jahrestag des Reduktionsjahres — an nichts
+        # anderem haengt die Bewertung (Angriffsrunde 2, Fund N16: zwei
+        # Sichten desselben Bestands zum selben Stichtag wichen um 20.880 EUR
+        # ab, bei gruenem P-B1, weil das Datum frei war).
+        jahrestag = reduktion_jahrestag(haupt.loc[pid, "insurance_start"], jahr)
+        if pd.Timestamp(datum) != jahrestag:
+            errors.append(
+                f"reduktionen: police {pid}: reduktion_datum {pd.Timestamp(datum).date()} "
+                f"ist nicht der Jahrestag {jahrestag.date()} des Reduktionsjahres {jahr}")
+        zugang = haupt.loc[pid, "bestandszugang"]
+        if pd.notna(zugang) and pd.Timestamp(datum) <= pd.Timestamp(zugang):
+            errors.append(
+                f"reduktionen: police {pid}: Herabsetzung am {pd.Timestamp(datum).date()} "
+                f"liegt nicht nach dem Bestandszugang {pd.Timestamp(zugang).date()} — "
+                "Vorgeschichte der abgebenden Gesellschaft, keine Buchung dieses "
+                "Laufs; die Engine simuliert einen uebernommenen Vertrag erst ab "
+                "seinem Zugangsjahr")
+        if horizont is not None and pd.Timestamp(datum) > pd.Timestamp(horizont):
+            errors.append(
+                f"reduktionen: police {pid}: Herabsetzung am {pd.Timestamp(datum).date()} "
+                f"liegt nach dem belegten Horizont {pd.Timestamp(horizont).date()} — "
+                "der Lauf hat sie nicht gefahren, sie ist unbelegt")
     if historie is not None and len(historie):
-        grenz_status = ("PEX",) + TERMINALE_STATUS
-        grenzen = (
-            historie[historie["status_code"].isin(grenz_status)]
+        # Beitragsfrei (PEX-Jahr <= Jahr) schliesst die BEITRAGSHERABSETZUNG
+        # aus — es gibt keinen Beitrag mehr (klv.md 7.1; Ausweg TKU). Die
+        # Teilkuendigung kuendigt dann einen Anteil der beitragsfreien Summe
+        # (klv.md 7.2, Entscheid B3 vom 2026-10-01). Der terminale Zustand schliesst beide aus.
+        pex_ab = (
+            historie[historie["status_code"] == "PEX"]
             .groupby("police_id")["status_date"].min()
         )
-        for pid, datum in zip(reduktionen["police_id"],
-                              reduktionen["reduktion_datum"]):
-            pid = int(pid)
-            if pid not in grenzen.index:
+        grenzen_terminal = (
+            historie[historie["status_code"].isin(TERMINALE_STATUS)]
+            .groupby("police_id")["status_date"].min()
+        )
+        for pid, jahr, datum, verfahren in zip(reduktionen["police_id"],
+                                               reduktionen["reduktion_jahr"],
+                                               reduktionen["reduktion_datum"],
+                                               reduktionen["verfahren"]):
+            pid, jahr = int(pid), int(jahr)
+            tk = str(verfahren) == "teilkuendigung"
+            if not tk and pid in pex_ab.index and pid in haupt.index:
+                beginn = pd.Timestamp(haupt.loc[pid, "insurance_start"])
+                pex = pd.Timestamp(pex_ab.loc[pid])
+                pex_jahr = ((pex.year * 12 + pex.month)
+                            - (beginn.year * 12 + beginn.month)) // 12
+                if pex_jahr <= jahr:
+                    errors.append(
+                        f"reduktionen: police {pid}: Beitragsherabsetzung im Jahr "
+                        f"{jahr} liegt nicht vor dem Zustandswechsel am {pex.date()} "
+                        f"(Beitragsfreistellung im Jahr {pex_jahr}) — ein "
+                        "beitragsfreier Vertrag hat keinen Beitrag, den eine "
+                        "Herabsetzung senken koennte; Ausweg: die Teilkuendigung "
+                        "(Verfahren teilkuendigung, Ledger TKU), die einen Anteil der "
+                        "beitragsfreien Summe kuendigt")
+                    continue
+            if pid not in grenzen_terminal.index:
                 continue
-            if datum >= grenzen.loc[pid]:
+            if datum >= grenzen_terminal.loc[pid]:
                 errors.append(
                     f"reduktionen: police {pid}: Herabsetzung am "
                     f"{datum.date()} liegt nicht vor dem Zustandswechsel am "
-                    f"{grenzen.loc[pid].date()} — eine Herabsetzung setzt "
-                    "einen laufenden Beitrag voraus")
+                    f"{grenzen_terminal.loc[pid].date()} — "
+                    + ("nach dem Ende gibt es nichts mehr zu kuendigen" if tk
+                       else "eine Herabsetzung setzt einen laufenden Beitrag voraus"))
     return errors
 
 
@@ -1879,3 +3008,141 @@ def validate_schichten(stamm: Any, schichten: Any, verankerung: Any) -> List[str
             except (TypeError, ValueError):
                 errors.append(f"{prefix}: {feld} ist kein JSON")
     return errors
+
+
+# --------------------------------------------------------------------------- #
+# Herabsetzung: die Soll-Buchungen und ihre Bindung — EINE Regel fuer P-B1
+# und die Fuehrungsprobe (Angriffsrunde nach T27)
+# --------------------------------------------------------------------------- #
+
+
+def red_sollbuchungen(
+    vs_neu: float, absorbiert: float, auszahlung_rechnerisch: Optional[float],
+) -> Dict[str, float]:
+    """Die Buchungen, die EINE registrierte Herabsetzung oder Teilkuendigung
+    im Ledger haben muss — Betragsart -> Betrag. Die eine Regel fuer P-B1
+    und die Fuehrungsprobe (Angriffsrunde nach T27).
+
+    ``auszahlung_rechnerisch`` None: Beitragsherabsetzung (``RED``) — die
+    neue Gesamtsumme (``VS_herabsetzung``) und, wenn eine traegt, die
+    absorbierte Korrekturschicht. Sonst Teilkuendigung (``TKU``):
+    ``VS_teilkuendigung``, die Schicht, die Auszahlung auf null gekappt und
+    die Kappung als eigene Zeile, wenn gekappt wurde — dieselbe Regel wie in
+    der Engine.
+    """
+    if auszahlung_rechnerisch is None:
+        aus: Dict[str, float] = {"VS_herabsetzung": vs_neu}
+        if absorbiert:
+            aus["dDK_absorption"] = absorbiert
+        return aus
+    aus = {"VS_teilkuendigung": vs_neu}
+    if absorbiert:
+        aus["dDK_absorption"] = absorbiert
+    aus["RKW_teilkuendigung"] = max(0.0, auszahlung_rechnerisch)
+    if auszahlung_rechnerisch < 0.0:
+        aus["Kappung_teilkuendigung"] = -auszahlung_rechnerisch
+    return aus
+
+
+def red_bindung_fehler(
+    pid: int, jahr: int, anteil: float, verfahren: str, *,
+    beitragsdauer: int, generation_verfahren: Optional[str], annahmen: Any,
+) -> List[str]:
+    """Vorgang, Verfahren und Anteil einer registrierten Zeile gegen das
+    System — die EINE Regel fuer P-B1 und die Fuehrungsprobe.
+
+    **Beitragsherabsetzung** (``RED``, Verfahren prospektiv/mit_abzug): Das
+    Verfahren ist das der Generation (Tarifwerk ``red_verfahren``), das Jahr
+    liegt in der Beitragszahlungsdauer, Rate ``annahmen.herabsetzung`` und
+    Anteil ``annahmen.red_anteil`` belegen sie. Der uebernommene Tarif
+    (``red_verfahren = teilkuendigung``) kennt keine Beitragsherabsetzung —
+    sein einziger Vorgang ist die Teilkuendigung (Entscheid des Maintainers
+    2026-10-01); eine ``RED`` dort ist ein Befund.
+
+    **Teilkuendigung** (``TKU``): moeglich in jeder Generation; belegt allein
+    durch die Rate ``annahmen.teilkuendigung`` mit dem Anteil ``tk_anteil``.
+    Der fruehere zweite Weg (Herabsetzungswunsch des uebernommenen Tarifs als
+    Teilkuendigung ausgefuehrt, Annahme A1) ist mit dem Entscheid vom
+    2026-10-01 entfallen: Dieser Tarif zieht nur aus dem Strom der
+    Teilkuendigung.
+
+    Kennen die Annahmen den Vorgang nicht (Rate oder Anteil null), ist die
+    Zeile unbelegt, nicht frei (Runde C RC05, Angriffsrunde nach T27). Kein
+    Default fuer Rate und Anteil: Wer die Regel ruft, gibt die Annahmen.
+    """
+    fehler: List[str] = []
+    red_rate = float(annahmen.herabsetzung(0.0))
+    red_anteil = float(getattr(annahmen, "red_anteil", 0.0) or 0.0)
+    tk_rate = float(annahmen.teilkuendigung(0.0))
+    tk_anteil = float(getattr(annahmen, "tk_anteil", 0.0) or 0.0)
+    if reduktion_ereignis(verfahren) == "TKU":
+        if not (tk_rate and tk_anteil):
+            fehler.append(
+                f"reduktionen police {pid}: Teilkuendigung mit Anteil {anteil!r}, die "
+                f"Annahmen kennen keine (teilkuendigung a = {tk_rate!r}, tk_anteil = "
+                f"{tk_anteil!r}) — der Anteil ist unbelegt")
+        elif abs(anteil - tk_anteil) > 1e-12:
+            fehler.append(
+                f"reduktionen police {pid}: Anteil {anteil!r} der Teilkuendigung, "
+                f"die Annahmen sagen tk_anteil = {tk_anteil!r}")
+        return fehler
+    if generation_verfahren is not None and verfahren != generation_verfahren:
+        if generation_verfahren == TEILKUENDIGUNG_VERFAHREN:
+            fehler.append(
+                f"reduktionen police {pid}: Beitragsherabsetzung mit Verfahren {verfahren!r} in "
+                "einem Tarif, der keine Beitragsherabsetzung kennt (Tarifwerk: "
+                "red_verfahren = teilkuendigung, der uebernommene Tarif) — sein "
+                "einziger Vorgang ist die Teilkuendigung (TKU); was die Quelle "
+                "'Herabsetzung' nennt, ist im Vokabular der PLV die Teilkuendigung")
+        else:
+            fehler.append(
+                f"reduktionen police {pid}: Verfahren {verfahren!r}, das Tarifwerk "
+                f"der Generation sagt {generation_verfahren!r}")
+    if int(jahr) >= int(beitragsdauer):
+        fehler.append(
+            f"reduktionen police {pid}: Beitragsherabsetzung im Jahr {jahr} nach "
+            f"dem Beitragsende (t = {beitragsdauer}) — es gibt keinen Beitrag; "
+            "Ausweg: die Teilkuendigung (TKU)")
+    if not red_anteil:
+        fehler.append(
+            f"reduktionen police {pid}: Herabsetzung mit Anteil {anteil!r}, die "
+            "Annahmen kennen keine (red_anteil = 0) — der Anteil ist unbelegt")
+    elif not red_rate:
+        fehler.append(
+            f"reduktionen police {pid}: Herabsetzung mit Anteil {anteil!r}, die "
+            "Annahmen kennen keine (herabsetzung a = 0, die Rate ist null) — "
+            "der Anteil ist unbelegt; red_anteil allein erzeugt keine Herabsetzung")
+    elif abs(anteil - red_anteil) > 1e-12:
+        fehler.append(
+            f"reduktionen police {pid}: Anteil {anteil!r}, die Annahmen sagen "
+            f"red_anteil = {red_anteil!r}")
+    return fehler
+
+
+def red_vollstaendigkeit_fehler(
+    pid: int, jahr: int, eigene: pd.DataFrame, soll_arten: Iterable[str],
+    wirkungstag: pd.Timestamp, *, ereignis: str, fremde_arten: bool = True,
+) -> List[str]:
+    """Die RED- bzw. TKU-Zeilen (``ereignis``) einer Police gegen die Soll-Menge: jede Soll-Art
+    genau einmal, am Wirkungstag der Tabelle, und (``fremde_arten``) keine
+    Art, die die Herabsetzung nicht erzeugt — P-B1 meldet diese schon als
+    unbelegte Buchung und schaltet den Teil ab."""
+    import pandas as pd
+
+    fehler: List[str] = []
+    falscher_tag = eigene[eigene["status_date"] != wirkungstag]
+    if len(falscher_tag):
+        fehler.append(
+            f"police {pid} {ereignis} Jahr {jahr}: Wirkungstag der Buchung "
+            f"{pd.Timestamp(falscher_tag['status_date'].iloc[0]).date()} "
+            f"ist nicht der der Reduktionstabelle {pd.Timestamp(wirkungstag).date()}")
+    soll_arten = list(soll_arten)
+    for art in soll_arten:
+        n = int((eigene["betrag_art"] == art).sum())
+        if n != 1:
+            fehler.append(f"police {pid} {ereignis} Jahr {jahr}: {art} "
+                          + ("fehlt" if n == 0 else f"{n}-mal gebucht"))
+    fremd = sorted(set(str(a) for a in eigene["betrag_art"]) - set(soll_arten))
+    if fremde_arten and fremd:
+        fehler.append(f"police {pid} {ereignis} Jahr {jahr}: {fremd} gehoert nicht zu dieser Herabsetzung")
+    return fehler

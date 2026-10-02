@@ -89,6 +89,15 @@ def test_die_auslieferung_ist_zeichenbar_und_belegt():
     assert belegrollen("A-B1", "tarif") == []
 
 
+def test_die_zugangsabnahme_ist_zeichenbar_und_belegt():
+    """A-B2 (ADR-022) zeichnet den Zugang in die produktive Ablage: die
+    Zugangsprobe, der A-M4-Snapshot und der Eingang sind ihre Belege. Ein
+    Tarif-Fall hat keinen Zugang und damit keine Rollen."""
+    assert "A-B2" in GUELTIGE_GATES
+    assert belegrollen("A-B2", "bestand") == ["zugangsprobe", "am4_snapshot", "eingang"]
+    assert belegrollen("A-B2", "tarif") == []
+
+
 def test_agenten_zeichnen_keine_abnahme():
     """ADR-018, Nachtrag 2026-09-16: Die Klasse ``agent`` steht weiter
     NICHT unter den zeichnenden — was ein Agent zeichnet (den Ankersatz),
@@ -196,8 +205,9 @@ ERLAUBTE_LITERALE = {
     ("A-M1", "A-M2", "A-M3"),
     # Die Nicht-Leer-Regel gilt bewusst nicht ueberall: A-M1 darf im
     # Tarif-Scope belegfrei angenommen werden, A-B1 hat dort gar keine
-    # Rollen. Die exakte Rollenmenge erzwingt der Lesepfad.
-    ("A-M4", "A-O1", "A-K2"),
+    # Rollen. Die exakte Rollenmenge erzwingt der Lesepfad. A-B2 (ADR-022)
+    # steht darin: Eine Zugangsabnahme ohne Belege naehme nichts ab.
+    ("A-M4", "A-O1", "A-K2", "A-T1", "A-B2", "A-B3"),
 }
 
 

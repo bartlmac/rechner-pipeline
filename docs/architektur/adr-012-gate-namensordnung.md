@@ -64,6 +64,8 @@ Gates hinzu. Jedes Gate, das vor der Umstellung entsteht, verteuert sie.
 | `K` | Rechenkern |
 | `B` | Bestand |
 | `M` | Migration als Ganzes |
+| `T` | Tarifwerk des Zielsystems (seit ADR-025) |
+| `Z` | Zeichnungsordnung (seit ADR-025) |
 
 **Nummer** — Reihenfolge innerhalb des Gegenstands, lueckenlos vergeben.
 Ein abgeschaltetes Gate hinterlaesst eine Luecke; es rutscht nichts nach,
@@ -90,6 +92,12 @@ die Belege lesen.
 | `G-2` | `A-M4` | Migrationscontrolling |
 | (neu) | `A-B1.auslieferung` | Auslieferung eines Stands-Pakets |
 | (neu) | `A-K2.kernaenderung` | Aenderung am Rechenkern |
+| (neu) | `A-B2.zugangsabnahme` | Zugang eines abgenommenen Bestands in die produktive Ablage (ADR-022) |
+| (neu) | `A-T1.tarifwerk` | Tarifwerk der PLV: Tarifplaene und Parametrierung der eigenen Generationen (ADR-025) |
+| (neu) | `A-B3.anfangsbestand` | Anfangsbestand einer aufgesetzten Ablage (ADR-025) |
+| (neu) | `A-Z1.ordnungsaenderung` | ein Glied der Versionslinie der Zeichnungsordnung (ADR-025; kein P9-Snapshot) |
+| (neu) | `A-M6.fallauftrag` | Auftrag eines Falls durch den Vorstand (ADR-026) |
+| (neu) | `A-M5.fallabbruch` | gezeichnetes Ende eines Falls ohne Abnahme (ADR-026) |
 | `A-K1` | `A-O1.tbox-aenderung` | T-Box-Aenderung (Gegenstand `O`) |
 | `P9.gate-entscheid` | `entscheid.vollzug` | das Entscheid-Kommando |
 | `P9.<gate>` | `entscheid.<abnahme>` | Ledger-Eintrag eines Vollzugs |
@@ -146,6 +154,28 @@ neuem Kern durchgerechnet, Differenz je Vertrag. Solange es den
 Produzenten dafuer nicht gibt, ist A-K2 nicht zeichenbar — gewollt, denn
 der geaenderte Kern bewertet nach der Migration den laufenden Bestand
 weiter, und diese Wirkung sieht sonst niemand.
+
+**Nachtrag 2026-10-01** (Entscheid des Maintainers, ADR-018 Nachtrag
+2026-10-01): A-K2 ist Teil des Ablaufs. Gegenstand ist der KERNSTAND, auf
+dem ein Fall rechnet, einschliesslich der Aenderungen ausserhalb eines
+Falls. `A-M4` verlangt in beiden Scopes, dass er abgenommen ist
+(Pflichtrolle `kernstand`): im Fall gezeichnet, oder bei unveraendertem
+Stand "keine Aenderung seit Abnahme <snapshot>" ueber einen Verweis auf
+einen frueher angenommenen A-K2-Snapshot. Dieselbe Regel gilt fuer
+`A-O1` und den T-Box-Stand (Pflichtrolle `tboxstand`; zusaetzlich die
+Basislinie: eine Versionslinie mit einem Element hat keinen Uebergang).
+Damit gilt der Satz oben "loest eine Tarifgeneration nicht aus" weiter
+fuer den ANLASS — eine Tarifgeneration erzwingt keine Kernaenderung —,
+aber jeder Fall rechnet auf einem abgenommenen Kernstand. Zwei Pruefungen: die
+qualitative Pruefung der Aenderungen entlang der Module mit den Commits
+des Zweigs (Produzent `gates.kernstand_belegen`, das Gate rechnet nach)
+und die Regression. Die Regression ist bis zu ihrem Produzenten eine
+benannte AUSNAHME ("nicht gefahren, Werkzeug noch nicht erstellt"),
+nie ein Ergebnis; A-K2 ist damit zeichenbar, und die Zeichnung deckt
+ausdruecklich nur die qualitative Pruefung. Der folgende Absatz zum
+alten Kern gilt mit einer Aenderung: Der Vergleichsstand ist der
+ausdruecklich genannte, zuletzt abgenommene Kernstand (`--von`, statt
+fest `origin/main`), und `dirty` sperrt nur noch die Regression.
 
 **Woher der ALTE Kern kommt** (Entscheid des Maintainers 2026-09-16):
 Entwicklung im Fall laeuft auf einem Branch, der produktive Kern liegt
@@ -228,6 +258,36 @@ Bisher musste man wissen, dass `G-A` vor `G-2` kommt.
   Uebersetzen. Die Beschluesse selbst sind unveraendert; das haelt der
   Hinweis in `docs/architektur/README.md` fuer die ganze Sammlung fest,
   damit nicht zehn Dokumente denselben Vermerk tragen.
+
+## Nachtrag 2026-10-01: drei Namen der Erstabnahme (ADR-025)
+
+* **`A-T1.tarifwerk`** — ein neuer Gegenstand `T`, Nummer 1: Das Tarifwerk
+  der PLV ist weder Rechenkern (`K`) noch Vokabular (`O`) noch eine Quelle
+  (`Q`). Es lief bis hierher im Kernstand mit und wurde von der falschen
+  Rolle gezeichnet; jetzt zeichnet `mensch/aktuariat`.
+* **`A-B3.anfangsbestand`** — Gegenstand `B`, die naechste freie Nummer.
+* **`A-Z1.ordnungsaenderung`** — ein neuer Gegenstand `Z` (die
+  Zeichnungsordnung), Nummer 1: die Zeichnung eines Glieds ihrer
+  Versionslinie durch die Wurzelrolle. Kein P9-Snapshot, deshalb nicht im
+  Entscheid-Kommando; aber eine Kennung, die eine Ordnung vergeben kann.
+
+Der kuenftige Fallauftrag bekommt einen eigenen Namen; `A-M5` bleibt dem
+Fallabbruch vorbehalten.
+
+## Nachtrag 2026-10-01: Auftrag und Abbruch eines Falls (ADR-026)
+
+* **`A-M5.fallabbruch`** — wie am 2026-09-16 vorgesehen: Art `A`, Gegenstand
+  `M` (die Migration als Ganzes), Nummer 5. Gezeichnet von der Programmleitung
+  des Falls.
+* **`A-M6.fallauftrag`** — Art `A`, Gegenstand `M`, die naechste freie Nummer.
+  Der Auftrag betrifft die Migration als Ganzes wie der Abbruch; beide Enden
+  des Lebenslaufs stehen unter demselben Gegenstand. Die Nummer sagt die
+  Reihenfolge der Vergabe, nicht die des Ablaufs: Der Auftrag kommt im Ablauf
+  zuerst, vergeben wurde zuerst `A-M5`. Verworfen: `A-M0` (die Nummern
+  beginnen bei 1) und ein eigener Gegenstand fuer zwei Gates, die beide die
+  Migration als Ganzes betreffen.
+
+Beide stehen im Register (Abschnitt 2).
 
 ## Nachtrag 2026-09-05: Versionierungsregel der Gates
 

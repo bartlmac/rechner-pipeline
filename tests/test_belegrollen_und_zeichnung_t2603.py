@@ -29,7 +29,8 @@ from rechner_pipeline.models import freigabe as fg
 from rechner_pipeline.models.schemas import p9_snapshot_sha256
 from rechner_pipeline.models.zeichnung import GATES_MIT_PFLICHTBELEGEN
 from tests.freigabe_testschluessel import FREMDER_SCHLUESSEL, TESTKEY, TESTRING
-from tests.test_betrieb_uebernahme import PLV, STICHTAG, _fall, am4_snapshot
+from tests.test_betrieb_uebernahme import PLV, STICHTAG, _fall, _pb1_ledger, am4_snapshot, fuehrungsbeleg
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 
 # --- der Vertrag in models ---------------------------------------------------
@@ -46,10 +47,30 @@ def test_der_vertrag_wohnt_in_models_und_die_scopes_bleiben_gleich():
     assert set(br.BELEGROLLEN) == set(GATES_MIT_PFLICHTBELEGEN)
     assert br.am4_belegrollen("bestand") == [
         "pq3_ledger", "aq1_snapshot", "am1_snapshot", "am2_snapshot", "am3_snapshot",
-        "pk1_belege", "pb1_ledger", "migrationssuite", "fuehrungsprobe", "abnahmebericht"]
+        "pk1_belege", "kernstand", "tboxstand", "tarifwerkstand", "pb1_ledger", "migrationssuite",
+        "fuehrungsprobe",
+        "abnahmebericht"]
     assert not hasattr(fall_mod, "BELEGROLLEN") and not hasattr(fall_mod, "belegrollen")
     with pytest.raises(br.BelegrollenFehler, match="Scope"):
         br.belegrollen("A-M4", "irgendwas")
+
+
+def test_die_zugangsabnahme_traegt_genau_ihre_drei_pflichtrollen():
+    """ADR-022 (Entscheid des Maintainers 2026-09-30): A-B2 zeichnet den
+    Zugang eines abgenommenen Bestands in die produktive Ablage. Die
+    Unterschrift stuetzt sich auf drei Belege, und auf keinen weiteren: die
+    Zugangsprobe (die Differenz der Laeufe mit und ohne Eingang), den
+    A-M4-Snapshot des Falls (was abgenommen wurde) und den Eingang (was
+    eintreten soll). Ein Tarif-Fall hat keinen Zugang.
+
+    Ratsche mit ``==``: eine vierte Rolle ohne Produzenten waere A-B2 nicht
+    mehr zeichenbar, eine fehlende eine Unterschrift ohne Bezug.
+    Mutationsprobe: eine Rolle aus BELEGROLLEN['A-B2'] streichen -> rot."""
+    from rechner_pipeline.models.zeichnung import GUELTIGE_GATES
+
+    assert "A-B2" in GUELTIGE_GATES
+    assert br.belegrollen("A-B2", "bestand") == ["zugangsprobe", "am4_snapshot", "eingang"]
+    assert br.belegrollen("A-B2", "tarif") == []
 
 
 # --- DoRAs Fall: der Betrieb prueft die Rollenmenge ----------------------------
@@ -64,7 +85,7 @@ def test_ein_snapshot_mit_nur_einer_pflichtrolle_wird_nicht_uebernommen(tmp_path
     Mutationsprobe: ``erwartete_rollen`` in lies_am4_snapshot wieder
     weglassen -> rot."""
     voll = _fall(tmp_path / "voll", name="voll")
-    ueb.eingang_anlegen(tmp_path / "daten", voll, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), voll, STICHTAG)
     duenn = _fall(tmp_path / "duenn", name="duenn", snapshot=None)
     sha = json.loads((duenn / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json").read_bytes())
     from tests.test_betrieb_uebernahme import _pb1_ledger
@@ -75,7 +96,7 @@ def test_ein_snapshot_mit_nur_einer_pflichtrolle_wird_nicht_uebernommen(tmp_path
     (duenn / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
         json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}), encoding="utf-8")
     with pytest.raises(ueb.UebernahmeError, match="nicht exakt die aus dem Scope abgeleiteten Rollen"):
-        ueb.eingang_anlegen(tmp_path / "daten-duenn", duenn, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten-duenn"), duenn, STICHTAG)
     assert not (tmp_path / "daten-duenn" / "uebernahme" / "duenn").exists()
 
 
@@ -84,7 +105,7 @@ def test_ein_snapshot_mit_nur_einer_pflichtrolle_wird_nicht_uebernommen(tmp_path
 def _fall_mit_snapshot(wurzel: Path, name: str, **snapshot_kw) -> Path:
     from tests.test_betrieb_uebernahme import _pb1_ledger
     fall = _fall(wurzel, name=name, snapshot=None)
-    daten = am4_snapshot(name, pb1_ledger_sha=_pb1_ledger(fall), **snapshot_kw)
+    daten = am4_snapshot(name, pb1_ledger_sha=_pb1_ledger(fall), fuehrungsprobe_sha=fuehrungsbeleg(fall), **snapshot_kw)
     (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
         json.dumps(daten), encoding="utf-8")
     (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
@@ -120,7 +141,7 @@ def test_der_betriebseingang_verifiziert_die_signatur_und_der_tageslauf_verlangt
     entfernen -> die letzte Zusicherung rot."""
     config = load_config(PLV)
     echt = _fall_mit_snapshot(tmp_path / "a", "echt")
-    ziel = ueb.eingang_anlegen(tmp_path / "daten", echt, STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), echt, STICHTAG)
     eingang = json.loads((ziel / "eingang.json").read_text(encoding="utf-8"))
     assert eingang["zeichnung"]["signatur_verifiziert"] is True
     assert eingang["zeichnung"]["schluesselklasse"] == "mensch"
@@ -128,7 +149,7 @@ def test_der_betriebseingang_verifiziert_die_signatur_und_der_tageslauf_verlangt
 
     fremd = _fall_mit_snapshot(tmp_path / "b", "fremd", schluessel=FREMDER_SCHLUESSEL)
     with pytest.raises(ueb.UebernahmeError, match="nicht bereitgestellten Schluessel"):
-        ueb.eingang_anlegen(tmp_path / "daten", fremd, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fremd, STICHTAG)
     assert not (tmp_path / "daten" / "uebernahme" / "fremd").exists(), "kein halber Eingang"
 
     # Manipulation NACH der Signatur: Inhalt geaendert, Selbstadressierung
@@ -141,26 +162,51 @@ def test_der_betriebseingang_verifiziert_die_signatur_und_der_tageslauf_verlangt
     (mani / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
         json.dumps({"summary": {"snapshot_sha256": d["snapshot_sha256"]}}), encoding="utf-8")
     with pytest.raises(ueb.UebernahmeError, match="stimmt nicht mit dem Snapshot-Inhalt"):
-        ueb.eingang_anlegen(tmp_path / "daten", mani, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), mani, STICHTAG)
 
-    # Ohne Ring: benannter Zustand, und die Fuehrung verweigert.
+    # Ohne Ring wird nichts registriert (Angriffsrunde nach T27): Vorher
+    # entstand ein Eingang mit signatur_verifiziert = false, den jeder
+    # Tageslauf verweigerte und den niemand ersetzen durfte.
     monkeypatch.setattr(ueb, "_STANDARD_SCHLUESSELRING", None)
     ohne = _fall_mit_snapshot(tmp_path / "d", "ohne")
-    ziel2 = ueb.eingang_anlegen(tmp_path / "daten", ohne, STICHTAG)
-    assert json.loads((ziel2 / "eingang.json").read_text(encoding="utf-8"))["zeichnung"]["signatur_verifiziert"] is False
+    with pytest.raises(ueb.UebernahmeError, match="ohne Freigabeschluessel wird nichts registriert"):
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), ohne, STICHTAG)
+    assert not (tmp_path / "daten" / "uebernahme" / "ohne").exists()
+    # Die Fuehrung verlangt die Verifikation weiterhin (zweite Wache): ein
+    # verifizierter Eingang, dessen Flag von Hand gekippt wurde, tritt
+    # nicht ein.
+    kipp = ziel / "eingang.json"
+    kipp.chmod(0o644)
+    d = json.loads(kipp.read_text(encoding="utf-8"))
+    d["zeichnung"]["signatur_verifiziert"] = False
+    kipp.write_text(json.dumps(d), encoding="utf-8")
     with pytest.raises(ueb.UebernahmeError, match="ohne verifizierte Freigabesignatur"):
-        ueb.lies_uebernahme(ziel2, config)
+        ueb.lies_uebernahme(ziel, config)
 
 
 def test_ein_altsnapshot_ohne_schluesselklasse_tritt_nicht_ein(tmp_path):
     """Schema 6 traegt keine Schluesselklasse. Lesen (Seite) geht weiter —
     registriert wird nur Schema 7: die Zeichnung ist Teil des Vertrags.
-    Mutationsprobe: die Schema-Pruefung in eingang_anlegen entfernen -> rot."""
+
+    Seit dem Entscheid 2026-10-01 faellt ein Altsnapshot schon an der
+    Rollenregel: Schema 6 erlaubt als Rollenfeld nur die Altform ohne Ebene
+    ('mensch'/'agent'), und das ist nie die Rolle eines Schluessels nach
+    Ordnung Schema 2. Die Schema-Sperre in eingang_anlegen bleibt als
+    zweite Sicherung stehen; erreichbar ist sie fuer Schema 6 nicht mehr.
+    Mutationsprobe: in models.zeichnung.zeichnende_rolle_fehler den
+    Vergleich der Rollenfelder entfernen -> rot."""
     alt = _fall_mit_snapshot(tmp_path / "alt", "alt", schema=6)
-    z = ueb.pruefe_am4_snapshot(alt, json.loads((alt / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").read_text())["summary"]["snapshot_sha256"])
+    sha = json.loads((alt / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json")
+                     .read_text())["summary"]["snapshot_sha256"]
+    z = ueb.zeichnung_aus_snapshot(alt, sha)      # der Leseweg der Seite
     assert z["schema_version"] == 6 and z["schluesselklasse"] == "nicht ausgewiesen"
-    with pytest.raises(ueb.UebernahmeError, match="Schema 6.*Schema 7"):
-        ueb.eingang_anlegen(tmp_path / "daten", alt, STICHTAG)
+    # Seit die Linie Pflicht ist (ADR-025, Nachtrag 2026-10-01), faellt er
+    # schon davor: Ein Altsnapshot pinnt kein Glied der Linie und begruendet
+    # nichts Neues (Schnitt der Linie) — lesbar bleibt er fuer die Anzeige.
+    # Seit Pruefrunde I (I08) faellt er an der einen Lesestelle noch frueher:
+    # Der Betrieb gruendet nur auf Snapshots des aktuellen Schemas.
+    with pytest.raises(ueb.UebernahmeError, match="nach Schema 6 — der Betrieb gruendet nur"):
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), alt, STICHTAG)
 
 
 def test_der_schluesselring_weist_schluessel_im_vertrauensraum_ab(tmp_path):
@@ -172,4 +218,5 @@ def test_der_schluesselring_weist_schluessel_im_vertrauensraum_ab(tmp_path):
     assert ring == {} and any("innerhalb des Vertrauensraums" in f for f in fehler)
     aussen = tmp_path / "p9.key"; aussen.write_bytes(TESTKEY); aussen.chmod(0o600)
     ring, fehler, aktiv = fg.lade_schluesselring([str(aussen)], ausserhalb=fall)
-    assert fehler == [] and ring == TESTRING and aktiv == next(iter(TESTRING))
+    fp = hashlib.sha256(TESTKEY).hexdigest()
+    assert fehler == [] and ring == {fp: TESTKEY} and aktiv == fp

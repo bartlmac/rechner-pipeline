@@ -23,11 +23,21 @@ Knoten: system/assurance
 """
 
 from __future__ import annotations
+from rechner_pipeline.models.standabnahme import GEGENSTAENDE as _STAND_GEGENSTAENDE
+from rechner_pipeline.models.standabnahme import WEGE as _STAND_WEGE
+from rechner_pipeline.models.standabnahme import WEGE_LESBAR as _STAND_WEGE_LESBAR
+from rechner_pipeline.models.standabnahme import LINIEN_GATES as _LINIEN_GATES
+from rechner_pipeline.models.standabnahme import LINIE_MARKER as _LINIE_MARKER
+from rechner_pipeline.models.standabnahme import LINIE_SCOPE as _LINIE_SCOPE
 from rechner_pipeline.models.zeichnung import (
+    ABBRUCH_GATE,
+    AUFTRAG_GATE,
     GATES_MIT_PFLICHTBELEGEN,
     GUELTIGE_GATES,
     validiere_zeichnung,
 )
+from rechner_pipeline.models.fallauftrag import abbruch_fehler as _abbruch_fehler
+from rechner_pipeline.models.fallauftrag import auftrag_fehler as _auftrag_fehler
 
 import hashlib
 import json
@@ -82,12 +92,58 @@ GATE_VERSION_DEFAULT = "1.0.0"
 #: Schluesselklasse in der Zeichnung). Schema 6 bleibt LESBAR: Die
 #: Snapshots des zweiten Baldrian-Laufs sind als Ausnahme ausgewiesen und
 #: werden nicht nachsigniert.
-P9_SNAPSHOT_SCHEMA_VERSION = 7
+#:
+#: Version 8 (2026-10-01, ADR-018 Nachtrag 2026-10-01): Der Snapshot von
+#: ``A-K2`` traegt das Feld ``ausnahmen`` — was die Zeichnung NICHT deckt,
+#: woertlich (heute: die Regression, nicht gefahren). Die Snapshots von
+#: ``A-K2`` und ``A-O1`` tragen das Feld ``stand`` — den Stand, den sie
+#: abnehmen (models.standabnahme). ``A-M4`` traegt ``standabnahmen``: je
+#: Gegenstand (Kernstand, T-Box-Stand) den Weg, auf dem der Stand des
+#: Falls abgenommen ist, und die woertliche Anzeige; die Pflichtrollen
+#: ``kernstand`` und ``tboxstand`` pinnen den Beleg dazu
+#: (``models.belegrollen``). Gate-Version 3.0.0 (Major: ein vorher
+#: gruener A-M4-Entscheid wird ohne abgenommenen Kernstand rot). Schema 7
+#: bleibt lesbar.
+#:
+#: Version 9 (2026-10-01, ADR-025): die Erstabnahme des Zielsystems. Neu
+#: sind (1) der Scope ``linie`` (``fall_scope``) fuer Snapshots des
+#: LINIENBEREICHS — Abnahmen ausserhalb eines Falls, ohne Eingang und A-Box;
+#: statt ``eingang.json``/A-Box binden sie ``linie.json``; zeichenbar dort
+#: nur die vier Gegenstaende (A-K2, A-O1, A-T1, A-B3); (2) die Gates
+#: ``A-T1`` (Tarifwerk) und ``A-B3`` (Anfangsbestand), beide mit ``stand``;
+#: (3) ``zeichnung.ordnungsglied_sha256`` — das Glied der Ordnungslinie,
+#: unter dem gezeichnet wurde; (4) in ``standabnahmen`` von A-M4 nur noch die
+#: Wege (a) und (b), (c) "basislinie" ist entfallen (Schema 8 lesbar). Die
+#: Pflichtrolle ``tarifwerkstand`` von A-M4 macht die Gate-Version 4.0.0
+#: (Major: ein vorher gruener A-M4-Entscheid wird ohne abgenommenes
+#: Tarifwerk rot). Schema 8 bleibt lesbar.
+#:
+#: Version 10 (2026-10-01, ADR-026): der Lebenslauf eines Falls. Neu sind
+#: (1) die Gates ``A-M6`` (Fallauftrag; Feld ``auftrag`` — der signierte
+#: Inhalt des Auftrags, ``models.fallauftrag``) und ``A-M5`` (Fallabbruch;
+#: Feld ``abbruch``), beide nur ab Schema 10, beide ohne A-Box (sie binden
+#: ``eingang.json`` und ``fall.json``); (2) das Feld ``fallauftrag`` — der
+#: SHA-256 des geltenden A-M6-Snapshots — in JEDER Annahme eines Falls ausser
+#: dem Auftrag selbst: der Abnahmepunkt nennt signiert den Auftrag, auf dem er
+#: steht. Gate-Version 5.0.0 (Major: ein vorher gruener Entscheid wird ohne
+#: geltenden Fallauftrag rot). Schema 9 bleibt lesbar. Seit den Pruefrunden
+#: I und J (ohne neues Schema, ADR-026): eine GEZEICHNETE Ablehnung traegt
+#: ``freigabe`` und ``zeichnung`` und im Fall (ausser an A-M6) ``fallauftrag``.
+P9_SNAPSHOT_SCHEMA_VERSION = 10
 _ROLLEN_MUSTER = re.compile(r"^(mensch|agent)/[a-z][a-z0-9-]*$")
-P9_SNAPSHOT_SCHEMA_VERSIONEN = (6, 7)
-P9_GATE_VERSION = "2.0.0"
+P9_SNAPSHOT_SCHEMA_VERSIONEN = (6, 7, 8, 9, 10)
+P9_GATE_VERSION = "5.0.0"
 #: Gate-Version je lesbarem Schnappschuss-Schema.
-P9_GATE_VERSION_JE_SCHEMA = {6: "0.6.0", 7: P9_GATE_VERSION}
+P9_GATE_VERSION_JE_SCHEMA = {6: "0.6.0", 7: "2.0.0", 8: "3.0.0", 9: "4.0.0",
+                             10: P9_GATE_VERSION}
+#: Die Gates des Lebenslaufs (ADR-026) und das Feld, das ihren Inhalt traegt.
+P9_LEBENSLAUF_FELDER: Dict[str, str] = {AUFTRAG_GATE: "auftrag", ABBRUCH_GATE: "abbruch"}
+#: Gates, deren Snapshot ab Schema 8 das Feld ``ausnahmen`` traegt.
+P9_GATES_MIT_AUSNAHMEN: tuple[str, ...] = ("A-K2",)
+#: Gates, deren Snapshot ab Schema 8 den abgenommenen ``stand`` traegt —
+#: die Gegenstaende der Standabnahme (models.standabnahme.GEGENSTAENDE;
+#: eine Ratsche haelt beide gleich).
+P9_GATES_MIT_STAND: tuple[str, ...] = tuple(g.gate for g in _STAND_GEGENSTAENDE)
 P9_FREIGABE_VERFAHREN = "hmac-sha256-v1"
 #: Die menschlich entscheidbaren Gates. A-M2 (Verlaufstest) und A-M3
 #: (Geschaeftsvorfalltest) stehen hier gleichberechtigt neben A-M1: Alle
@@ -548,11 +604,40 @@ class P9Snapshot:
             expected_fields.update({"fall_scope", "pflichtbelege"})
         if gate == "A-M4":
             expected_fields.add("pk1_belege")
-        if data.get("entscheid") == "angenommen":
+        # Eine GEZEICHNETE Ablehnung (Pruefrunde I, ADR-026): Wer mit dem
+        # Schluessel einer berechtigten Rolle ablehnt, zeichnet sie; nur sie
+        # widerruft eine Annahme fuer einen Leser, der danach etwas FREIGIBT
+        # (der Abbruch nach A-M4). Eine Ablehnung ohne Schluessel bleibt, wie
+        # sie war (ADR-008, Punkt 6).
+        gezeichnete_ablehnung = data.get("entscheid") == "abgelehnt" and "freigabe" in data
+        if data.get("entscheid") == "angenommen" or gezeichnete_ablehnung:
             expected_fields.add("freigabe")
+        version = data.get("schema_version")
+        mit_ausnahmen = (gate in P9_GATES_MIT_AUSNAHMEN and type(version) is int
+                         and version >= 8)
+        if mit_ausnahmen:
+            expected_fields.add("ausnahmen")
+        ab_schema_8 = type(version) is int and version >= 8
+        mit_stand = gate in P9_GATES_MIT_STAND and ab_schema_8
+        if mit_stand:
+            expected_fields.add("stand")
+        if gate == "A-M4" and ab_schema_8:
+            expected_fields.add("standabnahmen")
+        ab_schema_10 = type(version) is int and version >= 10
+        if gate in P9_LEBENSLAUF_FELDER and data.get("entscheid") == "angenommen":
+            expected_fields.add(P9_LEBENSLAUF_FELDER[gate])
+        # Jede ZEICHNUNG eines Falls — Annahme oder gezeichnete Ablehnung —
+        # nennt den Auftrag, auf dem sie steht (ADR-026; Nachtrag Pruefrunde J)
+        # — ausser am Auftrag selbst und im Linienbereich. Eine unsignierte
+        # Ablehnung nennt keinen: Sie zeichnet nichts.
+        mit_fallauftrag = (ab_schema_10
+                           and (data.get("entscheid") == "angenommen" or gezeichnete_ablehnung)
+                           and gate != AUFTRAG_GATE
+                           and data.get("fall_scope") != _LINIE_SCOPE)
+        if mit_fallauftrag:
+            expected_fields.add("fallauftrag")
         fields = set(data)
         missing = sorted(expected_fields - fields)
-        version = data.get("schema_version")
         legacy = version == 6
         # "zeichnung": in Schema 6 optional (nur mit Ordnung), in Schema 7
         # bei jeder Annahme Pflicht und um die Schluesselklasse ergaenzt
@@ -567,10 +652,13 @@ class P9Snapshot:
         if z is not None:
             errors.extend(validiere_zeichnung(z, form="alt" if legacy else "neu"))
         if not legacy:
-            if data.get("entscheid") == "angenommen" and z is None:
+            if (data.get("entscheid") == "angenommen" or gezeichnete_ablehnung) and z is None:
                 errors.append(
                     "an accepted decision requires zeichnung (Rolle aus der "
                     "Zeichnungsordnung, Schluesselklasse) — ADR-018"
+                    if data.get("entscheid") == "angenommen" else
+                    "a signed rejection requires zeichnung (Rolle aus der "
+                    "Zeichnungsordnung, Schluesselklasse) — ADR-026, Pruefrunde I"
                 )
             if isinstance(z, dict) and z.get("rolle") != data.get("rolle"):
                 errors.append("zeichnung.rolle must equal rolle")
@@ -581,6 +669,10 @@ class P9Snapshot:
         if missing:
             return errors
 
+        ab_schema_9 = type(version) is int and version >= 9
+        linie = data.get("fall_scope") == _LINIE_SCOPE
+        if isinstance(z, dict) and "ordnungsglied_sha256" in z and not ab_schema_9:
+            errors.append("zeichnung.ordnungsglied_sha256 exists only from schema 9 (ADR-025)")
         if type(version) is not int or version not in P9_SNAPSHOT_SCHEMA_VERSIONEN:
             errors.append(
                 f"schema_version must be one of {P9_SNAPSHOT_SCHEMA_VERSIONEN}"
@@ -594,6 +686,19 @@ class P9Snapshot:
             )
         if gate not in P9_GATES:
             errors.append(f"gate must be one of {P9_GATES}, got {gate!r}")
+        if gate in P9_LEBENSLAUF_FELDER:
+            if not ab_schema_10:
+                errors.append(f"{gate} exists only from schema 10 (ADR-026)")
+            if linie:
+                errors.append(f"{gate} belongs to a case, never to the line (ADR-026)")
+            if data.get("entscheid") == "angenommen":
+                inhalt = data.get(P9_LEBENSLAUF_FELDER[gate])
+                pruefer = _auftrag_fehler if gate == AUFTRAG_GATE else _abbruch_fehler
+                errors.extend(f"{P9_LEBENSLAUF_FELDER[gate]}: {f}" for f in pruefer(inhalt))
+        if gezeichnete_ablehnung and not ab_schema_10:
+            errors.append("a signed rejection exists only from schema 10 (ADR-026, Pruefrunde I)")
+        if mit_fallauftrag and not _is_sha256(data.get("fallauftrag")):
+            errors.append(f"fallauftrag must be the SHA-256 of the {AUFTRAG_GATE} snapshot")
         if data.get("entscheid") not in ("angenommen", "abgelehnt"):
             errors.append("entscheid must be 'angenommen' or 'abgelehnt'")
         rolle = data.get("rolle")
@@ -617,7 +722,14 @@ class P9Snapshot:
         hashes = data.get("artefakt_hashes")
         errors.extend(_hashmap_errors("artefakt_hashes", hashes))
         if data.get("entscheid") == "angenommen" and isinstance(hashes, dict):
-            for key in ("eingang.json", "abgeleitet/abox/abox.json"):
+            # Der Linienbereich (ADR-025) hat keinen Eingang und keine A-Box;
+            # er bindet seine Kennzeichnung.
+            # Auftrag und Abbruch (ADR-026) stehen vor bzw. neben der A-Box: Sie
+            # binden die Lieferung und den Fall.
+            pflicht_hashes = ((_LINIE_MARKER,) if linie
+                              else ("eingang.json", "fall.json") if gate in P9_LEBENSLAUF_FELDER
+                              else ("eingang.json", "abgeleitet/abox/abox.json"))
+            for key in pflicht_hashes:
                 if key not in hashes:
                     errors.append(f"artefakt_hashes must contain {key!r}")
 
@@ -657,7 +769,12 @@ class P9Snapshot:
         # kam ohne Beanstandung durch, und A-M4 pinnte ihn danach als
         # eigenen Pflichtbeleg.
         if gate in GATES_MIT_PFLICHTBELEGEN:
-            if data.get("fall_scope") not in ("tarif", "bestand"):
+            if linie:
+                if not ab_schema_9 or gate not in _LINIEN_GATES:
+                    errors.append(
+                        f"fall_scope 'linie' only from schema 9 and only for {_LINIEN_GATES} "
+                        "(ADR-025)")
+            elif data.get("fall_scope") not in ("tarif", "bestand"):
                 errors.append("fall_scope must be 'tarif' or 'bestand'")
             pflichtbelege = data.get("pflichtbelege")
             if not isinstance(pflichtbelege, dict):
@@ -670,7 +787,8 @@ class P9Snapshot:
                 # Tarif-Fall liefert keinen Bestand aus). Die EXAKTE
                 # Rollenmenge je Gate und Scope erzwingt ohnehin der
                 # Lesepfad in gate_entscheid gegen models.belegrollen.BELEGROLLEN.
-                gate in ("A-M4", "A-O1", "A-K2")
+                (gate in ("A-M4", "A-O1", "A-K2", "A-T1", "A-B2", "A-B3")
+                 or gate in P9_LEBENSLAUF_FELDER)
                 and data.get("entscheid") == "angenommen"
                 and not pflichtbelege
             ):
@@ -703,6 +821,36 @@ class P9Snapshot:
                             errors.append(
                                 f"pflichtbelege[{rolle!r}] contains a non-SHA-256"
                             )
+        if mit_ausnahmen:
+            # Was die Zeichnung NICHT deckt — benannt je Pflichtrolle, nie
+            # leer formuliert: ein leeres Objekt heisst "keine Ausnahme".
+            ausnahmen = data.get("ausnahmen")
+            if not isinstance(ausnahmen, dict):
+                errors.append("ausnahmen must be an object")
+            else:
+                for rolle, text in ausnahmen.items():
+                    if not (isinstance(rolle, str) and re.fullmatch(r"[a-z0-9_]+", rolle)):
+                        errors.append(f"invalid ausnahmen role {rolle!r}")
+                    if not (isinstance(text, str) and text.strip()):
+                        errors.append(f"ausnahmen[{rolle!r}] must be a non-empty string")
+        if mit_stand:
+            stand = data.get("stand")
+            if not (isinstance(stand, dict) and stand and all(
+                    isinstance(k, str) and isinstance(v, str) and v for k, v in stand.items())):
+                errors.append("stand must be a non-empty object of non-empty strings")
+        if gate == "A-M4" and ab_schema_8:
+            standabnahmen = data.get("standabnahmen")
+            if not isinstance(standabnahmen, dict):
+                errors.append("standabnahmen must be an object")
+            else:
+                wege = _STAND_WEGE if ab_schema_9 else _STAND_WEGE_LESBAR
+                for rolle, eintrag in standabnahmen.items():
+                    if not (isinstance(eintrag, dict)
+                            and eintrag.get("weg") in wege
+                            and isinstance(eintrag.get("gate"), str)
+                            and isinstance(eintrag.get("anzeige"), str) and eintrag["anzeige"].strip()):
+                        errors.append(
+                            f"standabnahmen[{rolle!r}] must carry gate, weg and anzeige")
         if gate == "A-M4":
             pk1_belege = data.get("pk1_belege")
             if not isinstance(pk1_belege, dict):
@@ -735,7 +883,7 @@ class P9Snapshot:
                                 f"pk1_belege[{generation!r}] contains a non-SHA-256"
                             )
 
-        if data.get("entscheid") == "angenommen":
+        if data.get("entscheid") == "angenommen" or gezeichnete_ablehnung:
             freigabe = data.get("freigabe")
             required = {"verfahren", "schluessel_sha256", "signatur"}
             if not isinstance(freigabe, dict) or set(freigabe) != required:

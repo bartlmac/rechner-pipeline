@@ -335,8 +335,10 @@ def test_tarifplan_dokumentiert_die_plv_generationen():
 
 def test_tarifwerks_schalter_sind_eigenschaft_der_generation(tmp_path: Path):
     """Freischaltung, Schritt 2 (dev-docs/freischaltung-uebernommener-bestand.md):
-    Die drei Tarifwerks-Eigenschaften der Fuehrung stehen je Generation in
-    der Config. Vorgabe ist der Tarifplan KLV des eigenen Geschaefts; die
+    Die Tarifwerks-Eigenschaften der Fuehrung stehen je Generation in
+    der Config — seit dem Entscheid vom 2026-10-01 auch der Umfang der
+    Teilkuendigung (Annahme B1: der uebernommene Tarif kuendigt die
+    Grundversicherung, die eigenen Tarife alle Bausteine). Vorgabe ist der Tarifplan KLV des eigenen Geschaefts; die
     uebernommene TG2015 traegt, was ihre Abnahmen bestanden haben. Ein
     Tippfehler (Zeichenkette statt Wahrheitswert, unbekanntes Verfahren)
     ist ein Ladefehler, kein stilles Verhalten."""
@@ -349,12 +351,12 @@ def test_tarifwerks_schalter_sind_eigenschaft_der_generation(tmp_path: Path):
     je_name = {g.name: g.tarifwerk() for g in gesamt.generationen}
     assert je_name["TG2015"] == {
         "scheiben_mit_gamma1": True, "stoab_je_baustein": True,
-        "red_verfahren": "teilkuendigung",
+        "red_verfahren": "teilkuendigung", "tku_umfang": "grundversicherung",
     }
     eigene = {n: tw for n, tw in je_name.items() if n != "TG2015"}
     assert eigene and all(
         tw == {"scheiben_mit_gamma1": False, "stoab_je_baustein": False,
-               "red_verfahren": "prospektiv"}
+               "red_verfahren": "prospektiv", "tku_umfang": "alle_bausteine"}
         for tw in eigene.values()
     ), "das eigene Geschaeft rechnet nach dem Tarifplan KLV"
 
@@ -402,4 +404,5 @@ def test_uebernommene_generation_traegt_die_abgenommene_spez():
         }
         assert abweichend == {}, (zelle["auspraegungen"], abweichend)
     assert gen.tarifwerk() == {"scheiben_mit_gamma1": True, "stoab_je_baustein": True,
-                               "red_verfahren": "teilkuendigung"}
+                               "red_verfahren": "teilkuendigung",
+                               "tku_umfang": "grundversicherung"}

@@ -37,7 +37,14 @@ heißt es: die Stichprobe wurde abgearbeitet.
 
 Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 
-- `qa/migrationssuite` — je Vertrag: Deckungskapital am
+- `python -m rechner_pipeline.gates.migrationssuite_lauf` — der EINE Weg
+  zum Suite-Beleg, den A-M4 annimmt: Es baut je Vertrag den Prüfauftrag
+  aus den Fall-Artefakten, bezieht die Tarifregeln aus der Spez der
+  Generation (`tarifregeln_des_falls`, ADR-024, Nachtrag), rechnet mit
+  der Engine `qa/migrationssuite` und schreibt deren Ergebnis samt
+  Tarifregeln, Eingaben, Führungswert und Pflichtschicht nach
+  `abgeleitet/berichte/migrationssuite.json`. Die Engine rechnet je
+  Vertrag: Deckungskapital am
   Migrationsstichtag (Bilanzgröße = Monatsreserve, unterjährig
   interpoliert), Bruttojahresbeitrag am Migrationsstichtag (wenn
   geliefert), GeVo-Beträge zwischen den Stichtagen (STO → RKW am
@@ -62,10 +69,15 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 
 ## Nicht verhandelbar
 
-- Werte rechnet NUR die Suite. Du baust die Prüfaufträge
-  (`VertragsPruefung`) aus den Fall-Artefakten — transformierter
-  Bestand, Lesart der Rechnungsgrundlagen aus der Spez, gelieferter
-  Folge-Abzug, GeVo-Protokoll — und interpretierst Urteile.
+- Werte rechnet NUR die Suite, und sie läuft NUR über das Kommando
+  `gates.migrationssuite_lauf`. Du baust keine Prüfaufträge
+  (`VertragsPruefung`) und rufst die Engine
+  (`qa.migrationssuite.pruefe_bestand`) nicht selbst: Ein selbst gebauter
+  Lauf rechnet nicht mit den belegten Regeln der Spez, sein JSON nennt
+  weder Tarifregeln noch Führungswert, und A-M4 verweigert es. Die Engine
+  hat für keine Tarifregel eine Vorgabe (Prüfrunde H) — wer sie ruft,
+  muss jede Regel nennen, und das tut das Kommando aus der Spez. Du
+  interpretierst die Urteile.
 - Toleranzen kommen aus `qa` (REL_TOL/ABS_TOL) und werden NIE
   aufgeweicht, um "grün zu werden".
 - Jeder Fehlschlag und jeder Befund geht an den Menschen. Du
@@ -83,35 +95,51 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
 
 ## Ablauf
 
-1. Vollständigkeit prüfen: transformierter Bestand, Spez (Lesart),
-   Folge-Abzug, GeVo-Protokoll, beide Stichtage. Fehlt etwas: STOPP.
-2. Je Vertrag den Prüfauftrag bauen (Modellpunkt aus Spez + Vertrag,
-   Monats-Stichtage, Erwartungswerte, GeVos). Zwei Größen liegen im
-   Bestandsabzug vor und werden DURCHGEREICHT — fehlen sie, weist der
-   Bericht dafür je eine Prüflücke aus:
-   - `bjb_erwartet_1` je `VertragsPruefung`: der gelieferte
-     Bruttojahresbeitrag am Migrationsstichtag (Beitragsspalte des
-     Abzugs, z. B. `JBRUTTO`; `0.00`, wo die Beitragszahlung beendet
-     oder der Vertrag beitragsfrei ist). Er ist die zweite Prüfachse
-     neben dem Deckungskapital: ein um ein Jahr versetztes
-     Eintrittsalter verschiebt die Reserve oft nur um Bruchteile eines
-     Cents, den Beitrag deutlich.
-   - `erwartete_anzahl=` an `pruefe_bestand`: die Zeilenzahl des
-     Bestandsabzugs. Ohne sie ist NICHT geprüft, dass die Prüfmenge
-     dem gelieferten Bestand entspricht.
-   Im Bestands-Scope kommen vier Bindungen dazu, ohne die das
-   Suite-JSON KEIN A-M4-Beleg ist (der Abnahmebericht verlangt sie und
-   gleicht sie gegen `fall.json` ab):
-   - `stichtag_1=` / `stichtag_2=`: die beiden ISO-Stichtage,
-     chronologisch; sie müssen den Berichtsstichtagen entsprechen.
-   - `bestand_sha256=`: SHA-256 des geprüften Bestands — dieselbe
-     Datei, die Gate P-B1 geprüft hat.
-   - `system=`: der Systemstand aus
-     `gates._provenienz.systemstand(repo_root)` (exakt die Schlüssel
-     `commit`, `branch`, `dirty`, `quellcode_sha256`).
-   Dann `qa.migrationssuite.pruefe_bestand` laufen lassen und das
-   zurückgegebene Dict unverändert als JSON in den Fall schreiben
-   (`json.dump`, z. B. `abgeleitet/berichte/migrationssuite.json`).
+1. Vollständigkeit prüfen: transformierter Bestand (Verzeichnis der
+   Übernahme mit Historie und Nebentabellen), Spez der Generation im
+   Fall mit belegten Tarifregeln (`abgeleitet/spez/<generation>.spez.json`,
+   Scope `bestand`), Bestand-Config der Führung, registrierte Abzüge zu
+   beiden Stichtagen, registriertes GeVo-Protokoll. Fehlt etwas: STOPP.
+2. Die Suite mit dem Kommando fahren — die Spez liest es selbst, eine
+   Tarifregel wird NIE am Aufruf genannt (die früheren Tarifschalter sind
+   entfallen; das Kommando verweigert sie und nennt den Abschnitt der
+   Spez):
+
+   ```
+   python -m rechner_pipeline.gates.migrationssuite_lauf \
+       --fall faelle/<fall> --generation klv/tg2015 \
+       --abzug-1 <registriert>.csv --abzug-2 <registriert>.csv \
+       --gevo-protokoll <registriert>.csv \
+       --bestand faelle/<fall>/abgeleitet/bestand/bestand.parquet \
+       --config <bestand-config>.toml \
+       --stichtag-1 <iso> --stichtag-2 <iso> \
+       [--zeilen <zeilen>.json] [--vorgeschichte <registriert>.csv] \
+       [--red-anteile-datei <registrierte-auskunft>.csv] \
+       [--schicht <schichtbeleg>.json] --repo-root .
+   ```
+
+   `--zeilen` ist Pflicht, sobald die Spez mehr als eine Zelle trägt;
+   `--vorgeschichte` trägt die Anfangszustände (Alt-Scheiben,
+   Beitragsfreistellung, Alt-Absetzung), `--red-anteile-datei` die
+   registrierte Auskunft zu den Anteilen; `--schicht` ist der Schichtbeleg
+   aus `gates.verankerung_belegen`, wenn der Fall Schichten führt (sonst
+   zeigt jeder Vertrag sein rohes Verankerungs-Residuum). Weichen die
+   Spaltennamen der Lieferung von den Vorgaben ab: `--spalte-<name>`.
+   Was das Kommando dabei zieht und in das JSON schreibt — du lieferst es
+   nicht von Hand:
+   - je Vertrag den gelieferten Bruttojahresbeitrag am
+     Migrationsstichtag (`bjb_erwartet_1`, zweite Prüfachse neben dem
+     Deckungskapital) und die Zeilenzahl des Abzugs als
+     `erwartete_anzahl` (Vollständigkeit der Prüfmenge); fehlt eines,
+     weist der Bericht dafür eine Prüflücke aus;
+   - die Bindungen, ohne die das JSON KEIN A-M4-Beleg ist und die der
+     Abnahmebericht nachrechnet: `stichtag_1`/`stichtag_2`,
+     `bestand_sha256`, den Systemstand, die Eingaben (`eingaben`), die
+     Tarifregeln, mit denen gerechnet wurde (`tarifregeln`, aus der
+     Spez), den Führungswert je Vertrag (`fuehrungswert`, mit der
+     `--config`) und die Pflichtschicht (`pflichtschicht`).
+   Fehlt eine Tarifregel in der Spez, verweigert das Kommando mit Ausweg
+   (A-Box belegen, P-Q3, Spez neu erzeugen) — dann STOPP, nicht umgehen.
    Das JSON wird NIE von Hand nachgebessert — das Kommando in
    Schritt 4 prüft die Zusammenfassung gegen die Einzelurteile und
    bricht sonst mit `20` ab.
@@ -147,6 +175,15 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    vollständig ausgewiesen (keine Stichproben-Beschönigung); ein
    roter Bericht wird geschrieben wie ein grüner — er IST das
    Beweisstück.
+
+   Im Bestands-Scope rechnet das Kommando den Führungswert der Suite
+   auf den gebundenen Bytes nach (Bestand, Nebentabellen, Config,
+   Tarifwerk der Spez) und weist ihn aus (Summary `fuehrungswert`,
+   HTML je Vertrag); es bindet die Spez der Generation (Summary
+   `tarifregeln`) und verweigert jeden Beleg der Bestandsstrecke
+   (Übernahme, Schicht, aktuarieller Test, Suite, Führungsprobe), der
+   andere Regeln nennt oder eine andere Spez gelesen hat. Weicht etwas
+   ab, wird der Lauf neu gefahren — nie der Beleg nachgebessert.
 5. Ergebnis dem Menschen zur A-M4-Entscheidung vorlegen, STOPP.
 
 ## Abbruchkriterien (STOPP und Mensch fragen)

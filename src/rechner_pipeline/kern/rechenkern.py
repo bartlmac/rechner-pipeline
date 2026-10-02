@@ -32,6 +32,7 @@ __all__ = [
     "Rechenkern",
     "berechne",
     "erhoehungs_scheibe",
+    "pruefe_scheibenjahre",
     "vertrags_monatsreserve",
     "VERLAUFSWERTE_SPALTEN",
     "Monatsreserve",
@@ -125,7 +126,7 @@ class Rechenkern:
 
 
 def erhoehungs_scheibe(
-    mp: ModelPoint, jahr: int, vs: float, *, gamma1_uebernehmen: bool = False
+    mp: ModelPoint, jahr: int, vs: float, *, gamma1_uebernehmen: bool
 ) -> ModelPoint:
     """Modellpunkt einer dynamischen Erhöhungsscheibe.
 
@@ -135,26 +136,49 @@ def erhoehungs_scheibe(
     das hat der zweite Baldrian-Lauf gezeigt (2026-09-01, bit-stabiler
     BJB-Fehlbetrag über beide Stichtage):
 
-    * Vorgabe ``gamma1_uebernehmen=False`` (Bestandsverhalten): die
-      Bezugsgröße für γ1 bleibt die GrundVS — so stand es in der
-      Tarifmitteilung der ERSTEN Lieferung, und so rechnet das eigene
-      Neugeschäft der PLV.
+    * ``gamma1_uebernehmen=False``: die Bezugsgröße für γ1 bleibt die
+      GrundVS — so stand es in der Tarifmitteilung der ERSTEN Lieferung,
+      und so rechnet das eigene Neugeschäft der PLV.
     * ``gamma1_uebernehmen=True``: die Scheibe rechnet die VOLLE
       Beitragsformel inklusive γ1 — so bestimmt es das Bedingungswerk
       der ZWEITEN Lieferung ("eigenständiger Baustein mit eigener
-      Wertermittlung"). Die Prüfstrecke der Migration setzt den
-      Parameter nach der dokumentierten Quell-Lage; er wird nie
-      geraten.
+      Wertermittlung").
+
+    Das Merkmal hat KEINE Vorgabe (Pruefrunde I, Fund I14; Kern 3.20.0): Jeder
+    Aufrufer nennt die Regel aus dem Tarifwerk, das er ohnehin haelt
+    (``scheiben_mit_gamma1``). Mit der Vorgabe rechnete die Migrationssuite die
+    Scheibe eines Erhoehungs-Geschaeftsvorfalls zwischen den Stichtagen immer
+    nach der Regel des eigenen Geschaefts, gleich was die Spez belegte.
+
+    Die Jahresgrenze der Erhoehung (``0 < jahr < t``) prueft die eine Stelle
+    des Kerns (:func:`pruefe_scheibenjahre`).
     """
-    if not 0 < jahr < mp.t:
-        raise ValueError(
-            f"Erhöhung im Jahr {jahr}: nur auf dem beitragspflichtigen "
-            f"Track möglich (0 < jahr < t = {mp.t})"
-        )
+    pruefe_scheibenjahre(mp, ((jahr, None),))
     return dataclasses.replace(
         mp, x=mp.x + jahr, n=mp.n - jahr, t=mp.t - jahr,
         sum_insured=vs, gamma1=mp.gamma1 if gamma1_uebernehmen else 0.0,
     )
+
+
+def pruefe_scheibenjahre(grund_mp: ModelPoint, scheiben: Sequence[Tuple[int, object]]) -> None:
+    """Die Jahresgrenze der Erhoehung fuer jede Scheibe — an JEDEM Eingang des
+    Kerns, der Erhoehungsscheiben entgegennimmt (Pruefrunde I, Fund I12).
+
+    Die Regel steht an einer Stelle (``beitragsreduktion.pruefe_vorgangsjahr``,
+    Tarifplan KLV 7.3: ``0 < jahr < t`` der Grundversicherung); hier wird sie
+    nur gerufen. Bis Kern 3.19.0 pruefte sie nur die Vorgangsfolge
+    (``Vertragsstand.nach_erhoehung``) und, mit einer eigenen Abschrift, der
+    Bau einer Scheibe (``erhoehungs_scheibe``); die vertragsweite Reserve
+    (:func:`vertrags_monatsreserve`), der Anfangsstand der Folge und die
+    Herabsetzung nahmen eine Scheibe im Vertragsjahr 0 oder ab dem
+    Beitragsende still — die Bewertung eines beitragspflichtigen Vertrags ohne
+    weiteren Vorgang rechnete sie. Eine Wache an einem von zwei Eingaengen ist
+    keine.
+    """
+    from rechner_pipeline.kern.beitragsreduktion import pruefe_vorgangsjahr
+
+    for jahr, _kern in scheiben:
+        pruefe_vorgangsjahr(grund_mp, int(jahr), "ERH")
 
 
 def vertrags_monatsreserve(
@@ -190,6 +214,7 @@ def vertrags_monatsreserve(
     Ohne Scheiben und mit Vorgabe ist das Ergebnis identisch zu
     :meth:`Rechenkern.monatsreserve`.
     """
+    pruefe_scheibenjahre(grund.mp, scheiben)
     teile: List[Tuple[int, Rechenkern]] = [(0, grund)] + list(scheiben)
     stuecke: List[Tuple[Rechenkern, int, Monatsreserve]] = []
     dr = mrv = 0.0

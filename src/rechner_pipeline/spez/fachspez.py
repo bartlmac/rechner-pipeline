@@ -22,12 +22,15 @@ from rechner_pipeline.ontologie.aussage import Zustand
 from rechner_pipeline.ontologie.coverage import coverage_bericht
 from rechner_pipeline.ontologie.tbox import (
     ABox,
+    BLOCK_TITEL,
+    GENERATIONS_BLOECKE,
     PFLICHT_PARAMETER,
     Tarifgeneration,
 )
 from rechner_pipeline.spez.schema import TarifSpez
+from rechner_pipeline.spez.tarifregeln import NICHT_BELEGT
 
-FACHSPEZ_VERSION = "0.1.0"
+FACHSPEZ_VERSION = "0.2.0"
 
 _FELD_LABELS = {
     "zins": "Rechnungszins",
@@ -306,6 +309,44 @@ def erzeuge_fachspez(spez: TarifSpez, abox: ABox) -> str:
             "Auch die Abwesenheit ist eine Aussage: die Extraktion hat "
             "nichts ausserhalb des Schemas festgehalten."
         )
+    z.append("")
+
+    # Angehaengt statt eingereiht: Die Abschnittsnummern 1 bis 11 sind
+    # zitiert (Abnahmepraxis, Tests); eine Umnumerierung waere eine
+    # Aenderung am Dokument, die mit der T-Box nichts zu tun hat.
+    z.append("## 12 Tarifwerk und Verfahren der Quelle")
+    z.append("")
+    z.append(
+        "Das Tarifwerk bestimmt, wie Erhoehung, Rueckkauf, Herabsetzung und "
+        "Teilkuendigung dieser Generation rechnen; das Verfahren der Quelle, "
+        "wie die abgebende Gesellschaft eine gelieferte Absetzung gemeint "
+        "hat. Ein nicht erhobenes Merkmal ist eine offene Frage an die "
+        "Quelle — die Vorgabe des eigenen Geschaefts gilt dafuer nicht."
+    )
+    z.append("")
+    z.append("| Block | Merkmal | Wert | Zustand | Quellenlage | Fundstellen |")
+    z.append("|---|---|---|---|---|---|")
+    for block, bereiche in GENERATIONS_BLOECKE.items():
+        aussagen = gen.block(block)
+        for merkmal in bereiche:
+            aussage = aussagen.get(merkmal)
+            if aussage is None:
+                z.append(f"| {BLOCK_TITEL[block]} | `{merkmal}` | — "
+                         "| nicht erhoben | - | - |")
+                continue
+            wert = getattr(spez, block).get(merkmal)
+            # Die Feststellung "nicht belegt" (Dynamiksatz) ist kein Wert;
+            # die Spalte Zustand nennt sie.
+            anzeige = ("—" if wert is None or wert == NICHT_BELEGT
+                       else ("ja" if wert else "nein") if isinstance(wert, bool)
+                       else _md(wert))
+            z.append(
+                f"| {BLOCK_TITEL[block]} | `{merkmal}` "
+                f"| {anzeige} "
+                f"| {aussage.zustand.value} "
+                f"| {_quellenlage(aussage, arten)} "
+                f"| {_md(_fundstellen(aussage)) or '-'} |"
+            )
     z.append("")
     return "\n".join(z) + "\n"
 

@@ -27,6 +27,28 @@ Verankerungszeitpunkt, Zustand und der gelieferte Wert. Was das
 abgebende Unternehmen in den Jahren davor gebucht hat, sieht dieses
 Modul nicht und braucht es nicht.
 
+**Alt-Absetzung nach dem Beitragsende.** Der Zugang integriert einen
+gelieferten Vertrag, der im ausfinanzierten Nachlauf (``t <= Jahr < n``)
+abgesetzt wurde, in jeder Generation (Entscheid des Maintainers
+2026-10-01: "ein Problem des Ziels, nicht der Migration"). Beitrags-
+herabsetzung und Teilkuendigung sind zwei Geschaeftsvorfaelle (ADR-023);
+eine gelieferte Absetzung nach dem Beitragsende war eine Teilkuendigung
+(Annahme A2, klv.md 7.2, ``alt_absetzung_ist_teilkuendigung``): Der
+gelieferte Vertrag ist
+der ZUSTANDSLOSE Vertrag mit der gelieferten Summe ERLSUMME = f x
+Ursprungssumme und wird ohne Anfangszustand uebernommen und gefuehrt
+(``migrationssuite_lauf.anfangszustaende_je_police``), wie jede
+Teilkuendigung. Die Ursprungssumme selbst ist aus der Lieferung nicht
+bestimmbar — eine Gleichung, zwei Unbekannte, und nach t keine
+Beitragsgleichung (JBRUTTO 0). Wo sie gefragt ist, bestimmt sie der
+fortgefuehrte Anteil als registrierte AUSKUNFT (``--red-anteile-datei``,
+POLNR;GEVO;DATUM;ANTEIL[;BEZUG], gelesen von ``lies_auskuenfte``):
+:func:`leite_ursprungssumme_ab` rechnet dann VS = ERLSUMME / f, und
+:func:`leite_absetzung_ab` verweigert ohne Auskunft mit genau diesem
+Ausweg (:func:`auskunft_meldung`). In einer Ereignis-SERIE (Erhoehungen
+vor t, Herabsetzung danach) ist die Auskunft bestimmend: f verteilt die
+gelieferte Summe auf Grund und Scheiben (:func:`leite_serie_aus_satz_ab`).
+
 Knoten: klv
 """
 
@@ -40,7 +62,11 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import pandas as pd
 
-from rechner_pipeline.kern import ModelPoint
+from rechner_pipeline.kern import TKU_UMFAENGE, UMFANG_GRUND, ModelPoint, tku_umfang_fuer
+from rechner_pipeline.kern.beitragsreduktion import (
+    BeitragsreduktionFehler,
+    pruefe_vorgangsjahr,
+)
 from rechner_pipeline.kern.korrekturschicht import (
     Formfunktion,
     Korrekturschicht,
@@ -50,7 +76,10 @@ from rechner_pipeline.kern.korrekturschicht import (
     form_proportional_zur_basis,
 )
 from rechner_pipeline.kern.rechenkern import Rechenkern
-from rechner_pipeline.models.bestand import LEDGER_SPALTEN
+from rechner_pipeline.models.bestand import (
+    LEDGER_SPALTEN,
+    alt_absetzung_ist_teilkuendigung,
+)
 
 #: Ereigniskennung des Migrationszugangs im Bewegungsjournal.
 MIG = "MIG"
@@ -180,7 +209,7 @@ def _forme(kennung: str, basis: Sequence[float], fenster: Optional[int]) -> Form
 def uebernehmen(
     vertraege: Sequence[Uebernahme],
     *,
-    formfunktion: str = "proportional_zur_basis",
+    formfunktion: str,
     fenster: Optional[int] = None,
     vererbend: Optional[Tuple[Tuple[str, str], ...]] = None,
     ausbuchungsgrenze: Optional[float] = None,
@@ -415,6 +444,49 @@ def _pruefe_wirksame_absetzung(vs_alt: float, anteil: float) -> None:
         )
 
 
+#: Meldung, wenn der Stornoabzug den Rueckkaufs-Track aufzehrt (Klemmrand).
+KLEMMRAND_MELDUNG = (
+    "am Klemmrand nicht bestimmbar: Stornoabzug zehrt den Rueckkaufs-Track "
+    "auf — Anteil als Auskunft registrieren"
+)
+
+
+def _klemmrand_aufloesung(bxt: float) -> float:
+    """Kleinster umgewandelter Teil (in Einheiten Versicherungssumme), den die
+    Lieferung ueber ihre Rundung hinaus zeigt (Runde F, Nachbesserung).
+
+    Beide Lieferfelder sind centgerundet und gehen in die Differenz
+    ERLSUMME - JBRUTTO/Bxt ein: ERLSUMME direkt (Toleranz der Vorwaertsprobe),
+    der fortgefuehrte Teil ueber den Beitragssatz (Toleranz / Bxt). Was darunter
+    liegt, ist von "nichts umgewandelt" nicht zu unterscheiden.
+    """
+    return ABLEITUNG_SELBSTCHECK_TOL * (1.0 + 1.0 / bxt)
+
+
+def _am_klemmrand(
+    m: float, vs: float, c: float, k_teil: float, vbfr: float, aufloesung: float,
+) -> bool:
+    """Waechter der Klammerzweige: liegt die LOESUNG ``vs`` am Klemmrand?
+
+    Der Klemmrand ist der eigene Zweig des Kern-Regelwerks, in dem der
+    Stornoabzug den Rueckkaufs-Track aufzehrt (StoAb >= V^MRV, RKW 0,
+    nichts umgewandelt, ERLSUMME = f x VS). Die Klammerzweige (StoAb = c)
+    setzen RKW = m x VS - c > 0 voraus, und der umgewandelte Teil
+    (m x VS - c)(1-f)/vbfr, den die Loesung behauptet, muss die
+    Aufloesung der Lieferung uebersteigen. Am Klemmrand zerfaellt die
+    quadratische Gleichung: Die Wurzel VS = c/m besteht die Vorwaertsprobe
+    (dort ist RKW 0 und f x VS = ERLSUMME), obwohl (VS, f) aus den beiden
+    Feldern gar nicht bestimmbar sind — jedes VS mit m x VS <= c und
+    f = K/VS liefert dieselbe Lieferung. Messfall (Runde F, Pruefer):
+    gelieferte VS 20.000 / f 0,8, Pauschalabzug 8.000 -> still
+    VS 114.398 / f 0,14 zurueckgegeben.
+    """
+    rkw = m * vs - c
+    if rkw <= 0.0:
+        return True
+    return rkw * (1.0 - k_teil / vs) / vbfr <= aufloesung
+
+
 @dataclass(frozen=True)
 class AbgeleiteteAbsetzung:
     """Die aus dem Abzug zurueckgerechnete Alt-Absetzung eines Vertrags.
@@ -470,19 +542,41 @@ def leite_absetzung_ab(
 
     Herleitung: Alle Zielgroessen des Kerns sind je Einheit
     Versicherungssumme formuliert. Mit den Saetzen ``v = kVx_bpfl(j)``,
-    ``vbfr = kVx_bfr(j)`` und der Beitragsrate ``Bxt`` gilt
+    ``m = kVx_MRV(j)``, ``vbfr = kVx_bfr(j)`` und der Beitragsrate ``Bxt``
+    gilt
 
         K := JBRUTTO / Bxt = f * VS                     (fortgefuehrter Teil)
-        S - K = (DR - StoAb) * (1 - f) / vbfr           (umgewandelter Teil)
+        S - K = (V^MRV - StoAb) * (1 - f) / vbfr        (umgewandelter Teil)
 
-    und je Stornoabzugs-Zweig (Regelwerk des Tarifplans) wird die zweite
-    Gleichung nach VS aufloesbar: im Satz-Zweig und bei StoAb = 0 linear,
-    in den geklammerten Zweigen (Unter-/Obergrenze) quadratisch. Der
+    — umgewandelt wird der Rueckkaufs-Track ``V^MRV = m * VS``, wie bei
+    der Beitragsfreistellung (Entscheid 2026-09-30, F1 (b); vorher die
+    Rueckstellung ``v * VS``, und die Umkehrung traf innerhalb der
+    Zillmerdauer die Vorwaertsregel nicht). Der Stornoabzug
+    ``StoAb = min(umax, max(umin, s * (VS - v * VS)))`` haengt dagegen
+    weiter an der Rueckstellung. Je Stornoabzugs-Zweig (Regelwerk des
+    Tarifplans: Satz, null, min, max) wird die zweite Gleichung nach VS
+    aufloesbar: im Satz-Zweig und bei StoAb = 0 linear, in den
+    geklammerten Zweigen (Unter-/Obergrenze, auch der Pauschalabzug mit
+    Satz 0) quadratisch. Der
     Zweig wird nicht geraten: Jeder Kandidat muss das Regelwerk an
     seiner eigenen Loesung erfuellen, und die Vorwaertsprobe ueber
     :func:`reduziere` muss die gelieferten Felder treffen.
+
+    **Der Klemmrand ist ein eigener Zweig** (Runde F, Nachbesserung):
+    Zehrt der Stornoabzug den Rueckkaufs-Track auf (StoAb >= V^MRV, RKW 0),
+    wird nichts umgewandelt und die Lieferung ist ERLSUMME = f x VS,
+    JBRUTTO = f x Beitrag — jedes VS mit m x VS <= StoAb erzeugt dieselben
+    Felder, (VS, f) sind nicht bestimmbar. Die Klammerzweige pruefen deshalb
+    an der eigenen Loesung, dass RKW > 0 ist und der umgewandelte Teil die
+    Rundung der Lieferfelder uebersteigt (:func:`_am_klemmrand`); sonst
+    verweigert die Ableitung mit :data:`KLEMMRAND_MELDUNG` und dem Ausweg,
+    den Anteil als Auskunft zu registrieren (dann greift
+    :func:`leite_ursprungssumme_ab`, wo der Klemmrand bestimmt ist). Vorher
+    gab die Wurzel VS = c/m die Vorwaertsprobe frei und die Funktion still
+    ein erfundenes (VS, f) zurueck.
     """
     from rechner_pipeline.kern.beitragsreduktion import (
+        TEILKUENDIGUNG,
         VERFAHREN,
         BeitragsreduktionFehler,
         reduziere,
@@ -493,6 +587,15 @@ def leite_absetzung_ab(
             f"unbekanntes Verfahren {verfahren!r} — bekannt sind "
             f"{list(VERFAHREN)}"
         )
+    t_vertrag = int(dict(modellpunkt_felder)["t"])
+    if alt_absetzung_ist_teilkuendigung(verfahren, jahr, t_vertrag, beitragsfrei_ab=None):
+        # Unter der Teilkuendigung (Annahme A2: nach dem Beitragsende jede
+        # gelieferte Absetzung)
+        # tragen ERLSUMME = f x VS und JBRUTTO = f x Beitrag(VS) nur das
+        # Produkt f x VS — f ist aus der Lieferung nicht bestimmbar. Vorher
+        # lief die Teilkuendigung in die Umwandlungs-Zweige und scheiterte
+        # dort mit einer Meldung, die den Ausweg nicht nannte.
+        raise MigrationszugangFehler(auskunft_meldung(jahr, t_vertrag))
     if jbrutto <= 0.0:
         raise MigrationszugangFehler(
             "JBRUTTO <= 0: die Beitragszahlung ist am Stichtag beendet, "
@@ -512,54 +615,78 @@ def leite_absetzung_ab(
         )
     zeile = kern_einheit.verlaufszeile(jahr)
     v, vbfr = zeile.vx_bpfl, zeile.vx_bfr
+    m = zeile.vx_mrv                # Rueckkaufs-Track je Einheit (sum_insured = 1)
     bxt = kern_einheit.gross_premium_rate()
     if vbfr <= 0.0 or bxt <= 0.0:
         raise MigrationszugangFehler(
             f"Saetze unplausibel (kVx_bfr={vbfr!r}, Bxt={bxt!r})"
         )
     k_teil = jbrutto / bxt
+    s_satz = einheit.stoab_satz
+    # Kein Abzug gibt es nur beim prospektiven Verfahren und in der flexiblen
+    # Phase (Kern: ``stornoabzug`` = 0). Ein Satz von null heisst NICHT
+    # StoAb = 0 (Runde F, F3): Der Kern rechnet StoAb = min(umax, max(umin,
+    # satz x ...)), und beim Pauschalabzug (satz 0, umin > 0) ist das
+    # umin. Damals fiel ``s_satz <= 0`` in den Zweig ohne Abzug, die Zweige
+    # min/max wurden nie versucht, und 18 von 18 ableitbaren Faellen wurden
+    # verweigert (stoab 0 / 50 / 150, mit Abzug).
+    flex_oder_null = (
+        verfahren == "prospektiv"
+        or kern_einheit.produkt.ist_flex_phase(jahr)
+    )
+    aufloesung = _klemmrand_aufloesung(bxt)
     if erlsumme <= k_teil:
+        if not flex_oder_null and k_teil - erlsumme <= aufloesung:
+            # Nichts umgewandelt, innerhalb der Rundung der Lieferfelder:
+            # der Klemmrand (siehe ``_am_klemmrand``), kein Widerspruch.
+            raise MigrationszugangFehler(KLEMMRAND_MELDUNG)
         raise MigrationszugangFehler(
             f"ERLSUMME {erlsumme} liegt nicht ueber dem fortgefuehrten "
             f"Teil {k_teil:.2f} — keine Absetzung ableitbar"
         )
 
-    s_satz = einheit.stoab_satz
-    flex_oder_null = (
-        verfahren == "prospektiv"
-        or kern_einheit.produkt.ist_flex_phase(jahr)
-        or s_satz <= 0.0
-    )
-
     kandidaten: List[Tuple[str, float]] = []
+    klemmrand = False
     if flex_oder_null:
-        if v <= 0.0:
-            raise MigrationszugangFehler(f"kVx_bpfl({jahr}) = {v!r} <= 0")
+        if m <= 0.0:
+            raise MigrationszugangFehler(f"kVx_MRV({jahr}) = {m!r} <= 0")
         kandidaten.append(
-            ("flex_oder_null", k_teil + (erlsumme - k_teil) * vbfr / v))
+            ("flex_oder_null", k_teil + (erlsumme - k_teil) * vbfr / m))
     else:
         # Satz-Zweig: StoAb = s * VS * (1 - v), linear in VS.
-        nenner = v - s_satz * (1.0 - v)
+        # Bei Satz 0 ist das der Zweig "null" (StoAb = 0, wenn auch umin = 0).
+        nenner = m - s_satz * (1.0 - v)
         if nenner > 0.0:
             vs = k_teil + (erlsumme - k_teil) * vbfr / nenner
             if einheit.stoab_min <= s_satz * vs * (1.0 - v) <= einheit.stoab_max:
-                kandidaten.append(("satz", vs))
+                kandidaten.append(("satz" if s_satz > 0.0 else "null", vs))
+        # Ist nenner <= 0 (der Abzug s x (1-v) x VS ist nicht kleiner als der
+        # Rueckkaufs-Track m x VS), klemmt der Satz-Zweig fuer jedes VS und hat
+        # keine Loesung; die Klemmrand-Meldung kommt dann aus dem Waechter der
+        # Klammerzweige (gemessen: Satz 10 %, keine Obergrenze).
         # Geklammerte Zweige: StoAb konstant c, quadratisch in VS.
         for zweig, c in (("min", einheit.stoab_min),
                          ("max", einheit.stoab_max)):
-            # v*VS^2 - (c + K*v + (S-K)*vbfr)*VS + c*K = 0
-            b = c + k_teil * v + (erlsumme - k_teil) * vbfr
-            disk = b * b - 4.0 * v * c * k_teil
-            if disk < 0.0 or v <= 0.0:
+            # m*VS^2 - (c + K*m + (S-K)*vbfr)*VS + c*K = 0
+            b = c + k_teil * m + (erlsumme - k_teil) * vbfr
+            disk = b * b - 4.0 * m * c * k_teil
+            if disk < 0.0 or m <= 0.0:
                 continue
-            for wurzel in ((b + math.sqrt(disk)) / (2.0 * v),
-                           (b - math.sqrt(disk)) / (2.0 * v)):
+            for wurzel in ((b + math.sqrt(disk)) / (2.0 * m),
+                           (b - math.sqrt(disk)) / (2.0 * m)):
                 if wurzel <= k_teil:
                     continue
                 roh = s_satz * wurzel * (1.0 - v)
                 passt = (roh <= c) if zweig == "min" else (roh >= c)
-                if passt:
-                    kandidaten.append((zweig, wurzel))
+                if not passt:
+                    continue
+                # Waechter (Runde F, Nachbesserung): die Loesung muss das
+                # Regelwerk an sich selbst erfuellen — RKW > 0, sonst ist sie
+                # keine Loesung dieses Zweigs, sondern der Klemmrand.
+                if _am_klemmrand(m, wurzel, c, k_teil, vbfr, aufloesung):
+                    klemmrand = True
+                    continue
+                kandidaten.append((zweig, wurzel))
 
     fehler: List[str] = []
     for zweig, vs_alt in kandidaten:
@@ -592,6 +719,13 @@ def leite_absetzung_ab(
             f"{zweig}: Vorwaertsprobe daneben (vs_neu {probe.vs_neu:.4f} "
             f"vs. {erlsumme}, bjb_neu {probe.bjb_neu:.4f} vs. {jbrutto})")
 
+    if klemmrand:
+        # Kein Zweig mit wirksamem Abzug traegt die Lieferung, und der
+        # Klemmrand hat eine Lieferung, die jedes VS mit m x VS <= StoAb
+        # und f = K/VS erzeugt: nicht bestimmbar, nicht raten.
+        raise MigrationszugangFehler(
+            KLEMMRAND_MELDUNG
+            + (" (" + "; ".join(fehler) + ")" if fehler else ""))
     raise MigrationszugangFehler(
         "Alt-Absetzung nicht ableitbar — kein Stornoabzugs-Zweig "
         "reproduziert die gelieferten Felder ("
@@ -625,17 +759,25 @@ def leite_pex_ursprungssumme_ab(
     AEQUIVALENZGROESSE, nicht die historische Bausteinsumme: Die
     Umwandlungsfaktoren der Bausteine sind verschieden (versetzte
     Zillmer-Fenster), die historische Zerlegung ist aus der
-    Ein-Punkt-Inversion nicht rekonstruierbar. Tragfaehig ist sie
-    trotzdem, weil nach terminalem PEX jede erreichbare Folgegroesse
-    nur an der beitragsfreien Gesamtsumme haengt, die die Inversion
-    exakt reproduziert.
+    Ein-Punkt-Inversion nicht rekonstruierbar. Tragfaehig ist sie nur
+    unter einem Tarifwerk ohne Regel je Baustein
+    (:func:`tarifwerk_homogen_in_bfr_summe`): Dort haengt nach terminalem
+    PEX jede erreichbare Folgegroesse nur an der beitragsfreien
+    Gesamtsumme, die die Inversion exakt reproduziert. Mit Stornoabzug je
+    Baustein oder Teilkuendigung nur der Grundversicherung gilt das nicht;
+    die Serie laeuft dann ueber :func:`leite_pex_serie_mit_bausteinen_ab`
+    (Pruefrunde J, J04).
     """
     einheit = ModelPoint(**{**dict(modellpunkt_felder), "sum_insured": 1.0})
-    if pex_jahr <= 0 or pex_jahr > einheit.n:
+    # Die EINE Regel des Kerns (Tarifplan KLV 7.3, Pruefrunde G, G02): eine
+    # Beitragsfreistellung gibt es nur, solange Beitraege laufen (0 < jahr <
+    # t). Bis dahin liess diese Stelle ein Jahr bis n zu; ein Leser ueber die
+    # Vorgangsfolge verweigerte dann, ein Leser ohne Folge rechnete still.
+    try:
+        pruefe_vorgangsjahr(einheit, pex_jahr, "PEX")
+    except BeitragsreduktionFehler as exc:
         raise MigrationszugangFehler(
-            f"Beitragsfreistellungsjahr {pex_jahr} liegt nicht in der "
-            f"Laufzeit (0 < jahr <= n = {einheit.n})"
-        )
+            f"Beitragsfreistellungsjahr {pex_jahr}: {exc}") from exc
     if vs_bfr <= 0.0:
         raise MigrationszugangFehler(
             f"gelieferte beitragsfreie Summe {vs_bfr!r} unplausibel")
@@ -675,7 +817,23 @@ def kalibriere_absetzung_aus_dk(
     Geschaeftsvorfaelle. Das ist dieselbe Kohorten-Logik wie beim
     Migrationszugang (Grundsatzdokumentation 9.12): Wer den Anker
     setzt, misst nicht mehr am Anker.
+
+    Unter der Teilkuendigung (Annahme A2: nach dem Beitragsende jede
+    gelieferte Absetzung) gibt es nichts zu kalibrieren: Der Vertrag danach ist der
+    zustandslose mit ERLSUMME, sein Wert haengt vom Anteil nicht ab.
     """
+    from rechner_pipeline.kern.beitragsreduktion import (
+        TEILKUENDIGUNG,
+    )
+
+    t_vertrag = int(dict(modellpunkt_felder)["t"])
+    if alt_absetzung_ist_teilkuendigung(verfahren, jahr, t_vertrag, beitragsfrei_ab=None):
+        raise MigrationszugangFehler(
+            "Kalibrierung nicht durchfuehrbar: "
+            + auskunft_meldung(jahr, t_vertrag)
+            + " (der Wert des zustandslosen Vertrags haengt vom Anteil "
+            "nicht ab, der Ankerwert bestimmt ihn also nicht)")
+
     def wert(anteil: float) -> Tuple[float, float]:
         vs = leite_ursprungssumme_ab(
             modellpunkt_felder, jahr=jahr, erlsumme=erlsumme,
@@ -734,11 +892,16 @@ def leite_ursprungssumme_ab(
     Ursprungssumme; der Zweig wird wie in :func:`leite_absetzung_ab`
     am eigenen Kandidaten geprueft und die Vorwaertsprobe muss die
     gelieferte Summe auf die Centrundung treffen.
+
+    Der Klemmrand (StoAb >= V^MRV, RKW 0, nichts umgewandelt) ist ein
+    eigener Zweig (Runde F, Nachbesserung): ERLSUMME = f x VS, mit bekanntem
+    Anteil also VS = ERLSUMME / f — bestimmt, anders als in
+    :func:`leite_absetzung_ab`. Die Klammerzweige setzen RKW = m x VS - c > 0
+    voraus (Waechter) und liefern am Klemmrand sonst keine Loesung.
     """
     from rechner_pipeline.kern.beitragsreduktion import (
+        TEILKUENDIGUNG,
         VERFAHREN,
-        BeitragsreduktionFehler,
-        reduziere,
     )
 
     if verfahren not in VERFAHREN:
@@ -756,43 +919,108 @@ def leite_ursprungssumme_ab(
 
     einheit = ModelPoint(**{**dict(modellpunkt_felder), "sum_insured": 1.0})
     kern_einheit = Rechenkern(einheit)
-    if not 0 < jahr < einheit.t:
+    if not 0 < jahr < einheit.n:
         raise MigrationszugangFehler(
-            f"Absetzungsjahr {jahr} liegt nicht in der Beitragszahlungs"
-            f"dauer (0 < jahr < t = {einheit.t})"
+            f"Absetzungsjahr {jahr} liegt nicht in der Versicherungs"
+            f"dauer (0 < jahr < n = {einheit.n})"
         )
+    kandidaten: List[Tuple[str, float]] = []
+    if alt_absetzung_ist_teilkuendigung(verfahren, jahr, einheit.t, beitragsfrei_ab=None):
+        # Teilkuendigung (Annahme A2: nach dem Beitragsende ist jede
+        # gelieferte Absetzung eine; davor, wenn die Quelle so rechnet):
+        # Der Anteil (1-f) der Grundversicherung ist gekuendigt und
+        # ausgezahlt, nichts wurde umgewandelt — ERLSUMME = f x VS, mit
+        # bekanntem Anteil also VS = ERLSUMME / f. Die Vorwaertsprobe
+        # rechnet den Vorgang, der geschah (die Teilkuendigung), nicht das
+        # Verfahren der Quelle. Die Umwandlungs-Zweige unten gehoeren zur
+        # Herabsetzung VOR t.
+        kandidaten.append(("teilkuendigung", erlsumme / anteil))
+        return _vorwaerts_ursprungssumme(
+            modellpunkt_felder, kandidaten, jahr=jahr, erlsumme=erlsumme,
+            anteil=anteil, verfahren=TEILKUENDIGUNG)
     zeile = kern_einheit.verlaufszeile(jahr)
-    v, vbfr = zeile.vx_bpfl, zeile.vx_bfr
+    # Umgewandelt wird der Rueckkaufs-Track m (F1 (b), Entscheid
+    # 2026-09-30), der Stornoabzug haengt an der Rueckstellung v.
+    v, m, vbfr = zeile.vx_bpfl, zeile.vx_mrv, zeile.vx_bfr
     if vbfr <= 0.0:
         raise MigrationszugangFehler(f"kVx_bfr({jahr}) = {vbfr!r} <= 0")
     frei = 1.0 - anteil
     s_satz = einheit.stoab_satz
+    # Satz 0 heisst nicht StoAb = 0 (Runde F, F3; siehe leite_absetzung_ab):
+    # der Pauschalabzug lebt im Zweig min/max.
     flex_oder_null = (
         verfahren == "prospektiv"
         or kern_einheit.produkt.ist_flex_phase(jahr)
-        or s_satz <= 0.0
     )
 
-    kandidaten: List[Tuple[str, float]] = []
     if flex_oder_null:
-        faktor = anteil + v * frei / vbfr
+        faktor = anteil + m * frei / vbfr
         kandidaten.append(("flex_oder_null", erlsumme / faktor))
     else:
-        # Satz-Zweig: ERLSUMME = VS * (f + (v - s(1-v)) * (1-f) / vbfr)
-        faktor = anteil + (v - s_satz * (1.0 - v)) * frei / vbfr
+        # Satz-Zweig: ERLSUMME = VS * (f + (m - s(1-v)) * (1-f) / vbfr)
+        faktor = anteil + (m - s_satz * (1.0 - v)) * frei / vbfr
         if faktor > 0.0:
             vs = erlsumme / faktor
             if einheit.stoab_min <= s_satz * vs * (1.0 - v) <= einheit.stoab_max:
-                kandidaten.append(("satz", vs))
-        # Klammerzweige: ERLSUMME = VS * (f + v(1-f)/vbfr) - c(1-f)/vbfr
+                kandidaten.append(("satz" if s_satz > 0.0 else "null", vs))
+        # Klammerzweige: ERLSUMME = VS * (f + m(1-f)/vbfr) - c(1-f)/vbfr
         for zweig, c in (("min", einheit.stoab_min),
                          ("max", einheit.stoab_max)):
-            faktor = anteil + v * frei / vbfr
+            faktor = anteil + m * frei / vbfr
             vs = (erlsumme + c * frei / vbfr) / faktor
             roh = s_satz * vs * (1.0 - v)
             passt = (roh <= c) if zweig == "min" else (roh >= c)
-            if passt:
+            # Waechter (Runde F, Nachbesserung): die Formel setzt RKW =
+            # m x VS - c > 0 voraus; am Klemmrand ist sie keine Loesung.
+            if passt and m * vs > c:
                 kandidaten.append((zweig, vs))
+        # Klemmrand: der Stornoabzug zehrt den Rueckkaufs-Track auf
+        # (StoAb >= m x VS), nichts wird umgewandelt, ERLSUMME = f x VS.
+        # Mit BEKANNTEM Anteil ist das bestimmt: VS = ERLSUMME / f — anders
+        # als in :func:`leite_absetzung_ab`, wo f unbekannt ist.
+        vs = erlsumme / anteil
+        stoab = min(einheit.stoab_max,
+                    max(einheit.stoab_min, s_satz * vs * (1.0 - v)))
+        if stoab >= m * vs:
+            kandidaten.append(("klemmrand", vs))
+    return _vorwaerts_ursprungssumme(
+        modellpunkt_felder, kandidaten, jahr=jahr, erlsumme=erlsumme,
+        anteil=anteil, verfahren=verfahren)
+
+
+def auskunft_meldung(jahr: int, t: int) -> str:
+    """Die Verweigerung einer Ableitung, die den fortgefuehrten Anteil
+    braucht und ihn aus der Lieferung nicht bestimmen kann — mit dem
+    Ausweg, der ihn bestimmt (registrierte Auskunft)."""
+    if jahr >= t:
+        lage = (f"nach dem Beitragsende (Jahr >= t = {t}): dort war jede "
+                "gelieferte Absetzung eine Teilkuendigung (Annahme A2, klv.md 7.2)")
+    else:
+        lage = "unter dem Verfahren teilkuendigung"
+    return (
+        f"Herabsetzung im Jahr {jahr} {lage} — ERLSUMME = f x Ursprungssumme "
+        "(und JBRUTTO) bestimmen nur das Produkt, nicht den fortgefuehrten "
+        "Anteil f. Ausweg: den Anteil als registrierte Auskunft der Quelle "
+        "nennen (--red-anteile-datei, POLNR;GEVO;DATUM;ANTEIL[;BEZUG]); mit "
+        "ihm ist die Ursprungssumme ERLSUMME / f bestimmt"
+    )
+
+
+def _vorwaerts_ursprungssumme(
+    modellpunkt_felder: Mapping[str, Any],
+    kandidaten: Sequence[Tuple[str, float]],
+    *,
+    jahr: int,
+    erlsumme: float,
+    anteil: float,
+    verfahren: str,
+) -> float:
+    """Den Kandidaten nehmen, dessen Vorwaertsprobe ueber den Kern die
+    gelieferte Summe trifft — derselbe Weg fuer jedes Verfahren."""
+    from rechner_pipeline.kern.beitragsreduktion import (
+        BeitragsreduktionFehler,
+        reduziere,
+    )
 
     fehler: List[str] = []
     for zweig, vs_alt in kandidaten:
@@ -1015,7 +1243,9 @@ def leite_serie_aus_satz_ab(
     fortgefuehrte Bruchteil f der Grundsumme, nachgelieferte Auskunft).
     Eine Beitragsfreistellung gehoert NICHT hierher — sie ist terminal
     und laeuft ueber die Gesamtsummen-Inversion
-    (:func:`leite_pex_ursprungssumme_ab`). Die Zerlegung ist fuer den
+    (:func:`leite_pex_ursprungssumme_ab`) bzw. — unter einem Tarifwerk mit
+    Regel je Baustein — ueber :func:`leite_pex_serie_mit_bausteinen_ab`
+    (Pruefrunde J, J04). Ohne solche Regel ist die Zerlegung fuer den
     Wert unerheblich, weil nach terminalem PEX jede erreichbare
     Folgegroesse homogen in der beitragsfreien GESAMTSUMME ist:
     Bausteine desselben Ablauftermins tragen am selben Bewertungstag
@@ -1064,7 +1294,9 @@ def leite_serie_aus_satz_ab(
                 raise MigrationszugangFehler(
                     f"Absetzung im Jahr {jahr} ohne gueltigen "
                     f"fortgefuehrten Anteil ({anteil!r}) — je Ereignis "
-                    "nachliefern lassen (POLNR;GEVO;DATUM;ANTEIL)"
+                    "nachliefern lassen und als registrierte Auskunft "
+                    "nennen (--red-anteile-datei, POLNR;GEVO;DATUM;ANTEIL"
+                    "[;BEZUG])"
                 )
             grund_einheit *= anteil
             absetzungen.append((jahr, anteil))
@@ -1113,6 +1345,369 @@ def leite_serie_aus_satz_ab(
     )
 
 
+def serie_braucht_folge(
+    ereignisse: Sequence[Tuple[str, int, Optional[float]]],
+    *,
+    red_verfahren: str,
+    tku_umfang: Optional[str],
+    beitragsdauer: int,
+) -> Tuple[bool, str]:
+    """Ob eine Serie (ohne Beitragsfreistellung) die Vorgangsfolge braucht,
+    und der Umfang der Teilkuendigung des Tarifs.
+
+    Die geschlossene Ableitung (:func:`leite_serie_aus_satz_ab`) traegt nur
+    Teilkuendigungen der GRUNDVERSICHERUNG (Entscheid B1 vom 2026-10-01: der
+    uebernommene Tarif). Ist eine gelieferte Absetzung nach der
+    Uebersetzungsregel eine echte Herabsetzung (Annahme B5) oder kuendigt
+    die Teilkuendigung des Tarifs alle Bausteine (eigene Tarife der PLV),
+    rechnet :func:`leite_serie_ueber_folge_ab`. ``TKU_UMFAENGE`` steht hier
+    fuer die Kommandos der Pruefstrecke (eine Kante in den Kern weniger)."""
+    from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
+    from rechner_pipeline.models.bestand import zielverfahren
+
+    umfang = tku_umfang_fuer(red_verfahren, tku_umfang)
+    mit_folge = any(
+        art == "RED" and (
+            zielverfahren(red_verfahren, int(jahr), int(beitragsdauer),
+                          beitragsfrei_ab=None) != TEILKUENDIGUNG
+            or umfang != UMFANG_GRUND)
+        for art, jahr, _ in ereignisse)
+    return mit_folge, umfang
+
+
+def tarifwerk_homogen_in_bfr_summe(
+    *, stoab_je_baustein: bool, red_verfahren: str, tku_umfang: Optional[str],
+) -> bool:
+    """Ob jede Groesse nach einer terminalen Beitragsfreistellung nur an der
+    beitragsfreien GESAMTsumme haengt (Pruefrunde J, J04).
+
+    Das gilt nur, wenn keine Regel des Tarifwerks je Baustein greift:
+    Stornoabzug vertragsweit (Mindest- und Hoechstbetrag am Vertrag) und
+    Teilkuendigung ueber alle Bausteine (sie skaliert jeden gleich). Ein
+    Stornoabzug je Baustein (Mindestabzug je Baustein) oder eine
+    Teilkuendigung nur der Grundversicherung macht die Werte von der
+    Zerlegung abhaengig. Das Deckungskapital, die beitragsfreien Faktoren
+    und gamma1 der Scheiben sind keine solchen Regeln: Bausteine desselben
+    Ablauftermins tragen nach der Freistellung je Einheit beitragsfreier
+    Summe denselben Reservesatz, gamma1 wirkt nur bis zur Freistellung und
+    steckt in den Umwandlungsfaktoren, die die Ableitung je Baustein rechnet."""
+    umfang = tku_umfang_fuer(red_verfahren, tku_umfang)
+    return not stoab_je_baustein and umfang != UMFANG_GRUND
+
+
+def leite_pex_serie_mit_bausteinen_ab(
+    modellpunkt_felder: Mapping[str, Any],
+    *,
+    ereignisse: Sequence[Tuple[str, int, Optional[float]]],
+    pex_jahr: int,
+    vs_bfr: float,
+    satz: Optional[float],
+    red_verfahren: str,
+    tku_umfang: Optional[str],
+    stoab_je_baustein: bool,
+    scheiben_mit_gamma1: bool,
+) -> AbgeleiteteSerie:
+    """Die BAUSTEINE einer beitragsfrei gelieferten Erhoehungsserie
+    (Pruefrunde J, J04): Grundsumme und Scheiben (Ursprungssummen), deren
+    beitragsfreie Summen nach dem Kern zusammen die gelieferte
+    beitragsfreie Summe ``vs_bfr`` ergeben.
+
+    ``ereignisse`` ist die Folge VOR der Freistellung ``(art, jahr,
+    anteil)``. Die relative Struktur bestimmt der belegte Dynamiksatz (jede
+    Erhoehung = Satz x Gesamtsumme davor, wie :func:`leite_serie_aus_satz_ab`);
+    eine Teilkuendigung, die alle Bausteine trifft oder vor der ersten
+    Erhoehung liegt, skaliert die ganze Kette und braucht keinen Anteil
+    (sie steht in ``anteil_unbestimmt``); eine Teilkuendigung NUR der
+    Grundversicherung nach einer Erhoehung braucht ihren Anteil als
+    registrierte Auskunft. Die Hoehe bestimmt die beitragsfreie Summe ueber
+    die Vorgangsfolge des Kerns (linear in der Grundsumme), mit
+    Vorwaertsprobe nach Centrundung der Scheiben.
+
+    Verweigert (``MigrationszugangFehler``), statt still zusammenzufassen:
+    kein belegter Dynamiksatz, eine echte Herabsetzung (geteilter Vertrag),
+    eine Teilkuendigung der Grundversicherung nach einer Erhoehung ohne
+    Anteil, eine reissende Vorwaertsprobe."""
+    from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
+    from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe
+    from rechner_pipeline.kern.vorgangsfolge import Vorgangsfolge
+    from rechner_pipeline.models.bestand import zielverfahren
+
+    if satz is None:
+        raise MigrationszugangFehler(
+            "beitragsfrei gelieferte Erhoehungsserie unter einem Tarifwerk mit "
+            "Regeln je Baustein (Stornoabzug je Baustein oder Teilkuendigung nur "
+            "der Grundversicherung): die Bausteine sind ohne belegten Dynamiksatz "
+            "nicht bestimmt, und eine Zusammenfassung zu einem Baustein rechnete "
+            "Rueckkauf und Teilkuendigung falsch. Ausweg: den Dynamiksatz der "
+            "Quelle in der A-Box belegen (P-Q3, Spez neu erzeugen)")
+    if not 0.0 < satz < 1.0:
+        raise MigrationszugangFehler(f"Erhoehungssatz {satz!r} liegt nicht in (0, 1)")
+    if vs_bfr <= 0.0:
+        raise MigrationszugangFehler(f"gelieferte beitragsfreie Summe {vs_bfr!r} unplausibel")
+    tku_umfang = tku_umfang_fuer(red_verfahren, tku_umfang)
+    kern_felder = {k: v for k, v in dict(modellpunkt_felder).items() if not k.startswith("_")}
+    t_vertrag = int(kern_felder["t"])
+    grund_einheit = 1.0
+    scheiben_einheiten: List[Tuple[int, float]] = []
+    absetzungen: List[Tuple[int, float]] = []
+    unbestimmt: List[int] = []
+    for art, jahr, anteil in ereignisse:
+        if art == "ERH":
+            scheiben_einheiten.append(
+                (int(jahr), satz * (grund_einheit + sum(e for _, e in scheiben_einheiten))))
+            continue
+        if art != "RED":
+            raise MigrationszugangFehler(f"Ereignisart {art!r} vor der Freistellung unerwartet")
+        verfahren = zielverfahren(red_verfahren, int(jahr), t_vertrag, beitragsfrei_ab=None)
+        if verfahren != TEILKUENDIGUNG:
+            raise MigrationszugangFehler(
+                f"echte Herabsetzung im Jahr {jahr} vor der Freistellung: der Vertrag "
+                "ist geteilt, die Bausteine einer beitragsfrei gelieferten Serie sind "
+                "dann nicht bestimmt — Lieferung klaeren")
+        if str(tku_umfang) != UMFANG_GRUND or not scheiben_einheiten:
+            unbestimmt.append(int(jahr))
+            continue
+        if anteil is None or not 0.0 < anteil < 1.0:
+            raise MigrationszugangFehler(
+                f"Teilkuendigung der Grundversicherung im Jahr {jahr} nach einer "
+                f"Erhoehung ohne gueltigen Anteil ({anteil!r}): die Bausteine der "
+                "beitragsfrei gelieferten Serie sind ohne ihn nicht bestimmt — je "
+                "Ereignis als registrierte Auskunft nachliefern lassen "
+                "(--red-anteile-datei, POLNR;GEVO;DATUM;ANTEIL[;BEZUG])")
+        grund_einheit *= float(anteil)
+        absetzungen.append((int(jahr), float(anteil)))
+
+    def bfr_summe(grund: float, scheiben: Sequence[Tuple[int, float]]) -> float:
+        grund_mp = ModelPoint(**{**kern_felder, "sum_insured": float(grund)})
+        kerne = [(int(j), Rechenkern(erhoehungs_scheibe(
+            grund_mp, int(j), float(s), gamma1_uebernehmen=scheiben_mit_gamma1)))
+            for j, s in scheiben]
+        folge = Vorgangsfolge(Rechenkern(grund_mp), kerne, [], pex_jahr=int(pex_jahr),
+                              stoab_je_baustein=stoab_je_baustein, tku_umfang=str(tku_umfang))
+        monat = 12 * int(pex_jahr)
+        return float(folge.stand_am(monat).werte(monat)["vs_bfr"])
+
+    try:
+        einheit = bfr_summe(grund_einheit, scheiben_einheiten)
+    except (BeitragsreduktionFehler, ValueError) as exc:
+        raise MigrationszugangFehler(f"Bausteine nicht rechenbar: {exc}") from exc
+    if einheit <= 0.0:
+        raise MigrationszugangFehler(
+            f"beitragsfreie Summe je Einheit {einheit!r} — eine Umkehrung ist nicht definiert")
+    skala = vs_bfr / einheit
+    # Die Scheiben centgerundet (so bucht die Quelle); die Grundsumme dann
+    # EXAKT aus der gelieferten beitragsfreien Summe (linear in ihr: die
+    # Scheiben haengen nur ueber Alter und Dauern am Grundbaustein). So
+    # reproduziert der Kern die Lieferung auf den Cent — dieselbe Bedingung,
+    # die die Umbuchung des Zugangs an die Zusammenfassung stellte.
+    scheiben = tuple((j, round(skala * e, 2)) for j, e in scheiben_einheiten)
+    try:
+        je_grund = bfr_summe(1.0, ())
+        nur_scheiben = bfr_summe(1.0, scheiben) - je_grund
+    except (BeitragsreduktionFehler, ValueError) as exc:
+        raise MigrationszugangFehler(f"Bausteine nicht rechenbar: {exc}") from exc
+    grund = (vs_bfr - nur_scheiben) / je_grund
+    if grund <= 0.0:
+        raise MigrationszugangFehler(
+            f"rekonstruierte Grundsumme {grund!r} unplausibel — Satz oder Anteile klaeren")
+    glatt = float(round(grund))
+    if glatt > 0 and abs(bfr_summe(glatt, scheiben) - vs_bfr) <= 0.005:
+        grund = glatt
+    probe = bfr_summe(grund, scheiben)
+    if abs(probe - vs_bfr) > 0.005:
+        raise MigrationszugangFehler(
+            f"Vorwaertsprobe reisst: die Bausteine fuehren beitragsfrei {probe:.2f}, "
+            f"geliefert sind {vs_bfr:.2f} — Satz oder Anteile klaeren, nicht glaetten")
+    return AbgeleiteteSerie(grundsumme=grund, scheiben=scheiben,
+                            absetzungen=tuple(absetzungen), anteil_unbestimmt=tuple(unbestimmt))
+
+
+@dataclass(frozen=True)
+class SerieMitVorgaengen:
+    """Die IST-Struktur einer Serie, die einen GETEILTEN Vertrag hinterlaesst.
+
+    ``grundsumme`` ist die Ursprungssumme der Grundversicherung,
+    ``scheiben`` die Erhoehungen (Vertragsjahr, Summe), ``vorgaenge`` die
+    Vorgaenge der Vorgeschichte im Vokabular des Zielsystems als
+    (Vertragsjahr, fortgefuehrter Anteil, Verfahren) — dieselbe Form wie eine
+    Zeile der Nebentabelle ``reduktionen``. Wer den Zustand liest, faltet
+    sie mit :class:`rechner_pipeline.kern.Vorgangsfolge`; ``grundsumme`` und
+    ``scheiben`` sind dann die URSPRUNGSsummen. Ohne Herabsetzung (nur
+    Teilkuendigungen) ist die Struktur zustandslos in IST-Summen und
+    ``vorgaenge`` leer."""
+
+    grundsumme: float
+    scheiben: Tuple[Tuple[int, float], ...]
+    vorgaenge: Tuple[Tuple[int, float, str], ...]
+    #: Nur Teilkuendigungen: die Struktur ist zustandslos (IST-Summen),
+    #: ``vorgaenge`` leer, die Teilkuendigungen (Jahr, Anteil) stehen hier
+    #: als Beleg.
+    teilkuendigungen: Tuple[Tuple[int, float], ...] = ()
+
+    def als_beleg(self) -> Dict[str, Any]:
+        return {"grundsumme": self.grundsumme,
+                "scheiben": [list(s) for s in self.scheiben],
+                "vorgaenge": [list(v) for v in self.vorgaenge]}
+
+
+def _serie_vorwaerts(
+    kern_felder: Mapping[str, Any],
+    grundsumme: float,
+    ereignisse: Sequence[Tuple[str, int, float, str]],
+    *,
+    satz: float,
+    tku_umfang: str,
+    stoab_je_baustein: bool,
+    scheiben_mit_gamma1: bool,
+    runden: bool,
+) -> Tuple[float, List[Tuple[int, float]], Any]:
+    """Die Serie vorwaerts ueber die Vorgangsfolge des Kerns: Erhoehung =
+    Satz x gefuehrte Summe des Zustands davor (dieselbe Regel wie die
+    Ereignis-Engine), jeder andere Vorgang auf dem Zustand, den der Vertrag
+    gerade hat. Rueckgabe: die gefuehrte Summe danach, die Scheiben und der
+    Zustand."""
+    from rechner_pipeline.kern import Vertragsstand, vorgang
+    from rechner_pipeline.kern.rechenkern import erhoehungs_scheibe
+
+    grund_mp = ModelPoint(**{**dict(kern_felder), "sum_insured": float(grundsumme)})
+    stand = Vertragsstand.anfang(Rechenkern(grund_mp), (),
+                                 stoab_je_baustein=stoab_je_baustein,
+                                 tku_umfang=tku_umfang)
+    scheiben: List[Tuple[int, float]] = []
+    for art, jahr, anteil, verfahren in ereignisse:
+        if art == "ERH":
+            summe = satz * stand.gesamt_vs()
+            if runden:
+                summe = round(summe, 2)
+            scheiben.append((int(jahr), summe))
+            stand = stand.nach_erhoehung(int(jahr), Rechenkern(erhoehungs_scheibe(
+                grund_mp, int(jahr), summe, gamma1_uebernehmen=scheiben_mit_gamma1)))
+        else:
+            stand, _ = stand.nach_vorgang(vorgang(int(jahr), float(anteil), verfahren))
+    return stand.gesamt_vs(), scheiben, stand
+
+
+def leite_serie_ueber_folge_ab(
+    modellpunkt_felder: Mapping[str, Any],
+    *,
+    ereignisse: Sequence[Tuple[str, int, Optional[float]]],
+    erlsumme: float,
+    satz: float,
+    red_verfahren: str,
+    tku_umfang: str,
+    stoab_je_baustein: bool,
+    scheiben_mit_gamma1: bool,
+) -> SerieMitVorgaengen:
+    """IST-Struktur einer Serie mit Vorgaengen, die die geschlossene Form
+    nicht traegt (Annahme B5, Tarifplan KLV 7.2).
+
+    Die geschlossene Serien-Ableitung (:func:`leite_serie_aus_satz_ab`) gilt
+    fuer eine Quelle, die jede Absetzung als Teilkuendigung NUR der
+    Grundversicherung rechnet: Dann ist jede Folge linear in der
+    Ursprungssumme. Kennt die Quelle eine echte Beitragsherabsetzung, ist der
+    Vertrag nach ihr GETEILT (fortgefuehrter Teil und fixierte beitragsfreie
+    Summe), und eine Teilkuendigung mit Umfang ``alle_bausteine`` trifft auch
+    die Scheiben. Beides rechnet die Vorgangsfolge des Kerns; diese Funktion
+    sucht die Ursprungssumme, mit der die Folge die gelieferte Summe ERLSUMME
+    trifft (die gefuehrte Summe ist streng monoton in ihr), und prueft
+    vorwaerts.
+
+    Welcher Vorgang eine gelieferte Absetzung war, sagt die EINE
+    Uebersetzungsregel (``models.bestand.zielverfahren``; vor dem Beitragsende
+    eine Herabsetzung nach dem Verfahren der Quelle, danach eine
+    Teilkuendigung). Jede Absetzung braucht ihren Anteil als registrierte
+    Auskunft — der geteilte Vertrag ist ohne ihn nicht bestimmt, und
+    Kandidaten raet diese Funktion nicht. Scheiben werden centgerundet
+    gebucht (so bucht die Quelle), die Ursprungssumme auf ganze Euro, wenn
+    die Vorwaertsprobe es traegt.
+    """
+    from rechner_pipeline.models.bestand import reduktion_ereignis, zielverfahren
+    from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
+
+    if not 0.0 < satz < 1.0:
+        raise MigrationszugangFehler(f"Erhoehungssatz {satz!r} liegt nicht in (0, 1)")
+    if erlsumme <= 0.0:
+        raise MigrationszugangFehler(f"ERLSUMME {erlsumme!r} unplausibel")
+    kern_felder = {k: v for k, v in dict(modellpunkt_felder).items()
+                   if not k.startswith("_")}
+    t_vertrag = int(kern_felder["t"])
+    uebersetzt: List[Tuple[str, int, float, str]] = []
+    vorgaenge: List[Tuple[int, float, str]] = []
+    for art, jahr, anteil in ereignisse:
+        if art == "ERH":
+            uebersetzt.append(("ERH", int(jahr), 1.0, ""))
+            continue
+        if art != "RED":
+            raise MigrationszugangFehler(
+                f"Ereignisart {art!r} gehoert nicht in die Serie (ERH/RED; PEX "
+                "laeuft ueber die Gesamtsummen-Inversion)")
+        if anteil is None or not 0.0 < anteil < 1.0:
+            raise MigrationszugangFehler(
+                f"Absetzung im Jahr {jahr} ohne gueltigen fortgefuehrten Anteil "
+                f"({anteil!r}) — der geteilte Vertrag ist ohne ihn nicht bestimmt; "
+                "je Ereignis als registrierte Auskunft nachliefern lassen "
+                "(--red-anteile-datei, POLNR;GEVO;DATUM;ANTEIL[;BEZUG])")
+        verfahren = zielverfahren(red_verfahren, int(jahr), t_vertrag, beitragsfrei_ab=None)
+        uebersetzt.append((reduktion_ereignis(verfahren), int(jahr), float(anteil), verfahren))
+        vorgaenge.append((int(jahr), float(anteil), verfahren))
+
+    def summe_bei(s0: float, runden: bool = False) -> float:
+        return _serie_vorwaerts(
+            kern_felder, s0, uebersetzt, satz=satz, tku_umfang=tku_umfang,
+            stoab_je_baustein=stoab_je_baustein,
+            scheiben_mit_gamma1=scheiben_mit_gamma1, runden=runden)[0]
+
+    # Klammer: die gefuehrte Summe waechst streng mit der Ursprungssumme.
+    unten, oben = 0.0, float(erlsumme)
+    while summe_bei(oben) < erlsumme:
+        oben *= 2.0
+        if oben > 1e4 * erlsumme:
+            raise MigrationszugangFehler(
+                "keine Ursprungssumme reproduziert die gelieferte Summe — "
+                "Satz oder Anteile klaeren")
+    for _ in range(200):
+        mitte = 0.5 * (unten + oben)
+        if summe_bei(mitte) < erlsumme:
+            unten = mitte
+        else:
+            oben = mitte
+        if oben - unten <= 1e-9 * max(1.0, oben):
+            break
+    s0 = 0.5 * (unten + oben)
+    glatt = float(round(s0))
+    anzahl = 1 + sum(1 for e in uebersetzt if e[0] == "ERH")
+    tol = 0.01 * anzahl
+    if glatt > 0 and abs(summe_bei(glatt, runden=True) - erlsumme) <= tol:
+        s0 = glatt
+    gesamt, scheiben, stand = _serie_vorwaerts(
+        kern_felder, s0, uebersetzt, satz=satz, tku_umfang=tku_umfang,
+        stoab_je_baustein=stoab_je_baustein,
+        scheiben_mit_gamma1=scheiben_mit_gamma1, runden=True)
+    if abs(gesamt - erlsumme) > tol:
+        raise MigrationszugangFehler(
+            f"Vorwaertsprobe reisst: die Folge mit Ursprungssumme {s0:.2f} fuehrt "
+            f"{gesamt:.2f}, geliefert sind {erlsumme:.2f} — Satz oder Anteile "
+            "klaeren, nicht glaetten")
+    if all(verfahren == TEILKUENDIGUNG for _, _, verfahren in vorgaenge):
+        # Nur Teilkuendigungen: Der Vertrag ist danach der GEWOEHNLICHE mit
+        # kleineren Summen (der Kern ist summenhomogen; jede Teilkuendigung
+        # skaliert die Bausteine, die sie trifft). Die IST-Struktur ist dann
+        # zustandslos — dieselbe Darstellung wie die geschlossene Ableitung,
+        # die Uebernahme und Fuehrung tragen: Scheiben centgerundet, die
+        # Grundsumme als Rest zur gelieferten Summe.
+        ist_scheiben = tuple((int(b.erh_jahr), round(b.vs, 2)) for b in stand.bausteine[1:])
+        ist_grund = round(erlsumme - sum(v for _, v in ist_scheiben), 2)
+        if abs(ist_grund - stand.bausteine[0].vs) > tol:
+            raise MigrationszugangFehler(
+                f"Rekompositions-Probe reisst: Grundsumme aus der Folge "
+                f"{stand.bausteine[0].vs:.2f} gegen Rest zur Lieferung {ist_grund:.2f}")
+        return SerieMitVorgaengen(grundsumme=ist_grund, scheiben=ist_scheiben,
+                                  vorgaenge=(), teilkuendigungen=tuple(
+                                      (j, f) for j, f, _ in vorgaenge))
+    return SerieMitVorgaengen(grundsumme=s0, scheiben=tuple(scheiben),
+                              vorgaenge=tuple(vorgaenge))
+
+
 def bestimme_serie_mit_kandidaten(
     modellpunkt_felder: Mapping[str, Any],
     *,
@@ -1121,7 +1716,7 @@ def bestimme_serie_mit_kandidaten(
     satz: float,
     jbrutto: float,
     kandidaten: Sequence[float],
-    scheiben_mit_gamma1: bool = False,
+    scheiben_mit_gamma1: bool,
     anker: Optional[Tuple[int, float]] = None,
     abs_tol: float = ABLEITUNG_SELBSTCHECK_TOL,
 ) -> AbgeleiteteSerie:
@@ -1288,9 +1883,15 @@ def pruefe_erhoehungssatz(
     kandidat: float,
     belege: Sequence[Tuple[Mapping[str, Any], int, float, float]],
     *,
+    scheiben_mit_gamma1: bool,
     abs_tol: float = 0.011,
 ) -> Dict[str, Any]:
     """Einen Dynamiksatz gegen die gelieferten Jahresbeitraege pruefen.
+
+    ``scheiben_mit_gamma1`` (ohne Vorgabe, Pruefrunde I, I14): ob die Scheibe
+    gamma1 traegt, ist Tarifwerk der Generation; der Beitrag der Scheibe haengt
+    daran. Vorher rechnete die Funktion immer nach der Regel des eigenen
+    Geschaefts.
 
     Je Beleg ``(modellpunkt_felder, jahr, erlsumme, jbrutto)`` wird die
     Zerlegung AUS DEM SATZ gebildet und der daraus folgende
@@ -1322,7 +1923,8 @@ def pruefe_erhoehungssatz(
                                  "sum_insured": zerlegung.grundsumme})
         grund = Rechenkern(grund_mp)
         scheibe = Rechenkern(erhoehungs_scheibe(
-            grund_mp, jahr, zerlegung.erhoehungssumme))
+            grund_mp, jahr, zerlegung.erhoehungssumme,
+            gamma1_uebernehmen=scheiben_mit_gamma1))
         system = 0.0
         if grund_mp.t > 0:
             system += grund.gross_annual_premium()
@@ -1352,7 +1954,7 @@ def leite_erhoehung_ab(
     jahr: int,
     erlsumme: float,
     jbrutto: float,
-    scheiben_mit_gamma1: bool = False,
+    scheiben_mit_gamma1: bool,
 ) -> AbgeleiteteErhoehung:
     """Grund- und Erhoehungssumme einer Alt-Dynamik ableiten.
 
@@ -1520,3 +2122,104 @@ def pruefe_metadatenliste(vorgeschichte: Sequence[Vorgang]) -> List[str]:
                     "die Vorgeschichte liefert Zeitpunkte, keine Werte (9.14)"
                 )
     return befunde
+
+
+def fuehrungswerte(
+    stamm: pd.DataFrame,
+    historie: Optional[pd.DataFrame],
+    config_text: str,
+    stichtage: Mapping[str, _dt.date],
+    *,
+    scheiben: Optional[pd.DataFrame] = None,
+    merkmale: Optional[pd.DataFrame] = None,
+    schichten: Optional[pd.DataFrame] = None,
+    verankerung: Optional[pd.DataFrame] = None,
+    reduktionen: Optional[pd.DataFrame] = None,
+    tarifwerk_der_spez: Optional[Mapping[str, Mapping[str, Any]]] = None,
+) -> Tuple[str, Dict[str, Dict[str, Optional[Dict[str, Any]]]]]:
+    """Der Fuehrungswert des Zugangs: was der Abschluss fuer jeden Vertrag fuehrt.
+
+    ``tarifwerk_der_spez`` (Knoten der Generation -> Tarifwerk der Spez,
+    ADR-024, Nachtrag): Jede Generation, die im Bestand vorkommt, aufgeloest
+    wie die Bewertung sie aufloest (Name aus ``stamm.tarif_generation``),
+    muss unter einem Knoten der Spez stehen und GENAU dessen Tarifwerk
+    fuehren, sonst stuende im Beleg der Suite ein Fuehrungswert nach einer
+    anderen Regel als die Pruefstrecke — verweigert, nicht gerechnet
+    (Pruefrunde G, G20). Die Pruefstrecke und A-M4 uebergeben es immer.
+
+    Entscheid des Maintainers (2026-10-01): Die Migrationsabnahme weist den
+    Wert aus, den die Bestandsfuehrung fuehrt — gerechnet ueber DIESELBE
+    Bewertungsstrecke wie der Monatsabschluss
+    (:func:`rechner_pipeline.bestand.auswertung.einzelwerte_am`, in der
+    Fuehrungskonvention), aus dem Bestand des Falls, den die Uebernahme
+    geschrieben hat, mit der Config der Fuehrung. Keine Formel hier: Die
+    Strecke ist die des Abschlusses, also sagt ein Unterschied zwischen
+    Fuehrungswert und Abschluss, dass Betrieb und Abnahme verschiedene
+    Vertraege oder Grundlagen haben — nicht verschiedene Rechenwege.
+
+    Hier und nicht in ``gates``: Die Pruefschicht darf die Bestandsschicht
+    nur ueber die gemessene Schnittstelle rufen (ADR-017,
+    ``ontologie.code_karte.TOOL_NACH_VORZEIGE_ERLAUBT``), und
+    ``migrationssuite_lauf -> bestand.migrationszugang`` ist eine ihrer
+    Kanten. Die Config kommt als TEXT (die gebundenen Bytes des Laufs).
+
+    ``stichtage``: Termin -> Stichtag (``stichtag_1``, ``stichtag_2`` der
+    Suite). Rueckgabe: die Konvention und je Police (als Text, wie die
+    Suite sie fuehrt) je Termin der Eintrag aus
+    ``models.fuehrungswert.termin`` — ``None``, wo der Vertrag am Termin
+    nicht in Kraft ist (ohne Geschaeftsvorfall dazwischen: abgelaufen).
+    """
+    from rechner_pipeline.bestand.auswertung import einzelwerte_am
+    from rechner_pipeline.bestand.config import config_aus_text
+    from rechner_pipeline.models.bestand import FUEHRUNGSKONVENTION
+    from rechner_pipeline.models.fuehrungswert import termin
+
+    config = config_aus_text(config_text)
+    fehler = config.validate()
+    if fehler:
+        raise MigrationszugangFehler(
+            "Fuehrungswert: die Config der Fuehrung ist ungueltig — " + "; ".join(fehler[:3]))
+    # Die Wache haelt GENAU die Generationen, mit denen bewertet wird
+    # (Pruefrunde G, G20): die Bewertung (``einzelwerte_am``) waehlt die
+    # Generation eines Vertrags ueber den NAMEN in ``stamm.tarif_generation``
+    # (``{g.name: ...}``); die Wache suchte sie ueber den KNOTEN der Spez. Mit
+    # einer Attrappe unter dem Knoten der Spez und der echten Generation
+    # unter anderem Knoten stellte die Suite einen Fuehrungswert nach anderem
+    # Tarifwerk gruen aus. Jetzt dieselbe Aufloesung wie die Bewertung, fuer
+    # JEDE Generation, die im Bestand vorkommt: Ihr Knoten muss der der Spez
+    # sein, ihr Tarifwerk das der Spez.
+    if tarifwerk_der_spez is not None:
+        je_name = {g.name: g for g in config.generationen}
+        for name in sorted({str(n) for n in stamm["tarif_generation"]}):
+            gen = je_name.get(name)
+            if gen is None:
+                raise MigrationszugangFehler(
+                    f"Config der Fuehrung: die Generation {name!r} des Bestands fehlt — "
+                    "ohne sie ist kein Fuehrungswert zu rechnen.")
+            soll = tarifwerk_der_spez.get(gen.knoten)
+            if soll is None:
+                raise MigrationszugangFehler(
+                    f"Config der Fuehrung: die Generation {name} des Bestands steht unter "
+                    f"dem Knoten {gen.knoten!r}, die Pruefstrecke prueft mit der Spez von "
+                    f"{sorted(tarifwerk_der_spez)} — bewertet wuerde nach einem Tarifwerk, "
+                    "das keine Spez belegt. Ausweg: den Generationsblock aus "
+                    "generation-zellen.toml der Uebernahme uebernehmen (Name, Knoten und "
+                    "Tarifwerk der Spez).")
+            if gen.tarifwerk() != dict(soll):
+                raise MigrationszugangFehler(
+                    f"Config der Fuehrung: das Tarifwerk der Generation {name} "
+                    f"({gen.knoten}) {gen.tarifwerk()} ist nicht das der Spez "
+                    f"{dict(soll)} — der Fuehrungswert rechnete nach einer anderen "
+                    "Regel als die Pruefstrecke. Ausweg: den Generationsblock aus "
+                    "generation-zellen.toml der Uebernahme uebernehmen (er traegt "
+                    "das Tarifwerk der Spez).")
+    policen = [str(p) for p in stamm["police_id"]]
+    werte: Dict[str, Dict[str, Optional[Dict[str, Any]]]] = {
+        p: {name: None for name in stichtage} for p in policen}
+    for name, stichtag in stichtage.items():
+        for zeile in einzelwerte_am(
+                stamm, historie, config, stichtag, scheiben=scheiben, merkmale=merkmale,
+                schichten=schichten, verankerung=verankerung, reduktionen=reduktionen,
+                konvention=FUEHRUNGSKONVENTION):
+            werte[str(zeile["police_id"])][name] = termin(stichtag.isoformat(), zeile)
+    return FUEHRUNGSKONVENTION, werte

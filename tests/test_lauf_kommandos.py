@@ -157,7 +157,7 @@ def test_pex_der_vorgeschichte_wird_zum_vertragsjahr():
 def test_pex_abseits_des_jahrestags_faellt_hart():
     vorgeschichte = [{"POLNR": "7000001", "GEVO": "PEX",
                       "DATUM": "01.07.2023"}]
-    with pytest.raises(SystemExit, match="Jahrestag"):
+    with pytest.raises(SystemExit, match="Vertragsjahrestag"):
         beitragsfrei_seit_jahr_je_police(
             vorgeschichte, _bestand(7000001), spalten=SPALTEN)
 
@@ -213,7 +213,7 @@ def test_anfangszustand_erh_leitet_scheibe_und_grundsumme_ab():
     s_grund, s_scheibe, jahr = 80000.0, 12000.0, 6
     grund = Rechenkern(type(KLV_DEFAULT)(**{
         **KLV_DEFAULT.__dict__, "sum_insured": s_grund}))
-    scheibe = Rechenkern(erhoehungs_scheibe(grund.mp, jahr, s_scheibe))
+    scheibe = Rechenkern(erhoehungs_scheibe(grund.mp, jahr, s_scheibe, gamma1_uebernehmen=False))
     zeilen = [{"police_id": "7000001",
                "sum_insured": round(s_grund + s_scheibe, 2),
                "brutto_jahresbeitrag": round(
@@ -458,7 +458,7 @@ def test_anfangszustand_serie_baut_ist_struktur_mit_absetzung():
     zustaende, warnungen = anfangszustaende_je_police(
         _tg_default_spez(), zeilen, vorgeschichte,
         _bestand_mit(7000003), spalten=SPALTEN,
-        red_verfahren="mit_abzug", erhoehungssatz=0.05,
+        red_verfahren="teilkuendigung", erhoehungssatz=0.05,
         red_anteile_je_datum={"7000003": {"01.01.2018": 0.6}})
     assert not warnungen
     z = zustaende["7000003"]
@@ -485,9 +485,9 @@ def test_anfangszustand_serie_bestimmt_offene_anteile_aus_kandidaten():
     jbrutto = round(
         Rechenkern(grund_mp).gross_annual_premium()
         + Rechenkern(erhoehungs_scheibe(
-            grund_mp, 1, 500.0)).gross_annual_premium()
+            grund_mp, 1, 500.0, gamma1_uebernehmen=False)).gross_annual_premium()
         + Rechenkern(erhoehungs_scheibe(
-            grund_mp, 3, 325.0)).gross_annual_premium(), 2)
+            grund_mp, 3, 325.0, gamma1_uebernehmen=False)).gross_annual_premium(), 2)
     zeilen = [{"police_id": "7000003", "sum_insured": 6825.00,
                "brutto_jahresbeitrag": jbrutto}]
     vorgeschichte = [
@@ -498,7 +498,7 @@ def test_anfangszustand_serie_bestimmt_offene_anteile_aus_kandidaten():
     zustaende, warnungen = anfangszustaende_je_police(
         _tg_default_spez(), zeilen, vorgeschichte,
         _bestand_mit(7000003), spalten=SPALTEN,
-        red_verfahren="mit_abzug", erhoehungssatz=0.05,
+        red_verfahren="teilkuendigung", erhoehungssatz=0.05,
         red_anteil_kandidaten=(0.50, 0.60, 0.75))
     assert not warnungen
     z = zustaende["7000003"]
@@ -527,7 +527,7 @@ def test_anfangszustand_serie_mit_terminalem_pex_ist_einpunkt():
     from rechner_pipeline.kern import erhoehungs_scheibe
 
     grund = Rechenkern(_dc.replace(KLV_DEFAULT, sum_insured=10000.0))
-    scheibe = Rechenkern(erhoehungs_scheibe(grund.mp, 3, 500.0))
+    scheibe = Rechenkern(erhoehungs_scheibe(grund.mp, 3, 500.0, gamma1_uebernehmen=False))
     f_g = Rechenkern(_dc.replace(grund.mp, sum_insured=1.0)
                      ).beitragsfreie_summe(8)
     f_s = Rechenkern(_dc.replace(scheibe.mp, sum_insured=1.0)
@@ -587,7 +587,7 @@ def test_anfangszustand_serie_ohne_satz_und_pex_nicht_terminal_fallen_hart():
         {"POLNR": "7000005", "GEVO": "PEX", "DATUM": "01.01.2017"},
         {"POLNR": "7000005", "GEVO": "ERH", "DATUM": "01.01.2019"},
     ]
-    with pytest.raises(SystemExit, match="terminal"):
+    with pytest.raises(SystemExit, match="nach der Beitragsfreistellung folgt"):
         anfangszustaende_je_police(
             _tg_default_spez(), zeilen, nicht_terminal,
             _bestand_mit(7000005), spalten=SPALTEN,

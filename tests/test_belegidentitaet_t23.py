@@ -226,11 +226,21 @@ def test_ak1_liest_seine_pflichtbelege_genau_einmal(pk1_fall, monkeypatch):
     # Zweiter Pflichtbeleg seit dem Entscheid des Maintainers 2026-09-16:
     # Auch er muss genau einmal gelesen werden.
     _tbox_stellungnahme(pk1_fall)
+    # Der Beleg ist von Hand geschrieben: Sicht und Archivkopie, wie der
+    # Produzent sie mitschreibt (ADR-025, Nachtrag "Beleg und Sicht"). Die
+    # Sicht-Regel liest den Beleg nicht ein zweites Mal — sie erzeugt die
+    # Sicht aus der EINEN Lesung des Gates.
+    from tests.zeichnung_fixture import handbeleg_sicht_nachziehen
+
+    handbeleg_sicht_nachziehen(pk1_fall, "A-O1")
+    # Die Argumente VOR der Zaehlung: der gemeinsame Weg beauftragt den Fall
+    # dabei (ADR-026) — gezaehlt wird nur der Lauf von A-O1.
+    args = annahme_args(pk1_fall, fuer="A-O1")
     zaehler, geschrieben = _zaehle_lesungen(monkeypatch)
     ergebnis = gate_entscheid.main([
         "--fall", str(pk1_fall), "--gate", "A-O1", "--entscheid", "angenommen",
         "--entscheider", "IT-Verantwortung", "--begruendung", "T-Box erweitert",
-        "--repo-root", str(REPO_ROOT), *annahme_args(pk1_fall),
+        "--repo-root", str(REPO_ROOT), *args,
     ])
     assert ergebnis.exit_code == 0, ergebnis.errors
     _pruefe_belegidentitaet(zaehler, geschrieben, ergebnis, mindestens=3)

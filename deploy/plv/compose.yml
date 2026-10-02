@@ -15,5 +15,26 @@ services:
       PLV_IMAGE_DIGEST: ${IMAGE_DIGEST:-}
       PLV_IMAGE_TAG: ${IMAGE_TAG:-latest}
     volumes:
-      - ./daten:/daten
-    command: ["--stand", "/daten"]
+      # Kein stilles Anlegen (Angriffsrunde nach T27): Fehlt ./daten — etwa
+      # weil ein Neuaufsetzen zwischen seinen zwei Umbenennungen endete —,
+      # legte Docker ein leeres root-eigenes Verzeichnis an, und die Ablage
+      # war dauerhaft gesperrt. So bricht der Lauf ab, und ein erneutes
+      # neuaufsetzen auf dem Host vollendet den Tausch.
+      - type: bind
+        source: ./daten
+        target: /daten
+        bind:
+          create_host_path: false
+      # Der Betriebsschluessel und die Zeichnungsordnung (ADR-018, Nachtrag
+      # 2026-09-30): Jede Protokollzeile ist gezeichnet. Sie liegen beim
+      # Menschen AUSSERHALB der Ablage und kommen nur lesend herein; .env
+      # nennt das Verzeichnis, nie den Schluessel selbst.
+      - type: bind
+        source: ${BETRIEBSSCHLUESSEL_DIR:?BETRIEBSSCHLUESSEL_DIR in .env setzen}
+        target: /schluessel
+        read_only: true
+        bind:
+          create_host_path: false
+    command: ["--stand", "/daten",
+              "--schluessel", "/schluessel/betrieb.key",
+              "--zeichnungsordnung", "/schluessel/zeichnungsordnung.json"]

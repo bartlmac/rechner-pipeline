@@ -3,6 +3,12 @@
   "erweiterungsstellen": [],
   "familie": "klv",
   "generation": "klv/tg2015",
+  "quellverfahren": {
+    "dk_stichtag": "kalendertag",
+    "erhoehungssatz": 0.05,
+    "formfunktion": "proportional_zur_basis",
+    "red_verfahren": "mit_abzug"
+  },
   "spez_version": "0.1.0",
   "tafel_ableitungen": [
     {
@@ -21,7 +27,13 @@
     }
   ],
   "tafel_importe": [],
-  "tbox_version": "0.1.0",
+  "tarifwerk": {
+    "red_verfahren": "mit_abzug",
+    "scheiben_mit_gamma1": false,
+    "stoab_je_baustein": false,
+    "tku_umfang": "alle_bausteine"
+  },
+  "tbox_version": "0.2.0",
   "unisex": "U70",
   "urteil": {
     "begruendung": [

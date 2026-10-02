@@ -89,14 +89,127 @@ def _zugangsstand(ziel: Path) -> None:
     write_portfolio(stamm, ziel / "bestand.parquet")
     write_portfolio(historie, ziel / "historie.parquet")
     write_portfolio(ledger, ziel / "ledger.parquet")
+    uebernahmebeleg(ziel, len(stamm))
+
+
+def uebernahmebeleg(ziel: Path, vertraege: int, *, generation: str = "KLV-2017",
+                    tarifwerk: "dict | None" = None) -> None:
+    """Der Uebernahmebeleg, wie gates.bestand_uebernehmen ihn schreibt:
+    Modus und die Tarifwerk-Schalter der Generation (aus der Config der
+    PLV, gegen die der Tageslauf ihn haelt)."""
+    gen = next((g for g in load_config(PLV).generationen if g.name == generation), None)
+    if tarifwerk is None:
+        tarifwerk = gen.tarifwerk() if gen is not None else {
+            "scheiben_mit_gamma1": False, "stoab_je_baustein": False, "red_verfahren": "prospektiv"}
+    (ziel / "uebernahme.json").write_text(json.dumps({
+        "schema_version": 1, "anfangszustand": "ohne_bausteine",
+        "tarifwerk": tarifwerk, "vertraege": int(vertraege),
+    }, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+
+
+def fuehrungsbeleg(fall: Path) -> str:
+    """Ein Beleg der Rolle ``fuehrungsprobe`` ueber den Zugangsstand: Wie
+    der echte Produzent bindet er Tabellen UND uebernahme.json in
+    ``provenienz.eingaben`` — ueber ihn bezeugt die Abnahme den Beleg,
+    den der Betriebseingang registriert."""
+    bestand = fall / "abgeleitet" / "bestand"
+    eingaben = {
+        str(pfad.relative_to(fall)): hashlib.sha256(pfad.read_bytes()).hexdigest()
+        for pfad in sorted(list(bestand.glob("*.parquet")) + list(bestand.glob("uebernahme.json")))
+    }
+    beleg = {"schema_version": 3, "bestanden": True, "provenienz": {"eingaben": eingaben}}
+    pfad = fall / "abgeleitet" / "berichte" / "fuehrungsprobe.json"
+    pfad.parent.mkdir(parents=True, exist_ok=True)
+    roh = json.dumps(beleg, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    pfad.write_bytes(roh)
+    return hashlib.sha256(roh).hexdigest()
+
+
+def am6_snapshot(fall_name: str) -> dict:
+    """Der Fallauftrag der Suite (A-M6), wie das Gate ihn schreibt —
+    deterministisch je Fallname, signiert mit dem Schluessel des Vorstands
+    (``VORSTANDKEY``, im Testring) unter dem ersten Glied der Test-Linie.
+
+    Seit der Leser des Betriebs den Auftrag liest, den A-M4, A-M1 und A-B2
+    signiert nennen (ADR-026, Nachtrag Pruefrunde I, I07), muss er im Fall
+    liegen: :func:`lege_auftrag`. Die Lieferung ist ein Platzhalter — die
+    Bindung an die Lieferung haelt das Gate beim Zeichnen, nicht der Betrieb."""
+    from rechner_pipeline.models import fallauftrag as fa
+    from rechner_pipeline.models.freigabe import freigabe_fuer
+    from rechner_pipeline.models.schemas import (
+        P9_GATE_VERSION,
+        P9_SNAPSHOT_SCHEMA_VERSION,
+        p9_snapshot_sha256,
+    )
+    from tests.freigabe_testschluessel import VORSTANDKEY, suitelinie_pin
+
+    auftrag = {
+        "schema_version": fa.AUFTRAG_SCHEMA_VERSION, "art": fa.AUFTRAG_ART,
+        "fall": {"name": fall_name, "scope": "bestand"},
+        "lieferung": {"eingang_sha256": "ab" * 32,
+                      "quellen": [{"datei": "lieferung.csv", "sha256": "ef" * 32}]},
+        "programmleitung": {"rolle": "mensch/programmleitung",
+                            "schluessel_sha256": hashlib.sha256(b"programmleitung der suite").hexdigest(),
+                            "schluesselklasse": "mensch", "gates": ["A-M5"]},
+        "mandate": {}, "zielsystem": {"linie": None, "abnahmen": {}},
+        "abgebendes_haus": {"aktuar": None, "vermerk": fa.ABGEBENDES_HAUS_VERMERK},
+        "auftrag": "Fall der Suite: migrieren und abnehmen",
+    }
+    daten = {
+        "schema_version": P9_SNAPSHOT_SCHEMA_VERSION, "command": "gate_entscheid",
+        "gate_version": P9_GATE_VERSION, "gate": "A-M6", "entscheid": "angenommen",
+        "entscheider": "Vorstand", "rolle": "mensch/vorstand",
+        "begruendung": "Fall beauftragt (Suite)", "fall": fall_name,
+        "artefakt_hashes": {"eingang.json": "ab" * 32, "fall.json": "cd" * 32},
+        "system": {"branch": "main", "commit": "abc1234", "dirty": "nein",
+                   "quellcode_sha256": "ef" * 32},
+        "vorgaenger": [], "entschieden_am": "2026-01-01T09:00:00+00:00",
+        "fall_scope": "bestand",
+        "pflichtbelege": {"fallauftrag": [hashlib.sha256(b"vorlage des auftrags").hexdigest()]},
+        "zeichnung": {"rolle": "mensch/vorstand", **suitelinie_pin(), "schluesselklasse": "mensch"},
+        "auftrag": auftrag,
+    }
+    daten["freigabe"] = freigabe_fuer(daten, VORSTANDKEY)
+    daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
+    return daten
+
+
+def auftrag_der_suite(fall_name: str) -> str:
+    """Der Snapshot-Hash des Fallauftrags der Suite fuer diesen Fall."""
+    return am6_snapshot(fall_name)["snapshot_sha256"]
+
+
+def lege_auftrag(fall: Path) -> str:
+    """Den Fallauftrag der Suite in den Fall legen (einmal); Rueckgabe: der
+    Hash der geltenden Spitze der A-M6-Kette. Ein Fall, der schon eine
+    A-M6-Kette traegt (ueber das Gate beauftragt), bleibt unberuehrt."""
+    fall = Path(fall)
+    entscheide = fall / "entscheide"
+    entscheide.mkdir(parents=True, exist_ok=True)
+    kette = [json.loads(p.read_text(encoding="utf-8")) for p in entscheide.glob("A-M6-*.json")]
+    if kette:
+        # Die Spitze: der Snapshot, den kein anderer als Vorgaenger nennt
+        # (strukturell, nur fuer den Aufbau der Testwelt; gelesen wird im Betrieb).
+        genannt = {v for d in kette for v in d.get("vorgaenger") or []}
+        (spitze,) = [d["snapshot_sha256"] for d in kette if d["snapshot_sha256"] not in genannt]
+        return str(spitze)
+    name = json.loads((fall / "fall.json").read_text(encoding="utf-8"))["name"]
+    daten = am6_snapshot(name)
+    (entscheide / f"A-M6-{daten['snapshot_sha256']}.json").write_text(
+        json.dumps(daten, ensure_ascii=False), encoding="utf-8")
+    return daten["snapshot_sha256"]
 
 
 def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
                  entscheid: str = "angenommen",
                  pb1_ledger_sha: str = "ab" * 32,
+                 fuehrungsprobe_sha: "str | None" = None,
                  rollen: "tuple[str, ...] | None" = None,
-                 schema: int = 7,
-                 schluessel: "bytes | None" = None) -> dict:
+                 schema: "int | None" = None,
+                 schluessel: "bytes | None" = None,
+                 pins: "dict | None" = None,
+                 rolle_id: "str | None" = None,
+                 fallauftrag: "str | None" = None) -> dict:
     """Ein gueltiger P9-Snapshot, wie ihn das Gate schreibt — Schema 7 mit
     Zeichnung (Rolle, Schluesselklasse), EXAKT den Pflichtrollen seines
     Scopes und einer ECHTEN Freigabesignatur (Testschluessel; conftest
@@ -106,12 +219,24 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
     findet — im echten Fall schreibt das Gate sie, hier buergt die
     Signatur. ``rollen`` ueberschreibt die Rollenmenge (DoRAs Fall: nur
     pb1_ledger), ``schema=6`` baut einen Altsnapshot ohne Klasse.
+
+    ``pins`` setzt einzelne Rollen auf echte Hashes (Block F, Nachbesserung:
+    ``migrationssuite`` und ``am1_snapshot`` binden das Soll der
+    Zugangsprobe). Ohne Angabe pinnt ``am1_snapshot`` den deterministischen
+    A-M1-Snapshot :func:`am1_snapshot` dieses Falls — die Naht der
+    Zugangsabnahme legt ihn bei Bedarf in den Fall.
     """
     from rechner_pipeline.models.belegrollen import am4_belegrollen
     from rechner_pipeline.models.freigabe import freigabe_fuer
-    from rechner_pipeline.models.schemas import P9_GATE_VERSION, p9_snapshot_sha256
-    from tests.freigabe_testschluessel import TESTKEY
+    from rechner_pipeline.models.schemas import (
+        P9_GATE_VERSION_JE_SCHEMA,
+        P9_SNAPSHOT_SCHEMA_VERSION,
+        p9_snapshot_sha256,
+    )
+    from tests.freigabe_testschluessel import AKTUARIAT_ROLLE, TESTKEY
 
+    # Ohne Angabe das aktuelle Schema — das, das das Gate schreibt.
+    schema = P9_SNAPSHOT_SCHEMA_VERSION if schema is None else schema
     scope = "bestand"
     alle = list(rollen) if rollen is not None else (am4_belegrollen(scope) if gate == "A-M4" else ["pb1_ledger"])
     gen_beleg = hashlib.sha256(b"pk1:klv/plv_2017").hexdigest()
@@ -119,14 +244,24 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
     for rolle in alle:
         if rolle == "pb1_ledger":
             pflichtbelege[rolle] = [pb1_ledger_sha]
+        elif rolle == "fuehrungsprobe" and fuehrungsprobe_sha is not None:
+            pflichtbelege[rolle] = [fuehrungsprobe_sha]
         elif rolle == "pk1_belege":
             pflichtbelege[rolle] = [gen_beleg]
+        elif rolle == "am1_snapshot" and gate == "A-M4":
+            pflichtbelege[rolle] = [am1_snapshot(fall_name, schluessel=schluessel)["snapshot_sha256"]]
         else:
             pflichtbelege[rolle] = [hashlib.sha256(rolle.encode()).hexdigest()]
-    rolle_id = "mensch" if schema == 6 else "mensch/aktuar"
+    for rolle, wert in (pins or {}).items():
+        assert rolle in pflichtbelege, (rolle, sorted(pflichtbelege))
+        pflichtbelege[rolle] = [wert]
+    # Das Rollenfeld ist die Rolle des Schluessels (TESTKEY: mensch/aktuariat),
+    # wie das Gate es schreibt; ein Altsnapshot traegt die Altform ohne Ebene.
+    if rolle_id is None:
+        rolle_id = "mensch" if schema == 6 else AKTUARIAT_ROLLE
     daten = {
         "schema_version": schema, "command": "gate_entscheid",
-        "gate_version": "0.6.0" if schema == 6 else P9_GATE_VERSION,
+        "gate_version": P9_GATE_VERSION_JE_SCHEMA[schema],
         "gate": gate, "entscheid": entscheid, "entscheider": "Verantwortlicher Aktuar",
         "rolle": rolle_id, "begruendung": "Controlling bestanden",
         "fall": fall_name,
@@ -138,14 +273,51 @@ def am4_snapshot(fall_name: str, *, gate: str = "A-M4",
         "fall_scope": scope,
         "pflichtbelege": pflichtbelege,
     }
+    # Ab Schema 9 unter der Test-Linie gezeichnet (ADR-025: die Linie ist
+    # Pflicht) — Ordnung und Glied, wie das Gate sie pinnt.
+    from tests.freigabe_testschluessel import suitelinie_pin
+
     daten["zeichnung"] = ({"rolle": rolle_id, "ordnung_sha256": "cd" * 32} if schema == 6
-                          else {"rolle": rolle_id, "ordnung_sha256": "cd" * 32, "schluesselklasse": "mensch"})
+                          else {"rolle": rolle_id, "ordnung_sha256": "cd" * 32, "schluesselklasse": "mensch"}
+                          if schema < 9 else
+                          {"rolle": rolle_id, **suitelinie_pin(), "schluesselklasse": "mensch"})
     if gate == "A-M4":
         daten["pk1_belege"] = {"klv/plv_2017": [gen_beleg]} if "pk1_belege" in pflichtbelege else {}   # Schluessel: familie/generation
+        if schema >= 8:
+            # Die Standabnahmen, wie das Gate sie schreibt (ADR-018, Nachtrag
+            # 2026-10-01); hier buergt die Signatur, nicht die Nachrechnung.
+            from rechner_pipeline.models import standabnahme as sa
+
+            daten["standabnahmen"] = {
+                g.rolle: {"gate": g.gate, "weg": sa.KEINE_AENDERUNG,
+                          "anzeige": f"{g.titel} (Suite)"}
+                for g in sa.AM4_GEGENSTAENDE if g.rolle in pflichtbelege}
+    if entscheid == "angenommen" and schema >= 10:
+        # Jede Annahme eines Falls nennt den Auftrag, auf dem sie steht
+        # (ADR-026). ``fallauftrag``: der Snapshot des geltenden Auftrags, wenn
+        # ein Gate auf dieser Annahme gruendet (ADR-026, Nachtrag Runde G); sonst
+        # der Auftrag der Suite (:func:`am6_snapshot`), den der Betrieb seit
+        # Pruefrunde I im Fall liest (:func:`lege_auftrag`).
+        daten["fallauftrag"] = fallauftrag or auftrag_der_suite(fall_name)
     if entscheid == "angenommen":
         daten["freigabe"] = freigabe_fuer(daten, schluessel or TESTKEY)
     daten["snapshot_sha256"] = p9_snapshot_sha256(daten)
     return daten
+
+
+def am1_snapshot(fall_name: str, *, aktuartest_sha: "str | None" = None,
+                 schluessel: "bytes | None" = None, rolle_id: "str | None" = None,
+                 fallauftrag: "str | None" = None) -> dict:
+    """Ein angenommener A-M1-Snapshot (Bestands-Scope) — ``aktuartest``
+    pinnt ``aktuartest_sha`` (Default: Platzhalter), der Bericht einen
+    Platzhalter. Deterministisch: Derselbe Fall ergibt denselben Hash, den
+    :func:`am4_snapshot` als ``am1_snapshot`` pinnt."""
+    from rechner_pipeline.models.belegrollen import belegrollen
+
+    return am4_snapshot(
+        fall_name, gate="A-M1", rollen=tuple(belegrollen("A-M1", "bestand")),
+        schluessel=schluessel, rolle_id=rolle_id, fallauftrag=fallauftrag,
+        pins={"aktuartest": aktuartest_sha} if aktuartest_sha else None)
 
 
 def _pb1_ledger(fall: Path) -> str:
@@ -184,7 +356,8 @@ def _beleg_neu(fall: Path, name: str = "probe-uebernahme") -> None:
     der Eingang keinen Bezug zwischen beidem herstellte (T26-03).
     """
     ledger_sha = _pb1_ledger(fall)
-    daten = am4_snapshot(name, pb1_ledger_sha=ledger_sha)
+    lege_auftrag(fall)
+    daten = am4_snapshot(name, pb1_ledger_sha=ledger_sha, fuehrungsprobe_sha=fuehrungsbeleg(fall))
     for alt in (fall / "entscheide").glob("A-M4-*.json"):
         alt.unlink()
     (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
@@ -214,8 +387,11 @@ def _fall(wurzel: Path, name: str = "probe-uebernahme", *, snapshot: "dict | Non
     # nennt — dieselbe Reihenfolge wie im echten Fall.
     _zugangsstand(fall / "abgeleitet" / "bestand")
     ledger_sha = _pb1_ledger(fall)
+    # Der Fall ist beauftragt (ADR-026): Der Betrieb liest den Auftrag, den
+    # die Abnahmen nennen (Pruefrunde I, I07).
+    lege_auftrag(fall)
     if snapshot is not None:
-        daten = (am4_snapshot(name, pb1_ledger_sha=ledger_sha)
+        daten = (am4_snapshot(name, pb1_ledger_sha=ledger_sha, fuehrungsprobe_sha=fuehrungsbeleg(fall))
                  if snapshot == "echt" else snapshot)
         (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
             json.dumps(daten, ensure_ascii=False), encoding="utf-8")
@@ -231,7 +407,7 @@ ECHTER_SHA = None  # wird je Test aus dem Snapshot gelesen
 def eingang(tmp_path):
     fall = _fall(tmp_path)
     stand = tmp_path / "daten"
-    ziel = ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     return stand, fall, ziel
 
 
@@ -245,22 +421,25 @@ def test_eingang_wird_registriert_und_ist_unantastbar(eingang):
     assert daten["snapshot_sha256"] == _snapshot_sha(fall)
     # Schema 6 fuehrt keine Schluesselklasse — das steht dann so da.
     assert daten["zeichnung"]["schluesselklasse"] == "mensch"   # Schema 7
-    assert daten["zeichnung"]["rolle"] == "mensch/aktuar"   # Rollen-Id mit Ebene (ADR-018)
+    assert daten["zeichnung"]["rolle"] == "mensch/aktuariat"   # Rollen-Id mit Ebene (ADR-018)
     assert daten["zeichnung"]["signatur_verifiziert"] is True   # mit dem Testring geprueft
     # Seit Review T24-08 traegt der Eingang die Uebersetzungstabelle mit:
     # Das Zielsystem vergibt eigene Policennummern, und ohne die Tabelle
     # waere eine Rueckfrage an die Quelle nicht beantwortbar.
     assert set(daten["dateien"]) == {"bestand.parquet", "historie.parquet",
-                                     "ledger.parquet", "policennummern.parquet"}
+                                     "ledger.parquet", "policennummern.parquet",
+                                     "uebernahme.json"}
     # Das Nummernband: erster Eingang, drei Vertraege, auf volle Tausend
     # aufgerundet — 1..1000. Der naechste Fall faengt bei 1001 an.
     assert daten["band"] == {"von": 1, "bis": 1000}
-    assert daten["schema_version"] == ueb.EINGANG_SCHEMA_VERSION == 2
+    assert daten["schema_version"] == ueb.EINGANG_SCHEMA_VERSION == 3
+    # Seit Runde C gezeichnet (Betriebsschluessel, Klasse betrieb):
+    assert daten["betriebszeichnung"]["schluesselklasse"] == "betrieb"
     if os.name != "nt":
         for datei in ziel.iterdir():
             assert (datei.stat().st_mode & 0o777) == 0o444
     with pytest.raises(ueb.UebernahmeError, match="nie ueberschrieben"):
-        ueb.eingang_anlegen(stand, fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     config = load_config(PLV)
     gelesen = ueb.lies_uebernahmen(stand / "uebernahme", config)
     assert [u.fall for u in gelesen] == ["probe-uebernahme"]
@@ -286,12 +465,17 @@ def test_eingang_prueft_seine_form(tmp_path):
     assert any("stichtag" in f for f in ueb.validate_eingang({"schema_version": 1, "fall": "x", "stichtag": "gestern", "dateien": {"bestand.parquet": "0" * 64, "historie.parquet": "0" * 64, "ledger.parquet": "0" * 64}}))
     fall = _fall(tmp_path, "fremd")
     with pytest.raises(ueb.UebernahmeError, match="kein Fall-Arbeitsbereich"):
-        ueb.eingang_anlegen(tmp_path / "d", tmp_path / "kein-fall", STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "d"), tmp_path / "kein-fall", STICHTAG)
     with pytest.raises(ueb.UebernahmeError, match="fehlen"):
-        ueb.eingang_anlegen(tmp_path / "d", fall, STICHTAG, quelle=tmp_path / "leer")
-    assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "2026-01-01"]) == 0
-    assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "2026-01-01"]) == 2
-    assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "kein"]) == 2
+        ueb.eingang_anlegen(_mit_config(tmp_path / "d"), fall, STICHTAG, quelle=tmp_path / "leer")
+    from tests.freigabe_testschluessel import betriebsargs
+
+    from tests.freigabe_testschluessel import linieargs
+
+    bs = [*betriebsargs("--betriebsschluessel"), *linieargs()]
+    assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "2026-01-01", *bs]) == 0
+    assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "2026-01-01", *bs]) == 2
+    assert ueb.main(["--stand", str(tmp_path / "d"), "--fall", str(fall), "--stichtag", "kein", *bs]) == 2
 
 
 def _kleine_config() -> str:
@@ -300,6 +484,23 @@ def _kleine_config() -> str:
     1994, die Testwelt nur ueber die Tage des Tests."""
     text = PLV.read_text(encoding="utf-8")
     return re.sub(r"^betriebsbeginn = .*$", "betriebsbeginn = 2026-01-01", text, flags=re.M)
+
+
+def _mit_config(stand, text: "str | None" = None):
+    """Die Ablage ``stand`` mit Config — Config VOR Eingang.
+
+    Die Registrierung haelt das Tarifwerk der Uebernahme gegen die Config
+    der Ablage und verweigert ohne sie (RC16, Nachbesserung Runde C). Tests,
+    deren Gegenstand nicht die Config ist, legen sie deshalb vorher hin; eine
+    vorhandene Config bleibt unberuehrt."""
+    from rechner_pipeline.betrieb.tageslauf import Ablage as _Ablage
+
+    ablage = _Ablage(Path(stand))
+    ablage.configs.mkdir(parents=True, exist_ok=True)
+    if not ablage.config_pfad.is_file():
+        ablage.config_pfad.write_text(text if text is not None else _kleine_config(),
+                                      encoding="utf-8")
+    return Path(stand)
 
 
 def test_ein_abschluss_der_den_eingang_traegt_macht_ihn_nicht_neu(eingang, monkeypatch):
@@ -363,10 +564,22 @@ def test_ein_eingang_hinter_einem_fremden_abschluss_bleibt_abgewiesen(eingang, t
     # Ein ZWEITER Fall, zum 1.1. — hinter dem inzwischen festgeschriebenen
     # Februar-Abschluss, und in keinem von beiden enthalten.
     zweiter = _fall(tmp_path / "zweiter", "spaeter-eingang")
-    ueb.eingang_anlegen(stand, zweiter, dt.date(2026, 1, 1))
+    # Seit der Angriffsrunde Betrieb weist schon die Registrierung ab —
+    # ein Eingang, den der Betrieb nie annimmt, entsteht nicht.
+    with pytest.raises(ueb.UebernahmeError, match="festgeschriebenen Monatsabschluss"):
+        ueb.eingang_anlegen(_mit_config(stand), zweiter, dt.date(2026, 1, 1))
+    # Und der Leser haelt die Grenze weiter, fuer einen Eingang, der sie
+    # (etwa aus einer aelteren Fassung) doch passiert hat.
+    import pytest as _pt
+    mp = _pt.MonkeyPatch()
+    mp.setattr(ueb, "_pruefe_stichtag_gegen_ablage", lambda *a, **k: None)
+    try:
+        ueb.eingang_anlegen(_mit_config(stand), zweiter, dt.date(2026, 1, 1))
+    finally:
+        mp.undo()
     code, zeile = tageslauf(ablage, dt.date(2026, 2, 4))
     assert code != EXIT_OK
-    assert "liegt nicht nach dem juengsten festgeschriebenen" in zeile["fehler"]
+    assert "liegt nicht nach dem festgeschriebenen Monatsabschluss" in zeile["fehler"]
 
 
 def test_uebernahme_faehrt_im_tagesbetrieb_mit(eingang):
@@ -389,7 +602,7 @@ def test_uebernahme_faehrt_im_tagesbetrieb_mit(eingang):
     # Der Fall des Fixtures traegt einen strukturell geprueften A-M4-Snapshot
     # (T22-06): Rolle aus dem Snapshot, Schluesselklasse in Schema 6 nicht
     # gefuehrt — benannt, nicht leer (B8); die Signatur prueft niemand.
-    assert u["zeichnung"]["rolle"] == "mensch/aktuar"
+    assert u["zeichnung"]["rolle"] == "mensch/aktuariat"
     assert u["zeichnung"]["schluesselklasse"] == "mensch"
     assert u["zeichnung"]["signatur_verifiziert"] is True
     gesamt = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
@@ -432,7 +645,7 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
 
     Mutationsprobe: Schalter ignoriert — dann fehlt der Teilbestand-Bericht,
     obwohl teilbestand_getrennt = true in der Config steht."""
-    stand, _, _ = eingang
+    stand, fall, _ = eingang
     ablage = Ablage(stand)
     ablage.configs.mkdir(parents=True, exist_ok=True)
     ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
@@ -442,9 +655,12 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
     assert [a["stichtag"] for a in abschluesse] == ["2026-01-01", "2026-02-01"]
     assert "bericht" not in abschluesse[0]            # nur der juengste Abschluss wird gerendert
     assert abschluesse[1]["bericht"] == "bestandsbericht_2026-02-01.html"
+    # Runde D, Fund 7: die Zeile bindet den Teilbestandsbericht per Hash.
+    teil_pfad = ablage.berichte / "bestandsbericht_2026-02-01_teilbestand-probe-uebernahme.html"
     assert abschluesse[1]["teilbestaende"] == [
         {"fall": "probe-uebernahme",
-         "bericht": "bestandsbericht_2026-02-01_teilbestand-probe-uebernahme.html"}]
+         "bericht": "bestandsbericht_2026-02-01_teilbestand-probe-uebernahme.html",
+         "bericht_sha256": hashlib.sha256(teil_pfad.read_bytes()).hexdigest()}]
     teil = (ablage.berichte / "bestandsbericht_2026-02-01_teilbestand-probe-uebernahme.html").read_text("utf-8")
     assert "Teilbestand probe-uebernahme (uebernommen) zum 2026-02-01" in teil
     # Die Generationentafel des Berichts zaehlt je Generation: im Teilbestand
@@ -461,16 +677,14 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
     # entsteht es aus dem Tagesstrom ab Betriebsbeginn.
     assert int(dict(zeilen_gesamt)["KLV-2017"]) == 3
     assert int(dict(zeilen_gesamt).get("KLV-2025", "0")) > 0
-    # Ohne den Schalter kein Teilbestand-Bericht:
+    # Ohne den Schalter kein Teilbestand-Bericht. Eine eigene Ablage mit
+    # eigener Config und eigener Registrierung: Seit ADR-022 bindet die
+    # Zugangsabnahme den Stand der Ablage samt Config; ein kopierter Eingang
+    # unter umgeschriebener Config traete (richtig) nicht ein.
     aus = Ablage(stand.parent / "aus")
-    import shutil
-    shutil.copytree(stand, aus.wurzel)
-    for p in (aus.stand, aus.journal, aus.abschluesse, aus.berichte):
-        shutil.rmtree(p, ignore_errors=True)
-    aus.config_pfad.chmod(0o644)
-    aus.config_pfad.write_text(
-        _kleine_config().replace("teilbestand_getrennt = true", "teilbestand_getrennt = false"),
-        encoding="utf-8")
+    _mit_config(aus.wurzel, _kleine_config().replace(
+        "teilbestand_getrennt = true", "teilbestand_getrennt = false"))
+    ueb.eingang_anlegen(aus.wurzel, fall, STICHTAG)
     code, zeile = tageslauf(aus, dt.date(2026, 2, 2))
     assert code == EXIT_OK and "teilbestaende" not in zeile["abschluesse"][1]
 
@@ -498,7 +712,7 @@ def test_ein_abgebrochenes_anlegen_hinterlaesst_keinen_halben_eingang(tmp_path, 
 
     monkeypatch.setattr(ueb, "write_portfolio", _bricht_beim_zweiten)
     with pytest.raises(OSError):
-        ueb.eingang_anlegen(stand, fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     monkeypatch.undo()
     ziel = stand / ueb.UEBERNAHME_DIR / "probe-uebernahme"
     rest = stand / ueb.STAGING_DIR / "probe-uebernahme"
@@ -507,7 +721,7 @@ def test_ein_abgebrochenes_anlegen_hinterlaesst_keinen_halben_eingang(tmp_path, 
     # Fallname kann ihn dort nicht mehr treffen (T26-01).
     assert rest.exists()
     # Der zweite Versuch gelingt und raeumt den Rest weg.
-    assert ueb.eingang_anlegen(stand, fall, STICHTAG) == ziel
+    assert ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG) == ziel
     assert ziel.is_dir() and not rest.exists()
 
 
@@ -521,7 +735,7 @@ def test_ohne_am4_snapshot_gibt_es_keine_uebernahme(tmp_path):
     Mutationsprobe: pruefe_am4_snapshot bei None durchwinken -> rot."""
     fall = _fall(tmp_path, snapshot=None)
     with pytest.raises(ueb.UebernahmeError, match="kein A-M4-Snapshot"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG)
     assert not (tmp_path / "daten" / "uebernahme").exists()
 
 
@@ -533,7 +747,7 @@ def test_ein_erfundener_snapshot_faellt_an_der_selbstadressierung(tmp_path):
     daten["entscheider"] = "jemand anderes"          # Inhalt geaendert, Hash nicht
     fall = _fall(tmp_path, snapshot=daten)
     with pytest.raises(ueb.UebernahmeError, match="Selbstadressierung|snapshot_sha256"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG)
 
 
 @pytest.mark.parametrize("gate, entscheid, stichwort", [
@@ -545,14 +759,14 @@ def test_nur_eine_angenommene_migrationsabnahme_begruendet_die_uebernahme(tmp_pa
     fall = _fall(tmp_path, snapshot=daten)
     # Die Datei liegt unter dem A-M4-Namen, damit der Weg bis zur Pruefung fuehrt.
     with pytest.raises(ueb.UebernahmeError, match=stichwort):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG, snapshot_sha256=daten["snapshot_sha256"])
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG, snapshot_sha256=daten["snapshot_sha256"])
 
 
 def test_der_snapshot_muss_zum_fall_gehoeren(tmp_path):
     daten = am4_snapshot("ein-anderer-fall")
     fall = _fall(tmp_path, snapshot=daten)
     with pytest.raises(ueb.UebernahmeError, match="gehoert zum Fall"):
-        ueb.eingang_anlegen(tmp_path / "daten", fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(tmp_path / "daten"), fall, STICHTAG)
 
 
 
@@ -575,8 +789,10 @@ def test_die_verankerung_wandert_in_den_stand_und_wird_als_nicht_angewandt_ausge
                                  "verweildauer_ta": 0, "dk_ta": 10_000.0}])
     verankerung = verankerung[[s for s, _ in VERANKERUNG_SPALTEN]].astype(dict(VERANKERUNG_SPALTEN))
     write_portfolio(verankerung, quelle / "verankerung.parquet")
+    # Erst die Tabelle, dann die Abnahme, die sie bezeugt — wie im echten Fall.
+    _beleg_neu(fall)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     ablage = Ablage(stand)
     ablage.configs.mkdir(parents=True, exist_ok=True)
     ablage.config_pfad.write_text(_kleine_config(), encoding="utf-8")
@@ -624,7 +840,12 @@ def test_die_gepruefte_zeichnung_stammt_aus_den_gepruefte_bytes(tmp_path, monkey
         return inhalt
 
     monkeypatch.setattr(pathlib.Path, "read_text", zaehlend)
-    zeichnung = ueb.pruefe_am4_snapshot(fall, sha)
+    from tests.freigabe_testschluessel import betriebsordnung
+
+    from tests.freigabe_testschluessel import suitelinie_glied
+
+    zeichnung = ueb.pruefe_am4_snapshot(fall, sha, ordnung=betriebsordnung(),
+                                        ordnungslinie=[suitelinie_glied()])
     monkeypatch.undo()
 
     assert len(gelesen) == 1, f"der Snapshot wurde {len(gelesen)}-mal gelesen"
@@ -710,7 +931,7 @@ def test_eine_gelieferte_nummer_kollidiert_nie_mit_dem_eigenen_neugeschaeft(tmp_
     assert eigene, "die Testwelt verkauft an diesem Tag nichts — der Test saehe nichts"
 
     fall = _fall_mit_nummern(tmp_path, [eigene[0], eigene[0] + 1, eigene[0] + 2])
-    ueb.eingang_anlegen(ablage.wurzel, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(ablage.wurzel), fall, STICHTAG)
     abbildung = ueb.zielnummern(ablage.uebernahme / "probe-uebernahme")
     assert set(abbildung) == {eigene[0], eigene[0] + 1, eigene[0] + 2}
 
@@ -736,8 +957,8 @@ def test_zwei_faelle_teilen_keine_einzige_nummer(tmp_path):
     """
     stand = tmp_path / "daten"
     # Beide Lieferungen tragen ABSICHTLICH dieselben Quellnummern.
-    ueb.eingang_anlegen(stand, _fall_mit_nummern(tmp_path / "a", [11, 12, 13], "fall-a"), STICHTAG)
-    ueb.eingang_anlegen(stand, _fall_mit_nummern(tmp_path / "b", [11, 12, 13], "fall-b"), STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), _fall_mit_nummern(tmp_path / "a", [11, 12, 13], "fall-a"), STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), _fall_mit_nummern(tmp_path / "b", [11, 12, 13], "fall-b"), STICHTAG)
 
     a = ueb.zielnummern(stand / "uebernahme" / "fall-a")
     b = ueb.zielnummern(stand / "uebernahme" / "fall-b")
@@ -755,7 +976,7 @@ def test_jede_zielnummer_liegt_im_freien_raum(tmp_path):
     unter oder auf zehn Millionen vergeben (Nummernkreis k >= 1), also ist
     genau dieser Raum der Heimatraum uebernommener Bestaende."""
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, _fall(tmp_path), STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path), STICHTAG)
     ziele = ueb.zielnummern(stand / "uebernahme" / "probe-uebernahme").values()
     assert ziele and all(1 <= z <= ueb.NAMENSRAUM_UEBERNAHME_BIS for z in ziele)
 
@@ -939,7 +1160,7 @@ def test_uebernommen_wird_nur_was_die_abnahme_gesehen_hat(
     manipulation(fall)
     stand = tmp_path / "daten"
     with pytest.raises(ueb.UebernahmeError, match=stichwort):
-        ueb.eingang_anlegen(stand, fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     assert not (stand / ueb.UEBERNAHME_DIR).exists()
     assert not (stand / ueb.STAGING_DIR).exists()
 
@@ -1010,7 +1231,7 @@ def test_eine_verbogene_uebersetzung_faellt_beim_lesen(tmp_path, wie, stichwort)
     from rechner_pipeline.bestand.config import load_config
 
     stand = tmp_path / "daten"
-    ziel = ueb.eingang_anlegen(stand, _fall(tmp_path), STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path), STICHTAG)
     cfg_pfad = tmp_path / "bestand.toml"
     cfg_pfad.write_text(_kleine_config(), encoding="utf-8")
     config = load_config(cfg_pfad)
@@ -1033,6 +1254,8 @@ UEBERSETZUNGSLAGEN = [
     ("gefuehrte Police ohne Quellnummer", {1: 10}, [10, 11], True),
     ("Uebersetzung nennt eine fremde Police", {1: 10, 2: 99}, [10], True),
     ("Zielnummer ausserhalb des Bands", {1: 10, 2: 5000}, [10, 5000], True),
+    # Angriffsrunde (Betrieb): in sich stimmig, aber gegen die Vergaberegel
+    ("vertauschte Zuordnung", {1: 11, 2: 10}, [10, 11], True),
 ]
 
 
@@ -1043,7 +1266,7 @@ def test_die_bruecke_muss_eine_bijektion_sein(was, abbildung, gefuehrt, fehlerha
     wurde — nicht, dass sie stimmt. Beide Richtungen geprueft: Die
     vollstaendige, eindeutige Bruecke MUSS durchgehen."""
     bestand = pd.DataFrame({"police_id": gefuehrt})
-    fehler = ueb.uebersetzung_fehler(abbildung, bestand, {"von": 1, "bis": 1000})
+    fehler = ueb.uebersetzung_fehler(abbildung, bestand, {"von": 10, "bis": 1009})
     assert bool(fehler) is fehlerhaft, (was, fehler)
 
 
@@ -1076,9 +1299,12 @@ def test_gleichnamige_tabellen_an_zwei_orten_sind_kein_widerspruch(tmp_path):
         "schema_version": 1, "command": "fuehrungsprobe", "gate": "A-M4",
         "status": "passed",
         "provenienz": {"eingaben": {
-            f"abgeleitet/bestand-nach/{d}": hashlib.sha256(
+            **{f"abgeleitet/bestand-nach/{d}": hashlib.sha256(
                 (nach / d).read_bytes()).hexdigest()
-            for d in ("historie.parquet", "bestand.parquet", "ledger.parquet")}},
+               for d in ("historie.parquet", "bestand.parquet", "ledger.parquet")},
+            # Wie der echte Produzent bindet die Probe den Uebernahmebeleg.
+            "abgeleitet/bestand/uebernahme.json": hashlib.sha256(
+                (fall / "abgeleitet" / "bestand" / "uebernahme.json").read_bytes()).hexdigest()}},
     }
     pfad = fall / "abgeleitet" / "diagnostics" / "fuehrungsprobe.gate.json"
     roh = json.dumps(zweiter, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -1099,9 +1325,15 @@ def test_gleichnamige_tabellen_an_zwei_orten_sind_kein_widerspruch(tmp_path):
 
     # Beide Belege werden gelesen, beide Orte sind bezeugt — und der
     # Eingang entsteht, gebunden an den Stand SEINES Pfades.
-    ziel = ueb.eingang_anlegen(stand := tmp_path / "daten", fall, STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand := tmp_path / "daten"), fall, STICHTAG)
     assert ziel.is_dir()
-    snapshot, _, _verifiziert = ueb.lies_am4_snapshot(fall, _snapshot_sha(fall))
+    from tests.freigabe_testschluessel import betriebsordnung
+
+    from tests.freigabe_testschluessel import suitelinie_glied
+
+    snapshot, _, _verifiziert = ueb.lies_am4_snapshot(fall, _snapshot_sha(fall),
+                                                      ordnung=betriebsordnung(),
+                                                      ordnungslinie=[suitelinie_glied()])
     belegt = ueb.belegte_tabellen(fall, snapshot)
     quelle = fall / "abgeleitet" / "bestand"
     for datei in ("historie.parquet", "bestand.parquet", "ledger.parquet"):

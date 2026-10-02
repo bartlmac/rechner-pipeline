@@ -19,7 +19,15 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.fall import anlegen, registrieren
-from tests.zeichnung_fixture import VA, mandat_datei, standard_ordnung
+from tests.zeichnung_fixture import (
+    linie_args,
+    STANDROLLEN,
+    auftrag_args,
+    VA,
+    mandat_datei,
+    standard_ordnung,
+    zeichne_stand,
+)
 from rechner_pipeline.gates import gate_entscheid
 from rechner_pipeline.gates._provenienz import (
     O3_BELEG_GATE_VERSION,
@@ -93,7 +101,7 @@ def _fall(tmp_path: Path) -> Path:
 
 def _p9(fall: Path, key: Path | None, gate: str, entscheid: str = "angenommen"):
     argv = [
-        "--fall", str(fall),
+        "--fall", str(fall), *linie_args(fall),
         "--gate", gate,
         "--entscheid", entscheid,
         "--rolle", VA,
@@ -105,6 +113,13 @@ def _p9(fall: Path, key: Path | None, gate: str, entscheid: str = "angenommen"):
         # Die Ordnung liegt NEBEN dem Fall (ausserhalb), auch wenn der
         # Schluessel absichtlich falsch liegt — geprueft wird der Schluessel.
         ordnung = standard_ordnung(fall.parent, key)
+        # Der Fall ist beauftragt (ADR-026); der Ring traegt Vorstand und
+        # Programmleitung und die Schluessel der Standabnahme (A-K2, A-O1):
+        # Jede Annahme prueft die Signaturen der Annahmen, auf denen sie gruendet.
+        argv.extend(auftrag_args(fall))
+        for _, _, datei, _ in STANDROLLEN:
+            if (fall.parent / datei).exists():
+                argv.extend(["--freigabe-schluessel", str(fall.parent / datei)])
         argv.extend(["--freigabe-schluessel", str(key),
                      "--zeichnungsordnung", str(ordnung),
                      "--mandat", str(mandat_datei(fall))])
@@ -140,6 +155,9 @@ def _bereit_fuer_g2(tmp_path: Path) -> tuple[Path, Path, Path]:
     # A-M1 geht A-M4 voraus (ADR-010); der Manipulationsschutz-Fall ist
     # tarif-Scope, dort traegt A-M1 keine eigenen Belegrollen.
     assert _p9(fall, key, "A-M1").exit_code == 0
+    # Der Stand des Falls (A-O1 bei T-Box-Uebergang, A-K2; Entscheid
+    # 2026-10-01) geht A-M4 voraus.
+    zeichne_stand(fall, REPO_ROOT)
     _o3_beleg(fall)
     return fall, key, Path(aq1.paths["snapshot"])
 
@@ -450,12 +468,14 @@ def test_p9_cli_emittiert_genau_ein_json_und_schema_valides_ledger(
 ) -> None:
     fall = _fall(tmp_path)
     key = _schluessel(tmp_path / "p9.key")
+    ordnung = standard_ordnung(tmp_path, key)
     argv = [
         "--fall", str(fall), "--gate", "A-Q1", "--entscheid", "angenommen",
         "--rolle", VA, "--entscheider", "fachrolle",
         "--begruendung", "CLI-Vertrag geprueft", "--repo-root", str(REPO_ROOT),
+        *auftrag_args(fall),
         "--freigabe-schluessel", str(key),
-        "--zeichnungsordnung", str(standard_ordnung(tmp_path, key)),
+        "--zeichnungsordnung", str(ordnung),
         "--mandat", str(mandat_datei(tmp_path / "fall")),
     ]
 

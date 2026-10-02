@@ -64,6 +64,7 @@ def _pruefung(police_id: str, dk1_versatz: float = 0.0,
         dk_erwartet_1=round(KERN.monatsreserve(S1).vx_mrv, 2) + dk1_versatz,
         dk_erwartet_2=round(KERN.monatsreserve(S2).vx_mrv, 2),
         gevos=gevos,
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
     )
 
 
@@ -112,7 +113,8 @@ def _vollstaendige_suite(*pruefungen: VertragsPruefung):
         )
         for pruefung in pruefungen
     ]
-    return pruefe_bestand(vollstaendig, erwartete_anzahl=len(vollstaendig))
+    return pruefe_bestand(vollstaendig, erwartete_anzahl=len(vollstaendig),
+        red_verfahren="prospektiv")
 
 
 def _bericht_artefakte():
@@ -205,7 +207,7 @@ def test_roter_bericht_weist_fehlschlaege_und_befunde_aus() -> None:
         _pruefung("P-2", dk1_versatz=500.0),
         # Befund: fehlender Folgewert ohne Abgangs-GeVo
         dataclasses.replace(_pruefung("P-3"), dk_erwartet_2=None),
-    ])
+    ], red_verfahren="prospektiv")
     text = baue_bericht(
         titel="t", stichtag_1="s1", stichtag_2="s2", suite=suite)
     assert "2 von 3 Verträgen FEHLGESCHLAGEN" in text
@@ -220,13 +222,13 @@ def test_gevo_pruefgroessen_erscheinen_gruppiert() -> None:
     v = dataclasses.replace(_pruefung("P-1", gevos=(gevo,)),
                             dk_erwartet_2=None)
     text = baue_bericht(titel="t", stichtag_1="s1", stichtag_2="s2",
-                        suite=pruefe_bestand([v]))
+                        suite=pruefe_bestand([v], red_verfahren="prospektiv"))
     assert "gevo_sto" in text
 
 
 def test_bericht_markiert_pruefluecken_im_kopf_als_nicht_bestanden() -> None:
     """Eine Prüflücke darf nicht neben einem grünen Kopfsatz stehen."""
-    suite = pruefe_bestand([_pruefung("P-1")])
+    suite = pruefe_bestand([_pruefung("P-1")], red_verfahren="prospektiv")
     text = baue_bericht(titel="t", stichtag_1="s1", stichtag_2="s2",
                         suite=suite, **_bericht_artefakte())
     assert "ABNAHMEBERICHT NICHT BESTANDEN" in text
@@ -241,7 +243,7 @@ def test_bericht_markiert_pruefluecken_im_kopf_als_nicht_bestanden() -> None:
         [dataclasses.replace(
             _pruefung("P-1"),
             bjb_erwartet_1=round(KERN.gross_annual_premium(), 2))],
-        erwartete_anzahl=1)
+        erwartete_anzahl=1, red_verfahren="prospektiv")
     text_voll = baue_bericht(titel="t", stichtag_1="s1", stichtag_2="s2",
                              suite=voll, **_bericht_artefakte())
     assert "ALLE ABNAHMETESTS BESTANDEN" not in text_voll
@@ -300,7 +302,7 @@ def test_bericht_zeigt_jedes_abnahmehindernis_rot(
 def test_bericht_weist_mengenbefunde_aus() -> None:
     """Unvollständige oder doppelte Prüfmenge: rot, mit Begründung."""
     suite = pruefe_bestand([_pruefung("P-1"), _pruefung("P-1")],
-                           erwartete_anzahl=500)
+                           erwartete_anzahl=500, red_verfahren="prospektiv")
     text = baue_bericht(titel="t", stichtag_1="s1", stichtag_2="s2",
                         suite=suite)
     assert "Prüfmenge (Vollständigkeit und Duplikate)" in text
@@ -327,7 +329,7 @@ def _suite_datei(tmp_path, *pruefungen, name: str = "suite.json"):
     """Suite-Ergebnis so ablegen, wie das Kommando es erwartet."""
     pfad = tmp_path / name
     pfad.write_text(
-        json.dumps(pruefe_bestand(list(pruefungen))), encoding="utf-8")
+        json.dumps(pruefe_bestand(list(pruefungen), red_verfahren="prospektiv")), encoding="utf-8")
     return pfad
 
 
@@ -901,7 +903,7 @@ def test_kommando_blockiert_bei_befund_der_pruefmenge(tmp_path) -> None:
     """Alle Verträge bestanden, aber die Menge stimmt nicht -> rot."""
     pfad = tmp_path / "suite.json"
     pfad.write_text(json.dumps(pruefe_bestand(
-        [_pruefung("P-1"), _pruefung("P-2")], erwartete_anzahl=500)),
+        [_pruefung("P-1"), _pruefung("P-2")], erwartete_anzahl=500, red_verfahren="prospektiv")),
         encoding="utf-8")
 
     result = main(_basis_argv(tmp_path, pfad))

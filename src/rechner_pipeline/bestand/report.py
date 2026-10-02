@@ -94,6 +94,7 @@ _EREIGNIS_FARBEN = {
     "MIG": "#4c9be8",   # verwandt mit ZUG: beides ein Zugang in die Buecher
     "ERH": "#17becf",
     "RED": "#7f7f7f",
+    "TKU": "#c49c94",
     "PEX": "#9467bd",
     "INV": "#8c564b",
     "REA": "#bcbd22",
@@ -432,7 +433,9 @@ NACHWEISUNGEN: Tuple[Dict[str, Any], ...] = (
             "Migrationsstichtag (ADR-014) — und aus dynamischen Erhöhungen (nur "
             "Summe, kein Stück); Abgänge mit den abgehenden "
             "Versicherungssummen einschließlich Erhöhungsscheiben, nicht mit "
-            "den Auszahlungsbeträgen. Die Beitragsfreistellung ist eine "
+            "den Auszahlungsbeträgen. Die Herabsetzung verändert die Summe "
+            "eines Vertrags, der im Bestand bleibt (kein Stück), ausgewiesen "
+            "mit Vorzeichen. Die Beitragsfreistellung ist eine "
             "Umbuchung: der beitragspflichtige Bestand verliert die "
             "Gesamt-Versicherungssumme, der beitragsfreie gewinnt die "
             "beitragsfreie Summe."
@@ -442,6 +445,11 @@ NACHWEISUNGEN: Tuple[Dict[str, Any], ...] = (
                 ("anfang", "Anfang"),
                 ("zugang_neuzugang", "+ Zugang"),
                 ("zugang_erhoehung", "+ Erhöhung"),
+                # Mit Vorzeichen: die neue Gesamtsumme minus die Summe davor.
+                # Ohne diese Spalte ging die gezeigte Rechnung nicht auf,
+                # obwohl das Konto (und P-B1) sie fuehren.
+                ("veraenderung_herabsetzung", "± Herabsetzung"),
+                ("veraenderung_teilkuendigung", "± Teilkündigung"),
                 ("abgang_storno", "− Storno"),
                 ("abgang_tod", "− Tod"),
                 ("abgang_ablauf", "− Ablauf"),
@@ -451,6 +459,9 @@ NACHWEISUNGEN: Tuple[Dict[str, Any], ...] = (
             ("bfr", "Beitragsfreier Bestand", (
                 ("anfang", "Anfang"),
                 ("zugang_umbuchung", "+ beitragsfrei gestellt"),
+                # Teilkuendigung nach der Beitragsfreistellung (klv.md 7.2):
+                # die neue beitragsfreie Summe minus die davor.
+                ("veraenderung_teilkuendigung", "± Teilkündigung"),
                 ("abgang_tod", "− Tod"),
                 ("abgang_ablauf", "− Ablauf"),
                 ("ende", "Ende"),
@@ -928,6 +939,24 @@ def render_html(
         ))
         for gruppe in produkt_gruppen(df)
     ]
+    # Die bewertete Sicht, einmal gerechnet: Sie traegt die GEFUEHRTE
+    # Versicherungssumme (Herabsetzungen, Erhoehungen). Die Stammspalte,
+    # die verlauf() summiert, kennt beides nicht — Tabelle und Grafik
+    # "Versicherungssumme" wiesen herabgesetzte Vertraege ungekuerzt aus,
+    # waehrend die Nachweisung desselben Berichts die gekuerzte Summe
+    # fuehrte (Angriffsrunde 2026-09-26).
+    reihe_ausw: List[Dict[str, Any]] = []
+    if config is not None:
+        reihe_ausw = auswertungs_verlauf(
+            df, historie, config, stichtage, scheiben=scheiben,
+            merkmale=merkmale, schichten=schichten, verankerung=verankerung,
+            reduktionen=reduktionen,
+        )
+        for v in volumen_reihen:
+            if v["produkt"] != "klv":
+                continue
+            for zeile, ausw in zip(v["reihe"], reihe_ausw):
+                zeile["summe_vs"] = ausw["vs_klv"]
     # Strukturbild am Bestands-Hoechststand (erster Maximums-Stichtag —
     # deterministisch und aussagekraeftiger als der duenne Bestandsauslauf).
     hoechststand = max(reihe, key=lambda r: (r["vertraege"], -reihe.index(r)))
@@ -938,6 +967,24 @@ def render_html(
         hoechststand["stichtag"]
     )
     scheibe = schnitt_am(bestand, struktur_stichtag)
+    if config is not None and "produkt" in scheibe.columns and len(scheibe):
+        # Das Strukturbild der versicherten Leistung zeigt die GEFUEHRTE
+        # Summe je Vertrag, nicht die Stammspalte (siehe oben).
+        from rechner_pipeline.bestand.auswertung import einzelwerte_am
+
+        gefuehrt = {
+            int(z["police_id"]): z["leistung"]
+            for z in einzelwerte_am(
+                df, historie, config, struktur_stichtag, scheiben=scheiben,
+                merkmale=merkmale, schichten=schichten, verankerung=verankerung,
+                reduktionen=reduktionen)
+            if z["produkt"] == "klv"
+        }
+        scheibe = scheibe.copy()
+        klv = scheibe["produkt"] == "klv"
+        scheibe.loc[klv, "sum_insured"] = [
+            gefuehrt.get(int(p), s) for p, s in
+            zip(scheibe.loc[klv, "police_id"], scheibe.loc[klv, "sum_insured"])]
     # Ereignis-Sicht auf dem um die Bestands-Zugaenge ergaenzten Ledger:
     # die Engine bucht ZUG nur fuer Neuzugaenge, die Vertraege des
     # Ausgangsbestands sind zum Simulationsbeginn schon da. Ohne die
@@ -997,13 +1044,7 @@ def render_html(
             svg_ereignisse = _chart_ereignisse_je_jahr(
                 ereignisse_je_jahr(gevo_ledger), stichtag=stichtag
             )
-        reihe_ausw: List[Dict[str, Any]] = []
         if config is not None:
-            reihe_ausw = auswertungs_verlauf(
-                df, historie, config, stichtage, scheiben=scheiben,
-                merkmale=merkmale, schichten=schichten, verankerung=verankerung,
-                reduktionen=reduktionen,
-            )
             svg_dk = _chart_deckungskapital(reihe_ausw, stichtag=stichtag)
             svg_beitrag = _chart_beitraege(
                 [r for r in reihe_ausw if r["vertraege"] > 0],
@@ -1048,12 +1089,18 @@ def render_html(
     # seine aeltesten Vertraege Jahre frueher geschlossen wurden. Der
     # Zusatz nennt nur, DASS uebernommen wurde -- die Daten stehen bereits
     # in der Zeile.
-    erster_zugang = df["bestandszugang"].dt.date.min()
-    zeitraum = (
-        f"{erster_zugang.isoformat()} bis "
-        f"{df['insurance_end'].dt.date.max().isoformat()}"
-    )
-    if df["insurance_start"].dt.date.min() < erster_zugang:
+    # Ein Bestand ohne Vertrag (der leere Lauf aus dem Nichts, ADR-020) hat
+    # keinen Zeitraum; er wird benannt, nicht aus NaN formatiert (Pruefrunde J,
+    # J05: der Bericht verweigerte den leeren Lauf).
+    if not len(df):
+        zeitraum = "kein Vertrag im Bestand"
+    else:
+        erster_zugang = df["bestandszugang"].dt.date.min()
+        zeitraum = (
+            f"{erster_zugang.isoformat()} bis "
+            f"{df['insurance_end'].dt.date.max().isoformat()}"
+        )
+    if len(df) and df["insurance_start"].dt.date.min() < erster_zugang:
         zeitraum += " (übernommenes Geschäft)"
     quelle = (
         f"<li>Prüfsumme der Quelle (SHA-256, gekürzt): <code>{quelle_hash[:16]}</code></li>"
@@ -1081,9 +1128,9 @@ def render_html(
         "ursprünglichen Versicherungssumme in den Verlauf ein; die bei "
         "Beitragsfreistellung fixierten beitragsfreien Summen (VS_bfr) zeigt "
         f"die Tabelle. Die Spalte \"Σ {leistung_label}\" im Bestandsverlauf "
-        "führt die Grundscheiben-Summen; die durch dynamische Erhöhungen "
-        "hinzugekommenen Summen zeigt die ERH-Zeile der Tabelle, die "
-        "aktuariellen Kennzahlen enthalten die Scheiben vollständig. "
+        "führt die geführte Summe — nach Herabsetzungen und einschließlich "
+        "dynamischer Erhöhungen —, sobald eine Config vorliegt; ohne Config "
+        "die Stammsummen. "
         if leistung == "sum_insured" else ""
     )
     ereignis_html = ""

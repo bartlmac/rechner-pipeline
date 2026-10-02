@@ -31,6 +31,7 @@ from rechner_pipeline.betrieb.uebernahme import (
 )
 
 from tests.test_betrieb_uebernahme import STICHTAG, _fall, _kleine_config
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -79,9 +80,9 @@ def test_ein_zweiter_schreiber_kommt_nicht_dazwischen(tmp_path):
     stand = tmp_path / "daten"
     with eingang_sperre(stand):
         with pytest.raises(UebernahmeError, match="registriert"):
-            ueb.eingang_anlegen(stand, _fall(tmp_path, "waehrenddessen"), STICHTAG)
+            ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path, "waehrenddessen"), STICHTAG)
     # Danach geht es wieder — sonst waere die Sperre ein Dauerzustand.
-    ziel = ueb.eingang_anlegen(stand, _fall(tmp_path, "danach"), STICHTAG)
+    ziel = ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path, "danach"), STICHTAG)
     assert ziel.is_dir()
 
 
@@ -106,7 +107,7 @@ def test_die_sperre_deckt_das_fenster_zwischen_lesen_und_veroeffentlichen(tmp_pa
         if "n" not in gesehen:
             gesehen["n"] = True
             try:
-                ueb.eingang_anlegen(stand, zweiter_fall, STICHTAG)
+                ueb.eingang_anlegen(_mit_config(stand), zweiter_fall, STICHTAG)
                 gesehen["zweiter"] = "durchgekommen"
             except UebernahmeError as exc:
                 gesehen["zweiter"] = str(exc)
@@ -114,12 +115,14 @@ def test_die_sperre_deckt_das_fenster_zwischen_lesen_und_veroeffentlichen(tmp_pa
 
     ueb.vergebene_baender = _dazwischen
     try:
-        erst = ueb.eingang_anlegen(stand, _fall(tmp_path, "erst"), STICHTAG)
+        erst = ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path, "erst"), STICHTAG)
     finally:
         ueb.vergebene_baender = echt
 
     assert gesehen.get("n"), "der Zwischenruf ist nie gelaufen — der Test saehe nichts"
-    assert "registriert" in gesehen["zweiter"], gesehen["zweiter"]
+    # Der zweite Schreiber scheitert an einer der beiden Sperren — seit
+    # der Angriffsrunde Betrieb schon an der Lauf-Sperre der Ablage.
+    assert "Sperre" in gesehen["zweiter"] or "registriert" in gesehen["zweiter"], gesehen["zweiter"]
     assert erst.is_dir()
     # Und der zweite ist auch nicht halb entstanden:
     assert not (stand / UEBERNAHME_DIR / "dazwischen").exists()
@@ -149,8 +152,8 @@ def test_der_leser_rechnet_die_baender_nach(tmp_path):
     from rechner_pipeline.bestand.config import load_config
 
     stand = tmp_path / "daten"
-    erst = ueb.eingang_anlegen(stand, _fall(tmp_path, "erst"), STICHTAG)
-    zweit = ueb.eingang_anlegen(stand, _fall(tmp_path, "zweit"), STICHTAG)
+    erst = ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path, "erst"), STICHTAG)
+    zweit = ueb.eingang_anlegen(_mit_config(stand), _fall(tmp_path, "zweit"), STICHTAG)
     cfg_pfad = tmp_path / "bestand.toml"
     cfg_pfad.write_text(_kleine_config(), encoding="utf-8")
     config = load_config(cfg_pfad)
@@ -166,5 +169,7 @@ def test_der_leser_rechnet_die_baender_nach(tmp_path):
     # faellt schon die Bijektionspruefung des Eingangs (T26-13), und der
     # Test pruefte nicht mehr die Ueberschneidung, sondern sie.
     _ueberschneide(zweit, int(erstes_band["bis"]), int(zweites_band["bis"]))
-    with pytest.raises(UebernahmeError, match="ueberschneiden"):
+    # Ein verschobenes Band verletzt auch die Vergaberegel der Bruecke —
+    # beide Befunde sind wahr, der Leser nennt den ersten.
+    with pytest.raises(UebernahmeError, match="ueberschneiden|Vergaberegel"):
         ueb.lies_uebernahmen(stand / UEBERNAHME_DIR, config)

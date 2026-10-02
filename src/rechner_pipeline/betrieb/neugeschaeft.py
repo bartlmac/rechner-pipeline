@@ -66,11 +66,12 @@ import pandas as pd
 from rechner_pipeline.bestand.config import BestandConfig, TarifGeneration
 from rechner_pipeline.bestand.generator import _baue_frame, _ziehe_attribute
 from rechner_pipeline.models.bestand import STAMM_NAMES, leerer_stamm, stamm_dtypes
+from rechner_pipeline.bestand.zufallsstroeme import STROEME
 
 #: SeedSequence-Konstante des Tagesneugeschaefts — getrennt vom
 #: jaehrlichen Neuzugang ([seed, 771177, ...])
 #: und von der Ereignis-Engine ([seed, 424242, police_id]).
-NEUGESCHAEFT_STREAM = 918273
+NEUGESCHAEFT_STREAM = STROEME["neugeschaeft"]  # Register: bestand.zufallsstroeme
 
 #: police_id-Offset des Tagesneugeschaefts im Nummernkreis der Generation.
 _TAGES_ID_OFFSET = 5_000_000

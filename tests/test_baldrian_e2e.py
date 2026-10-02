@@ -67,7 +67,10 @@ PLAUSIBILITAETSBELEG = "Aktuarielle_Notiz_Stornoabzug.docx"
 
 #: Die Laufparameter des abgenommenen Laufs. Sie sind Eigenschaften des
 #: QUELLSYSTEMS, nicht der Engine: Ein anderes abgebendes Unternehmen
-#: rechnet die Absetzung anders und erhoeht mit einem anderen Satz.
+#: rechnet die Absetzung anders und erhoeht mit einem anderen Satz. Seit
+#: dem Nachtrag zu ADR-024 stehen sie in der Spez der Fixture
+#: (``tarifregeln.json``), nicht am Aufruf; hier bleiben sie fuer die
+#: Kontrolle, dass der Lauf mit genau ihnen gerechnet hat.
 ERHOEHUNGSSATZ = "0.05"
 RED_VERFAHREN = "mit_abzug"
 
@@ -82,7 +85,7 @@ def _registriere_alles(fall: Path) -> None:
     for pfad in sorted(FIXTURE.glob("*")):
         if pfad.suffix in (".csv", ".json", ".docx") and pfad.name not in (
                 "policen.json", "transformation.spec.json",
-                "klv-tg2015.spez.json"):
+                "klv-tg2015.spez.json", "tarifregeln.json"):
             registrieren(fall, pfad)
 
 
@@ -175,8 +178,10 @@ def gefahrener_fall(tmp_path_factory) -> Path:
             "--erwartungswerte", erwartung, "--stichprobe", STICHPROBE,
             "--bestand", str(bestand / "bestand.parquet"),
             "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
-            "--erhoehungssatz", ERHOEHUNGSSATZ,
-            "--red-verfahren", RED_VERFAHREN,
+            # Dieselbe Ankerquelle wie die Suite (Pruefer-Befund B1: A-M2 und
+            # A-M3 tragen keine Uebernahme-Punkte; ohne sie ist der Zustand
+            # von 7000078 nicht ableitbar, und der Lauf verweigert).
+            "--anker-erwartungswerte", "baldrian_erwartungswerte_stichtag.json",
             "--plausibilitaet-beleg", PLAUSIBILITAETSBELEG,
             "--plausibilitaet-groesse", "RKW",
             "--plausibilitaet-vorfallart", "RED",
@@ -188,10 +193,9 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--abzug-1", ABZUG_1, "--abzug-2", ABZUG_2,
         "--gevo-protokoll", PROTOKOLL,
         "--bestand", str(bestand / "bestand.parquet"),
+        "--config", str(config_pfad),
         "--stichtag-1", STICHTAG_1, "--stichtag-2", STICHTAG_2,
         "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
-        "--erhoehungssatz", ERHOEHUNGSSATZ,
-        "--red-verfahren", RED_VERFAHREN,
         # Vier Absetzungen der Lieferung sind aus dem gelieferten Stand
         # nicht rueckrechenbar, weil ihre Beitragszahlung am Stichtag
         # endete. Fuer sie kalibriert der Lauf den Anteil aus einer
@@ -417,7 +421,7 @@ def test_die_merkmale_stehen_in_einer_nebentabelle(gefahrener_fall: Path):
 
 
 def test_ohne_spez_verweigert_die_uebernahme_beitragsfreier_vertraege(
-    gefahrener_fall: Path
+    gefahrener_fall: Path, capsys
 ):
     """Ohne Rechnungsgrundlagen kein halber Bestand.
 
@@ -431,6 +435,10 @@ def test_ohne_spez_verweigert_die_uebernahme_beitragsfreier_vertraege(
     vollstaendig, und erst die Nachweisung fuehrte die Vertraege dauerhaft
     als beitragspflichtig. Deshalb hier der harte Abbruch mit dem Ausweg
     in der Meldung.
+
+    Seit dem Nachtrag zu ADR-024 ist die Spez fuer JEDE Uebernahme Pflicht
+    (sie traegt auch die Tarifregeln): Der Aufruf ohne sie ist schon ein
+    Aufruffehler, bevor ein Vertrag gelesen wird.
     """
     zeilen = (gefahrener_fall / "abgeleitet" / "transformation" / "zeilen.json")
     ziel = gefahrener_fall / "abgeleitet" / "ohne_spez"
@@ -443,8 +451,9 @@ def test_ohne_spez_verweigert_die_uebernahme_beitragsfreier_vertraege(
             "--anfangszustand", "grundvertrag",
             "--out-dir", str(ziel),
         ])
-    assert "--generation-spez" in str(exc.value)
-    assert "beitragsfrei" in str(exc.value)
+    assert exc.value.code == 2
+    assert "--generation-spez" in capsys.readouterr().err
+    assert not ziel.exists(), "nichts geschrieben"
 
 
 def test_der_lauf_liefert_die_grundlagen_zu_seinen_zellen(gefahrener_fall: Path):
@@ -542,3 +551,21 @@ def test_der_uebernommene_bestand_beginnt_am_migrationsstichtag(
         leer = schnitt_am(sicht, _dt.date(jahr, 1, 1))
         assert len(leer) == 0, f"{jahr}: {len(leer)} Vertraege vor der Uebernahme"
     assert len(schnitt_am(sicht, stichtag)) == len(stamm)
+
+
+def test_der_lauf_rechnet_mit_den_regeln_der_spez(gefahrener_fall: Path):
+    """Nachtrag zu ADR-024: Kein Aufruf traegt die Regeln — Uebernahme,
+    aktuarieller Test und Migrationscontrolling lesen sie aus der Spez und
+    nennen sie im Beleg. Vorher fuehrte die Uebernahme dieses Laufs still
+    ``prospektiv`` (die Vorgabe des eigenen Geschaefts), waehrend die
+    Pruefstrecke mit ``mit_abzug`` abnahm."""
+    beleg = json.loads((gefahrener_fall / "abgeleitet" / "bestand"
+                        / "uebernahme.json").read_text(encoding="utf-8"))
+    assert beleg["tarifwerk"]["red_verfahren"] == RED_VERFAHREN
+    assert beleg["quellverfahren"]["red_verfahren"] == RED_VERFAHREN
+    suite = _bericht(gefahrener_fall, "migrationssuite.json")
+    assert suite["red_verfahren"] == RED_VERFAHREN
+    assert suite["tarifregeln"]["quellverfahren"]["erhoehungssatz"] == float(ERHOEHUNGSSATZ)
+    for abnahme, _ in ABNAHMEN:
+        name = "aktuartest.json" if abnahme == "A-M1" else f"aktuartest-{abnahme}.json"
+        assert _bericht(gefahrener_fall, name)["tarifregeln"] == suite["tarifregeln"]

@@ -24,6 +24,7 @@ from rechner_pipeline.bestand.auswertung import auswertungs_verlauf
 from rechner_pipeline.bestand.config import load_config
 from rechner_pipeline.bestand.ereignisse import fortschreiben, mit_zugaengen
 from rechner_pipeline.bestand.fuehrung import fuehre_fort
+from tests.nebentabellen import aus_fortschreibung, mit_neben
 from tests.zugangsstrom import bestand_aus_zugangsstrom
 from rechner_pipeline.bestand.manifest import schreibe_manifest
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
@@ -63,7 +64,12 @@ def lauf(_fortschreibung):
     stamm = fuehre_fort(
         mit_zugaengen(basis, ergebnis.zugaenge), ergebnis.historie
     )
-    return stamm, ergebnis.historie, ergebnis.scheiben
+    # ``neben``: ALLE Nebentabellen des Laufs, wie der Produzent sie an den
+    # Abschluss gibt (Befund aus dem Raten-Block 2026-10-01: nur die
+    # Scheiben, und herabgesetzte wie teilgekuendigte Vertraege standen hier
+    # ungekuerzt im Abschluss, ohne dass ein Test es sah).
+    return mit_neben((stamm, ergebnis.historie, ergebnis.scheiben),
+                     aus_fortschreibung(ergebnis))
 
 
 @pytest.fixture(scope="module")
@@ -82,6 +88,11 @@ def bundle(tmp_path_factory, lauf, _fortschreibung):
     write_portfolio(historie, ziel / "historie.parquet")
     write_portfolio(scheiben, ziel / "scheiben.parquet")
     write_portfolio(ergebnis.ledger, ziel / "ledger.parquet")
+    # Bedingte Ausgabe wie in cli_fortschreibung: nur wenn der Lauf
+    # Herabsetzungen oder Teilkuendigungen gebucht hat — mit der Config der
+    # PLV seit 2026-10-01 der Fall.
+    if len(ergebnis.reduktionen):
+        write_portfolio(ergebnis.reduktionen, ziel / "reduktionen.parquet")
     _manifest(ziel)
     return ziel
 
@@ -131,7 +142,7 @@ def _argv(lauf_dir, out_dir, *extra):
 def test_abschluss_friert_die_eine_bewertungsstrecke_ein(lauf, config, tmp_path):
     stamm, historie, scheiben = lauf
     pfad = schreibe_abschluss(
-        stamm, historie, config, STICHTAG, tmp_path, scheiben=scheiben
+        stamm, historie, config, STICHTAG, tmp_path, **lauf.neben
     )
 
     fest = read_portfolio(pfad)
@@ -142,7 +153,7 @@ def test_abschluss_friert_die_eine_bewertungsstrecke_ein(lauf, config, tmp_path)
     # Der Abschluss ist die einzelvertragliche Form derselben Rechnung,
     # die auch die Aggregation traegt: die Summen muessen exakt decken.
     agg = auswertungs_verlauf(
-        stamm, historie, config, [STICHTAG], scheiben=scheiben
+        stamm, historie, config, [STICHTAG], **lauf.neben
     )[0]
     assert len(fest) == agg["vertraege"]
     assert float(fest["deckungskapital"].sum()) == pytest.approx(
@@ -156,13 +167,13 @@ def test_abschluss_friert_die_eine_bewertungsstrecke_ein(lauf, config, tmp_path)
 def test_abschluss_wird_nie_ueberschrieben(lauf, config, tmp_path):
     stamm, historie, scheiben = lauf
     pfad = schreibe_abschluss(
-        stamm, historie, config, STICHTAG, tmp_path, scheiben=scheiben
+        stamm, historie, config, STICHTAG, tmp_path, **lauf.neben
     )
     davor = pfad.read_bytes()
 
     with pytest.raises(AbschlussError, match="nie ueberschrieben"):
         schreibe_abschluss(
-            stamm, historie, config, STICHTAG, tmp_path, scheiben=scheiben
+            stamm, historie, config, STICHTAG, tmp_path, **lauf.neben
         )
 
     assert pfad.read_bytes() == davor
@@ -171,10 +182,10 @@ def test_abschluss_wird_nie_ueberschrieben(lauf, config, tmp_path):
 def test_abschluss_ist_byte_deterministisch(lauf, config, tmp_path):
     stamm, historie, scheiben = lauf
     a = schreibe_abschluss(
-        stamm, historie, config, STICHTAG, tmp_path / "a", scheiben=scheiben
+        stamm, historie, config, STICHTAG, tmp_path / "a", **lauf.neben
     )
     b = schreibe_abschluss(
-        stamm, historie, config, STICHTAG, tmp_path / "b", scheiben=scheiben
+        stamm, historie, config, STICHTAG, tmp_path / "b", **lauf.neben
     )
     assert a.read_bytes() == b.read_bytes()
 
@@ -182,9 +193,9 @@ def test_abschluss_ist_byte_deterministisch(lauf, config, tmp_path):
 def test_pruefung_deckt_unveraenderten_stand(lauf, config, tmp_path):
     stamm, historie, scheiben = lauf
     pfad = schreibe_abschluss(
-        stamm, historie, config, STICHTAG, tmp_path, scheiben=scheiben
+        stamm, historie, config, STICHTAG, tmp_path, **lauf.neben
     )
-    assert pruefe_abschluss(pfad, stamm, historie, config, scheiben=scheiben) == []
+    assert pruefe_abschluss(pfad, stamm, historie, config, **lauf.neben) == []
 
 
 def test_pruefung_weist_wertabweichung_aus_und_laesst_den_abschluss_stehen(
@@ -196,7 +207,7 @@ def test_pruefung_weist_wertabweichung_aus_und_laesst_den_abschluss_stehen(
     festgeschriebene Stand bewegt sich nicht."""
     stamm, historie, scheiben = lauf
     pfad = schreibe_abschluss(
-        stamm, historie, config, STICHTAG, tmp_path, scheiben=scheiben
+        stamm, historie, config, STICHTAG, tmp_path, **lauf.neben
     )
     davor = pfad.read_bytes()
 
@@ -205,7 +216,7 @@ def test_pruefung_weist_wertabweichung_aus_und_laesst_den_abschluss_stehen(
     pid = int(anders.loc[ziel, "police_id"])
     anders.loc[ziel, "sum_insured"] = float(anders.loc[ziel, "sum_insured"]) * 2
 
-    befunde = pruefe_abschluss(pfad, anders, historie, config, scheiben=scheiben)
+    befunde = pruefe_abschluss(pfad, anders, historie, config, **lauf.neben)
 
     assert any(f"police {pid}" in b and "deckungskapital" in b for b in befunde)
     assert pfad.read_bytes() == davor
@@ -214,12 +225,12 @@ def test_pruefung_weist_wertabweichung_aus_und_laesst_den_abschluss_stehen(
 def test_pruefung_benennt_geaenderten_kernstand(lauf, config, tmp_path, monkeypatch):
     stamm, historie, scheiben = lauf
     pfad = schreibe_abschluss(
-        stamm, historie, config, STICHTAG, tmp_path, scheiben=scheiben
+        stamm, historie, config, STICHTAG, tmp_path, **lauf.neben
     )
     import rechner_pipeline.bestand.abschluss as modul
 
     monkeypatch.setattr(modul, "KERN_VERSION", "99.0.0")
-    befunde = pruefe_abschluss(pfad, stamm, historie, config, scheiben=scheiben)
+    befunde = pruefe_abschluss(pfad, stamm, historie, config, **lauf.neben)
 
     assert any("Kern" in b and "99.0.0" in b for b in befunde)
     assert any("bleibt stehen" in b for b in befunde)
@@ -235,7 +246,7 @@ def test_leerer_stichtag_ist_eine_gueltige_leere_bilanz(lauf, config, tmp_path):
     stamm, historie, scheiben = lauf
     pfad = schreibe_abschluss(
         stamm, historie, config, dt.date(1980, 1, 1), tmp_path,
-        scheiben=scheiben,
+        **lauf.neben,
     )
     fest = pd.read_parquet(pfad)
     assert len(fest) == 0 and list(fest.columns) == list(ABSCHLUSS_NAMES)
@@ -245,10 +256,10 @@ def test_leerer_stichtag_ist_eine_gueltige_leere_bilanz(lauf, config, tmp_path):
 def test_vorhandene_abschluesse_listet_sortiert(lauf, config, tmp_path):
     stamm, historie, scheiben = lauf
     schreibe_abschluss(
-        stamm, historie, config, dt.date(2017, 1, 1), tmp_path, scheiben=scheiben
+        stamm, historie, config, dt.date(2017, 1, 1), tmp_path, **lauf.neben
     )
     schreibe_abschluss(
-        stamm, historie, config, STICHTAG, tmp_path, scheiben=scheiben
+        stamm, historie, config, STICHTAG, tmp_path, **lauf.neben
     )
 
     gefunden = vorhandene_abschluesse(tmp_path)
@@ -484,11 +495,11 @@ def test_nachrechnung_faellt_auf_eine_bewegte_korrekturschicht(
     ist der Stand ein anderer, auch wenn die Summe zufaellig stimmt."""
     stamm, historie, scheiben = lauf
     pfad = schreibe_abschluss(
-        stamm, historie, config, STICHTAG, tmp_path, scheiben=scheiben
+        stamm, historie, config, STICHTAG, tmp_path, **lauf.neben
     )
     pid = _mit_geaenderter_spalte(pfad, "korrekturschicht", 5.0)
 
-    befunde = pruefe_abschluss(pfad, stamm, historie, config, scheiben=scheiben)
+    befunde = pruefe_abschluss(pfad, stamm, historie, config, **lauf.neben)
 
     assert any(f"police {pid}" in b and "korrekturschicht" in b for b in befunde)
 
@@ -498,10 +509,148 @@ def test_unendliche_korrekturschicht_ist_kein_bilanzstand(
 ):
     stamm, historie, scheiben = lauf
     pfad = schreibe_abschluss(
-        stamm, historie, config, STICHTAG, tmp_path, scheiben=scheiben
+        stamm, historie, config, STICHTAG, tmp_path, **lauf.neben
     )
     _mit_geaenderter_spalte(pfad, "korrekturschicht", float("inf"))
 
     fehler = validate_abschluss(read_portfolio(pfad))
 
     assert any("korrekturschicht" in f and "nichtendlich" in f for f in fehler)
+
+
+# --------------------------------------------------------------------------- #
+# Befund aus dem Raten-Block (2026-10-01): Herabsetzung und Teilkuendigung im
+# Abschluss — die Klasse "der Test baut seine Eingaben selbst"
+# --------------------------------------------------------------------------- #
+
+
+def _monat_plus(tag, monate: int) -> dt.date:
+    j, m = divmod(tag.month - 1 + monate, 12)
+    return dt.date(tag.year + j, m + 1, 1)
+
+
+def test_herabgesetzte_und_teilgekuendigte_vertraege_stehen_gekuerzt_und_monatsgenau_im_abschluss(
+        lauf, _fortschreibung, config, tmp_path):
+    """Der Lauf der KLV-Config erzeugt beide Vorgaenge (Raten seit dem
+    Raten-Block). Je ein herabgesetzter und ein teilgekuendigter Vertrag,
+    sieben Monate nach dem Vorgang: Die Abschlusszeile ist die unabhaengige
+    Kontrollrechnung —
+
+    * Teilkuendigung: der gewoehnliche Kern mit der Summe f x S, die
+      Deckungsrueckstellung seiner beiden Jahreszeilen im Test gemischt;
+    * Herabsetzung: der geknickte Verlauf des Kerns an den beiden
+      Jahrestagen (``vertrags_monatsreserve_reduziert``), im Test gemischt.
+
+    Und ohne die Reduktionstabelle stuende der Vertrag ungekuerzt da — die
+    Blindheit, die der Befund benannte (Detektor mit Treffer).
+
+    Mutationsprobe: in ``einzelwerte_am`` die Reduktionen nicht anwenden ->
+    rot; ``monat`` in ``werte_reduziert`` auf den Jahrestag -> rot."""
+    import dataclasses
+
+    from rechner_pipeline.bestand.auswertung import grundlagen_je_police
+    from rechner_pipeline.kern import ModelPoint, Rechenkern
+    from rechner_pipeline.kern.beitragsreduktion import (
+        TEILKUENDIGUNG,
+        reduzierte_teile,
+        vertrags_monatsreserve_reduziert,
+    )
+    from rechner_pipeline.models.bestand import model_point_kwargs
+
+    stamm, historie, _scheiben = lauf
+    _basis, ergebnis = _fortschreibung
+    red = ergebnis.reduktionen
+    mit_scheiben = set(ergebnis.scheiben["police_id"]) if len(ergebnis.scheiben) else set()
+    grundlagen = grundlagen_je_police(config)
+    tarifwerk = {g.name: g.tarifwerk() for g in config.generationen}
+    zeile_je = stamm.set_index("police_id")
+    geprueft = {"herabsetzung": 0, "teilkuendigung": 0}
+    for r in red.sort_values(["reduktion_datum", "police_id"]).to_dict("records"):
+        pid = int(r["police_id"])
+        art = "teilkuendigung" if r["verfahren"] == TEILKUENDIGUNG else "herabsetzung"
+        if geprueft[art] or pid in mit_scheiben:
+            continue
+        stichtag = _monat_plus(pd.Timestamp(r["reduktion_datum"]).date(), 7)
+        if stichtag > HORIZONT:
+            continue
+        pfad = schreibe_abschluss(stamm, historie, config, stichtag, tmp_path / f"{art}-{pid}",
+                                  **lauf.neben)
+        fest = read_portfolio(pfad).set_index("police_id")
+        if pid not in fest.index or fest.loc[pid, "status_code"] != "POL":
+            continue
+        z = zeile_je.loc[pid]
+        mp = ModelPoint(**model_point_kwargs(z, grundlagen(pid, str(z["tarif_generation"]))))
+        jahr, u = int(r["reduktion_jahr"]), 7 / 12.0
+        if art == "teilkuendigung":
+            folge = Rechenkern(dataclasses.replace(
+                mp, sum_insured=float(r["anteil"]) * mp.sum_insured))
+            unten = folge.verlaufszeile(jahr).drx_bpfl
+            oben = folge.verlaufszeile(jahr + 1).drx_bpfl
+        else:
+            sj = bool(tarifwerk[str(z["tarif_generation"])]["stoab_je_baustein"])
+            teile = reduzierte_teile(Rechenkern(mp), [], jahr, float(r["anteil"]),
+                                     str(r["verfahren"]), stoab_je_baustein=sj)
+            unten = vertrags_monatsreserve_reduziert(
+                teile, 12 * jahr, stoab_je_baustein=sj).drx_bpfl
+            oben = vertrags_monatsreserve_reduziert(
+                teile, 12 * (jahr + 1), stoab_je_baustein=sj).drx_bpfl
+        ist = float(fest.loc[pid, "deckungskapital"])
+        assert ist == pytest.approx((1 - u) * unten + u * oben, rel=1e-10), (art, pid)
+        assert ist != pytest.approx(unten, rel=1e-9), (art, pid)
+        # Ohne die Reduktionstabelle: ungekuerzt — genau die Blindheit.
+        blind = read_portfolio(schreibe_abschluss(
+            stamm, historie, config, stichtag, tmp_path / f"{art}-{pid}-blind",
+            **dict(lauf.neben, reduktionen=None))).set_index("police_id")
+        assert float(blind.loc[pid, "leistung"]) > float(fest.loc[pid, "leistung"]), (art, pid)
+        assert float(blind.loc[pid, "deckungskapital"]) > ist, (art, pid)
+        geprueft[art] += 1
+    assert geprueft == {"herabsetzung": 1, "teilkuendigung": 1}, (
+        "die Welt traegt nicht beide Vorgaenge in Kraft — der Test prueft dann nichts",
+        red["verfahren"].value_counts().to_dict())
+
+
+def test_ratsche_jeder_aufrufer_des_abschlusses_nennt_jede_nebentabelle():
+    """Die Klasse geschlossen: ``schreibe_abschluss`` und ``pruefe_abschluss``
+    haben fuer die Nebentabellen KEINEN Vorgabewert (Python verweigert den
+    Aufruf ohne sie), und jeder Aufruf in ``src`` von ``einzelwerte_am``,
+    ``auswertungs_verlauf`` und ``_rechne`` nennt alle fuenf. Positivkontrolle:
+    ein Aufruf ohne ``reduktionen`` wird gefunden."""
+    import ast
+    import inspect
+
+    from rechner_pipeline.bestand import abschluss as modul
+    from tests.nebentabellen import NAMEN
+
+    for f in (modul.schreibe_abschluss, modul.pruefe_abschluss):
+        parameter = inspect.signature(f).parameters
+        for n in NAMEN:
+            assert parameter[n].default is inspect.Parameter.empty, (f.__name__, n)
+            assert parameter[n].kind is inspect.Parameter.KEYWORD_ONLY, (f.__name__, n)
+
+    def fehlend(text: str, mit_rechne: bool = False) -> list:
+        # ``_rechne`` heisst auch eine fremde Funktion (qa.abzugsabgleich);
+        # gemeint ist nur die des Abschlusses.
+        aus = []
+        for k in ast.walk(ast.parse(text)):
+            if not isinstance(k, ast.Call):
+                continue
+            name = k.func.id if isinstance(k.func, ast.Name) else getattr(k.func, "attr", None)
+            if name not in ("einzelwerte_am", "auswertungs_verlauf",
+                            "schreibe_abschluss", "pruefe_abschluss") and not (
+                                mit_rechne and name == "_rechne"):
+                continue
+            genannt = {kw.arg for kw in k.keywords}
+            if None in genannt or len(k.args) >= 9:
+                continue      # **kwargs durchgereicht bzw. _rechne positionsweise
+            luecke = set(NAMEN) - genannt
+            if luecke:
+                aus.append((name, k.lineno, sorted(luecke)))
+        return aus
+
+    src = REPO_ROOT / "src" / "rechner_pipeline"
+    befunde = {str(p.relative_to(src)): fehlend(
+        p.read_text("utf-8"), mit_rechne=p.name == "abschluss.py") for p in src.rglob("*.py")}
+    assert {k: v for k, v in befunde.items() if v} == {}
+    assert fehlend("einzelwerte_am(s, h, c, t, scheiben=x, merkmale=None, "
+                   "schichten=None, verankerung=None)") == [
+        ("einzelwerte_am", 1, ["reduktionen"])]

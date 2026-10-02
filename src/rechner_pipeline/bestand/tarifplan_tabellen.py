@@ -119,17 +119,36 @@ def _zellen_tabelle(g: TarifGeneration) -> List[str]:
     # Die Tarifwerks-Eigenschaften der Fuehrung (Abschnitte 6 und 7): fuer
     # eine uebernommene Generation sind sie Teil ihrer Ausgestaltung und
     # stehen deshalb hier, erzeugt aus der Config wie die Zellen selbst.
+    # JEDES Merkmal, das ``tarifwerk()`` fuehrt (Pruefrunde G, G22: der
+    # Umfang der Teilkuendigung fehlte, und zwei verschieden rechnende
+    # Regelwerke ergaben dasselbe Dokument); ein Merkmal ohne Text ist ein
+    # KeyError beim Erzeugen, kein stilles Weglassen.
     tw = g.tarifwerk()
-    ja_nein = {True: "ja", False: "nein"}
     zeilen += [
         "",
         f"Tarifwerk der Generation **{g.name}** (Ausgestaltung, "
-        "Grundsatzdokumentation 10 Nr. 9): Erhöhungsscheiben mit "
-        f"$\\gamma_1$: {ja_nein[tw['scheiben_mit_gamma1']]}; Stornoabzug je "
-        f"Baustein: {ja_nein[tw['stoab_je_baustein']]}; Herabsetzungsverfahren: "
-        f"`{tw['red_verfahren']}`.",
+        "Grundsatzdokumentation 10 Nr. 9): "
+        + "; ".join(f"{TARIFWERK_TEXTE[m]}: {_merkmal_wert(w)}" for m, w in tw.items())
+        + ".",
     ]
     return zeilen
+
+
+#: Der Text je Merkmal des Tarifwerks, in der Reihenfolge von
+#: ``TarifGeneration.tarifwerk()`` (Spiegel von ``tbox.TARIFWERK_MERKMALE``;
+#: ein Test haelt beide mit ``==``).
+TARIFWERK_TEXTE: Dict[str, str] = {
+    "scheiben_mit_gamma1": "Erhöhungsscheiben mit $\\gamma_1$",
+    "stoab_je_baustein": "Stornoabzug je Baustein",
+    "red_verfahren": "Herabsetzungsverfahren",
+    "tku_umfang": "Umfang der Teilkündigung",
+}
+
+
+def _merkmal_wert(wert: Any) -> str:
+    if isinstance(wert, bool):
+        return "ja" if wert else "nein"
+    return f"`{wert}`"
 
 
 def _wechsel(gens: Sequence[TarifGeneration], produkt: str) -> List[str]:

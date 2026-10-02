@@ -34,7 +34,7 @@ def _pb1(fall: Path, argv: list):
 def test_minimalprofil_ist_kein_am4_beleg(tmp_path: Path):
     """Der Repro des Reviews. Mutationsprobe: PB1_VOLLPROFIL leeren -> rot."""
     fall = _bereite_bestandsfall(tmp_path)
-    lauf = fall / "abgeleitet" / "bestand"
+    lauf = fall / "abgeleitet" / "bestand-nach"
     # Das kleinste Profil, das P-B1 fuer einen gefuehrten Bestand annimmt:
     # Stamm und Journal (ein Folgezustand verlangt sein Journal). Kein
     # Ledger, keine Config, kein Horizont.
@@ -54,7 +54,7 @@ def test_ohne_config_fehlt_die_betragsbindung(tmp_path: Path):
     """Journal und Ledger allein reichen nicht: Ohne Config lief die
     Kern-Herleitung nicht, und der Beleg sagt es nicht."""
     fall = _bereite_bestandsfall(tmp_path)
-    lauf = fall / "abgeleitet" / "bestand"
+    lauf = fall / "abgeleitet" / "bestand-nach"
     pb1 = _pb1(fall, [
         "--portfolio", str(lauf / "bestand_gesamt.parquet"),
         "--historie", str(lauf / "historie.parquet"),
@@ -71,7 +71,7 @@ def test_ohne_config_fehlt_die_betragsbindung(tmp_path: Path):
 
 def test_vollprofil_ist_ein_am4_beleg(tmp_path: Path):
     fall = _bereite_bestandsfall(tmp_path)
-    lauf = fall / "abgeleitet" / "bestand"
+    lauf = fall / "abgeleitet" / "bestand-nach"
     # Seit Review T23-04 liegt jede P-B1-Rolle im Fall — auch die Config.
     pb1 = _pb1(fall, pb1_vollprofil_argv(lauf, einpolicen_config(fall / "abgeleitet"), bis=HORIZONT_BESTANDSFALL))
     assert pb1.exit_code == 0, pb1.errors
@@ -103,13 +103,13 @@ def test_mit_korrekturschicht_verlangt_das_vollprofil_schicht_und_verankerung(tm
     from tests.test_betrieb_neuaufsetzen import _schichten, _verankerung
 
     fall = _bereite_bestandsfall(tmp_path)
-    lauf = fall / "abgeleitet" / "bestand"
+    lauf = fall / "abgeleitet" / "bestand-nach"
     # Der Minimalfall dieses Moduls fuehrt keine Schicht — der Test stellt
     # seinen Gegenstand selbst her: eine materialisierte Korrekturschicht
     # im Uebernahme-Verzeichnis, fuer die Police, die der Fall fuehrt.
     police = int(read_portfolio(lauf / "bestand.parquet",
                                 expected_columns=STAMM_NAMES)["police_id"].iloc[0])
-    ueber = fall / "abgeleitet" / "uebernahme"
+    ueber = fall / "abgeleitet" / "bestand"
     write_portfolio(_schichten(police), ueber / "schichten.parquet")
     write_portfolio(_verankerung(police), ueber / "verankerung.parquet")
     assert any((fall / "abgeleitet").rglob("schichten.parquet"))

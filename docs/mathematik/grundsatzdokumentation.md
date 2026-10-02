@@ -253,6 +253,45 @@ Die Eintrittswahrscheinlichkeiten der Vorfälle sind
 Erfahrungsannahmen dritter Ordnung (5.2) und keine
 Rechnungsgrundlagen.
 
+## 7.1 Geschäftsvorfälle der Migration: das Vokabular des Zielsystems
+
+**Ab der Migration gilt das Vokabular des Zielsystems.** Ein
+Geschäftsvorfall, den das abgebende Unternehmen geliefert hat, wird in den
+Vorgang des Zielsystems übersetzt, der dieselbe Wirkung hatte. Gebucht,
+bewertet und geprüft wird der Vorgang des Zielsystems mit seinem Code; der
+Code der Quelle bleibt in der Lieferung und in den Belegen als
+Provenienzname stehen. Die Übersetzung ist **eine benannte Regel an einer
+Stelle** — sie liest das Verfahren der Quelle, das als Beleg der Migration
+registriert ist, und für Absetzungen zusätzlich, ob der Vertrag zum
+Zeitpunkt noch Beitrag zahlte —, nie eine Umdeutung eines Vorgangs des
+Zielsystems. Jeder Leser (Ableitung des Anfangszustands, Migrationssuite,
+aktuarieller Test, Führung) fragt dieselbe Regel; die nachrechenbare
+Fassung ist `alt_absetzung_ist_teilkuendigung` in `models/bestand.py`.
+
+Welche Vorgänge der Quelle in welche des Zielsystems übergehen, legt der
+Tarifplan des Produkts fest, das den Bestand aufnimmt (KLV: Abschnitt 7.2,
+für den übernommenen Tarif TG2015). *Entscheid des Maintainers
+2026-10-01.* Verworfen wurden: das Vokabular der Quelle in die Führung
+mitzunehmen — derselbe Code hätte im Ledger zwei Bedeutungen, je nachdem,
+woher der Vertrag kam —, und die Lieferung beim Eingang umzuschreiben — der
+Eingang ist unantastbar (ADR-002), die Übersetzung gehört in die abgeleitete
+Schicht.
+
+## 7.2 Folgen von Vorgängen
+
+Ein Vertrag trägt beliebig viele Vorgänge in jeder Reihenfolge. **Der
+Zustand eines Vertrags ist die Folge seiner Vorgänge**, und jeder Vorgang
+wirkt auf den Zustand, den der Vertrag gerade hat — nicht auf den
+Ursprungsvertrag. Fallen mehrere Vorgänge auf denselben Jahrestag, gilt eine
+feste Reihenfolge; Rückkauf, Tod und Ablauf sehen den Zustand vor den
+Vorgängen ihres Tages. Jeder Leser (Ereignis-Engine, Bewertung und
+Abschluss, Ledger-Herleitung, Bewegungskonto, Führungsprobe,
+Migrationssuite, aktuarieller Test) rechnet dieselbe Folge; die
+nachrechenbare Fassung ist `kern/vorgangsfolge.py`. Welche Folgen ein
+Produkt zulässt und wie jeder Vorgang den Zustand ändert, legt der
+Tarifplan fest (KLV: Abschnitt 7.3). *Entscheid des Maintainers
+2026-10-01.*
+
 # 8 Schichten der Bewertung
 
 Der Wert eines Vertrags setzt sich aus Schichten zusammen, die
@@ -506,9 +545,10 @@ nachrechenbare Fassung dieser Zuordnung ist `HEILUNG` in
 | Geschäftsvorfall | Schicht | Leistungsseite |
 |---|---|---|
 | Beitragsfreistellung (`PEX`) | konsumiert | wertstetig als Zuschlag auf die beitragsfreie Summe (`VS_bfr`) |
-| Herabsetzung, prospektiv oder mit Abzug (`RED`) | konsumiert | in die beitragsfreie Summe des umgewandelten Teils; Ledger-Zeile `dDK_absorption`, keine Auszahlung |
-| Herabsetzung als Teilkündigung (`RED`) | konsumiert | **vollständig in die Auszahlung** des gekündigten Grundanteils: `RKW_teilkuendigung` $= (1-f)\cdot$ Rückkaufswert der Grundversicherung $+$ Schichtwert. Der Stornoabzug trifft nur den Rückkaufswert der Grundversicherung, nicht die Schicht (Konvention wie beim Rückkauf). *Präzisierung 2026-09-22.* |
+| Beitragsherabsetzung (`RED`), prospektiv oder mit Abzug, nur vor dem Beitragsende | konsumiert | in die beitragsfreie Summe des umgewandelten Teils; Ledger-Zeile `dDK_absorption`, keine Auszahlung. Mit Abzug trifft der Stornoabzug $(1-f)\cdot$StoAb nur den Grundvertrag, nicht die Schicht (Konvention wie beim Rückkauf). *Präzisierung 2026-09-26.* |
+| Teilkündigung (`TKU`), eigener Geschäftsvorfall jeder Generation, vor und nach dem Beitragsende und nach der Beitragsfreistellung | konsumiert | **vollständig in die Auszahlung** des gekündigten Anteils: `RKW_teilkuendigung` $= (1-f)\cdot$ Rückkaufswert der betroffenen Bausteine $+$ Schichtwert. Der Stornoabzug trifft nur den Rückkaufswert, nicht die Schicht (Konvention wie beim Rückkauf). *Präzisierung 2026-09-22.* Herabsetzung und Teilkündigung sind zwei Vorgänge mit eigenen Codes; eine Teilkündigung ist nie als `RED` gebucht (Tarifplan KLV 7.2, ADR-023; *Entscheid des Maintainers 2026-10-01*). |
 | Rückkauf (`STO`) | ausgezahlt | im Rückkaufswert (`RKW`); wertkontinuierlich |
+| zweiter und jeder weitere Vorgang einer Folge (7.2) | — | Die Schicht ist mit dem ersten rechnenden Vorgang nach der Verankerung konsumiert; ein späterer Vorgang findet keine Schicht mehr und rechnet allein auf dem Zustand, den der erste hinterlassen hat. Ein Vorgang **vor** der Verankerung (Vorgeschichte) konsumiert nichts. *Präzisierung 2026-10-01.* |
 | Dynamische Erhöhung (`ERH`) | bleibt | nicht rechnend — die Schicht wartet auf den nächsten rechnenden Vorfall |
 | Tod (`TOD`) | verfällt | Todesfallleistung ist die feste Summe (Anker, 9.2); vererbend |
 | Ablauf (`ABL`) | null | Terminalbedingung; Ablaufleistung ist die Summe |

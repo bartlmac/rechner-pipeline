@@ -21,6 +21,7 @@ import datetime as dt
 import pytest
 
 from rechner_pipeline.gates.bestand_uebernehmen import GEVO_STATUS, baue
+from tests.tarifregeln_testhelfer import lege_spez
 
 ZEILE = {
     "police_id": 7000001, "beginn": "2016-02-01", "entry_age": 37,
@@ -139,11 +140,13 @@ def test_die_uebernahme_archiviert_die_gevo_metadatenliste(tmp_path):
     zeilen = tmp_path / "zeilen.json"
     zeilen.write_text(json.dumps([dict(ZEILE)]), encoding="utf-8")
     ziel = fall / "abgeleitet" / "bestand"
+    lege_spez(fall, GRUNDLAGEN)
 
     assert bestand_uebernehmen.main([
         "--fall", str(fall), "--zeilen", str(zeilen),
         "--tarif-generation", "TG2015", "--stichtag", "2026-01-01",
         "--vorgeschichte", "gevo_metadaten.csv",
+        "--generation-spez", "klv/tg2015",
         # Die Vorgeschichte traegt eine Erhoehung: ohne Antwort auf die
         # Anfangszustands-Frage haelt die Uebernahme an (Freischaltung).
         "--anfangszustand", "grundvertrag",
@@ -193,11 +196,13 @@ def test_verankerung_wird_vertragsmerkmal_wenn_die_lieferung_sie_traegt(tmp_path
         {**ZEILE, "police_id": 7000002, "monate_ta": 108, "dk_ta": 38_500.25},
     ]), encoding="utf-8")
     ziel = fall / "abgeleitet" / "bestand"
+    lege_spez(fall, GRUNDLAGEN)
 
     assert bestand_uebernehmen.main([
         "--fall", str(fall), "--zeilen", str(zeilen),
         "--tarif-generation", "TG2015", "--stichtag", "2026-02-01",
         "--vorgeschichte", "gevo_metadaten.csv",
+        "--generation-spez", "klv/tg2015",
         "--anfangszustand", "grundvertrag",
         "--out-dir", str(ziel),
     ]) == 0
@@ -256,12 +261,14 @@ def test_halbe_verankerungslieferung_faellt_hart(tmp_path):
         {**ZEILE, "monate_ta": 120, "dk_ta": 1.0},
         {**ZEILE, "police_id": 7000002},
     ]), encoding="utf-8")
+    lege_spez(fall, GRUNDLAGEN)
 
     with pytest.raises(SystemExit) as exc:
         bestand_uebernehmen.main([
             "--fall", str(fall), "--zeilen", str(zeilen),
             "--tarif-generation", "TG2015", "--stichtag", "2026-02-01",
             "--vorgeschichte", "gevo_metadaten.csv",
+            "--generation-spez", "klv/tg2015",
             "--out-dir", str(fall / "abgeleitet" / "bestand"),
         ])
     assert "ALLE" in str(exc.value)
@@ -381,13 +388,16 @@ def test_ein_zielverzeichnis_mit_fremden_resten_wird_verweigert(tmp_path):
     ziel = fall / "abgeleitet" / "bestand"
     ziel.mkdir(parents=True, exist_ok=True)
     # Der Rest eines frueheren Laufs: eine Nebentabelle, die DIESER Lauf
-    # nicht erzeugt (ohne --generation-spez gibt es keine Merkmale).
+    # nicht erzeugt (eine einzellige Spez hat keine Dimensionen, also keine
+    # Merkmale).
     (ziel / "merkmale.parquet").write_bytes(b"Rest eines frueheren Laufs")
+    lege_spez(fall, GRUNDLAGEN)
 
     argv = [
         "--fall", str(fall), "--zeilen", str(zeilen),
         "--tarif-generation", "TG2015", "--stichtag", "2026-01-01",
         "--vorgeschichte", "gevo_metadaten.csv",
+        "--generation-spez", "klv/tg2015",
         "--anfangszustand", "grundvertrag",
         "--out-dir", str(ziel),
     ]

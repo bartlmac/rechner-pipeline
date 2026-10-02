@@ -95,9 +95,19 @@ class Zahlungspfad:
     #: je Vertragsjahr. Leer heisst: durchgehend 0.0 — ein
     #: beitragspflichtiger Vertrag traegt keinen umgewandelten Teil.
     kosten_bfr: Tuple[float, ...] = ()
+    #: Faktor auf den noch nicht getilgten Abschlusskostenrest im
+    #: Rueckkaufs-Track (alpha * t * BJB * Restrente/Gesamtrente) je
+    #: Vertragsjahr. Leer heisst: durchgehend 1.0, der unveraenderte
+    #: Vertrag. Die Abschlusskosten folgen dem Beitrag: Nach einer
+    #: Herabsetzung auf f traegt der fortgefuehrte Vertrag f des Rests,
+    #: (1-f) ist mit der Herabsetzung abgeschrieben (Tarifplan klv.md 7.1).
+    abschlusskosten: Tuple[float, ...] = ()
 
     def profil_bpfl(self, mp: ModelPoint) -> Tuple[float, ...]:
         return self.kosten_bpfl or (1.0,) * mp.n
+
+    def profil_abschlusskosten(self, mp: ModelPoint) -> Tuple[float, ...]:
+        return self.abschlusskosten or (1.0,) * mp.n
 
     def profil_bfr(self, mp: ModelPoint) -> Tuple[float, ...]:
         return self.kosten_bfr or (0.0,) * mp.n
@@ -115,7 +125,8 @@ class Zahlungspfad:
                 f"Beitragszahlungsdauer betraegt {mp.t}"
             )
         for name, profil in (("kosten_bpfl", self.kosten_bpfl),
-                             ("kosten_bfr", self.kosten_bfr)):
+                             ("kosten_bfr", self.kosten_bfr),
+                             ("abschlusskosten", self.abschlusskosten)):
             if profil and len(profil) != mp.n:
                 raise ZahlungspfadFehler(
                     f"{name} hat {len(profil)} Jahre, der Vertrag laeuft "
@@ -137,6 +148,7 @@ class Zahlungspfad:
             and all(w == 1.0 for w in self.beitrag)
             and all(w == 1.0 for w in self.kosten_bpfl)
             and not any(self.kosten_bfr)
+            and all(w == 1.0 for w in self.abschlusskosten)
         )
 
 
@@ -188,6 +200,24 @@ class Barwertpaesse:
     #: auf die alte zurueck.
     axn_bpfl: Tuple[float, ...] = ()
     axn_bfr: Tuple[float, ...] = ()
+    #: Faktor auf den Abschlusskostenrest je Vertragsjahr (Zahlungspfad).
+    ak: Tuple[float, ...] = ()
+
+    def abschlusskostenfaktor(self, a: int) -> float:
+        """Faktor auf den Abschlusskostenrest am Jahrestag ``a``.
+
+        Das Profil traegt die Vertragsjahre ``0..n-1``; am Jahrestag ``n``
+        (und danach) gilt der Faktor des letzten Vertragsjahres weiter — der
+        Abschnitt, in dem der Vertrag ablaeuft, endet nicht vor dem Ablauf.
+        Bis Kern 3.17.0 fiel er dort auf 1.0 zurueck: Ein herabgesetzter
+        Baustein, der kuerzer laeuft als die Zillmerdauer, trug am Jahrestag
+        ``n`` den Rest ungekuerzt, und der Rueckkaufswert des letzten
+        Vertragsjahres lag zu hoch (Pruefrunde G, Fund G01; Tarifplan KLV 7.1:
+        der fortgefuehrte Teil traegt ``c`` des Rests an JEDEM Jahrestag).
+        Ein leeres Profil ist der unveraenderte Vertrag (Faktor 1.0)."""
+        if not self.ak or a < 0:
+            return 1.0
+        return self.ak[min(a, len(self.ak) - 1)]
 
     def kostenrente_bpfl(self, a: int) -> float:
         return self._wert(self.axn_bpfl or self.axn, a)
@@ -254,6 +284,7 @@ def paesse(mp: ModelPoint, pfad: Zahlungspfad, basis: Tafelbasis) -> Barwertpaes
         axn=tuple(_rentenpass(modell, x, n, [1.0] * n)),
         axn_bpfl=tuple(_rentenpass(modell, x, n, list(pfad.profil_bpfl(mp)))),
         axn_bfr=tuple(_rentenpass(modell, x, n, list(pfad.profil_bfr(mp)))),
+        ak=tuple(pfad.profil_abschlusskosten(mp)),
         axt=tuple(_rentenpass(modell, x, t, pfad.beitrag)),
         azd=tuple(_rentenpass(modell, x, zd, [1.0] * max(zd, 0))),
         tod=tuple(tod),
@@ -334,7 +365,7 @@ def _zeile(
     )
     kdrx_bpfl = mp.sum_insured * kvx_bpfl
     kvx_bfr = leistung + mp.gamma3 * axn
-    kvx_mrv = kdrx_bpfl + (
+    kvx_mrv = kdrx_bpfl + p.abschlusskostenfaktor(a) * (
         mp.alpha * mp.t * skalare["bjb"] * azd / skalare["azd_full"]
     )
     return Pfadzeile(

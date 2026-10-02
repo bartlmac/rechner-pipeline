@@ -16,6 +16,7 @@ Knoten: klv, bu
 
 from __future__ import annotations
 
+import math
 from decimal import Decimal, ROUND_HALF_UP, localcontext
 from typing import Mapping
 
@@ -41,6 +42,39 @@ def excel_round(value: float, ndigits: int = ROUND_DIGITS) -> float:
     with localcontext() as ctx:
         ctx.prec = 60
         return float(Decimal(repr(value)).quantize(quantum, rounding=ROUND_HALF_UP))
+
+
+def untergrenze_basissumme(betrag: float) -> float:
+    """Keine Summe der Basisschicht wird negativ (Entscheid des Maintainers
+    2026-09-30; Runde F, F2) — DIE eine Stelle dieser Regel.
+
+    Die beitragsfreie Summe entsteht aus dem Rueckkaufs-Track,
+    ``S_bfr = V^MRV / V^bfr``, und V^MRV ist innerhalb der Zillmerdauer bei
+    zulaessigen Parametern negativ (z. B. alpha 0,06, zillmer_dauer 2,
+    Vertragsjahr 1; die Config verlangt nur zillmer_dauer > 0). Eine
+    negative Summe ist keine Leistung: Sie liess die Engine eine negative
+    PEX-Summe buchen, die P-B1 am eigenen Lauf abwies, und machte die
+    Herabsetzung mit f -> 0 (auf null begrenzt) zu etwas anderem als die
+    Beitragsfreistellung. Beide Wege — PEX
+    (``KLVProdukt.beitragsfreie_summe``), spaetere PEX nach einer
+    Herabsetzung (``ReduzierterVertrag.beitragsfreie_summe``) und der
+    umgewandelte Teil der Herabsetzung (``_reduziere_eine_schicht``) —
+    rufen sie hier ab, damit ``f -> 0 == PEX`` nicht von drei Abschriften
+    abhaengt.
+
+    Gilt fuer die BASISSCHICHT; die Korrekturschicht ist Migrationsdifferenz
+    und wird nicht geklemmt (siehe ``kern.beitragsreduktion``).
+
+    Ein nicht endlicher Wert (NaN, inf) wird NICHT auf null geklemmt,
+    sondern unveraendert durchgereicht: ``max(0.0, nan)`` ergibt in Python
+    still 0.0, und damit wuerde ein Rechenfehler als gueltige Summe null
+    erscheinen — die Fuehrungsprobe meldete dann "0,00 statt 1.169,61"
+    statt des NaN, das sie sehen muss (Runde F, Nachbesserung: eine
+    Untergrenze ist eine Grenze, kein Reparaturwert).
+    """
+    if not math.isfinite(betrag):
+        return betrag
+    return max(0.0, betrag)
 
 
 def installment_surcharge(zw: int, staffel: Mapping[int, float]) -> float:

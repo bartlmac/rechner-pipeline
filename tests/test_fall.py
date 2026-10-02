@@ -66,6 +66,9 @@ def test_scope_legt_die_am4_pflichten_fuer_tarif_und_bestand_fest(
     assert fall_mod.lade_scope(bestand) == "bestand"
     assert belegrollen_mod.am4_belegrollen("tarif") == [
         "pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege",
+        # Kernstand, T-Box-Stand und Tarifwerk (Entscheide des Maintainers
+        # 2026-10-01, ADR-025): in jedem Scope.
+        "kernstand", "tboxstand", "tarifwerkstand",
     ]
     assert belegrollen_mod.am4_belegrollen("bestand") == [
         "pq3_ledger", "aq1_snapshot",
@@ -74,7 +77,8 @@ def test_scope_legt_die_am4_pflichten_fuer_tarif_und_bestand_fest(
         "am1_snapshot", "am2_snapshot", "am3_snapshot",
         # Freischaltung (Schritt 6): der Beleg, dass die Fuehrung die
         # abgenommene Welt traegt.
-        "pk1_belege", "pb1_ledger", "migrationssuite", "fuehrungsprobe",
+        "pk1_belege", "kernstand", "tboxstand", "tarifwerkstand", "pb1_ledger", "migrationssuite",
+        "fuehrungsprobe",
         "abnahmebericht",
     ]
     # Belegrollen JE GATE (ADR-010): A-M1 pinnt im Bestands-Scope die

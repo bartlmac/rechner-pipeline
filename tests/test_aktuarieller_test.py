@@ -80,13 +80,16 @@ def _auftrag(
         model_point=dict(MP),
         historientyp=historientyp,
         punkte=punkte,
-        **kwargs,
+        # Die Regeln des EIGENEN Geschaefts, ausdruecklich: Die Engine hat
+        # fuer keine Tarifregel eine Vorgabe (Pruefrunde H, H12).
+        **{"scheiben_mit_gamma1": False, "stoab_je_baustein": False,
+           "tku_umfang": None, **kwargs},
     )
 
 
 def pruefe_verankerung(v: Vertragspruefung, profil: Testprofil = PROFIL):
     """Bruecke fuer die Faelle, die genau einen Pruefpunkt tragen."""
-    return pruefe_vertrag(v, profil)
+    return pruefe_vertrag(v, profil, red_verfahren="prospektiv")
 
 
 def pruefe_stichprobe(vertraege, stichprobe, profil: Testprofil = PROFIL, **kwargs):
@@ -119,7 +122,7 @@ def test_engine_bildet_keine_bestandssummen():
     """Das Ergebnis kennt nur Verteilungsgroessen der |Residuen| — keine
     Deckungskapital-Summe, keinen Mittelwert, keinen Median."""
     ergebnis = pruefe_stichprobe(
-        [_auftrag("P1"), _auftrag("P2")], _stichprobe("P1", "P2")
+        [_auftrag("P1"), _auftrag("P2")], _stichprobe("P1", "P2"), red_verfahren="prospektiv"
     )
     verteilung = ergebnis["verteilung"]
     assert set(verteilung) == {
@@ -160,7 +163,7 @@ def test_beitragsfreier_vertrag_am_rechenpunkt():
 
 def test_scheiben_werden_vertragsweit_am_rechenpunkt_gerechnet():
     jahr, vs = 5, 10_000.0
-    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, jahr, vs))
+    scheibe = Rechenkern(erhoehungs_scheibe(KLV_DEFAULT, jahr, vs, gamma1_uebernehmen=False))
     m = vertrags_monatsreserve(KERN, [(jahr, scheibe)], TA)
     ergebnis = pruefe_verankerung(
         _auftrag(
@@ -200,19 +203,20 @@ def test_engine_vertrag_faellt_hart_aus():
 def test_stichprobe_vollstaendig_abgearbeitet_ist_die_definition():
     """Fehlender Auftrag = Mengenbefund; Nicht-Stichprobe = kein Befund."""
     stichprobe = _stichprobe("P1", "P2")
-    unvollstaendig = pruefe_stichprobe([_auftrag("P1")], stichprobe)
+    unvollstaendig = pruefe_stichprobe([_auftrag("P1")], stichprobe, red_verfahren="prospektiv")
     assert not unvollstaendig["stichprobe_vollstaendig"]
     assert not unvollstaendig["test_bestanden"]
     assert "ohne Pruefauftrag" in unvollstaendig["mengenbefunde"][0]
 
     # Ein Auftrag ausserhalb der Stichprobe ist nicht belegt:
     ueberzaehlig = pruefe_stichprobe(
-        [_auftrag("P1"), _auftrag("P2"), _auftrag("P3")], stichprobe
+        [_auftrag("P1"), _auftrag("P2"), _auftrag("P3")], stichprobe, red_verfahren="prospektiv"
     )
     assert not ueberzaehlig["stichprobe_vollstaendig"]
 
     # Exakt die Stichprobe: vollstaendig, bestanden, keine Befunde.
-    exakt = pruefe_stichprobe([_auftrag("P1"), _auftrag("P2")], stichprobe)
+    exakt = pruefe_stichprobe([_auftrag("P1"), _auftrag("P2")], stichprobe,
+        red_verfahren="prospektiv")
     assert exakt["stichprobe_vollstaendig"]
     assert exakt["test_bestanden"]
     assert exakt["stichprobe"]["vollerhebung"] is True
@@ -224,9 +228,10 @@ def test_kranke_lieferdaten_werden_je_vertrag_isoliert():
         model_point={**MP, "x": "vierzig"},
         historientyp="ohne_gevo",
         punkte=(_punkt(TA, {"kVx_MRV": 1.0}),),
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None,
     )
     ergebnis = pruefe_stichprobe(
-        [_auftrag("P1"), kaputt], _stichprobe("P1", "P2")
+        [_auftrag("P1"), kaputt], _stichprobe("P1", "P2"), red_verfahren="prospektiv"
     )
     assert ergebnis["fehlgeschlagen"] == 1
     p2 = next(v for v in ergebnis["vertraege"] if v["police_id"] == "P2")
@@ -242,7 +247,7 @@ def test_gruppen_clustern_nach_historientyp():
             _auftrag("P2", historientyp="pex", monate_ta=TA,
                      erwartet={"BJB": 0.0}, beitragsfrei_seit_jahr=4),
         ],
-        _stichprobe("P1", "P2"),
+        _stichprobe("P1", "P2"), red_verfahren="prospektiv",
     )
     assert sorted(ergebnis["gruppen"]) == ["ohne_gevo", "pex"]
     assert ergebnis["gruppen"]["pex"]["anzahl"] == 1
@@ -254,6 +259,7 @@ def test_transportsicherung_ist_getrennt_und_nie_teil_des_urteils():
         [_auftrag("P1")],
         _stichprobe("P1"),
         transportsicherung={"bestand_sha256": "ab" * 32, "zeilen": 999},
+        red_verfahren="prospektiv",
     )
     assert ergebnis["transportsicherung"] == {
         "bestand_sha256": "ab" * 32, "zeilen": 999,
@@ -266,10 +272,10 @@ def test_transportsicherung_ist_getrennt_und_nie_teil_des_urteils():
 def test_doppelte_auftraege_und_leere_liste_fallen_hart_aus():
     with pytest.raises(AktuartestFehler, match="doppelte"):
         pruefe_stichprobe(
-            [_auftrag("P1"), _auftrag("P1")], _stichprobe("P1")
+            [_auftrag("P1"), _auftrag("P1")], _stichprobe("P1"), red_verfahren="prospektiv"
         )
     with pytest.raises(AktuartestFehler, match="leere Auftragsliste"):
-        pruefe_stichprobe([], _stichprobe("P1"))
+        pruefe_stichprobe([], _stichprobe("P1"), red_verfahren="prospektiv")
 
 
 def test_vollstaendigkeit_hat_je_pruefebene_ihren_eigenen_namen():
@@ -286,7 +292,7 @@ def test_vollstaendigkeit_hat_je_pruefebene_ihren_eigenen_namen():
         pruefe_bestand,
     )
 
-    test = pruefe_stichprobe([_auftrag("P1")], _stichprobe("P1"))
+    test = pruefe_stichprobe([_auftrag("P1")], _stichprobe("P1"), red_verfahren="prospektiv")
     assert "stichprobe_vollstaendig" in test
     assert "vollstaendig_geprueft" not in test
 
@@ -297,8 +303,9 @@ def test_vollstaendigkeit_hat_je_pruefebene_ihren_eigenen_namen():
             monate_stichtag_1=12 * 9 + 5, monate_stichtag_2=12 * 10 + 5,
             dk_erwartet_1=kern_dk,
             dk_erwartet_2=round(KERN.monatsreserve(12 * 10 + 5).vx_mrv, 2),
+            scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
         )],
-        erwartete_anzahl=1,
+        erwartete_anzahl=1, red_verfahren="prospektiv",
     )
     assert "vollstaendig_geprueft" in suite
     assert "stichprobe_vollstaendig" not in suite
@@ -308,20 +315,21 @@ def test_ergebnis_ist_deterministisch():
     auftraege = [_auftrag("P1"), _auftrag("P2", historientyp="dyn",
                                           scheiben=((5, 10_000.0),),
                                           erwartet={"kVx_MRV": 1.0})]
-    a = pruefe_stichprobe(auftraege, _stichprobe("P1", "P2"))
-    b = pruefe_stichprobe(auftraege, _stichprobe("P1", "P2"))
+    a = pruefe_stichprobe(auftraege, _stichprobe("P1", "P2"), red_verfahren="prospektiv")
+    b = pruefe_stichprobe(auftraege, _stichprobe("P1", "P2"), red_verfahren="prospektiv")
     assert a == b
 
 
 def test_scheiben_und_beitragsfreiheit_zusammen_sind_hart_undefiniert():
     """Review-Fix: die Kombination rechnete still den aktiven Track —
     jetzt lehnt die Engine sie ab, statt falsche Werte zu liefern."""
-    with pytest.raises(AktuartestFehler, match="Beitragsfreistellung"):
-        pruefe_verankerung(_auftrag(
-            erwartet={"kVx_MRV": 1.0},
-            scheiben=((3, 10_000.0),),
-            beitragsfrei_seit_jahr=5,
-        ))
+    # Pruefrunde J, J04: Scheiben UND Beitragsfreiheit sind definiert — der
+    # Auftrag laeuft ueber die Vorgangsfolge (jeder Baustein mit seiner
+    # beitragsfreien Summe), nicht ueber den aktiven Track.
+    from rechner_pipeline.qa.aktuarieller_test import _mit_folge
+
+    assert _mit_folge(_auftrag(erwartet={"kVx_MRV": 1.0}, scheiben=((3, 10_000.0),),
+                               beitragsfrei_seit_jahr=5))
     with pytest.raises(AktuartestFehler, match="kein Vertragsjahr"):
         pruefe_verankerung(_auftrag(
             erwartet={"kVx_MRV": 1.0}, beitragsfrei_seit_jahr=0,
@@ -335,5 +343,5 @@ def test_engine_vertragsfehler_wird_nie_zum_lieferbefund():
     trotzdem nicht in der Vertrags-Isolation verschwinden."""
     with pytest.raises(AktuartestFehler, match="Rechenpunkt"):
         pruefe_stichprobe(
-            [_auftrag("P1", monate_ta=TA + 5)], _stichprobe("P1")
+            [_auftrag("P1", monate_ta=TA + 5)], _stichprobe("P1"), red_verfahren="prospektiv"
         )

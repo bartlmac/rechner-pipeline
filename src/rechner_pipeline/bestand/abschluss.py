@@ -28,10 +28,11 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import datetime as _dt
+import io
 import os
 import math
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 
@@ -43,6 +44,10 @@ from rechner_pipeline.models.bestand import (
     ABSCHLUSS_NAMES,
     ABSCHLUSS_SPALTEN,
     ABSCHLUSS_ZAHLEN,
+    FUEHRUNGSKONVENTION,
+    AbschlussKonvention,
+    AbschlussKonventionFehler,
+    abschluss_konvention,
     validate_abschluss,
 )
 
@@ -56,6 +61,18 @@ def abschluss_pfad(ziel_dir: Path, stichtag: _dt.date) -> Path:
     return Path(ziel_dir) / f"abschluss_{stichtag.isoformat()}.parquet"
 
 
+def _stichtag_aus_dateiname(pfad: Path) -> Optional[_dt.date]:
+    """Der Stichtag, den :func:`abschluss_pfad` in den Namen legt (sonst None)."""
+    name = pfad.name
+    if not (name.startswith("abschluss_") and name.endswith(".parquet")):
+        return None
+    try:
+        stichtag = _dt.date.fromisoformat(name[len("abschluss_"):-len(".parquet")])
+    except ValueError:
+        return None
+    return stichtag if abschluss_pfad(pfad.parent, stichtag).name == name else None
+
+
 def _rechne(
     stamm: pd.DataFrame,
     historie: Optional[pd.DataFrame],
@@ -66,11 +83,13 @@ def _rechne(
     schichten: Optional[pd.DataFrame] = None,
     verankerung: Optional[pd.DataFrame] = None,
     reduktionen: Optional[pd.DataFrame] = None,
+    *,
+    konvention: str = FUEHRUNGSKONVENTION,
 ) -> pd.DataFrame:
     zeilen = einzelwerte_am(stamm, historie, config, stichtag,
                             scheiben=scheiben, merkmale=merkmale,
                             schichten=schichten, verankerung=verankerung,
-                            reduktionen=reduktionen)
+                            reduktionen=reduktionen, konvention=konvention)
     if not zeilen:
         # Ein leerer Abschluss ist seit ADR-020 eine gueltige (leere)
         # Bilanz, kein Aufruffehler: Ein Unternehmen beginnt leer, und die
@@ -95,6 +114,7 @@ def _rechne(
             "vs_bfr": z["vs_bfr"],
             "jahresbeitrag": z["jahresbeitrag"],
             "kern_version": KERN_VERSION,
+            "bewertungskonvention": konvention,
         }
         for z in zeilen
     ])
@@ -119,17 +139,27 @@ def schreibe_abschluss(
     stichtag: _dt.date,
     ziel_dir: Path,
     *,
-    scheiben: Optional[pd.DataFrame] = None,
-    merkmale: Optional[pd.DataFrame] = None,
-    schichten: Optional[pd.DataFrame] = None,
-    verankerung: Optional[pd.DataFrame] = None,
-    reduktionen: Optional[pd.DataFrame] = None,
+    scheiben: Optional[pd.DataFrame],
+    merkmale: Optional[pd.DataFrame],
+    schichten: Optional[pd.DataFrame],
+    verankerung: Optional[pd.DataFrame],
+    reduktionen: Optional[pd.DataFrame],
 ) -> Path:
     """Bewertungsstand des Stichtags festschreiben (genau einmal).
 
     Existiert fuer den Stichtag bereits ein Abschluss, bricht der Aufruf
     hart ab — eine Korrektur eines festgeschriebenen Standes ist eine
     menschliche Entscheidung mit eigenem Vorgang, nie ein erneuter Lauf.
+
+    Die Nebentabellen (Scheiben, Merkmale, Schichten, Verankerung,
+    Reduktionen) haben KEINEN Vorgabewert, hier und in
+    :func:`pruefe_abschluss` (Befund aus dem Raten-Block, 2026-10-01):
+    Herabsetzung und Teilkuendigung hinterlassen weder im Stamm noch in der
+    Historie eine Spur, nur in ``reduktionen``. Ein Aufruf ohne die Tabelle
+    bewertete den Vertrag still ungekuerzt — so taten es die
+    In-Prozess-Abschlusstests, waehrend die Produzenten (``cli_abschluss``,
+    ``tageslauf``) sie mitgaben. Jetzt sagt jeder Aufrufer, was sein Lauf
+    traegt; ``None`` ist die Aussage "dieser Lauf hat keine".
     """
     ziel_dir = Path(ziel_dir)
     pfad = abschluss_pfad(ziel_dir, stichtag)
@@ -138,8 +168,10 @@ def schreibe_abschluss(
             f"Abschluss {stichtag.isoformat()} ist bereits festgeschrieben "
             f"({pfad}) — festgeschriebene Staende werden nie ueberschrieben"
         )
+    # Festgeschrieben wird immer in der Fuehrungskonvention; die Jahreszeile
+    # gibt es nur noch zum Nachrechnen alter Abschluesse.
     df = _rechne(stamm, historie, config, stichtag, scheiben, merkmale,
-                 schichten, verankerung, reduktionen)
+                 schichten, verankerung, reduktionen, konvention=FUEHRUNGSKONVENTION)
     ziel_dir.mkdir(parents=True, exist_ok=True)
     # Zwei Sicherungen, die einzeln beide zu wenig tragen und erst
     # zusammen dicht sind -- die Reihenfolge ist deshalb wesentlich.
@@ -183,24 +215,56 @@ def pruefe_abschluss(
     historie: Optional[pd.DataFrame],
     config: BestandConfig,
     *,
-    scheiben: Optional[pd.DataFrame] = None,
-    merkmale: Optional[pd.DataFrame] = None,
-    schichten: Optional[pd.DataFrame] = None,
-    verankerung: Optional[pd.DataFrame] = None,
-    reduktionen: Optional[pd.DataFrame] = None,
+    scheiben: Optional[pd.DataFrame],
+    merkmale: Optional[pd.DataFrame],
+    schichten: Optional[pd.DataFrame],
+    verankerung: Optional[pd.DataFrame],
+    reduktionen: Optional[pd.DataFrame],
 ) -> List[str]:
     """Neuberechnung gegen den festgeschriebenen Stand stellen.
 
     Rueckgabe: Befundliste (leer = deckungsgleich). Eine Abweichung bei
     geaendertem Kernstand ist ERWARTBAR und wird als solche benannt —
     sie ist ein Ausweis, kein Anlass, den Abschluss anzufassen.
+
+    Nachgerechnet wird in der Konvention der DATEI
+    (:func:`lies_abschluss`): Ein Abschluss vor der Umstellung (ohne Spalte
+    ``bewertungskonvention``) steht in der Jahreszeile und wird in ihr
+    geprueft — deckungsgleich mit seiner Konvention, nicht pauschal als
+    Abweichung gegen die heutige gemeldet und nicht an der Spaltengestalt
+    abgewiesen.
     """
-    fest = read_portfolio(Path(pfad))
+    try:
+        fest, konvention = lies_abschluss(Path(pfad))
+    except AbschlussKonventionFehler as exc:
+        return [str(exc)]
     befunde: List[str] = []
-    if list(fest.columns) != list(ABSCHLUSS_NAMES):
-        return [f"abschluss: Spalten {list(fest.columns)} != {list(ABSCHLUSS_NAMES)}"]
     if len(fest) == 0:
-        return ["abschluss: leer — kein festgeschriebener Stand"]
+        # Ein leerer Abschluss ist seit ADR-020 eine gueltige leere Bilanz
+        # (siehe _rechne) — kein Befund an sich. Die Datei traegt keine
+        # Zeile und damit keinen Stichtag; ihn nennt allein der Dateiname
+        # (abschluss_pfad), und gegen den wird nachgerechnet: Findet die
+        # Neuberechnung dort Vertraege in Kraft, ist der Abschluss
+        # abgeschnitten und wird ausgewiesen (Angriffsrunde C, RC06: ein
+        # Wiederanlauf schrieb sonst fuer byte-gleiche Bytes einen Befund
+        # in die gruene, verkettete Protokollzeile, den der ungestoerte
+        # Lauf nicht traegt).
+        stichtag_leer = _stichtag_aus_dateiname(Path(pfad))
+        if stichtag_leer is None:
+            return [
+                f"abschluss: leer, und der Dateiname {Path(pfad).name} nennt "
+                "keinen Stichtag (erwartet abschluss_<JJJJ-MM-TT>.parquet) — "
+                "ohne Stichtag laesst sich die leere Bilanz nicht nachrechnen"
+            ]
+        neu_leer = _rechne(stamm, historie, config, stichtag_leer, scheiben,
+                           merkmale, schichten, verankerung, reduktionen)
+        if len(neu_leer):
+            return [
+                f"abschluss: leer, die Neuberechnung zum "
+                f"{stichtag_leer.isoformat()} findet aber {len(neu_leer)} "
+                "Police(n) in Kraft — der Stand ist abgeschnitten"
+            ]
+        return []
     stichtage = fest["stichtag"].unique()
     if len(stichtage) != 1:
         return [f"abschluss: mehrere Stichtage in einer Datei ({len(stichtage)})"]
@@ -220,7 +284,7 @@ def pruefe_abschluss(
     befunde.extend(validate_abschluss(fest))
 
     neu = _rechne(stamm, historie, config, stichtag, scheiben, merkmale,
-                  schichten, verankerung, reduktionen)
+                  schichten, verankerung, reduktionen, konvention=str(konvention.name))
     kern_stand_alt = sorted(set(fest["kern_version"]))
     if kern_stand_alt != [KERN_VERSION]:
         befunde.append(
@@ -263,6 +327,22 @@ def pruefe_abschluss(
                     f"{alt_wert!r}, neu {neu_wert!r}"
                 )
     return befunde
+
+
+def lies_abschluss(
+    quelle: Union[Path, bytes],
+) -> Tuple[pd.DataFrame, AbschlussKonvention]:
+    """Eine Abschlussdatei lesen — mit ihrer Bewertungskonvention.
+
+    Der EINE Leseweg fuer festgeschriebene Abschluesse (Umstellung
+    2026-10-01): Jeder Leser bekommt die Tabelle nur zusammen mit dem, was
+    ``models.bestand.abschluss_konvention`` ueber sie sagt, und muss sich
+    damit entscheiden, ob ihn die Konvention betrifft. ``quelle`` ist ein
+    Pfad oder die bereits gelesenen (gebundenen) Bytes.
+    """
+    roh = io.BytesIO(quelle) if isinstance(quelle, (bytes, bytearray)) else Path(quelle)
+    tabelle = read_portfolio(roh)  # type: ignore[arg-type]
+    return tabelle, abschluss_konvention(tabelle)
 
 
 def vorhandene_abschluesse(ziel_dir: Path) -> Dict[_dt.date, Path]:

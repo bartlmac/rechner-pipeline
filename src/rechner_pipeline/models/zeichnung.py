@@ -34,6 +34,19 @@ eingefuehrt (T20/U1: aus keinem Beleg war ablesbar, ob ein Mensch oder
 eine KI-Session gezeichnet hatte). Die gates-Liste einer Agentenrolle
 bleibt leer — was ein Agent zeichnet, ist kein Gate.
 
+**Nachtrag 2026-09-30 (Entscheid des Maintainers): Schluesselklasse
+``betrieb``.** Der Tagesbetrieb hatte keinen Zeugen ausser sich selbst:
+Wer die Ablage beschreiben konnte, schrieb Protokoll und Eingaenge
+stimmig um, und jede Pruefung las nur, was derselbe Schreiber hinterlassen
+hatte (Pruefrunde nach T27, Runde C). Ein Programm, das Protokollzeilen
+und Eingaenge zeichnet, ist weder ``mensch`` noch ``simulation`` noch
+``agent`` — es handelt nicht fuer eine Person und legt nichts vor, es
+bezeugt, dass es diese Zeile geschrieben hat. Die Rolle heisst
+``betrieb/<name>`` (heute ``betrieb/tageslauf``), ihre Klasse ``betrieb``,
+ihre gates-Liste ist leer wie die eines Agenten: Der Betrieb zeichnet
+Urheberschaft, nie ein Gate. Er steht deshalb NICHT unter den
+zeichnenden Klassen, und kein P9-Snapshot nimmt ihn an.
+
 Der praktische Grund: Bei vielen kleinen Migrationstranchen mit
 taeglichen Exporten kann kein Mensch jeden Export zeichnen. Ein Agent
 kann es, und der Beleg sagt, dass es einer war. Der Mensch zeichnet
@@ -55,12 +68,13 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-#: Die Schluesselklassen (ADR-018).
-SCHLUESSELKLASSEN = ("mensch", "simulation", "agent")
+#: Die Schluesselklassen (ADR-018; ``betrieb`` seit dem Nachtrag 2026-09-30).
+SCHLUESSELKLASSEN = ("mensch", "simulation", "agent", "betrieb")
 #: Klassen, deren Schluessel eine Annahme zeichnen duerfen.
 ZEICHNENDE_KLASSEN = ("mensch", "simulation")
-#: Rollenkennungen tragen die Ebene: mensch/<funktion> oder agent/<name>.
-ROLLEN_MUSTER = re.compile(r"^(mensch|agent)/[a-z][a-z0-9-]*$")
+#: Rollenkennungen tragen die Ebene: mensch/<funktion>, agent/<name> oder
+#: betrieb/<name> (das Programm des Tagesbetriebs, Nachtrag 2026-09-30).
+ROLLEN_MUSTER = re.compile(r"^(mensch|agent|betrieb)/[a-z][a-z0-9-]*$")
 ORDNUNG_SCHEMA_VERSION = 2
 
 
@@ -114,8 +128,12 @@ def validiere_zeichnung(zeichnung: object, *, form: str = "beide") -> List[str]:
     pflicht = {"rolle", "ordnung_sha256", "schluesselklasse"}
     fehler: List[str] = []
     mandat = zeichnung.get("mandat_sha256")
+    glied = zeichnung.get("ordnungsglied_sha256")
+    if glied is not None and not (isinstance(glied, str) and _SHA256.match(glied)):
+        fehler.append("zeichnung.ordnungsglied_sha256 muss ein SHA-256 sein (das Glied der "
+                      "Ordnungslinie, ADR-025)" + AUSWEG)
     if not (
-        pflicht <= schluessel <= pflicht | {"mandat_sha256"}
+        pflicht <= schluessel <= pflicht | {"mandat_sha256", "ordnungsglied_sha256"}
         and all(isinstance(zeichnung.get(k), str) and zeichnung[k] for k in pflicht)
         and gueltige_rollenkennung(zeichnung.get("rolle"))
         and ordnung_ok
@@ -125,7 +143,7 @@ def validiere_zeichnung(zeichnung: object, *, form: str = "beide") -> List[str]:
         fehler.append(
             "zeichnung muss {rolle (Rollenkennung ebene/name), ordnung_sha256 "
             "(SHA-256), schluesselklasse in (mensch, simulation)[, mandat_sha256 "
-            "(SHA-256)]} sein" + AUSWEG
+            "(SHA-256)][, ordnungsglied_sha256 (SHA-256)]} sein" + AUSWEG
         )
     if zeichnung.get("schluesselklasse") == "simulation" and not (
         isinstance(mandat, str) and _SHA256.match(mandat)
@@ -173,11 +191,72 @@ def gueltige_rollenkennung(rolle: object) -> bool:
 #: abgenommen. Nur wenn sie ausnahmsweise einen neuen Rechenweg erzwingt,
 #: ist sie eine Kern-Aenderung — und der Beleg zeigt dann genau das.
 #:
-#: Sie traegt ``regression`` als PFLICHTbeleg und ist damit ohne den
-#: Regressionsproduzenten bewusst nicht zeichenbar. Das ist Absicht: Der
-#: geaenderte Kern bewertet nach der Migration den laufenden Bestand
-#: weiter, und diese Wirkung sieht sonst niemand.
-GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-O1", "A-K2", "A-B1")
+#: Sie traegt ``regression`` als PFLICHTbeleg: Der geaenderte Kern bewertet
+#: nach der Migration den laufenden Bestand weiter, und diese Wirkung sieht
+#: sonst niemand.
+#:
+#: Nachtrag 2026-10-01 (Entscheid des Maintainers, ADR-018): A-K2 nimmt
+#: den KERNSTAND ab, auf dem ein Fall rechnet, A-O1 den T-BOX-STAND; A-M4
+#: verlangt beide nach einer Regel (``models.standabnahme``: im Fall
+#: gezeichnet, "keine Aenderung" ueber einen Verweis auf eine fruehere
+#: Abnahme, oder fuer die T-Box die Basislinie). Bis der
+#: Regressionsproduzent gebaut ist, steht an
+#: seiner Stelle die benannte Ausnahme (``models.kernabnahme``); die
+#: Zeichnung deckt dann nur die qualitative Pruefung der Aenderungen.
+#:
+#: ``A-B2.zugangsabnahme`` (ADR-022, Entscheid des Maintainers 2026-09-30):
+#: die Abnahme des ZUGANGS eines abgenommenen Bestands in die produktive
+#: Ablage. A-M1 bis A-M4 und die Fuehrungsprobe urteilen im Fall, mit der
+#: Config des Falls; was die Registrierung in der Ablage bewirkt, sah bis
+#: dahin niemand, und der erste Monatsabschluss danach stand schon fest.
+#: Die Zugangsprobe (``betrieb.zugangsprobe``) faehrt die Ablage einmal
+#: mit und einmal ohne den Eingang; ihre Differenz ist der Beleg.
+#: Gezeichnet wird sie von ``mensch/betrieb`` wie die Auslieferung — der
+#: Betrieb verantwortet, was er fuehrt; ``agent/betrieb`` legt vor.
+#:
+#: ``A-T1.tarifwerk`` und ``A-B3.anfangsbestand`` (ADR-025, Entscheid des
+#: Maintainers 2026-10-01: "entweder eine Initialzeichnung an allen
+#: relevanten Zustaenden oder gar nicht"): die Abnahme des TARIFWERKS der PLV
+#: (Tarifplaene und Parametrierung der eigenen Tarifgenerationen; gezeichnet
+#: von ``mensch/aktuariat``, Gegenstand ``T`` nach ADR-012) und des
+#: ANFANGSBESTANDS einer aufgesetzten Ablage (``mensch/betrieb``). Mit
+#: Kernstand (A-K2) und T-Box-Stand (A-O1) sind das die vier Gegenstaende
+#: der Erstabnahme des Zielsystems (``models.standabnahme``).
+#:
+#: ``A-M6.fallauftrag`` und ``A-M5.fallabbruch`` (ADR-026, Entscheid des
+#: Maintainers 2026-10-01: "jemand muss es beauftragen ... und das kann nur
+#: ein Mensch sein (Auftrag zeichnen)"): der Lebenslauf eines Falls. Der
+#: Fallauftrag am Anfang, gezeichnet vom Vorstand (der Wurzelrolle der Linie);
+#: jeder weitere Abnahmepunkt des Falls setzt ihn voraus. Der Fallabbruch am
+#: Ende, gezeichnet von der Programmleitung des Falls — mit dem Recht, das ihr
+#: der Fallauftrag gibt (:data:`FALLROLLEN_GATES`).
+GUELTIGE_GATES = ("A-Q1", "A-M1", "A-M2", "A-M3", "A-M4", "A-M5", "A-M6", "A-O1", "A-K2",
+                  "A-T1", "A-B1", "A-B2", "A-B3")
+
+#: Der Lebenslauf eines Falls (ADR-026): Auftrag und Abbruch.
+AUFTRAG_GATE = "A-M6"
+ABBRUCH_GATE = "A-M5"
+#: Die Fall-Rolle, die den Fall fuehrt (ADR-018: "entsteht mit einem Fall und
+#: endet mit ihm"). Sie steht in keiner Ordnung der Linie; ihr Recht kommt aus
+#: dem Fallauftrag.
+PROGRAMMLEITUNG = "mensch/programmleitung"
+#: Gates, deren Zeichnungsrecht aus dem FALLAUFTRAG kommt, nicht aus der
+#: Ordnung der Linie — Gate -> Fall-Rolle. Die EINE Regel, woher eine Rolle ihr
+#: Recht hat (:func:`zeichnende_rolle_fehler`): fuer diese Gates der
+#: Fallauftrag des Falls, fuer jedes andere die Ordnung (mit Linie: die, unter
+#: der gezeichnet wurde). Eine Ordnung kann sie deshalb niemandem geben.
+FALLROLLEN_GATES: Dict[str, str] = {ABBRUCH_GATE: PROGRAMMLEITUNG}
+#: Die Gates des Lebenslaufs brauchen weder A-Box noch P-Q3: Der Auftrag steht
+#: VOR der ersten Extraktion, der Abbruch kann jederzeit kommen.
+LEBENSLAUF_GATES: Tuple[str, ...] = (AUFTRAG_GATE, ABBRUCH_GATE)
+
+#: Was eine Ordnung einer Rolle geben kann: die P9-Gates AUSSER denen der
+#: Fall-Rollen (ihr Recht kommt aus dem Fallauftrag) und die
+#: Ordnungsaenderung ``A-Z1`` (ADR-025). ``A-Z1`` zeichnet die Wurzelrolle (Vorstand)
+#: — kein P9-Snapshot, sondern das Anhaengen eines Glieds an die
+#: Versionslinie der Ordnung (``models.ordnungslinie``); das Entscheid-Kommando
+#: kennt es deshalb nicht.
+ZEICHENBARE_GATES = tuple(g for g in GUELTIGE_GATES if g not in FALLROLLEN_GATES) + ("A-Z1",)
 
 #: Zeichenbare Gates OHNE Belegvertrag — die begruendete Ausnahme.
 #:
@@ -303,11 +382,25 @@ def lade_zeichnungsordnung(
         daten = json.loads(roh.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return None, None, [f"Zeichnungsordnung nicht als JSON lesbar: {exc}"]
+    fehler = pruefe_ordnung(daten)
+    if fehler:
+        return None, None, fehler
+    sha = hashlib.sha256(roh).hexdigest()
+    return daten, sha, []
+
+
+def pruefe_ordnung(daten: object) -> List[str]:
+    """Die Regeln einer Zeichnungsordnung (Schema 2) ueber ihren INHALT.
+
+    Eine Regel fuer zwei Leser: den Lader (:func:`lade_zeichnungsordnung`)
+    und die Versionslinie der Ordnung (``models.ordnungslinie``), die den
+    Inhalt eines Glieds ohne Datei prueft. Leer = in Ordnung.
+    """
     fehler: List[str] = []
     if not isinstance(daten, dict):
-        return None, None, ["Zeichnungsordnung: kein JSON-Objekt"]
+        return ["Zeichnungsordnung: kein JSON-Objekt"]
     if daten.get("schema_version") == 1:
-        return None, None, [
+        return [
             "Zeichnungsordnung nach Schema 1 wird nicht mehr gelesen "
             "(ADR-018): Rollen heissen jetzt mensch/<funktion> oder "
             "agent/<name> und tragen eine schluesselklasse (mensch, "
@@ -315,10 +408,10 @@ def lade_zeichnungsordnung(
         ]
     if daten.get("schema_version") != ORDNUNG_SCHEMA_VERSION:
         fehler.append(f"Zeichnungsordnung: schema_version {ORDNUNG_SCHEMA_VERSION} erwartet")
-        return None, None, fehler
+        return fehler
     rollen = daten.get("rollen")
     if not isinstance(rollen, dict) or not rollen:
-        return None, None, ["Zeichnungsordnung: 'rollen' fehlt oder leer"]
+        return ["Zeichnungsordnung: 'rollen' fehlt oder leer"]
     gesehen: Dict[str, str] = {}
     for name, eintrag in rollen.items():
         if not isinstance(eintrag, dict):
@@ -327,7 +420,7 @@ def lade_zeichnungsordnung(
         if not gueltige_rollenkennung(name):
             fehler.append(
                 f"Zeichnungsordnung: Rolle {name!r} traegt keine Ebene — "
-                "erwartet mensch/<funktion> oder agent/<name> (ADR-018)"
+                "erwartet mensch/<funktion>, agent/<name> oder betrieb/<name> (ADR-018)"
             )
             continue
         klasse = eintrag.get("schluesselklasse")
@@ -348,6 +441,26 @@ def lade_zeichnungsordnung(
             fehler.append(
                 f"Zeichnungsordnung: menschliche Rolle {name!r} kann nicht "
                 "die Schluesselklasse 'agent' tragen — Agenten zeichnen nicht"
+            )
+            continue
+        # Ebene und Klasse ``betrieb`` gehoeren zusammen (Nachtrag
+        # 2026-09-30): Ein Programm ist keine Person und kein Agent, und
+        # eine Person ist kein Programm. Sonst liesse sich ein
+        # Menschenschluessel als Betriebsschluessel fuehren oder umgekehrt,
+        # und der Beleg sagte nicht mehr, wer geschrieben hat.
+        if (ebene == "betrieb") != (klasse == "betrieb"):
+            fehler.append(
+                f"Zeichnungsordnung: Rolle {name!r} mit Schluesselklasse "
+                f"{klasse!r} — die Ebene betrieb/ und die Klasse 'betrieb' "
+                "gehoeren zusammen (ADR-018, Nachtrag 2026-09-30)"
+            )
+            continue
+        if klasse == "betrieb" and eintrag.get("gates"):
+            fehler.append(
+                f"Zeichnungsordnung: Betriebsrolle {name!r} mit gates "
+                f"{eintrag.get('gates')} — der Betrieb zeichnet Urheberschaft "
+                "(Protokollzeilen, Eingaenge), nie ein Gate; die Liste muss "
+                "leer sein"
             )
             continue
         if klasse == "agent" and eintrag.get("gates"):
@@ -373,18 +486,23 @@ def lade_zeichnungsordnung(
             )
         gesehen[fp] = name
         gates = eintrag.get("gates")
+        fallrolle = sorted(set(gates) & set(FALLROLLEN_GATES)) if isinstance(gates, list) \
+            and all(isinstance(g, str) for g in gates) else []
+        if fallrolle:
+            fehler.append(
+                f"Zeichnungsordnung: Rolle {name!r} mit {fallrolle} — das Recht dazu kommt aus "
+                "dem Fallauftrag des Falls, nicht aus der Ordnung (ADR-026); eine Ordnung "
+                "gibt es niemandem")
+            continue
         if not isinstance(gates, list) or not all(
-            isinstance(g, str) and (g == "*" or g in GUELTIGE_GATES)
+            isinstance(g, str) and (g == "*" or g in ZEICHENBARE_GATES)
             for g in gates
         ):
             fehler.append(
                 f"Zeichnungsordnung: Rolle {name!r} mit ungueltiger "
-                f"gates-Liste (erlaubt: {list(GUELTIGE_GATES)} oder '*')"
+                f"gates-Liste (erlaubt: {list(ZEICHENBARE_GATES)} oder '*')"
             )
-    if fehler:
-        return None, None, fehler
-    sha = hashlib.sha256(roh).hexdigest()
-    return daten, sha, []
+    return fehler
 
 
 def zeichnungsrolle(
@@ -404,6 +522,162 @@ def rolle_darf_gate(ordnung: dict, rolle: str, gate: str) -> bool:
     return "*" in gates or gate in gates
 
 
+def zeichnende_rolle_fehler(
+    daten: object, gate: str, ordnung: Optional[dict],
+    *, linie: Optional[list], fallauftrag: Optional[dict] = None,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Die EINE Regel fuer jeden Leser, der auf einem Abnahme-Snapshot etwas
+    gruendet: ``(rolle, None)`` oder ``(None, meldung)``.
+
+    Invariante (Entscheid des Maintainers 2026-10-01): Wer einen
+    Abnahme-Snapshot liest, um darauf etwas zu gruenden, haelt die
+    ZEICHNENDE Rolle gegen die Ordnung — und die Rolle ist die des
+    Schluessels, nicht die behauptete. Vier Fragen, in dieser Reihenfolge:
+
+    1. Gibt die Ordnung dem Fingerabdruck der Freigabe eine Rolle? Ohne
+       Ordnung gibt es keine Antwort und damit keine Abnahme.
+    2. Darf diese Rolle das Gate zeichnen (:func:`rolle_darf_gate`)?
+    3. Sind die Rollenfelder des Snapshots (``rolle``, ``zeichnung.rolle``)
+       genau diese Rolle? Das Gate schreibt beim Zeichnen die aus dem
+       Schluessel bestimmte Rolle in beide Felder
+       (``gates.gate_entscheid``: ``rolle = bestimmt``, ``zeichnung_fuer``)
+       — der Leser ist die zweite Haelfte derselben Regel. Ein Snapshot,
+       der eine andere Rolle behauptet, als sein Schluessel hat, ist
+       entweder unter einer anderen Ordnung gezeichnet oder nicht vom Gate
+       geschrieben; in beiden Faellen weiss der Leser nicht, wer
+       eingestanden ist.
+    4. Ist ``zeichnung.schluesselklasse`` die Klasse, die die Ordnung der
+       Rolle gibt — und traegt eine laut Ordnung simulierte Rolle ihr
+       Mandat? Auch die Klasse ist eine Eigenschaft des Schluessels.
+
+    Grenze der Aussage: Die Freigabe ist ein HMAC. Wer den Ring haelt, kann
+    jeden Inhalt gueltig neu signieren — die Regel schuetzt gegen
+    abweichende Ordnungen und fremde Snapshots, nicht gegen den Inhaber des
+    Rings.
+
+    Lebt in ``models``, weil zwei Schichten sie lesen: die Gates (A-M4 haelt
+    seine Vorbedingungen, A-B2 die Abnahmen, auf denen das Soll der Probe
+    steht) und der Betrieb (Registrierung, Zugangsprobe). Die Meldung nennt
+    den Ausweg; der Aufrufer stellt den Dateinamen voran.
+
+    **Mit Ordnungslinie** (``linie``: die geprueften Glieder aus
+    ``models.ordnungslinie.lade_linie``; ADR-025) gilt die Ordnung, unter der
+    der Snapshot GEZEICHNET wurde — lokalisiert ueber das Glied, das seine
+    Zeichnung pinnt —, nicht die heutige ``ordnung`` des Lesers: "Wer durfte
+    damals zeichnen". Eine spaetere Erweiterung der Ordnung entwertet so
+    keine Abnahme, und ein spaeterer Entzug wirkt nicht zurueck (ADR-022,
+    Nachtrag 2026-10-01 — jetzt pruefbar). Ein Snapshot ohne lokalisierbares
+    Glied ist als Grundlage nicht verwendbar.
+
+    **Die Linie ist Pflicht** (ADR-025, Nachtrag 2026-10-01): Ohne Linie
+    (``linie`` None oder leer) begruendet eine Abnahme nichts — der fruehere
+    Weg "gegen die heutige Ordnung des Lesers" entfaellt fuer jeden, der auf
+    einer Abnahme gruendet. Eine Wurzel, die man weglassen kann, ist keine.
+    Wer nur ANZEIGT (Fallbericht, Seite), ruft diese Regel nicht.
+
+    **Woher eine Rolle ihr Recht hat — EINE Regel (ADR-026).** Fuer ein Gate
+    aus :data:`FALLROLLEN_GATES` (der Fallabbruch) ist die Ordnung, gegen die
+    gehalten wird, die des FALLAUFTRAGS (``fallauftrag``: der geltende,
+    angenommene A-M6-Snapshot; ``models.fallauftrag.rechtsordnung``): Die
+    Programmleitung entsteht mit dem Fall, die Linie der PLV kennt sie nicht.
+    Der Snapshot muss genau diesen Auftrag nennen (``fallauftrag``). Fuer jedes
+    andere Gate die Ordnung der Linie wie oben. Die vier Fragen bleiben
+    dieselben.
+    """
+    daten = daten if isinstance(daten, dict) else {}
+    if not linie:
+        return None, (
+            f"ohne Ordnungslinie begruendet eine {gate}-Abnahme nichts — gegen welchen Stand "
+            "der Ordnung sie gezeichnet wurde, ist nur in der Linie lokalisierbar; der Weg "
+            "gegen die heutige Ordnung des Lesers ist entfallen (ADR-025, Nachtrag "
+            "2026-10-01). Ausweg: --linie <linienbereich> angeben (Linienbereich anlegen und "
+            "die Ordnung eintragen: Bedienfolge ADR-025)")
+    from rechner_pipeline.models.ordnungslinie import damalige_ordnung
+
+    # Die eine Stelle, an der ein gruendender Leser das gepinnte Glied
+    # lokalisiert — samt der Abloesung durch spaetere Glieder SEINER Linie
+    # (Erklaerung des Vorstands, Zeitregel; Pruefrunde H, H06/H10).
+    ordnung, meldung = damalige_ordnung(daten, linie, gate=gate)
+    if meldung is not None:
+        return None, meldung
+    if gate in FALLROLLEN_GATES:
+        from rechner_pipeline.models.fallauftrag import auftrag_fehler, rechtsordnung
+
+        auftrag = (fallauftrag or {}).get("auftrag") if isinstance(fallauftrag, dict) else None
+        if auftrag is None or auftrag_fehler(auftrag):
+            return None, (
+                f"{gate} zeichnet die Fall-Rolle {FALLROLLEN_GATES[gate]!r} mit dem Recht aus dem "
+                "Fallauftrag — ohne geltenden Fallauftrag ist nicht pruefbar, wer zeichnen "
+                f"durfte (ADR-026). Ausweg: den Fall beauftragen ({AUFTRAG_GATE}), dann {gate} "
+                "neu zeichnen")
+        if daten.get("fallauftrag") != fallauftrag.get("snapshot_sha256"):
+            return None, (
+                f"der Snapshot nennt den Fallauftrag {str(daten.get('fallauftrag'))[:16]}…, "
+                f"geltend ist {str(fallauftrag.get('snapshot_sha256'))[:16]}… — das Recht der "
+                "Fall-Rolle kommt aus dem geltenden Auftrag (ADR-026). Ausweg: "
+                f"{gate} unter dem geltenden Auftrag neu zeichnen")
+        ordnung = rechtsordnung(auftrag)
+    fingerabdruck = str((daten.get("freigabe") or {}).get("schluessel_sha256") or "")
+    kurz = f"{fingerabdruck[:16]}…"
+    ausweg = (f"Ausweg: {gate} mit dem Schluessel einer berechtigten Rolle neu zeichnen, "
+              f"oder die Ordnung (--zeichnungsordnung) gibt der zeichnenden Rolle {gate}")
+    if not (isinstance(ordnung, dict) and isinstance(ordnung.get("rollen"), dict)):
+        return None, (
+            f"ohne Zeichnungsordnung ist nicht pruefbar, welcher Rolle der Schluessel "
+            f"{kurz} gehoert und ob sie {gate} zeichnen darf — die Abnahme begruendet so "
+            "nichts. Ausweg: --zeichnungsordnung angeben")
+    rolle = zeichnungsrolle(ordnung, fingerabdruck)
+    berechtigt = sorted(r for r in ordnung["rollen"] if rolle_darf_gate(ordnung, r, gate))
+    liste = ", ".join(berechtigt) or "keine"
+    if rolle is None:
+        return None, (
+            f"die Freigabe stammt vom Schluessel {kurz}, den die Zeichnungsordnung keiner "
+            f"Rolle zuordnet — {gate} zeichnet eine Rolle mit {gate} (laut Ordnung: "
+            f"{liste}). {ausweg}")
+    if not rolle_darf_gate(ordnung, rolle, gate):
+        return None, (
+            f"die Freigabe stammt vom Schluessel {kurz}, dessen Rolle {rolle!r} die "
+            f"Zeichnungsordnung nicht fuer {gate} berechtigt — {gate} zeichnet eine Rolle "
+            f"mit {gate} (laut Ordnung: {liste}). {ausweg}")
+    zeichnung = daten.get("zeichnung") if isinstance(daten.get("zeichnung"), dict) else {}
+    behauptet = {feld: wert for feld, wert in (("rolle", daten.get("rolle")),
+                                                ("zeichnung.rolle", zeichnung.get("rolle")))
+                 if wert is not None}
+    abweichend = {feld: wert for feld, wert in behauptet.items() if wert != rolle}
+    if abweichend or not behauptet:
+        return None, (
+            f"der Snapshot behauptet als Rolle "
+            + (", ".join(f"{f}={w!r}" for f, w in sorted(abweichend.items()))
+               or "nichts")
+            + f", die Ordnung gibt seinem Schluessel {kurz} die Rolle {rolle!r} — die "
+            "zeichnende Rolle ist die des Schluessels, nicht die behauptete (ADR-018). "
+            f"Ausweg: {gate} unter der Ordnung neu zeichnen, die diese Rolle so nennt, "
+            "oder die Ordnung (--zeichnungsordnung) des Lesers an die des Zeichnens "
+            "angleichen")
+    # 4. Die Schluesselklasse ist die, die die Ordnung der Rolle gibt — nicht
+    # die behauptete (Angriffsrunde 2026-10-01): Kam sie aus dem Snapshot,
+    # wurde eine laut Ordnung simulierte Rolle als ``mensch`` gefuehrt, die
+    # Mandatspflicht griff nie, und Eingang und Seite meldeten eine
+    # menschliche Zeichnung. Das Gate schreibt beim Zeichnen die Klasse der
+    # Ordnung (``zeichnung_fuer``); auch hier ist der Leser die zweite Haelfte.
+    klasse = schluesselklasse(ordnung, rolle)
+    behauptete_klasse = zeichnung.get("schluesselklasse")
+    if behauptete_klasse != klasse:
+        return None, (
+            f"der Snapshot behauptet die Schluesselklasse {behauptete_klasse!r}, die "
+            f"Ordnung gibt der Rolle {rolle!r} die Klasse {klasse!r} — die Klasse ist die "
+            "der Ordnung, nicht die behauptete (ADR-018). Ausweg: "
+            f"{gate} unter dieser Ordnung neu zeichnen (bei simulation mit --mandat), "
+            "oder die Ordnung des Lesers an die des Zeichnens angleichen")
+    # Die Mandatspflicht rechnet auf der Klasse der ORDNUNG (ADR-018).
+    if klasse == "simulation" and not _SHA256.match(str(zeichnung.get("mandat_sha256") or "")):
+        return None, (
+            f"die Rolle {rolle!r} ist laut Ordnung simuliert, der Snapshot traegt aber "
+            "kein Mandat (mandat_sha256) — eine simulierte Rolle handelt ohne Mandat "
+            f"nicht (ADR-018). Ausweg: {gate} mit --mandat <datei> neu zeichnen")
+    return rolle, None
+
+
 def schluesselklasse(ordnung: dict, rolle: str) -> Optional[str]:
     """Die Schluesselklasse einer Rolle der Ordnung (None = unbekannte Rolle)."""
     eintrag = ordnung["rollen"].get(rolle)
@@ -412,7 +686,7 @@ def schluesselklasse(ordnung: dict, rolle: str) -> Optional[str]:
 
 def zeichnung_fuer(
     ordnung: dict, ordnung_sha256: str, schluessel_sha256: str,
-    mandat_sha256: Optional[str] = None,
+    mandat_sha256: Optional[str] = None, ordnungsglied_sha256: Optional[str] = None,
 ) -> Optional[Dict[str, str]]:
     """Der Zeichnungs-Eintrag eines Belegs: Rolle (aus dem Schluessel
     bestimmt), Ordnungs-Hash, Schluesselklasse, optional das Mandat.
@@ -431,4 +705,10 @@ def zeichnung_fuer(
     }
     if mandat_sha256:
         eintrag["mandat_sha256"] = mandat_sha256
+    # Das Glied der Ordnungslinie, unter dem gezeichnet wird (ADR-025): Es
+    # macht die Ordnung in der Geschichte lokalisierbar und bindet die
+    # unsignierte Wurzel der Linie — ein ausgetauschtes Glied faellt bei
+    # jedem Leser auf, der die Abnahme in der Linie sucht.
+    if ordnungsglied_sha256:
+        eintrag["ordnungsglied_sha256"] = ordnungsglied_sha256
     return eintrag

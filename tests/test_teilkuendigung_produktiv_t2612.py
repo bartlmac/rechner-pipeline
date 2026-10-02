@@ -89,7 +89,7 @@ def test_der_geschichtete_zweig_kuendigt_nur_den_grund():
     gerechnet."""
     grund, f, jahr = _kern(), 0.6, 8
     scheibe = _kern(4000.0)
-    teile = reduziere_geschichtet(grund, [(5, scheibe)], jahr, f, verfahren=TEILKUENDIGUNG)
+    teile = reduziere_geschichtet(grund, [(5, scheibe)], jahr, f, verfahren=TEILKUENDIGUNG, stoab_je_baustein=False)
     (e0, g), (e1, sch) = teile
     assert (e0, e1) == (0, 5)
     assert g.vs_neu == pytest.approx(f * grund.mp.sum_insured)
@@ -100,7 +100,8 @@ def test_der_geschichtete_zweig_kuendigt_nur_den_grund():
     m = 12 * 10
     reduziert = vertrags_monatsreserve_reduziert(
         [(0, ReduzierterVertrag(kern=grund, reduktion=g)),
-         (5, ReduzierterVertrag(kern=scheibe, reduktion=sch))], m)
+         (5, ReduzierterVertrag(kern=scheibe, reduktion=sch))], m,
+        stoab_je_baustein=False)
     neu = Rechenkern(dataclasses.replace(grund.mp, sum_insured=f * grund.mp.sum_insured))
     erwartet = vertrags_monatsreserve(neu, [], m).vx_mrv + vertrags_monatsreserve(scheibe, [], m - 60).vx_mrv
     assert reduziert.vx_mrv == pytest.approx(erwartet, rel=1e-9)
@@ -109,10 +110,12 @@ def test_der_geschichtete_zweig_kuendigt_nur_den_grund():
 def _welt():
     anker = '[[generation]]\nname = "klv/zellen"\n'
     assert anker in _CONFIG_TOML
+    # Der uebernommene Tarif kennt nur die Teilkuendigung, aus ihrer eigenen
+    # Rate (Entscheid des Maintainers 2026-10-01; Annahme A1 entfallen).
     toml = _CONFIG_TOML.replace(anker, anker + 'red_verfahren = "teilkuendigung"\n', 1).replace(
         "[annahmen]\nerh_prozent = 0.05",
-        f"[annahmen]\nerh_prozent = 0.05\nred_anteil = {ANTEIL}",
-    ) + "\n[annahmen.herabsetzung]\na = 0.08\nb = 0.0\n"
+        f"[annahmen]\nerh_prozent = 0.05\ntk_anteil = {ANTEIL}",
+    ) + "\n[annahmen.teilkuendigung]\na = 0.08\nb = 0.0\n"
     config = config_aus_text(toml)
     assert config.validate() == [], "die Teilkuendigung ist gebaut — die Config ist gueltig"
     stamm = _stamm([{"id": p, "beginn": "2015-01-01", "zugang": "2026-01-01"} for p in POLICEN])
@@ -139,20 +142,26 @@ def test_die_engine_bucht_summe_schicht_und_auszahlung_und_pb1_leitet_sie_her():
     felder = gen.generation_fields()
     haupt = stamm.set_index("police_id")
     led = ergebnis.ledger
-    red = led[led["ereignis"] == "RED"]
+    red = led[led["ereignis"] == "TKU"]
     assert len(red) > 0, "Fixture ohne Teilkuendigung bezeugt nichts"
+    # Die Zusage dieses Tests ist die des ERSTEN Vorgangs einer Police auf dem
+    # beitragspflichtigen Vertrag (Folgen haelt tests/test_vorgangsfolge_leser.py).
+    pex = ergebnis.historie[ergebnis.historie["status_code"] == "PEX"].set_index("police_id")
     mit_scheibe = 0
     for pid, zeilen in red.groupby("police_id"):
         pid = int(pid)
         jahr = int(zeilen["vertragsjahr"].iloc[0])
+        zeilen = zeilen[zeilen["vertragsjahr"] == jahr]
+        if pid in pex.index and pex.loc[pid, "status_date"] <= zeilen["status_date"].iloc[0]:
+            continue
         arten = dict(zip(zeilen["betrag_art"], zeilen["betrag"]))
-        assert set(arten) == {"VS_herabsetzung", "dDK_absorption", "RKW_teilkuendigung"}, arten
+        assert set(arten) == {"VS_teilkuendigung", "dDK_absorption", "RKW_teilkuendigung"}, arten
         mp = ModelPoint(**model_point_kwargs(haupt.loc[pid], felder))
         grund = Rechenkern(mp)
         erh = led[(led["police_id"] == pid) & (led["ereignis"] == "ERH")
                   & (led["betrag_art"] == "VS_erhoehung") & (led["vertragsjahr"] < jahr)]
         mit_scheibe += int(len(erh) > 0)
-        assert arten["VS_herabsetzung"] == pytest.approx(
+        assert arten["VS_teilkuendigung"] == pytest.approx(
             ANTEIL * mp.sum_insured + float(erh["betrag"].sum()), rel=1e-9)
         schicht = schichtwert_bei(_parameter(), MONATE_TA, mp, 12 * jahr)
         assert schicht > 0.0
@@ -185,9 +194,13 @@ def test_die_teilkuendigung_senkt_immer():
     Summe nicht heben: Sie geht in die Auszahlung, nicht in die Summe."""
     _config, stamm, _s, _v, ergebnis = _welt()
     led = ergebnis.ledger
-    red = led[(led["ereignis"] == "RED") & (led["betrag_art"] == "VS_herabsetzung")]
+    red = led[(led["ereignis"] == "TKU") & (led["betrag_art"] == "VS_teilkuendigung")]
     assert len(red) > 0
-    for z in red.to_dict("records"):
+    pex = set(ergebnis.historie.loc[ergebnis.historie["status_code"] == "PEX", "police_id"])
+    # Der erste Vorgang je Police auf dem beitragspflichtigen Vertrag.
+    for z in red.groupby("police_id").head(1).to_dict("records"):
+        if int(z["police_id"]) in pex:
+            continue
         pid, jahr = int(z["police_id"]), int(z["vertragsjahr"])
         erh = led[(led["police_id"] == pid) & (led["ereignis"] == "ERH")
                   & (led["betrag_art"] == "VS_erhoehung") & (led["vertragsjahr"] < jahr)]

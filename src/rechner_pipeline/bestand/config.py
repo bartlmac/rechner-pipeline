@@ -37,6 +37,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 from rechner_pipeline.kern.beitragsreduktion import (
     PRODUKTIV_AUSFUEHRBAR, PROSPEKTIV, VERFAHREN,
 )
+from rechner_pipeline.kern.vorgangsfolge import TKU_UMFAENGE, tku_umfang_fuer
 from rechner_pipeline.models.bestand import (
     BU_GENERATION_FIELDS,
     GENERATION_FIELD_DEFAULTS,
@@ -257,6 +258,16 @@ class TarifGeneration:
     scheiben_mit_gamma1: bool = False
     stoab_je_baustein: bool = False
     red_verfahren: str = PROSPEKTIV
+    #: Umfang der Teilkuendigung (Tarifplan KLV 7.2, Entscheid B1 vom 2026-10-01): ob sie
+    #: jeden Baustein proportional kuendigt (``alle_bausteine``, die eigenen
+    #: Tarife der PLV, Entscheid des Maintainers 2026-10-01) oder nur die
+    #: Grundversicherung (``grundversicherung``, Bedingungswerk des
+    #: uebernommenen Tarifs, Ziffer 6). None heisst: ohne Angabe gilt das
+    #: Bedingungswerk, das ``red_verfahren`` nennt — ein Tarif, der keine
+    #: Beitragsherabsetzung kennt (``teilkuendigung``, der uebernommene
+    #: Tarif), kuendigt nur die Grundversicherung, jeder andere alle
+    #: Bausteine. Ein Umstellen ist EIN Wert im Generationsblock.
+    tku_umfang: Optional[str] = None
     #: Nummernkreis der Generation (Review T22-09): Die Police-Nummern
     #: beider Erzeuger (Jahresneuzugang, Tagesneugeschaeft) und
     #: ihre Seeds hingen an der POSITION der Generation in der Config —
@@ -309,13 +320,14 @@ class TarifGeneration:
         """Die Tarifwerks-Eigenschaften der Fuehrung — ein Satz, ein Name.
 
         Jeder Konsument (Uebernahme, Ereignis-Engine, Bewertung,
-        Ledger-Herleitung, Fuehrungsprobe) liest die drei Schalter ueber
+        Ledger-Herleitung, Fuehrungsprobe) liest die vier Merkmale ueber
         diese eine Methode, damit keiner einen davon still vergisst.
         """
         return {
             "scheiben_mit_gamma1": bool(self.scheiben_mit_gamma1),
             "stoab_je_baustein": bool(self.stoab_je_baustein),
             "red_verfahren": str(self.red_verfahren),
+            "tku_umfang": tku_umfang_fuer(self.red_verfahren, self.tku_umfang),
         }
 
     def jahresziel(self, jahr: int) -> float:
@@ -439,6 +451,11 @@ class TarifGeneration:
             errors.append(
                 f"{prefix}: red_verfahren {self.red_verfahren!r} unbekannt "
                 f"(bekannt: {list(VERFAHREN)})"
+            )
+        if self.tku_umfang is not None and self.tku_umfang not in TKU_UMFAENGE:
+            errors.append(
+                f"{prefix}: tku_umfang {self.tku_umfang!r} unbekannt "
+                f"(bekannt: {list(TKU_UMFAENGE)})"
             )
         # Der Trend ist ein Faktor je Jahr: -1 waere ab dem zweiten Jahr
         # kein Verkauf mehr (und darunter ein negatives Ziel), ueber +1
@@ -721,7 +738,7 @@ class Annahme:
 #: stehen hier, weil der Parser sie von den Ereignisarten unterscheiden
 #: muss: Was weder Ereignisart noch bekannter Skalar ist, ist ein
 #: Schreibfehler und faellt.
-SKALARE_ANNAHMEN: Tuple[str, ...] = ("erh_prozent", "red_anteil")
+SKALARE_ANNAHMEN: Tuple[str, ...] = ("erh_prozent", "red_anteil", "tk_anteil")
 
 ANNAHME_FELDER: Tuple[Tuple[str, str], ...] = (
     ("tod", "Sterblichkeit des Versicherten (KLV: Todesfallleistung)"),
@@ -729,6 +746,8 @@ ANNAHME_FELDER: Tuple[Tuple[str, str], ...] = (
     ("beitragsfreistellung", "Beitragsfreistellung (keine Rechnungsgrundlage)"),
     ("erhoehung", "dynamische Erhoehung (keine Rechnungsgrundlage)"),
     ("herabsetzung", "Herabsetzung des Beitrags (keine Rechnungsgrundlage)"),
+    ("teilkuendigung", "Teilkuendigung eines Summenanteils mit Auszahlung "
+                       "(keine Rechnungsgrundlage)"),
     ("invalidisierung", "Invalidisierung (BU)"),
     ("reaktivierung", "Reaktivierung (BU)"),
     ("aktivensterblichkeit", "Sterblichkeit im Anwaerterstand (BU)"),
@@ -765,6 +784,10 @@ class Annahmen:
     beitragsfreistellung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     erhoehung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     herabsetzung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
+    #: Teilkuendigung (eigener Geschaeftsvorfall ``TKU``, Entscheid des
+    #: Maintainers 2026-10-01): Rate je Vertragsjahr vor dem Ablauf. Vorgabe
+    #: null — ohne Annahme findet sie nicht statt.
+    teilkuendigung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     invalidisierung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     reaktivierung: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
     aktivensterblichkeit: Annahme = field(default_factory=lambda: Annahme(a=0.0, b=0.0))
@@ -776,6 +799,10 @@ class Annahmen:
     #: Herabsetzung auf 0 waere eine Beitragsfreistellung und wird als
     #: solche gefuehrt.
     red_anteil: float = 0.0
+    #: Der FORTGEFUEHRTE Summenanteil einer Teilkuendigung (0.6 = 40 Prozent
+    #: der Grundversicherung gekuendigt). 0.0 heisst "nicht konfiguriert";
+    #: eine Teilkuendigung auf 0 waere ein Rueckkauf und wird als STO gefuehrt.
+    tk_anteil: float = 0.0
 
     def validate(self) -> List[str]:
         errors: List[str] = []
@@ -791,6 +818,18 @@ class Annahmen:
             errors.append(
                 "annahmen: red_anteil ausserhalb [0, 1) — 0 heisst nicht "
                 "konfiguriert, 1.0 waere keine Herabsetzung"
+            )
+        if not math.isfinite(self.tk_anteil):
+            errors.append("annahmen: tk_anteil ist nicht endlich")
+        elif not 0.0 <= self.tk_anteil < 1.0:
+            errors.append(
+                "annahmen: tk_anteil ausserhalb [0, 1) — 0 heisst nicht "
+                "konfiguriert, 1.0 waere keine Teilkuendigung"
+            )
+        if self.teilkuendigung.a > 0.0 and self.tk_anteil == 0.0:
+            errors.append(
+                "annahmen: teilkuendigung mit Rate > 0 verlangt tk_anteil > 0 "
+                "— ohne Hoehe waere die Rate ein Rueckkauf (STO)"
             )
         if self.herabsetzung.a > 0.0 and self.red_anteil == 0.0:
             errors.append(
@@ -1223,6 +1262,8 @@ def config_aus_text(text: str) -> BestandConfig:
                 scheiben_mit_gamma1=g.get("scheiben_mit_gamma1", False),
                 stoab_je_baustein=g.get("stoab_je_baustein", False),
                 red_verfahren=str(g.get("red_verfahren", PROSPEKTIV)),
+                tku_umfang=(str(g["tku_umfang"]) if g.get("tku_umfang") is not None
+                            else None),
                 nummernkreis=(int(g["nummernkreis"]) if g.get("nummernkreis") is not None else None),
                 zins=float(g.get("zins", 0.0)),
                 tafel=str(g.get("tafel", "")),
@@ -1342,7 +1383,9 @@ TARIFWERK_AUSFUEHRBAR: Dict[str, Tuple[Any, ...]] = {
     "scheiben_mit_gamma1": (False, True),
     "stoab_je_baustein": (False, True),
     "red_verfahren": tuple(PRODUKTIV_AUSFUEHRBAR),
+    "tku_umfang": tuple(TKU_UMFAENGE),
 }
+
 
 
 def tarifwerk_luecken(generationen) -> List[Tuple[str, str, Any]]:

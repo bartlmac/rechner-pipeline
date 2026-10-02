@@ -61,7 +61,14 @@ from tests.e2e_fixture import (
     lade_pk1_fixture,
     zellen_config,
 )
-from tests.zeichnung_fixture import VA, annahme_args
+from tests.zeichnung_fixture import (
+    VA,
+    annahme_args,
+    zeichne_kernstand,
+    zeichne_stand,
+    zeichne_tarifwerk,
+    zeichne_tboxstand,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 #: Name der uebernommenen Generation in der Config (Stammspalte tarif_generation).
@@ -86,8 +93,16 @@ def _bereite_fall(
     generationen: tuple[str, ...],
     *,
     scope: str = "tarif",
+    mit_kernstand: bool = True,
+    mit_tboxstand: bool = True,
+    mit_tarifwerk: bool = True,
 ) -> Path:
-    """Echten TG2012-Input vorbereiten; weitere Generationen teilen die Werte."""
+    """Echten TG2012-Input vorbereiten; weitere Generationen teilen die Werte.
+
+    ``mit_kernstand=False`` laesst die A-K2-Annahme weg, ``mit_tboxstand=False``
+    die A-O1-Annahme des T-Box-Uebergangs, ``mit_tarifwerk=False`` die
+    A-T1-Annahme des Tarifwerks — fuer die Tests, deren Gegenstand genau sie
+    ist."""
     fall = bereite_pk1_fall(tmp_path, generationen, scope=scope)
     if scope == "bestand":
         bestandsquelle = tmp_path / "synthetischer-bestand.csv"
@@ -104,6 +119,18 @@ def _bereite_fall(
         "--fall", str(fall), "--repo-root", str(REPO_ROOT),
     ]).exit_code == 0
     assert _p9_annahme(fall, "A-Q1", "A-Box fachlich geprueft").exit_code == 0
+    # Der Kernstand, auf dem der Fall rechnet (Entscheid 2026-10-01): A-M4
+    # verlangt die A-K2-Annahme in jedem Scope; gezeichnet von
+    # mensch/rechenkern mit eigenem Schluessel.
+    # Der T-Box-Stand (A-O1, mensch/architektur) und das Tarifwerk (A-T1,
+    # mensch/aktuariat, ADR-025): jeder Fall traegt sein A-O1 und A-T1 — oder
+    # einen Verweis auf die Erstabnahme der Linie.
+    if mit_tboxstand:
+        zeichne_tboxstand(fall, REPO_ROOT)
+    if mit_tarifwerk:
+        zeichne_tarifwerk(fall, REPO_ROOT)
+    if mit_kernstand:
+        zeichne_kernstand(fall, REPO_ROOT)
     if scope == "tarif":
         # A-M1 geht A-M4 voraus (ADR-010); im Tarif-Scope ohne eigene
         # Belegrollen. Im Bestands-Scope stellt _bereite_bestandsfall
@@ -120,6 +147,17 @@ def _o3_tg2012(fall: Path):
         "--generation", "klv/tg2012",
         "--repo-root", str(REPO_ROOT),
     ])
+
+
+def _b1_fehler_direkt(fall: Path, suite: dict) -> list:
+    """Die P-B1-Bindung von A-M4 (``abnahmebericht._b1_fehler``) auf dem
+    Beleg des Falls, ohne die Stufen davor — fuer Tests, deren Faelschung
+    seit Pruefrunde G schon an der Nachrechnung des Fuehrungswerts faellt."""
+    ledger = fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json"
+    return abnahmebericht._b1_fehler(
+        ledger_pfad=ledger, ledger_text=ledger.read_text(encoding="utf-8"),
+        fall=fall, repo_root=REPO_ROOT, suite=suite,
+        erwartetes_system=gate_entscheid.systemstand(REPO_ROOT))
 
 
 def _abnahmebericht(fall: Path):
@@ -186,8 +224,13 @@ def einpolicen_config(tmp_path: Path, *, uebernahme: Optional[Path] = None) -> P
 
 
 def pb1_vollprofil_argv(lauf: Path, config: Path, bis: str = "2020-01-01") -> list:
-    """Das P-B1-Vollprofil eines Fortschreibungslaufs (T22-01)."""
-    return [
+    """Das P-B1-Vollprofil eines Fortschreibungslaufs (T22-01).
+
+    ``reduktionen.parquet`` ist eine BEDINGTE Ausgabe des Laufs (nur wenn er
+    Herabsetzungen oder Teilkuendigungen gebucht hat) und gehoert dann zum
+    Profil; seit die Configs der PLV beide Vorgaenge erzeugen (2026-10-01),
+    traegt jeder Lauf auf ihnen sie."""
+    argv = [
         "--portfolio", str(lauf / "bestand_gesamt.parquet"),
         "--historie", str(lauf / "historie.parquet"),
         "--ledger", str(lauf / "ledger.parquet"),
@@ -196,6 +239,9 @@ def pb1_vollprofil_argv(lauf: Path, config: Path, bis: str = "2020-01-01") -> li
         "--bis", bis,
         "--manifest", str(lauf / "laufmanifest.json"),
     ]
+    if (lauf / "reduktionen.parquet").is_file():
+        argv += ["--reduktionen", str(lauf / "reduktionen.parquet")]
+    return argv
 
 
 def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
@@ -203,7 +249,7 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
     fall = _bereite_fall(tmp_path, ("klv/tg2012",), scope="bestand")
     assert _o3_tg2012(fall).exit_code == 0
 
-    lauf = fall / "abgeleitet" / "bestand"
+    lauf = fall / "abgeleitet" / "bestand-nach"
     # Der Bestandsfall hat exakt eine Police und die Suite prueft exakt
     # diese eine. Bis Review T22-01 war das ein EIN-ZEILEN-AUSSCHNITT eines
     # groesseren Laufs, ohne Journal und Ledger — und genau so ein
@@ -220,7 +266,7 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
         "sex": "M", "duration": 20, "premium_duration": 15,
         "sum_insured": 100000.0, "zahlweise": 12,
     }]), encoding="utf-8")
-    uebernahme = fall / "abgeleitet" / "uebernahme"
+    uebernahme = fall / "abgeleitet" / "bestand"
     assert bestand_uebernehmen.main([
         "--fall", str(fall), "--zeilen", str(zeilen),
         "--tarif-generation", TARIF_GENERATION, "--stichtag", "2026-01-01",
@@ -250,6 +296,36 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
 
     kern = Rechenkern(KLV_DEFAULT)
     s1, s2 = 12 * 9 + 5, 12 * 10 + 5
+    # Der Fuehrungswert (abnahmebericht 8.0.0): was der Abschluss fuer den
+    # Vertrag fuehrt, ueber die Strecke des Abschlusses aus dem Bestand, den
+    # die Suite bindet, mit der Config der Fuehrung.
+    # Seit Pruefrunde G rechnet A-M4 ihn auf den gebundenen Bytes nach und
+    # haelt die Regelangabe gegen die Spez: Die Suite dieses Tests entsteht
+    # deshalb wie bei der Produzentin (gates.migrationssuite_lauf) — dieselbe
+    # Funktion, jede gelesene Datei gebunden, die Regeln der Spez genannt.
+    import datetime as _dt
+
+    from rechner_pipeline.gates._common import Eingangsbindung
+    from rechner_pipeline.gates.migrationssuite_lauf import (
+        fuehrungswert_rechnen,
+        tarifregeln_des_falls,
+    )
+    from rechner_pipeline.models.fuehrungswert import kopf
+    from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
+
+    bindung = Eingangsbindung(fall)
+    bindung.binde(ziel)
+    regeln = tarifregeln_des_falls(fall, lade_spez_aus_bytes(
+        bindung.binde(spez_pfad(fall, O3_GENERATION)).roh))
+
+    def _neben(name: str):
+        pfad = lauf / name
+        return bindung.binde(pfad).roh if pfad.is_file() else None
+
+    fw_konvention, fw_werte = fuehrungswert_rechnen(
+        read_portfolio(ziel), _neben, bindung.binde(Path(config)).text(),
+        {"stichtag_1": _dt.date(2026, 1, 1), "stichtag_2": _dt.date(2027, 1, 1)},
+        tarifwerk_der_spez={regeln.generation: dict(regeln.tarifwerk)})
     suite = pruefe_bestand(
         [VertragsPruefung(
             police_id="7000001",
@@ -259,13 +335,19 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
             dk_erwartet_1=round(kern.monatsreserve(s1).vx_mrv, 2),
             bjb_erwartet_1=round(kern.gross_annual_premium(), 2),
             dk_erwartet_2=round(kern.monatsreserve(s2).vx_mrv, 2),
+            scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
         )],
         erwartete_anzahl=1,
         stichtag_1="2026-01-01",
         stichtag_2="2027-01-01",
         bestand_sha256=ziel_hash,
         system=gate_entscheid.systemstand(REPO_ROOT),
+        fuehrungswert=kopf(fw_konvention, bestand_sha256=ziel_hash,
+                           config_sha256=sha256(Path(config).read_bytes()).hexdigest()),
+        fuehrungswerte=fw_werte, red_verfahren="prospektiv",
     )
+    suite["eingaben"] = bindung.als_beleg()
+    suite["tarifregeln"] = regeln.als_beleg()
     suite_pfad = fall / "abgeleitet" / "suite.json"
     suite_pfad.write_text(json.dumps(suite, sort_keys=True), encoding="utf-8")
     assert fuehrungsprobe.main([
@@ -363,6 +445,25 @@ def _am1_profil():
     )
 
 
+def _regeln_wie_der_produzent(fall: Path, beleg: dict) -> None:
+    """Was ``gates.aktuartest_lauf`` jedem Beleg eines Bestandsfalls mitgibt:
+    die gelesene Spez unter ``eingaben`` und ihre Regeln unter
+    ``tarifregeln`` (A-M4 haelt beides, Pruefrunde G). Im Scope tarif rechnet
+    die Bestandsstrecke nicht — dort bleibt der Beleg, wie er ist."""
+    from rechner_pipeline import fall as fall_mod
+    from rechner_pipeline.gates._common import Eingangsbindung
+    from rechner_pipeline.gates.migrationssuite_lauf import tarifregeln_des_falls
+    from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
+
+    if fall_mod.lade_scope(fall) != "bestand":
+        return
+    bindung = Eingangsbindung(fall)
+    regeln = tarifregeln_des_falls(fall, lade_spez_aus_bytes(
+        bindung.binde(spez_pfad(fall, O3_GENERATION)).roh))
+    beleg["eingaben"] = bindung.als_beleg()
+    beleg["tarifregeln"] = regeln.als_beleg()
+
+
 def _aktuartest_belege(
     fall: Path, *, drift: float = 0.0, erwarteter_exit: int = 0,
     abnahme: str = "A-M1",
@@ -397,14 +498,15 @@ def _aktuartest_belege(
                     kern.verlaufszeile(monate // 12).vx_mrv + drift, 2
                 )},
                 anlass,
-            ),),
+            ),), scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None,
         )],
         ziehe("vollbestand", ["7000001"]),
         profil,
-        system=gate_entscheid.systemstand(REPO_ROOT),
+        system=gate_entscheid.systemstand(REPO_ROOT), red_verfahren="prospektiv",
     )
     berichte = fall / "abgeleitet" / "berichte"
     berichte.mkdir(parents=True, exist_ok=True)
+    _regeln_wie_der_produzent(fall, test)
     (berichte / f"{kennung}.json").write_text(
         json.dumps(test, sort_keys=True), encoding="utf-8"
     )
@@ -452,7 +554,8 @@ def test_echtes_pk1_schreibt_beleg_und_am4_nimmt_denselben_stand_an(
     }
     assert snapshot["fall_scope"] == "tarif"
     assert set(snapshot["pflichtbelege"]) == {
-        "pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege",
+        "pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege", "kernstand", "tboxstand",
+        "tarifwerkstand",
     }
     assert not any("bestand" in rolle for rolle in snapshot["pflichtbelege"])
 
@@ -498,10 +601,39 @@ def test_bestands_scope_bindet_pb1_suite_und_abnahmebericht_bis_am4(
     assert set(snapshot["pflichtbelege"]) == {
         "pq3_ledger", "aq1_snapshot",
         "am1_snapshot", "am2_snapshot", "am3_snapshot",
-        "pk1_belege", "pb1_ledger", "migrationssuite", "fuehrungsprobe",
+        "pk1_belege", "kernstand", "tboxstand", "tarifwerkstand", "pb1_ledger", "migrationssuite",
+        "fuehrungsprobe",
         "abnahmebericht",
     }
     assert all(snapshot["pflichtbelege"].values())
+
+
+def test_der_abnahmebericht_verlangt_das_auskunftsfeld_der_suite(tmp_path: Path):
+    """Block F, Nachbesserung (A-M4, GATE_VERSION 6.0.0): Die Suite eines
+    Laufs, der die Auskunft zu den Herabsetzungsanteilen nicht nennen konnte
+    (Feld ``red_anteile_datei`` fehlt), wird vom Bericht nicht angenommen;
+    ``null`` (keine Auskunft) ist gueltig, ein Block, der nicht unter den
+    Eingaben der Suite steht, nicht. Mutationsprobe: den Aufruf von
+    ``_suite_auskunft_fehler`` in ``abnahmebericht.main`` entfernen -> rot."""
+    fall = _bereite_bestandsfall(tmp_path)
+    suite_pfad = fall / "abgeleitet" / "suite.json"
+    suite = json.loads(suite_pfad.read_text(encoding="utf-8"))
+    assert suite["red_anteile_datei"] is None
+    assert _abnahmebericht(fall).exit_code == 0
+
+    ohne = {k: v for k, v in suite.items() if k != "red_anteile_datei"}
+    suite_pfad.write_text(json.dumps(ohne, sort_keys=True), encoding="utf-8")
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    assert bericht.errors[0]["code"] == "suite_scope_contract"
+    assert "red_anteile_datei" in " ".join(f["message"] for f in bericht.errors)
+
+    frei = dict(suite, red_anteile_datei={
+        "name": "auskunft.csv", "sha256": "a" * 64, "bezug": {}})
+    suite_pfad.write_text(json.dumps(frei, sort_keys=True), encoding="utf-8")
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    assert bericht.errors[0]["code"] == "suite_scope_contract"
 
 
 def test_ohne_bestandene_fuehrungsprobe_gibt_es_keinen_gruenen_abnahmebericht(
@@ -548,7 +680,7 @@ def test_ohne_bestandene_fuehrungsprobe_gibt_es_keinen_gruenen_abnahmebericht(
     # Der Uebernahmebeleg ist eine Eingabe, die NUR die Probe bindet (P-B1
     # lief auf der Fortschreibung): ihn nachtraeglich zu aendern, saehe
     # ohne Nachhashen niemand.
-    beleg_pfad = fall / "abgeleitet" / "uebernahme" / "uebernahme.json"
+    beleg_pfad = fall / "abgeleitet" / "bestand" / "uebernahme.json"
     original = beleg_pfad.read_bytes()
     beleg = json.loads(original.decode("utf-8"))
     beleg["anfangszustand"] = "grundvertrag"
@@ -1373,13 +1505,20 @@ def test_abnahmebericht_verwechselt_portfolio_rolle_nicht_mit_pb1_nebeneingang(
     suite_pfad = fall / "abgeleitet" / "suite.json"
     suite = json.loads(suite_pfad.read_text(encoding="utf-8"))
     suite["bestand_sha256"] = config_hash
+    # Der Fuehrungswert-Kopf bindet denselben Bestand (abnahmebericht 8.0.0);
+    # stimmig mitgezogen, damit die Pruefung bis zur P-B1-Bindung kommt.
+    suite["fuehrungswert"]["bestand_sha256"] = suite["bestand_sha256"]
     suite_pfad.write_text(json.dumps(suite, sort_keys=True), encoding="utf-8")
 
     bericht = _abnahmebericht(fall)
 
+    # Seit Pruefrunde G (G03) rechnet A-M4 den Fuehrungswert auf den
+    # gebundenen Bytes nach — die umgehaengte Bestandsbindung faellt dort
+    # zuerst. Die P-B1-Bindung bleibt eigens geprueft, an derselben Engine.
     assert bericht.exit_code == 20
-    assert bericht.errors[0]["code"] == "pb1_contract"
-    assert "verschiedene Bestaende" in bericht.errors[0]["message"]
+    assert bericht.errors[0]["code"] == "suite_scope_contract"
+    assert "nachgerechnet" in bericht.errors[0]["message"]
+    assert any("verschiedene Bestaende" in f for f in _b1_fehler_direkt(fall, suite))
 
 
 def test_abnahmebericht_blockiert_veralteten_suite_systemstand(
@@ -1402,7 +1541,7 @@ def test_abnahmebericht_blockiert_teilpruefung_des_pb1_portfolios(
     tmp_path: Path,
 ):
     fall = _bereite_bestandsfall(tmp_path)
-    lauf = fall / "abgeleitet" / "bestand"
+    lauf = fall / "abgeleitet" / "bestand-nach"
     # Seit Review T23-04 liegt jede P-B1-Rolle im Fall — auch die Config.
     config = fall / "abgeleitet" / "bestand-config.toml"
     config.write_bytes((REPO_ROOT / "configs" / "bestand_klv.toml").read_bytes())
@@ -1423,13 +1562,19 @@ def test_abnahmebericht_blockiert_teilpruefung_des_pb1_portfolios(
     suite_pfad = fall / "abgeleitet" / "suite.json"
     suite = json.loads(suite_pfad.read_text(encoding="utf-8"))
     suite["bestand_sha256"] = sha256(portfolio.read_bytes()).hexdigest()
+    # Der Fuehrungswert-Kopf bindet denselben Bestand (abnahmebericht 8.0.0);
+    # stimmig mitgezogen, damit die Pruefung bis zur P-B1-Bindung kommt.
+    suite["fuehrungswert"]["bestand_sha256"] = suite["bestand_sha256"]
     suite_pfad.write_text(json.dumps(suite, sort_keys=True), encoding="utf-8")
 
     bericht = _abnahmebericht(fall)
 
+    # Pruefrunde G (G03): der nachgerechnete Fuehrungswert faellt zuerst;
+    # die P-B1-Bindung der Pruefmenge bleibt eigens geprueft.
     assert bericht.exit_code == 20
-    assert bericht.errors[0]["code"] == "pb1_contract"
-    assert "Suite-Pruefmenge" in bericht.errors[0]["message"]
+    assert bericht.errors[0]["code"] == "suite_scope_contract"
+    assert "nachgerechnet" in bericht.errors[0]["message"]
+    assert any("Suite-Pruefmenge" in f for f in _b1_fehler_direkt(fall, suite))
 
 
 def test_pk1_bleibt_bei_gescheitertem_belegschreiben_nicht_gruen(
@@ -1572,6 +1717,7 @@ def test_am4_verlangt_geltendes_am1_vor_sich(tmp_path: Path):
         "--fall", str(fall), "--repo-root", str(REPO_ROOT),
     ]).exit_code == 0
     assert _p9_annahme(fall, "A-Q1", "A-Box fachlich geprueft").exit_code == 0
+    zeichne_stand(fall, REPO_ROOT)
     assert _o3_tg2012(fall).exit_code == 0
 
     vorzeitig = _p9_annahme(fall, "A-M4", "vor der aktuariellen Abnahme")
@@ -1693,12 +1839,13 @@ def test_am1_rechnet_das_testverdikt_statt_dem_ledger_zu_glauben(
                 12 * 9,
                 {"kVx_MRV": round(kern.verlaufszeile(9).vx_mrv, 2)},
                 ANLASS_UEBERNAHME,
-            ),),
+            ),), scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None,
         )],
         _ziehe("vollbestand", ["7000001"]),
         _am1_profil(),
         system={"commit": "0" * 40, "branch": "erfunden",
                 "dirty": "false", "quellcode_sha256": "1" * 64},
+        red_verfahren="prospektiv",
     )
     test_pfad = fall / "abgeleitet" / "berichte" / "aktuartest.json"
     test_pfad.write_text(json.dumps(erfunden, sort_keys=True),

@@ -26,7 +26,10 @@ from typing import Dict, List
 
 from rechner_pipeline.kern import tafeln
 from rechner_pipeline.kern.tafeln import TafelBereichError
-from rechner_pipeline.kern.konventionen import installment_surcharge
+from rechner_pipeline.kern.konventionen import (
+    installment_surcharge,
+    untergrenze_basissumme,
+)
 from rechner_pipeline.kern.model_point import ModelPoint
 from rechner_pipeline.kern.zustandsmodell import ZustandsBarwerte
 
@@ -321,8 +324,16 @@ class KLV:
         return self.verlaufszeile(int(months_exp) // 12)
 
     def beitragsfreie_summe(self, a0: int) -> float:
-        """VS_bfr bei Beitragsfreistellung am Ende von Vertragsjahr ``a0``."""
-        return self.verlaufszeile(a0).vs_bfr
+        """VS_bfr bei Beitragsfreistellung am Ende von Vertragsjahr ``a0``.
+
+        Nie negativ (Runde F, F2): Innerhalb der Zillmerdauer kann V^MRV bei
+        zulaessigen Parametern negativ sein, die Summe ist dann null — dieselbe
+        Regel wie beim umgewandelten Teil der Herabsetzung
+        (``untergrenze_basissumme``). Die Spalte ``VS_bfr`` der Verlaufszeile
+        bleibt die rohe Tarifformel (Blatt-View, Golden Master); die
+        Ereignis-Anschluesse lesen die Summe hier.
+        """
+        return untergrenze_basissumme(self.verlaufszeile(a0).vs_bfr)
 
     def monatsreserve(self, monate: int) -> Monatsreserve:
         """Reserven nach ``monate`` vollen Monaten — unterjährig interpoliert.

@@ -121,7 +121,7 @@ def test_storno_zahlt_basiswert_plus_schicht_und_p_b1_leitet_es_her():
                    "sum_insured": s["sum_insured"], "zahlweise": h["zahlweise"]}
             kw = model_point_kwargs(row, felder); kw["gamma1"] = float(s["gamma1"])
             teile.append((int(s["erhoehung_jahr"]), Rechenkern(ModelPoint(**kw))))
-        basis = vertrags_rkw(Rechenkern(grund_mp), teile, jahr)
+        basis = vertrags_rkw(Rechenkern(grund_mp), teile, jahr, stoab_je_baustein=False)
         schicht = schichtwert_bei(_parameter(), MONATE_TA, grund_mp, 12 * jahr)
         assert schicht != 0.0
         assert z["betrag"] == basis + schicht, (pid, jahr)
@@ -167,15 +167,17 @@ def test_abschluss_weist_die_schicht_als_eigene_position_aus(tmp_path):
         assert a["rueckkaufswert"] == b["rueckkaufswert"] + korr
         assert b["korrekturschicht"] == 0.0
 
+    ohne = dict(scheiben=None, merkmale=None, reduktionen=None)
     pfad = schreibe_abschluss(stamm, historie, config, stichtag, tmp_path / "ab",
-                              schichten=schichten, verankerung=verankerung)
+                              schichten=schichten, verankerung=verankerung, **ohne)
     fest = read_portfolio(pfad)
     assert list(fest.columns) == list(ABSCHLUSS_NAMES)
     assert (fest["korrekturschicht"] != 0.0).all()
     assert pruefe_abschluss(pfad, stamm, historie, config,
-                            schichten=schichten, verankerung=verankerung) == []
+                            schichten=schichten, verankerung=verankerung, **ohne) == []
     # Ohne die Schicht ist der festgeschriebene Stand nicht reproduzierbar.
-    assert pruefe_abschluss(pfad, stamm, historie, config) != []
+    assert pruefe_abschluss(pfad, stamm, historie, config, schichten=None,
+                            verankerung=None, **ohne) != []
 
 
 def test_schicht_ohne_anker_oder_an_eigenem_vertrag_ist_ein_fehler():

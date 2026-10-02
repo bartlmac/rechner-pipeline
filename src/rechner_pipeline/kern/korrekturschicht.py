@@ -529,6 +529,14 @@ HEILUNG: Mapping[str, Heilungsregel] = {
                     "Gesamt-Deckungskapital einschliesslich Schicht geht in "
                     "die Neuberechnung ein (9.7, Klasse A)",
     ),
+    "TKU": Heilungsregel(
+        heilt=True, geprueft=True,
+        begruendung="Teilkuendigung (eigener Geschaeftsvorfall, Entscheid "
+                    "des Maintainers 2026-10-01): Der Vertrag wird neu "
+                    "gerechnet (f x S), die Schicht geht vollstaendig in die "
+                    "Auszahlung des gekuendigten Anteils (9.7, Klasse A; "
+                    "Entscheid 2026-09-15)",
+    ),
     "PEX": Heilungsregel(
         heilt=True, geprueft=True,
         begruendung="Beitragsfreistellung rechnet neu (9.7, Klasse A), und "

@@ -18,7 +18,15 @@ ist ein harter Fehler, kein Vorbehalt. Angelegt wird ein Eingang mit
 diesem Modul als Kommando (Block B5)::
 
     python -m rechner_pipeline.betrieb.uebernahme --stand <daten> \\
-        --fall <faelle/name> --stichtag 2026-01-01 [--snapshot <sha256>]
+        --fall <faelle/name> --stichtag 2026-01-01 [--snapshot <sha256>] \\
+        [--zugangsabnahme <sha256>]
+
+Seit ADR-022 (Entscheid des Maintainers 2026-09-30) hat der Zugang drei
+Schritte: die Zugangsprobe (``betrieb.zugangsprobe``) auf einer Kopie der
+Ablage, die Zugangsabnahme A-B2 und erst dann die Registrierung. Sie
+verlangt den angenommenen A-B2-Snapshot, der GENAU den Eingang bindet, den
+sie schreibt, und den gefuehrten Stand der Ablage, auf dem sie ihn
+schreibt; der Tageslauf haelt ihn beim Eintritt noch einmal dagegen.
 
 Knoten: klv, bu
 """
@@ -31,6 +39,7 @@ import contextlib
 import dataclasses
 import sys as _sys
 import datetime as _dt
+import io
 import json
 
 try:  # Referenzumgebung ist Linux; ohne fcntl gibt es keine Prozess-Sperre.
@@ -38,13 +47,13 @@ try:  # Referenzumgebung ist Linux; ohne fcntl gibt es keine Prozess-Sperre.
 except ImportError:  # pragma: no cover - fremde Plattform
     fcntl = None  # type: ignore[assignment]
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
 
 from rechner_pipeline.betrieb._loeschen import LoeschFehler, entferne_verzeichnis
-from rechner_pipeline.models.zeichnung import ZEICHNENDE_KLASSEN
-from rechner_pipeline.models.schemas import p9_semantik_fehler
+from rechner_pipeline.models.zeichnung import AUFTRAG_GATE, ZEICHNENDE_KLASSEN
+from rechner_pipeline.models.schemas import P9Snapshot, p9_semantik_fehler, p9_snapshot_sha256
 from rechner_pipeline.bestand.config import BestandConfig
 from rechner_pipeline.bestand.manifest import sha256_bytes
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
@@ -82,7 +91,17 @@ STAGING_DIR = "uebernahme.neu"
 EINGANG_DATEI = "eingang.json"
 #: Schema 2 (Review T24-08): Der Eingang nennt sein Nummernband und
 #: registriert die Uebersetzungstabelle Quell- auf Zielnummer.
-EINGANG_SCHEMA_VERSION = 2
+#: Schema 3 (Pruefrunde nach T27, Runde C; Entscheid des Maintainers
+#: 2026-09-30): Die Registrierung ZEICHNET eingang.json mit dem
+#: Betriebsschluessel (``betriebszeichnung``, Verfahren hmac-sha256-v2 nach
+#: ``models.anker``) — ueber alle Felder: Datei-Hashes, Snapshot-Hash und
+#: den A-M4-Zeichnungsblock mit ``signatur_verifiziert``. Vorher war dieses
+#: Flag nur eine Angabe der Datei: Wer die Ablage beschreiben konnte,
+#: schrieb einen Eingang stimmig um oder legte einen neuen hin (RC14, RC15).
+#: Ein Eingang nach Schema 2 bleibt lesbar, tritt im Betrieb aber nur ein,
+#: wenn eine gezeichnete Protokollzeile ihn schon bezeugt (Aufschaltung).
+EINGANG_SCHEMA_VERSION = 3
+EINGANG_SCHEMA_ALT = 2
 #: Pflichttabellen eines Zugangsstands und ihre Spaltenvertraege.
 PFLICHT = {
     "bestand": STAMM_NAMES,
@@ -167,6 +186,31 @@ def _nebentabellen_fehler_im(verzeichnis: Path) -> List[str]:
     )
 
 
+def _eingang_pb1_fehler(verzeichnis: Path, stichtag: _dt.date, config_pfad: Path) -> List[str]:
+    """Die P-B1-Pruefung ueber die Tabellen eines (halb) angelegten Eingangs.
+
+    Dieselbe Funktion wie die Wache des Tageslaufs, mit dem Stichtag als
+    Horizont. Liegt in der Ablage schon eine Config, werden die Betraege
+    auch hergeleitet; ohne sie (Einrichtung, Config folgt) wird die Form
+    geprueft und ausdruecklich nicht hergeleitet.
+    """
+    from rechner_pipeline.bestand.vorbedingungen import PB1_ROLLEN_DATEIEN, lies_und_pruefe_pb1
+
+    # Die Rollen aus der Tabelle der Engine, nicht abgetippt (N-01); der
+    # Eingang fuehrt den Stamm nur unter seinem eigenen Namen.
+    eingaben: Dict[str, Path] = {}
+    for rolle, datei in PB1_ROLLEN_DATEIEN.items():
+        pfad = verzeichnis / ("bestand.parquet" if rolle == "portfolio" else datei)
+        if pfad.is_file():
+            eingaben[rolle] = pfad
+    mit_config = config_pfad.is_file()
+    if mit_config:
+        eingaben["config"] = config_pfad
+    _tab, _geprueft, fehler, usage = lies_und_pruefe_pb1(
+        eingaben, bis=stichtag)
+    return [f"{b.get('code')}: {b.get('message')}" for b in usage + fehler]
+
+
 #: Was ueber die Zeichnung einer A-M4-Annahme NICHT bekannt ist, heisst so —
 #: nicht leer, nicht None. Aeltere Snapshots (Schema 6) fuehren keine
 #: Schluesselklasse; die Seite sagt dann "nicht ausgewiesen", wie die
@@ -183,6 +227,33 @@ NICHT_AUSGEWIESEN = "nicht ausgewiesen"
 #: Zustand — und ``lies_uebernahme`` nimmt so einen Eingang NICHT in die
 #: Fuehrung (zwei Zeugen, Entscheid 2026-09-22).
 _STANDARD_SCHLUESSELRING: Optional[Mapping[str, bytes]] = None
+
+#: Die Zugangsabnahme eines Eingangs (ADR-022): ein Satz neben
+#: ``eingang.json``, den die Registrierung schreibt, nachdem sie den
+#: A-B2-Snapshot samt Freigabesignatur geprueft und seine Bindungen gegen
+#: IHREN Eingang und den Stand der Ablage gehalten hat — gezeichnet mit dem
+#: Betriebsschluessel, wie eingang.json selbst. Der Tageslauf kennt den Fall
+#: nicht; er liest die Abnahme hier und haelt sie beim Eintritt gegen den
+#: Stand, auf dem er laeuft. Er steht NICHT in ``dateien`` von eingang.json:
+#: Die Abnahme bindet den Hash von eingang.json, und eingang.json kann den
+#: Hash der Abnahme nicht zugleich tragen.
+ZUGANGSABNAHME_DATEI = "zugangsabnahme.json"
+#: Schema 2 (Block F, Nachbesserung): die Bindung an Config, Kern und
+#: Code-Stand der Probe (``bindung``), die der Tageslauf beim
+#: tatsaechlichen Eintritt haelt, und die Soll-Bindung der Abnahmen.
+ZUGANGSABNAHME_SCHEMA_VERSION = 2
+
+#: Die Naht der Zugangsabnahme fuer Tests (Muster: die Naht des
+#: Betriebsschluessels, ``tageslauf._STANDARD_BETRIEBSZEICHNUNG``).
+#: Produktiv bleibt sie None: Ohne A-B2 wird nichts registriert. Die Tests
+#: setzen sessionweit einen Helfer (tests/zugangsabnahme_testhelfer.py), der
+#: fuer eine Registrierung ohne ausdrueckliche Abnahme den Beleg der Probe
+#: und einen gezeichneten A-B2-Snapshot im Fall anlegt und dessen Hash
+#: liefert. Geprueft wird der Snapshot danach auf demselben Weg wie jeder
+#: andere — die Naht ersetzt die Abnahme, nicht ihre Pruefung.
+#: Aufruf: ``naht(fall, ablage_stand=..., eingang_roh=..., am4_snapshot_sha256=...,
+#: zeichner=..., schluesselring=...)``.
+_STANDARD_ZUGANGSABNAHME: Optional[Callable[..., str]] = None
 
 
 def _umnummeriert(tabelle: pd.DataFrame, abbildung: Dict[int, int], name: str) -> pd.DataFrame:
@@ -244,6 +315,22 @@ def zielnummern(eingang: Path) -> Dict[int, int]:
         )
     tabelle = read_portfolio(io.BytesIO(daten),
                              expected_columns=POLICENNUMMERN_NAMES)
+    # Eindeutigkeit auf der ROHTABELLE, bevor sie zur Abbildung wird
+    # (Pruefrunde T27, Befund 16): Ein Dict kollabiert doppelte
+    # Quellnummern still — die letzte Zeile gewinnt —, und die
+    # Bijektionspruefung dahinter sah nur noch eindeutige Schluessel.
+    # Zwei widerspruechliche Zuordnungen vertauschten so die Quellen
+    # zweier Zielpolicen, und der Reader nahm die Bruecke an.
+    doppelt_q = sorted(int(q) for q in tabelle["quelle_police_id"][
+        tabelle["quelle_police_id"].duplicated()].unique())
+    doppelt_z = sorted(int(z) for z in tabelle["ziel_police_id"][
+        tabelle["ziel_police_id"].duplicated()].unique())
+    if doppelt_q or doppelt_z:
+        raise UebernahmeError(
+            f"{pfad}: die Uebersetzung ist keine Abbildung — Quellnummern "
+            f"mehrfach: {doppelt_q[:5]}, Zielnummern mehrfach: {doppelt_z[:5]}; "
+            "eine widerspruechliche Bruecke wird nicht wegreduziert, sondern "
+            "abgewiesen")
     return {int(q): int(z)
             for q, z in zip(tabelle["quelle_police_id"], tabelle["ziel_police_id"])}
 
@@ -282,6 +369,19 @@ def uebersetzung_fehler(
         if daneben:
             fehler.append(
                 f"Zielnummern ausserhalb des Bands {von}..{bis}: {daneben[:5]}")
+        # Die Vergaberegel des Schreibers (eingang_anlegen): die i-te
+        # kleinste Quellnummer bekommt von + i. Aus eingang.json ist die
+        # Sollabbildung damit vollstaendig rekonstruierbar; eine
+        # vertauschte oder verschobene Bruecke ist in sich stimmig und
+        # trotzdem falsch (Angriffsrunde Betrieb) — sie beantwortet die
+        # Rueckfrage "was ist aus eurer Police geworden?" falsch.
+        soll = {q: von + i for i, q in enumerate(sorted(abbildung))}
+        abweichend = sorted(q for q in abbildung if abbildung[q] != soll[q])
+        if abweichend:
+            fehler.append(
+                f"Uebersetzung folgt nicht der Vergaberegel des Eingangs "
+                f"(i-te Quellnummer -> {von} + i) fuer Quellpolicen "
+                f"{abweichend[:5]}")
     if len(set(quellen)) != len(quellen):  # pragma: no cover - dict-Schluessel
         fehler.append("Quellnummern sind nicht eindeutig")
     return fehler
@@ -422,18 +522,110 @@ def naechstes_band(uebernahme: Path, anzahl: int) -> Tuple[int, int]:
     return von, bis
 
 
-def pruefe_am4_snapshot(fall: Path, snapshot_sha256: Optional[str]) -> Dict[str, Any]:
+def pruefe_am4_snapshot(
+    fall: Path, snapshot_sha256: Optional[str], *, ordnung: Optional[Mapping[str, Any]],
+    ordnungslinie: Optional[list],
+) -> Dict[str, Any]:
     """Die Zeichnungsangaben des geprueften Snapshots (siehe
     :func:`lies_am4_snapshot`)."""
-    daten, name, verifiziert = lies_am4_snapshot(fall, snapshot_sha256)
+    daten, name, verifiziert = lies_am4_snapshot(fall, snapshot_sha256, ordnung=ordnung,
+                                                 ordnungslinie=ordnungslinie)
     return _zeichnung_aus_daten(daten, name, verifiziert=verifiziert)
+
+
+#: Was ein Snapshot je Gate fuer die Uebernahme bedeutet — fuer die
+#: Meldungen, die dem Bediener den Ausweg nennen. A-M4 begruendet die
+#: Uebernahme, A-B2 den Eintritt in die Ablage (ADR-022).
+_ABNAHME = {
+    # A-M1 liest die Registrierung nicht fuer sich, sondern als Grundlage
+    # der Zugangsprobe: Ihr Soll ist das Testergebnis, das der A-M1-Snapshot
+    # pinnt, den A-M4 pinnt (Block F, Nachbesserung, Pruefer-Befund 1).
+    "A-M1": ("aktuarielle Abnahme A-M1",
+             "den Stichtagstest abnehmen (python -m rechner_pipeline.gates.gate_entscheid "
+             "--gate A-M1), dann A-M4, Zugangsprobe und A-B2 auf ihm"),
+    "A-M4": ("Migrationsabnahme",
+             "--snapshot <sha256> oder ein gruenes A-M4-Gate-Ledger unter "
+             "abgeleitet/diagnostics/"),
+    "A-B2": ("Zugangsabnahme",
+             "Zugangsprobe fahren (python -m rechner_pipeline.betrieb.zugangsprobe), "
+             "A-B2 zeichnen (python -m rechner_pipeline.gates.gate_entscheid --gate "
+             "A-B2), dann registrieren mit --zugangsabnahme <sha256> oder dem "
+             "gruenen A-B2-Gate-Ledger unter abgeleitet/diagnostics/"),
+    # A-B3 liest nicht die Registrierung, sondern die Bindung des
+    # Anfangsbestands (``betrieb.anfangsbestand binden``, ADR-025) — ueber
+    # denselben einen Leser, im Linienbereich statt im Fall.
+    # A-M6 liest der Betrieb nicht fuer sich, sondern als den Auftrag, den
+    # A-M4, A-M1 und A-B2 signiert nennen (ADR-026, Nachtrag Pruefrunde I).
+    "A-M6": ("Fallauftrag",
+             "der Vorstand beauftragt den Fall (neu) — Vorlage mit python -m "
+             "rechner_pipeline.gates.fall_belegen auftrag, Zeichnung A-M6 —, dann A-M1, "
+             "A-M4, Zugangsprobe und A-B2 unter dem geltenden Auftrag neu zeichnen und "
+             "registrieren"),
+    "A-B3": ("Abnahme des Anfangsbestands",
+             "belegen (python -m rechner_pipeline.betrieb.anfangsbestand belegen), A-B3 "
+             "im Linienbereich zeichnen (python -m rechner_pipeline.gates.gate_entscheid "
+             "--linie <linie> --gate A-B3), dann binden"),
+}
 
 
 def lies_am4_snapshot(
     fall: Path, snapshot_sha256: Optional[str], *,
     schluesselring: Optional[Mapping[str, bytes]] = None,
+    ordnung: Optional[Mapping[str, Any]],
+    ordnungslinie: Optional[list],
 ) -> Tuple[Dict[str, Any], str, bool]:
-    """Den A-M4-Snapshot einer Uebernahme pruefen, soweit es ohne Schluessel geht.
+    """Den A-M4-Snapshot einer Uebernahme pruefen (siehe :func:`lies_abnahme_snapshot`)."""
+    return lies_abnahme_snapshot(fall, "A-M4", snapshot_sha256, schluesselring=schluesselring,
+                                 ordnung=ordnung, ordnungslinie=ordnungslinie)
+
+
+def zeichnende_rolle(
+    daten: Mapping[str, Any], gate: str, ordnung: Optional[Mapping[str, Any]], name: str,
+    *, ordnungslinie: Optional[list],
+) -> str:
+    """Die Rolle, die einen Abnahme-Snapshot gezeichnet hat — oder Verweigerung.
+
+    Der Betriebsweg der EINEN Regel ``models.zeichnung.zeichnende_rolle_fehler``
+    (Entscheid des Maintainers 2026-10-01; dieselbe Funktion haelt das Gate
+    fuer seine Vorbedingungen): Die Rolle kommt aus dem Fingerabdruck der
+    Freigabe ueber die Zeichnungsordnung des Betriebs, sie muss ``gate``
+    zeichnen duerfen, und der Snapshot muss genau sie als Rolle tragen. Bis
+    zum Entscheid hielt der Betrieb nur die A-B2-Freigabe gegen die Ordnung;
+    ein gueltig signierter A-M4-Snapshot eines Schluessels ohne A-M4
+    begruendete eine Uebernahme. Die Signatur sagt, WELCHER Schluessel
+    gezeichnet hat; erst die Ordnung sagt, wer das ist und ob er es darf.
+    """
+    from rechner_pipeline.models.zeichnung import zeichnende_rolle_fehler
+
+    rolle, fehler = zeichnende_rolle_fehler(
+        dict(daten), gate, dict(ordnung) if isinstance(ordnung, Mapping) else None,
+        linie=ordnungslinie)
+    if fehler is not None or rolle is None:
+        raise UebernahmeError(f"{name}: {_ABNAHME[gate][0]}: {fehler}")
+    return rolle
+
+
+def lies_abnahme_snapshot(
+    fall: Path, gate: str, snapshot_sha256: Optional[str], *,
+    schluesselring: Optional[Mapping[str, bytes]] = None,
+    ordnung: Optional[Mapping[str, Any]],
+    ordnungslinie: Optional[list],
+) -> Tuple[Dict[str, Any], str, bool]:
+    """Den Abnahme-Snapshot (A-M1, A-M4 oder A-B2) einer Uebernahme pruefen.
+
+    ``ordnungslinie`` ist Pflicht (ADR-025, Nachtrag 2026-10-01): Ohne die
+    Linie ist nicht lokalisierbar, unter welchem Stand der Ordnung die Abnahme
+    gezeichnet wurde, und sie begruendet nichts — die Rollenregel verweigert.
+
+    Eine Pruefung fuer alle Abnahmen, auf denen ein Zugang steht
+    (ADR-022): Schema, Selbstadressierung, Gate, Entscheid, Fall, exakte
+    Belegrollenmenge (``models.belegrollen``: welche Pflichtbelege der
+    Snapshot pinnt), geltende Spitze der Kette dieses Gates,
+    Freigabesignatur — und die zeichnende Rolle gegen die Zeichnungsordnung
+    des Betriebs (:func:`zeichnende_rolle`). ``ordnung`` ist deshalb
+    Pflicht: Ein Leser ohne Ordnung waere ein Leseweg ohne Rollenpruefung.
+    Die Zugangsabnahme wird nicht schwaecher gelesen als die
+    Migrationsabnahme, und umgekehrt — zwei Lesewege waeren zwei Regeln.
 
     Review T22-06: ``eingang_anlegen`` las irgendeinen 64-stelligen Wert aus
     der editierbaren Gate-Summary, der Snapshot war optional, und
@@ -449,17 +641,17 @@ def lies_am4_snapshot(
     """
     from rechner_pipeline.models.schemas import P9Snapshot, p9_snapshot_sha256
 
+    abnahme, ausweg = _ABNAHME[gate]
     if not snapshot_sha256:
         raise UebernahmeError(
-            f"{fall}: kein A-M4-Snapshot — eine Uebernahme ohne Migrationsabnahme "
-            "gibt es nicht (--snapshot <sha256> oder ein gruenes A-M4-Gate-Ledger "
-            "unter abgeleitet/diagnostics/)"
+            f"{fall}: kein {gate}-Snapshot — eine Uebernahme ohne {abnahme} "
+            f"gibt es nicht ({ausweg})"
         )
     if not _ist_sha256(snapshot_sha256):
         raise UebernahmeError(f"snapshot_sha256 {snapshot_sha256!r} ist keine SHA-256")
-    pfad = Path(fall) / "entscheide" / f"A-M4-{snapshot_sha256}.json"
+    pfad = Path(fall) / "entscheide" / f"{gate}-{snapshot_sha256}.json"
     if not pfad.is_file():
-        raise UebernahmeError(f"{pfad}: der A-M4-Snapshot liegt nicht im Fall")
+        raise UebernahmeError(f"{pfad}: der {gate}-Snapshot liegt nicht im Fall")
     try:
         daten = json.loads(pfad.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -467,22 +659,41 @@ def lies_am4_snapshot(
     fehler = P9Snapshot.validate_payload(daten)
     if fehler:
         raise UebernahmeError(f"{pfad.name}: Snapshot verletzt sein Schema: " + "; ".join(fehler[:3]))
+    # JEDER Snapshot, auf dem der Betrieb gruendet, traegt das aktuelle Schema
+    # (ADR-026, Folgen; Nachtrag Pruefrunde I, I08) — an DIESER einen
+    # Lesestelle, durch die A-M4, A-M1, A-B2, A-B3 und der Fallauftrag gehen.
+    # Vorher hielt es nur die Registrierung fuer A-M4: Eine A-B2 nach Schema 9
+    # (ohne Fallauftrag) trug den Eintritt. Lesbar bleiben alte Schemata fuer
+    # die Anzeige (Seite), gruenden tut auf ihnen nichts.
+    from rechner_pipeline.models.schemas import P9_SNAPSHOT_SCHEMA_VERSION
+
+    if daten.get("schema_version") != P9_SNAPSHOT_SCHEMA_VERSION:
+        raise UebernahmeError(
+            f"{pfad.name}: {abnahme} nach Schema {daten.get('schema_version')!r} — der Betrieb "
+            f"gruendet nur auf Snapshots des aktuellen Schemas ({P9_SNAPSHOT_SCHEMA_VERSION}: "
+            "Zeichnung mit Schluesselklasse unter der Linie, Fallauftrag); den Fall unter dem "
+            "aktuellen Gate neu beauftragen und neu zeichnen (ADR-026)")
     if daten.get("snapshot_sha256") != p9_snapshot_sha256(daten) or daten["snapshot_sha256"] != snapshot_sha256:
         raise UebernahmeError(
             f"{pfad.name}: Selbstadressierung verletzt — Inhalt, behaupteter Hash und "
             "Dateiname stimmen nicht ueberein; die Datei ist kein Snapshot des Gates"
         )
-    if daten.get("gate") != "A-M4":
-        raise UebernahmeError(f"{pfad.name}: Gate {daten.get('gate')!r} ist nicht A-M4")
+    if daten.get("gate") != gate:
+        raise UebernahmeError(f"{pfad.name}: Gate {daten.get('gate')!r} ist nicht {gate}")
     if daten.get("entscheid") != "angenommen":
         raise UebernahmeError(
             f"{pfad.name}: Entscheid {daten.get('entscheid')!r} — nur eine ANGENOMMENE "
-            "Migrationsabnahme begruendet eine Uebernahme"
+            f"{abnahme} begruendet eine Uebernahme"
         )
-    try:
-        fallname = json.loads((Path(fall) / "fall.json").read_text(encoding="utf-8"))["name"]
-    except (OSError, json.JSONDecodeError, KeyError):
-        fallname = Path(fall).name
+    # Der Name des Bereichs: ein Fall (fall.json) oder der Linienbereich der
+    # Erstabnahme (linie.json, ADR-025) — derselbe Leser fuer beide.
+    fallname = Path(fall).name
+    for kennung in ("fall.json", "linie.json"):
+        try:
+            fallname = json.loads((Path(fall) / kennung).read_text(encoding="utf-8"))["name"]
+            break
+        except (OSError, json.JSONDecodeError, KeyError, TypeError):
+            continue
     if daten.get("fall") != fallname:
         raise UebernahmeError(
             f"{pfad.name}: der Snapshot gehoert zum Fall {daten.get('fall')!r}, "
@@ -499,7 +710,7 @@ def lies_am4_snapshot(
     # pruefen; jetzt liest er denselben Vertrag wie das Gate.
     from rechner_pipeline.models.belegrollen import BelegrollenFehler, belegrollen
     try:
-        erwartete_rollen = belegrollen("A-M4", str(daten.get("fall_scope")))
+        erwartete_rollen = belegrollen(gate, str(daten.get("fall_scope")))
     except BelegrollenFehler as exc:
         raise UebernahmeError(f"{pfad.name}: {exc}") from exc
     semantik = p9_semantik_fehler(daten, erwartete_rollen=erwartete_rollen)
@@ -507,6 +718,13 @@ def lies_am4_snapshot(
         raise UebernahmeError(
             f"{pfad.name}: Snapshot ist in sich nicht stimmig: "
             + "; ".join(semantik[:3]))
+    # Gueltigkeit, nicht nur Echtheit (Pruefrunde T27, Befund 05): Der
+    # Snapshot muss die GELTENDE SPITZE der A-M4-Kette des Falls sein.
+    # Eine spaetere Ablehnung mit Vorgaengerbezug ueberholt eine alte
+    # Annahme — das Gate liest die Kette so (ADR-008, ADR-010), der
+    # Eingang liest sie ueber denselben Vertrag (models.snapshot_kette).
+    _pruefe_geltende_spitze(Path(fall) / "entscheide", snapshot_sha256, pfad.name, daten,
+                            fallname=fallname, schluesselring=schluesselring, gate=gate)
     # Der zweite Zeuge: die Freigabesignatur (models.freigabe, dieselbe
     # Pruefung wie im Gate). Ohne Ring bleibt "nicht verifiziert" ein
     # benannter Zustand; mit Ring ist eine falsche Signatur ein Abbruch.
@@ -517,7 +735,111 @@ def lies_am4_snapshot(
         if sig_fehler:
             raise UebernahmeError(f"{pfad.name}: " + "; ".join(sig_fehler))
         verifiziert = True
+    # Der dritte Zeuge: Wer gezeichnet hat, muss das Gate zeichnen duerfen
+    # (Entscheid 2026-10-01). Nach der Signatur — eine Rolle aus einem
+    # Fingerabdruck, dessen Signatur nicht stimmt, sagte nichts.
+    zeichnende_rolle(daten, gate, ordnung, pfad.name, ordnungslinie=ordnungslinie)
+    # Der vierte Zeuge: der Fallauftrag, den die Abnahme signiert nennt
+    # (ADR-026, Nachtrag Pruefrunde I, I07). Er muss die GELTENDE, angenommene
+    # Spitze der A-M6-Kette des Falls sein, echt signiert und von einer Rolle
+    # gezeichnet, die unter der Linie des Betriebs A-M6 zeichnen darf —
+    # dieselbe Lesung wie fuer jede Abnahme hier (Gueltigkeit, nicht nur
+    # Echtheit). Damit fallen beim Betrieb der Rueckzug des Auftrags nach der
+    # Zugangsabnahme, ein neuer Auftrag und "verfallen" auf der Wurzel wie im
+    # Gate. Abnahmen der Linie (A-B3) tragen keinen Auftrag.
+    auftrag = daten.get("fallauftrag")
+    if gate != AUFTRAG_GATE and auftrag is not None:
+        try:
+            lies_abnahme_snapshot(fall, AUFTRAG_GATE, str(auftrag), schluesselring=schluesselring,
+                                  ordnung=ordnung, ordnungslinie=ordnungslinie)
+        except UebernahmeError as exc:
+            raise UebernahmeError(
+                f"{pfad.name}: die {abnahme} steht auf dem Fallauftrag {str(auftrag)[:16]}…, und "
+                f"der traegt nicht (mehr): {exc} — ein Zugang steht nur auf Abnahmen unter dem "
+                "geltenden Auftrag (ADR-026). Ausweg: " + _ABNAHME[AUFTRAG_GATE][1]) from exc
     return daten, pfad.name, verifiziert
+
+
+def _pruefe_geltende_spitze(
+    verzeichnis: Path, snapshot_sha256: str, name: str, daten: Dict[str, Any],
+    *, fallname: Optional[str] = None,
+    schluesselring: Optional[Mapping[str, bytes]] = None,
+    gate: str = "A-M4",
+) -> None:
+    """Die Kette des Gates (A-M4 bzw. A-B2) im Fall lesen und verlangen, dass
+    ``snapshot_sha256`` ihre eindeutige Spitze ist.
+
+    Jede ``<gate>-*.json`` unter ``entscheide/`` zaehlt — auch eine, die
+    nicht das Schema erfuellt: Sie ist ein Fehler der Kette, kein Grund,
+    sie zu ueberlesen. Der geprueft Snapshot selbst wird NICHT ein
+    zweites Mal gelesen (T24-06: geprueft wird, was verwendet wird) —
+    seine ``daten`` kommen vom Aufrufer. Belegt ist damit die
+    Neuregistrierung NACH einer Ablehnung; ob ein frueher rechtmaessig
+    uebernommener Bestand rueckwirkend zu loeschen waere, entscheidet
+    nicht dieser Eingang.
+    """
+    from rechner_pipeline.models.snapshot_kette import (
+        nachfolger_von,
+        pruefe_snapshot_graph,
+    )
+
+    kette: Dict[str, Dict[str, Any]] = {}
+    namen: Dict[str, str] = {}
+    for eintrag in sorted(verzeichnis.glob(f"{gate}-*.json")):
+        if eintrag.name == f"{gate}-{snapshot_sha256}.json":
+            kette[snapshot_sha256] = daten
+            namen[snapshot_sha256] = eintrag.name
+            continue
+        try:
+            glied = json.loads(eintrag.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise UebernahmeError(
+                f"{eintrag.name}: Glied der {gate}-Kette nicht lesbar ({exc}) — "
+                "die geltende Spitze ist damit unbekannt") from exc
+        if not isinstance(glied, dict):
+            raise UebernahmeError(
+                f"{eintrag.name}: Glied der {gate}-Kette ist kein Objekt — die "
+                "geltende Spitze ist damit unbekannt")
+        sha = str(glied.get("snapshot_sha256") or "")
+        if not _ist_sha256(sha) or eintrag.name != f"{gate}-{sha}.json" \
+                or not isinstance(glied.get("vorgaenger"), list):
+            raise UebernahmeError(
+                f"{eintrag.name}: Glied der {gate}-Kette ohne gueltige "
+                "Selbstadressierung oder Vorgaengerliste — die geltende Spitze "
+                "ist damit unbekannt")
+        # Dieselbe Aufnahmeregel wie das Gate (_lade_snapshot_kette), nicht
+        # nur dieselbe Graphregel (Angriffsrunde Betrieb: ein ungezeichnetes
+        # oder fallfremdes Glied galt als gueltiger Nachfolger und meldete
+        # "ueberholt", wo das Gate "Kette verletzt" sagt).
+        glied_fehler = list(P9Snapshot.validate_payload(glied))
+        if glied.get("snapshot_sha256") != p9_snapshot_sha256(glied):
+            glied_fehler.append("Selbstadressierung verletzt")
+        if glied.get("gate") != gate:
+            glied_fehler.append(f"Gate {glied.get('gate')!r} statt {gate!r}")
+        if fallname is not None and glied.get("fall") != fallname:
+            glied_fehler.append(f"Fallbindung {glied.get('fall')!r} statt {fallname!r}")
+        if schluesselring:
+            from rechner_pipeline.models.freigabe import pruefe_freigabe
+            glied_fehler.extend(pruefe_freigabe(glied, schluesselring))
+        if glied_fehler:
+            raise UebernahmeError(
+                f"{eintrag.name}: Glied der {gate}-Kette ist kein gueltiger "
+                "Snapshot — die Kette ist verletzt, die geltende Spitze "
+                "unbekannt: " + "; ".join(glied_fehler[:3]))
+        kette[sha] = glied
+        namen[sha] = eintrag.name
+    spitzen, fehler = pruefe_snapshot_graph(kette, namen)
+    if fehler:
+        raise UebernahmeError(
+            f"{name}: die {gate}-Kette des Falls ist verletzt — " + "; ".join(fehler[:3]))
+    if snapshot_sha256 not in spitzen:
+        folgen = nachfolger_von(kette, snapshot_sha256)
+        beschreibung = ", ".join(
+            f"{namen[s]} (entscheid={kette[s].get('entscheid')!r})" for s in folgen)
+        raise UebernahmeError(
+            f"{name}: nicht die geltende Spitze der {gate}-Kette — ueberholt "
+            f"durch {beschreibung or spitzen}. Uebernommen wird nur, was "
+            "heute gilt; eine alte Annahme ist echt, aber nicht gueltig")
 
 
 #: Die Verzeichnisse eines Falls, in denen Belege des Snapshot-Graphen
@@ -563,7 +885,9 @@ def belegte_tabellen(fall: Path, snapshot: Dict[str, Any]) -> Dict[str, str]:
     }
     if not gesucht:
         return {}
-    tabellen = {f"{n}.parquet" for n in list(PFLICHT) + list(OPTIONAL)}
+    # Auch der Uebernahmebeleg (Angriffsrunde nach T27): Er traegt die
+    # Tarifwerk-Schalter der Abnahme; die Fuehrungsprobe bindet ihn.
+    tabellen = {f"{n}.parquet" for n in list(PFLICHT) + list(OPTIONAL)} | set(BELEGE)
     gefunden: Dict[str, str] = {}
     for ort in BELEGORTE:
         wurzel = Path(fall) / ort
@@ -719,6 +1043,294 @@ class Uebernahme:
     #: Quellnummer -> Zielnummer. Geprueft gelesen (T26-13), damit eine
     #: Rueckfrage nach der Herkunft einer Police beantwortbar bleibt.
     uebersetzung: Dict[int, int] = dataclasses.field(default_factory=dict)
+    #: SHA-256 der eingang.json, wie sie gelesen wurde. Die Protokollzeile
+    #: nennt ihn; ein spaeterer Lauf haelt den Eingang dagegen (Angriffsrunde
+    #: nach T27: ein nach dem Eintritt stimmig umgeschriebener Eingang
+    #: rechnete die Geschichte seit Betriebsbeginn neu).
+    eingang_sha256: str = ""
+
+
+def _zugangsabnahme_satz(daten: Dict[str, Any]) -> Dict[str, Any]:
+    """Was die Betriebszeichnung einer zugangsabnahme.json deckt (alle Felder)."""
+    rest = {k: v for k, v in daten.items() if k != "betriebszeichnung"}
+    return {"zugangsabnahme": rest, "zeichnung": daten.get("betriebszeichnung")}
+
+
+def _eingang_bytes(eingang: Dict[str, Any]) -> bytes:
+    """Die Bytes einer eingang.json — EINE Serialisierung fuer Registrierung
+    und Zugangsprobe, sonst bindet A-B2 einen Eingang, den niemand schreibt."""
+    return (json.dumps(eingang, ensure_ascii=False, indent=2, sort_keys=True)
+            + "\n").encode("utf-8")
+
+
+def _felder_verschieden(soll: Any, ist: Any) -> List[str]:
+    """Die obersten Felder zweier Eingaenge, die sich unterscheiden."""
+    if not isinstance(soll, dict) or not isinstance(ist, dict):
+        return ["(ganzer Eingang)"]
+    return sorted(k for k in set(soll) | set(ist) if soll.get(k) != ist.get(k))
+
+
+def _zugangsabnahme_binden(
+    fall: Path, fallname: str, ab2: Dict[str, Any], ab2_name: str, *,
+    stand_sha256: str, eingang: Dict[str, Any], am4_sha256: str,
+    zeichner: Any, am4: Dict[str, Any],
+    schluesselring: Optional[Mapping[str, bytes]] = None,
+    ab2_verifiziert: bool = True,
+) -> Dict[str, Any]:
+    """Den A-B2-Snapshot an DIESEN Eingang und DIESEN Stand binden (ADR-022).
+
+    Der Snapshot (Schema, Kette, Freigabesignatur: :func:`lies_abnahme_snapshot`)
+    pinnt drei Belege. Jeder wird hier gegen das gehalten, was die
+    Registrierung gerade schreibt:
+
+    * ``am4_snapshot`` — der A-M4-Snapshot, den die Registrierung prueft;
+    * ``eingang`` — der Hash GENAU der eingang.json, die sie schreibt
+      (abweichende Felder werden genannt: meist ein anderes Nummernband,
+      weil inzwischen ein anderer Eingang registriert wurde, oder eine
+      anders geschriebene ``--fall``-Angabe);
+    * ``zugangsprobe`` — der Beleg der Probe am festen Ort im Fall, mit
+      Betriebszeichnung (nachgerechnet mit dem Betriebsschluessel), dem
+      nachgerechneten Urteil und dem Stand der Ablage, auf dem die Probe
+      lief: Er muss der gefuehrte Stand JETZT sein. Lief die Ablage nach
+      der Probe weiter, ist die Abnahme eine ueber einen anderen Stand.
+
+    Block F, Nachbesserung: Das Soll der Probe muss das der GELTENDEN
+    Abnahmen sein (``models.zugangsprobe.soll_bindung_fehler`` gegen den
+    A-M4-Snapshot ``am4`` und den A-M1-Snapshot, den er pinnt — geltende
+    Spitze, angenommen, Freigabesignatur), und die Freigabe der A-B2 muss
+    von einem Schluessel stammen, dessen Rolle die Zeichnungsordnung des
+    Betriebs fuer A-B2 berechtigt (Pruefer-Befunde 1 und 9).
+
+    Rueckgabe: der ungezeichnete Satz der zugangsabnahme.json, samt der
+    Bindung an Config, Kern und Code-Stand der Probe (``bindung``), die
+    der Tageslauf beim tatsaechlichen Eintritt haelt.
+    """
+    from rechner_pipeline.betrieb._zeichnung import betriebszeichnung_fehler
+    from rechner_pipeline.models import zugangsprobe as zp
+
+    ausweg = ("Ausweg: Zugangsprobe auf dem heutigen Stand neu fahren, A-B2 neu "
+              "zeichnen, dann registrieren")
+    # Wer A-B2 gezeichnet hat — zuerst, vor jedem Inhalt, mit derselben Regel
+    # wie fuer A-M4 und A-M1 (zeichnende_rolle). Der Leser hat sie schon
+    # angewandt; hier wird die Rolle fuer die zugangsabnahme.json gebraucht,
+    # und wer _zugangsabnahme_binden mit anders gelesenen Daten ruft,
+    # bekommt dieselbe Pruefung.
+    ordnung = zeichner.ordnung if isinstance(getattr(zeichner, "ordnung", None), dict) else None
+    linie = getattr(zeichner, "ordnungslinie", None)
+    rolle = zeichnende_rolle(ab2, "A-B2", ordnung, ab2_name, ordnungslinie=linie)
+    eingang_sha = sha256_bytes(_eingang_bytes(eingang))
+    belege = ab2.get("pflichtbelege") or {}
+    if belege.get("am4_snapshot") != [am4_sha256]:
+        raise UebernahmeError(
+            f"{ab2_name}: A-B2 pinnt den A-M4-Snapshot {belege.get('am4_snapshot')}, "
+            f"registriert wird auf {am4_sha256[:16]}… — die Zugangsabnahme gilt einer "
+            f"anderen Migrationsabnahme. {ausweg}")
+    beleg_pfad = Path(fall) / zp.BELEG_RELATIV
+    try:
+        roh = beleg_pfad.read_bytes()
+    except OSError as exc:
+        raise UebernahmeError(
+            f"{beleg_pfad}: der Beleg der Zugangsprobe fehlt ({exc}) — A-B2 stuetzt "
+            f"sich auf ihn. {ausweg}") from exc
+    if belege.get("zugangsprobe") != [sha256_bytes(roh)]:
+        raise UebernahmeError(
+            f"{beleg_pfad}: nicht der Beleg, den A-B2 pinnt ({sha256_bytes(roh)[:16]}… "
+            f"statt {belege.get('zugangsprobe')}) — die Probe wurde nach der Abnahme "
+            f"neu gefahren oder der Beleg ersetzt. {ausweg}")
+    try:
+        beleg = json.loads(roh.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise UebernahmeError(f"{beleg_pfad}: nicht lesbar: {exc}") from exc
+    fehler = zp.beleg_fehler(beleg, ordnung=zeichner.ordnung)
+    zeichnung = (betriebszeichnung_fehler(
+        zp.signierter_satz(beleg), zeichner.ring, zeichner.ordnung, was="zugangsprobe.json")
+        if isinstance(beleg, dict) else None)
+    if fehler or zeichnung:
+        raise UebernahmeError(
+            f"{beleg_pfad}: der Beleg der Zugangsprobe verletzt seinen Vertrag — "
+            + "; ".join((fehler + ([zeichnung] if zeichnung else []))[:4]))
+    if beleg.get("bestanden") is not True:
+        raise UebernahmeError(
+            f"{beleg_pfad}: die Zugangsprobe ist nicht bestanden — eine Abnahme ohne "
+            "gruene Probe hat keine Grundlage")
+    if beleg.get("fall") != fallname or beleg.get("am4_snapshot_sha256") != am4_sha256:
+        raise UebernahmeError(
+            f"{beleg_pfad}: die Probe lief fuer {beleg.get('fall')!r} auf dem A-M4-Snapshot "
+            f"{str(beleg.get('am4_snapshot_sha256'))[:16]}… — registriert wird {fallname!r} "
+            f"auf {am4_sha256[:16]}…. {ausweg}")
+    if belege.get("eingang") != [beleg["eingang"]["sha256"]]:
+        raise UebernahmeError(
+            f"{ab2_name}: A-B2 pinnt einen anderen Eingang als die Probe, auf die es "
+            "sich stuetzt — Snapshot und Beleg gehoeren nicht zusammen")
+    if beleg["eingang"]["sha256"] != eingang_sha:
+        raise UebernahmeError(
+            f"{fallname}: der Eingang, den diese Registrierung schriebe, ist nicht der, "
+            f"den A-B2 abgenommen hat ({eingang_sha[:16]}… statt "
+            f"{beleg['eingang']['sha256'][:16]}…); verschieden: "
+            f"{', '.join(_felder_verschieden(beleg['eingang']['inhalt'], eingang))}. "
+            "Die Registrierung braucht dieselben Angaben wie die Probe (--fall, "
+            f"--quelle, Stichtag, Betriebsschluessel) und dieselbe Ablage. {ausweg}")
+    if beleg["ablage_stand"]["sha256"] != stand_sha256:
+        raise UebernahmeError(
+            f"{fallname}: A-B2 bindet den Stand der Ablage "
+            f"{beleg['ablage_stand']['sha256'][:16]}… (gefuehrt bis "
+            f"{beleg['ablage_stand']['inhalt'].get('gefuehrter_tag')}), die Ablage steht "
+            f"jetzt auf {stand_sha256[:16]}… — sie lief nach der Probe weiter, oder ihre "
+            f"Config wurde getauscht (ADR-022). {ausweg}")
+    # Das Soll der Probe: die Bytes, die die geltenden Abnahmen pinnen.
+    am1_pin = (am4.get("pflichtbelege") or {}).get("am1_snapshot") or [None]
+    am1: Optional[Dict[str, Any]] = None
+    if _ist_sha256(am1_pin[0]):
+        am1, _, _ = lies_abnahme_snapshot(fall, "A-M1", am1_pin[0], schluesselring=schluesselring,
+                                          ordnung=ordnung, ordnungslinie=linie)
+    soll_fehler = zp.soll_bindung_fehler(beleg.get("abnahmen"), am4=am4, am1=am1)
+    if soll_fehler:
+        raise UebernahmeError(
+            f"{beleg_pfad}: das Soll der Probe ist nicht das der geltenden Abnahmen — "
+            + "; ".join(soll_fehler[:3]) + f". {ausweg}")
+    system = beleg.get("system") if isinstance(beleg.get("system"), dict) else {}
+    return {
+        "schema_version": ZUGANGSABNAHME_SCHEMA_VERSION,
+        "fall": fallname,
+        "eingang_sha256": eingang_sha,
+        "ablage_stand_sha256": stand_sha256,
+        "am4_snapshot_sha256": am4_sha256,
+        "zugangsprobe_sha256": sha256_bytes(roh),
+        "abnahmen": beleg["abnahmen"],
+        # Was sich durch den Betrieb nicht aendert: Der Tageslauf haelt es
+        # beim tatsaechlichen Eintritt gegen den Lauf (pruefe_eintritt).
+        "bindung": {
+            "config_sha256": beleg.get("config_sha256"),
+            "kern_version": beleg.get("kern_version"),
+            "code": {f: system.get(f) for f in zp.CODE_STAND_FELDER},
+        },
+        "a_b2": {**_zeichnung_aus_daten(ab2, ab2_name, verifiziert=ab2_verifiziert),
+                 "snapshot_sha256": str(ab2.get("snapshot_sha256")),
+                 "freigabe_rolle": rolle},
+    }
+
+
+def _lies_zugangsabnahme(
+    ueb: "Uebernahme", *, schluesselring: Optional[Mapping[str, bytes]],
+    ordnung: Optional[Dict[str, Any]], ausweg: str,
+) -> Tuple[Path, Dict[str, Any]]:
+    """zugangsabnahme.json eines Eingangs lesen und ihre Zeichnung und
+    Grundbindungen pruefen — EIN Leseweg fuer Aufnahme und Eintritt."""
+    from rechner_pipeline.betrieb._zeichnung import betriebszeichnung_fehler
+
+    pfad = ueb.verzeichnis / ZUGANGSABNAHME_DATEI
+    if not pfad.is_file():
+        raise UebernahmeError(
+            f"{ueb.verzeichnis}: Eingang ohne Zugangsabnahme A-B2 ({pfad.name} fehlt) — "
+            f"ohne A-B2 kein Eintritt (ADR-022). {ausweg}")
+    try:
+        daten = json.loads(pfad.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise UebernahmeError(f"{pfad}: nicht lesbar: {exc}") from exc
+    if not isinstance(daten, dict):
+        raise UebernahmeError(f"{pfad}: kein JSON-Objekt")
+    zeichnung = betriebszeichnung_fehler(
+        _zugangsabnahme_satz(daten),
+        dict(schluesselring) if schluesselring is not None else None, ordnung,
+        was=pfad.name)
+    if zeichnung:
+        raise UebernahmeError(f"{pfad}: {zeichnung} — die Zugangsabnahme ist unantastbar. {ausweg}")
+    a_b2 = daten.get("a_b2") or {}
+    fehler: List[str] = []
+    if daten.get("schema_version") != ZUGANGSABNAHME_SCHEMA_VERSION:
+        fehler.append(f"schema_version {daten.get('schema_version')!r}")
+    if daten.get("fall") != ueb.fall:
+        fehler.append(f"gehoert zum Fall {daten.get('fall')!r}, nicht {ueb.fall!r}")
+    if not (a_b2.get("gate") == "A-B2" and a_b2.get("entscheid") == "angenommen"
+            and a_b2.get("signatur_verifiziert") is True):
+        fehler.append("keine angenommene A-B2 mit verifizierter Freigabesignatur")
+    if daten.get("am4_snapshot_sha256") != ueb.snapshot_sha256:
+        fehler.append("bindet einen anderen A-M4-Snapshot als der Eingang")
+    if daten.get("eingang_sha256") != ueb.eingang_sha256:
+        fehler.append(
+            f"bindet den Eingang {str(daten.get('eingang_sha256'))[:16]}…, eingetreten "
+            f"waere {ueb.eingang_sha256[:16]}… — ein fremder oder veraenderter Eingang")
+    if fehler:
+        raise UebernahmeError(f"{pfad}: " + "; ".join(fehler) + f". {ausweg}")
+    return pfad, daten
+
+
+_AUSWEG_EINTRITT = (
+    "Ausweg: Zugangsprobe auf dem heutigen Stand fahren, A-B2 zeichnen; der "
+    "Eingang ist nie eingetreten — ihn aus uebernahme/ entfernen (sichern) und "
+    "mit der neuen Abnahme registrieren")
+
+
+def pruefe_zugangsabnahme(
+    ueb: "Uebernahme", stand_sha256: str, *,
+    schluesselring: Optional[Mapping[str, bytes]],
+    ordnung: Optional[Dict[str, Any]],
+) -> None:
+    """Die Aufnahme eines Eingangs verlangt seine Zugangsabnahme (ADR-022).
+
+    Gelesen wird ``zugangsabnahme.json`` des Eingangs: von der Registrierung
+    mit dem Betriebsschluessel gezeichnet, nachdem sie A-B2 samt
+    Freigabesignatur geprueft hat. Sie muss DIESEN Eingang binden (Hash der
+    eingang.json, wie der Leser sie gelesen hat) und den gefuehrten Stand,
+    auf dem der Eingang jetzt aufgenommen wird — ``stand_sha256`` rechnet
+    der Tageslauf vor seinem Lauf. Ohne sie, mit fremdem Eingang oder mit
+    einem anderen Stand wird er nicht aufgenommen; der Lauf ist rot, der
+    Stand bleibt. Den tatsaechlichen Eintritt fragt :func:`pruefe_eintritt`.
+    """
+    pfad, daten = _lies_zugangsabnahme(
+        ueb, schluesselring=schluesselring, ordnung=ordnung, ausweg=_AUSWEG_EINTRITT)
+    if daten.get("ablage_stand_sha256") != stand_sha256:
+        raise UebernahmeError(
+            f"{pfad}: A-B2 bindet den Stand der Ablage "
+            f"{str(daten.get('ablage_stand_sha256'))[:16]}…, eintreten wuerde der Eingang "
+            f"auf {stand_sha256[:16]}… — die Ablage lief nach der Probe weiter oder ihre "
+            f"Config wurde getauscht, die Abnahme gilt einem anderen Stand. {_AUSWEG_EINTRITT}")
+
+
+def pruefe_eintritt(
+    ueb: "Uebernahme", *, config_sha256: Optional[str], kern_version: Optional[str],
+    code: Mapping[str, Any],
+    schluesselring: Optional[Mapping[str, bytes]],
+    ordnung: Optional[Dict[str, Any]],
+) -> None:
+    """Der TATSAECHLICHE Eintritt eines Eingangs in die Buecher (Block F,
+    Nachbesserung, Pruefer-Befund 2).
+
+    Ein vorausdatierter Eingang wird wartend aufgenommen — dort haelt
+    :func:`pruefe_zugangsabnahme` den Stand — und tritt erst an seinem
+    Stichtag ein. Dazwischen laeuft die Ablage weiter; das aendert den Stand,
+    aber nicht, WOMIT gerechnet wird. Config, Kern-Version und Code-Stand
+    (Image-Digest und Revision, soweit die Probe sie erfasst hat, und der
+    Hash des Pakets) muessen am Eintritt die sein, auf denen die Probe lief.
+    Sonst tritt der Zugang auf einem Stand ein, den niemand geprobt hat.
+    """
+    from rechner_pipeline.betrieb.tageslauf import NICHT_ERFASST
+    from rechner_pipeline.models import zugangsprobe as zp
+
+    ausweg = (
+        "Ausweg: Zugangsprobe und A-B2 auf dem heutigen Stand neu (der Eingang ist "
+        "nie eingetreten — ihn aus uebernahme/ sichern und entfernen, dann mit der "
+        "neuen Abnahme registrieren), oder Config, Kern und Image der Probe "
+        "wiederherstellen")
+    pfad, daten = _lies_zugangsabnahme(
+        ueb, schluesselring=schluesselring, ordnung=ordnung, ausweg=ausweg)
+    bindung = daten.get("bindung")
+    if not isinstance(bindung, dict) or not isinstance(bindung.get("code"), dict):
+        raise UebernahmeError(f"{pfad}: ohne Bindung an Config, Kern und Code-Stand. {ausweg}")
+    abweichend: List[str] = []
+    if bindung.get("config_sha256") != config_sha256:
+        abweichend.append(
+            f"Config {str(config_sha256)[:16]}… statt {str(bindung.get('config_sha256'))[:16]}…")
+    if bindung.get("kern_version") != kern_version:
+        abweichend.append(f"Kern {kern_version!r} statt {bindung.get('kern_version')!r}")
+    abweichend += zp.code_stand_abweichungen(bindung["code"], code, nicht_erfasst=NICHT_ERFASST)
+    if not zp.code_stand_belegt(bindung["code"], nicht_erfasst=NICHT_ERFASST):
+        abweichend.append("die Abnahme belegt keinen Code-Stand")
+    if abweichend:
+        raise UebernahmeError(
+            f"{pfad}: der Eingang traete am {ueb.stichtag.isoformat()} auf einem anderen "
+            "Stand ein, als die Zugangsprobe geprobt hat — " + "; ".join(abweichend)
+            + f". {ausweg}")
 
 
 def tarifwerk_fehler(config: BestandConfig, generationen: Iterable[str], beleg: Dict[str, Any]) -> List[str]:
@@ -727,14 +1339,24 @@ def tarifwerk_fehler(config: BestandConfig, generationen: Iterable[str], beleg: 
     (Freischaltung, Schritt 2 und 9). Leer = in Ordnung."""
     soll = beleg.get("tarifwerk")
     if not isinstance(soll, dict):
-        return []
+        # Ein Beleg ohne Tarifwerk ist keine Erlaubnis, sondern eine Luecke
+        # (Angriffsrunde nach T27): Vorher war er "in Ordnung", und ein
+        # entfernter oder geleerter Beleg umging die Pruefung ganz.
+        return ["der Uebernahmebeleg nennt kein Tarifwerk — gegen welche Schalter "
+                "die Abnahmen bestanden wurden, ist nicht ablesbar"]
     fehler: List[str] = []
     for name in sorted(set(generationen)):
         gen = next((g for g in config.generationen if g.name == name), None)
         if gen is None:
             continue
         ist = gen.tarifwerk()
-        abweichend = {k: (ist.get(k), v) for k, v in soll.items() if ist.get(k) != v}
+        # Ueber ALLE Merkmale beider Seiten (Pruefrunde G, Nachbarfall zu G04):
+        # Verglichen wurden nur die Schluessel, die der Beleg nennt — ein
+        # leeres oder halbes Tarifwerk ging durch. Der Beleg nennt genau das
+        # Tarifwerk, mit dem die Abnahmen bestanden wurden, oder er bezeugt es
+        # nicht; dieselbe Regel wie A-M4 (``abnahmebericht.tarifregeln_beleg_fehler``).
+        abweichend = {k: (ist.get(k), soll.get(k)) for k in set(ist) | set(soll)
+                      if k not in ist or k not in soll or ist[k] != soll[k]}
         if abweichend:
             fehler.append(
                 f"Generation {name}: Tarifwerk der Config weicht vom Uebernahmebeleg ab — "
@@ -746,6 +1368,11 @@ def tarifwerk_fehler(config: BestandConfig, generationen: Iterable[str], beleg: 
 
 
 def _lies_eingang(verzeichnis: Path) -> Dict[str, Any]:
+    return _lies_eingang_roh(verzeichnis)[0]
+
+
+def _lies_eingang_roh(verzeichnis: Path) -> Tuple[Dict[str, Any], str]:
+    """Die Eingangsdatei EINMAL lesen: Inhalt und Hash derselben Bytes."""
     pfad = verzeichnis / EINGANG_DATEI
     if not pfad.is_file():
         raise UebernahmeError(
@@ -754,13 +1381,14 @@ def _lies_eingang(verzeichnis: Path) -> Dict[str, Any]:
             "von Hand kopiert"
         )
     try:
-        daten = json.loads(pfad.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        roh = pfad.read_bytes()
+        daten = json.loads(roh.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise UebernahmeError(f"{pfad}: nicht lesbar: {exc}") from exc
     fehler = validate_eingang(daten)
     if fehler:
         raise UebernahmeError(f"{pfad}: " + "; ".join(fehler))
-    return daten
+    return daten, sha256_bytes(roh)
 
 
 def validate_eingang(daten: Any) -> List[str]:
@@ -768,7 +1396,7 @@ def validate_eingang(daten: Any) -> List[str]:
     fehler: List[str] = []
     if not isinstance(daten, dict):
         return ["Eingang ist kein JSON-Objekt"]
-    if daten.get("schema_version") != EINGANG_SCHEMA_VERSION:
+    if daten.get("schema_version") not in (EINGANG_SCHEMA_ALT, EINGANG_SCHEMA_VERSION):
         # Den AUSWEG nennen, nicht nur den Befund (Betriebsbefund
         # 2026-09-16): Eine Ablage, deren Eingang aus einem aelteren
         # Codestand stammt, bricht den Tageslauf hart ab — und die
@@ -786,6 +1414,11 @@ def validate_eingang(daten: Any) -> List[str]:
             "Umnummerierung geschieht beim Registrieren, die Gates werden "
             "NICHT neu gezeichnet"
         )
+    if daten.get("schema_version") == EINGANG_SCHEMA_VERSION and not isinstance(
+            daten.get("betriebszeichnung"), dict):
+        fehler.append(
+            "betriebszeichnung fehlt — ein Eingang nach Schema 3 ist von der "
+            "Registrierung mit dem Betriebsschluessel gezeichnet")
     if not isinstance(daten.get("fall"), str) or not daten["fall"].strip():
         fehler.append("fall fehlt")
     try:
@@ -879,10 +1512,59 @@ def _ist_sha256(wert: Any) -> bool:
     return isinstance(wert, str) and len(wert) == 64 and all(c in "0123456789abcdef" for c in wert)
 
 
-def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
-    """Einen Eingang lesen — jede Datei gegen ihre registrierte Summe."""
+def betriebszeichnung_des_eingangs_fehler(
+    eingang: Dict[str, Any],
+    schluesselring: Optional[Mapping[str, bytes]],
+    ordnung: Optional[Dict[str, Any]],
+) -> Optional[str]:
+    """Die Betriebszeichnung einer eingang.json pruefen (None = in Ordnung).
+
+    Gezeichnet ist ``{"eingang": <alle Felder ausser der Zeichnung>}`` — der
+    Eingang traegt unter ``zeichnung`` schon den Block seiner A-M4-Annahme,
+    und die Betriebszeichnung darf ihn nicht verdecken, sondern muss ihn
+    mit abdecken.
+    """
+    from rechner_pipeline.betrieb._zeichnung import betriebszeichnung_fehler
+
+    rest = {k: v for k, v in eingang.items() if k != "betriebszeichnung"}
+    return betriebszeichnung_fehler(
+        {"eingang": rest, "zeichnung": eingang.get("betriebszeichnung")},
+        dict(schluesselring) if schluesselring is not None else None, ordnung,
+        was="eingang.json")
+
+
+def lies_uebernahme(
+    verzeichnis: Path,
+    config: BestandConfig,
+    *,
+    schluesselring: Optional[Mapping[str, bytes]] = None,
+    ordnung: Optional[Dict[str, Any]] = None,
+    bezeugt: Optional[set] = None,
+) -> Uebernahme:
+    """Einen Eingang lesen — jede Datei gegen ihre registrierte Summe.
+
+    Mit ``schluesselring`` (der Betriebsschluessel des Tageslaufs) wird die
+    Zeichnung der eingang.json geprueft; ein ungezeichneter Eingang nach
+    Schema 2 tritt dann nur ein, wenn sein Hash in ``bezeugt`` steht — eine
+    gruene, gezeichnete Protokollzeile oder eine Zeile des gepinnten
+    Vorlaufs hat ihn schon gefuehrt (``tageslauf.bezeugte_eingaenge``).
+    Ohne Ring wird die Form geprueft und die Zeichnung nicht behauptet.
+    """
     verzeichnis = Path(verzeichnis)
-    eingang = _lies_eingang(verzeichnis)
+    eingang, eingang_sha256 = _lies_eingang_roh(verzeichnis)
+    if eingang.get("schema_version") == EINGANG_SCHEMA_VERSION:
+        fehler = betriebszeichnung_des_eingangs_fehler(eingang, schluesselring, ordnung)
+        if fehler:
+            raise UebernahmeError(
+                f"{verzeichnis}: {fehler} — ein Eingang ist unantastbar; den "
+                "urspruenglichen Eingang wiederherstellen oder neu registrieren")
+    elif schluesselring is not None and eingang_sha256 not in (bezeugt or set()):
+        raise UebernahmeError(
+            f"{verzeichnis}: Eingang nach Schema {eingang.get('schema_version')} ohne "
+            "Betriebszeichnung, und weder eine gezeichnete Protokollzeile noch der "
+            "gepinnte Vorlauf bezeugt ihn — "
+            "ein ungezeichneter Eingang tritt nicht neu in die Fuehrung. Ausweg: den "
+            "Eingang mit Betriebsschluessel neu registrieren (betrieb.neuaufsetzen)")
     tabellen: Dict[str, Optional[pd.DataFrame]] = {}
     for name, spalten in {**PFLICHT, **OPTIONAL}.items():
         datei = f"{name}.parquet"
@@ -1014,15 +1696,27 @@ def lies_uebernahme(verzeichnis: Path, config: BestandConfig) -> Uebernahme:
         beleg=beleg,
         band={k: int(v) for k, v in (eingang.get("band") or {}).items()},
         uebersetzung=uebersetzung,
+        eingang_sha256=eingang_sha256,
     )
 
 
-def lies_uebernahmen(wurzel: Path, config: BestandConfig) -> List[Uebernahme]:
-    """Alle Eingaenge unter ``uebernahme/`` (sortiert nach Fallname); leer ohne Verzeichnis."""
+def lies_uebernahmen(
+    wurzel: Path,
+    config: BestandConfig,
+    *,
+    schluesselring: Optional[Mapping[str, bytes]] = None,
+    ordnung: Optional[Dict[str, Any]] = None,
+    bezeugt: Optional[set] = None,
+) -> List[Uebernahme]:
+    """Alle Eingaenge unter ``uebernahme/`` (sortiert nach Fallname); leer ohne
+    Verzeichnis. Ring, Ordnung und bezeugte Hashes wie :func:`lies_uebernahme`."""
     wurzel = Path(wurzel)
     if not wurzel.is_dir():
         return []
-    eingaenge = [lies_uebernahme(p, config) for p in sorted(wurzel.iterdir()) if p.is_dir()]
+    eingaenge = [
+        lies_uebernahme(p, config, schluesselring=schluesselring, ordnung=ordnung,
+                        bezeugt=bezeugt)
+        for p in sorted(wurzel.iterdir()) if p.is_dir()]
     faelle = [u.fall for u in eingaenge]
     if len(faelle) != len(set(faelle)):
         raise UebernahmeError(f"uebernahme: Fallname doppelt: {faelle}")
@@ -1046,33 +1740,117 @@ def lies_uebernahmen(wurzel: Path, config: BestandConfig) -> List[Uebernahme]:
 # --------------------------------------------------------------------------- #
 
 
-def eingang_anlegen(
-    stand: Path,
-    fall: Path,
-    stichtag: _dt.date,
-    *,
-    quelle: Optional[Path] = None,
-    snapshot_sha256: Optional[str] = None,
-    schluesselring: Optional[Mapping[str, bytes]] = None,
-) -> Path:
-    """Den Zugangsstand eines Falls als Eingang der Laufzeitumgebung registrieren.
+def _pruefe_stichtag_gegen_ablage(ablage, stichtag: _dt.date, fallname: str) -> None:
+    """Einen Stichtag, den der Tagesbetrieb nie annehmen wird, nicht erst
+    registrieren (Angriffsrunde Betrieb: ein unwiderruflich registrierter
+    Eingang legte den Betrieb danach still). Die Regeln sind die des
+    Laufs: nicht vor dem Betriebsbeginn, und kein festgeschriebener
+    Abschluss am oder nach dem Stichtag — der kennte den Bestand nie
+    (ADR-011)."""
+    from rechner_pipeline.betrieb.tageslauf import _festgeschriebene_abschluesse
 
-    Kopiert die Tabellen aus ``<fall>/abgeleitet/bestand/`` (dem Erzeugnis
-    von ``gates.bestand_uebernehmen``; ``quelle`` uebersteuert) nach
-    ``<stand>/uebernahme/<fallname>/``, schreibt ``eingang.json`` mit
-    Fallname, Stichtag, Snapshot-Hash der A-M4-Annahme und der SHA-256
-    jeder Datei, und setzt die Kopien schreibgeschuetzt. Ein vorhandener
-    Eingang wird nie ueberschrieben — eine neue Lieferung ist ein neuer
-    Eingang unter neuem Namen.
+    if ablage.config_pfad.is_file():
+        from rechner_pipeline.bestand.config import load_config
 
-    Den Snapshot-Hash liest das Kommando aus dem Gate-Beleg der
-    A-M4-Entscheidung (``abgeleitet/diagnostics/gate_entscheid_am4.gate.json``,
-    ``summary.snapshot_sha256``), wenn er nicht uebergeben wird; fehlt
-    beides, ist das kein Fehler, sondern ein leeres Feld — der
-    Fall-Bezug ist Provenienz, nicht Voraussetzung des Betriebs.
+        beginn = load_config(ablage.config_pfad).tagesbetrieb.betriebsbeginn
+        if beginn is not None and stichtag < beginn:
+            raise UebernahmeError(
+                f"{fallname}: Stichtag {stichtag.isoformat()} liegt vor dem "
+                f"Betriebsbeginn {beginn.isoformat()} dieser Ablage — der "
+                "Tagesbetrieb nimmt ihn nie an; die Ablage aus dem Fall neu "
+                "aufsetzen (betrieb.neuaufsetzen)")
+    spaetere = [t for t in _festgeschriebene_abschluesse(ablage) if t >= stichtag]
+    if spaetere:
+        raise UebernahmeError(
+            f"{fallname}: Stichtag {stichtag.isoformat()} liegt nicht nach dem "
+            f"festgeschriebenen Monatsabschluss {spaetere[0].isoformat()} — der "
+            "Abschluss kennt den Bestand nie (ADR-011), der Tagesbetrieb nimmt "
+            "den Eingang nicht an. Den Zugang in die offene Zeit legen oder die "
+            "Ablage aus dem Fall neu aufsetzen (betrieb.neuaufsetzen)")
+
+
+def _pruefe_tarifwerk_gegen_ablage(stand: Path, roh: Dict[str, bytes], quelle: Path) -> None:
+    """Registriert wird nur, was die Wache des Tageslaufs annimmt (RC16).
+
+    Die Registrierung fuhr P-B1, Stichtag und Abschluss, aber nicht den
+    Tarifwerk-Abgleich — der stand nur in ``lies_uebernahme``, das erst der
+    Tageslauf ruft. Ein Eingang mit abweichendem Tarifwerk wurde registriert
+    und legte danach jede Nacht den ganzen Betrieb still, und
+    ueberschreiben laesst sich ein Eingang nie. Dieselben zwei Pruefungen
+    wie der Leser, vor dem ersten Seiteneffekt, mit dem Config-Abschnitt als
+    Ausweg (wie ``betrieb.neuaufsetzen``).
+
+    Ohne Config in der Ablage wird NICHT registriert (Nachbesserung Runde
+    C): Die erste Fassung liess die Pruefung dann aus ("Einrichtung, Config
+    folgt") — und registrierte damit genau den Eingang, den der Tageslauf
+    danach mit der nachgereichten Config jede Nacht verweigerte. Die
+    Reihenfolge ist Config, dann Eingang.
     """
-    import os
+    from rechner_pipeline.bestand.config import bauauftrag_text, load_config, tarifwerk_luecken
+    from rechner_pipeline.betrieb.tageslauf import Ablage as _Ablage
 
+    config_pfad = _Ablage(stand).config_pfad
+    if not config_pfad.is_file():
+        raise UebernahmeError(
+            f"{quelle}: nichts registriert — die Ablage traegt keine Config "
+            f"({config_pfad}), gegen die das Tarifwerk der Uebernahme geprueft "
+            "werden koennte; ohne diesen Abgleich entstuende ein Eingang, den der "
+            "Tageslauf womoeglich nie annimmt. Ausweg: erst die Config nach "
+            "deploy/plv/README.md ablegen, dann registrieren")
+    config = load_config(config_pfad)
+    generationen = {str(g) for g in read_portfolio(
+        io.BytesIO(roh["bestand.parquet"]), expected_columns=STAMM_NAMES)["tarif_generation"]}
+    try:
+        beleg = json.loads(roh["uebernahme.json"].decode("utf-8")) if "uebernahme.json" in roh else {}
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise UebernahmeError(f"{quelle}/uebernahme.json: Uebernahmebeleg nicht lesbar: {exc}") from exc
+    fehler = tarifwerk_fehler(config, generationen, beleg if isinstance(beleg, dict) else {})
+    luecken = tarifwerk_luecken(g for g in config.generationen if g.name in generationen)
+    if fehler or luecken:
+        raise UebernahmeError(
+            f"{quelle}: nichts registriert — die Config der Ablage ({config_pfad}) "
+            "passt nicht zur Uebernahme, und der Tageslauf naehme den Eingang nie an: "
+            + "; ".join(fehler + [bauauftrag_text(*l) for l in luecken]))
+
+
+@dataclasses.dataclass
+class Vorbedingungen:
+    """Was die Registrierung vor jedem Seiteneffekt geprueft und gelesen hat."""
+    fall: Path
+    fallname: str
+    quelle: Path
+    ring: Mapping[str, bytes]
+    snapshot_sha256: str
+    snapshot: Dict[str, Any]
+    zeichnung: Dict[str, Any]
+    ab2: Optional[Tuple[Dict[str, Any], str]]
+    ab2_verifiziert: bool
+    roh: Dict[str, bytes]
+
+
+def registrierung_vorbedingungen(
+    fall: Path,
+    *,
+    ordnung: Optional[Mapping[str, Any]],
+    schluesselring: Optional[Mapping[str, bytes]] = None,
+    snapshot_sha256: Optional[str] = None,
+    zugangsabnahme_sha256: Optional[str] = None,
+    quelle: Optional[Path] = None,
+    probe_kopie: bool = False,
+    ordnungslinie: Optional[list] = None,
+) -> Vorbedingungen:
+    """Die Vorbedingungen der Registrierung, die KEINEN Ort brauchen: Fall,
+    Zugangsstand, A-M4 (Rollenregel, Schema), A-B2 (Rollenregel; seine
+    Bindung an Eingang und Stand erst unter der Sperre), Tabellen und
+    Belege gegen den Beleggraphen der Abnahme.
+
+    EINE Funktion, zwei Aufrufer (Angriffsrunde 2026-10-01):
+    :func:`eingang_anlegen` vor ihrem ersten Seiteneffekt und
+    ``betrieb.neuaufsetzen`` bevor es die neue Ablage anlegt. Vorher liefen
+    diese Pruefungen erst in der Registrierung — nachdem das Neuaufsetzen
+    ``<stand>.neu-<stempel>`` angelegt hatte, und eine Verweigerung liess
+    den Rest liegen.
+    """
     fall = Path(fall)
     fall_json = fall / "fall.json"
     if not fall_json.is_file():
@@ -1087,6 +1865,15 @@ def eingang_anlegen(
         raise UebernahmeError(f"{fall_json}: nicht lesbar oder ohne name: {exc}") from exc
     if not fallname or "/" in fallname or fallname in (".", ".."):
         raise UebernahmeError(f"{fall_json}: name {fallname!r} taugt nicht als Verzeichnisname")
+    # Kein Steuer-, Format- oder Trennzeichen (Angriffsrunde nach T27): Der
+    # Name steht roh in jeder Protokollzeile; ein U+2028 darin machte das
+    # Protokoll fuer jeden Leser mit anderer Zeilengrenze unlesbar.
+    import unicodedata
+
+    if any(unicodedata.category(z) in ("Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp") for z in fallname):
+        raise UebernahmeError(
+            f"{fall_json}: name {fallname!r} traegt ein Steuer- oder Trennzeichen — "
+            "als Fallname im Protokoll nicht zulaessig")
     quelle = Path(quelle) if quelle is not None else fall / "abgeleitet" / "bestand"
     fehlend = [f"{n}.parquet" for n in PFLICHT if not (quelle / f"{n}.parquet").is_file()]
     if fehlend:
@@ -1104,32 +1891,87 @@ def eingang_anlegen(
     # Der Snapshot ist Pflicht und wird geprueft (T22-06), BEVOR irgendetwas
     # angelegt wird.
     ring = schluesselring if schluesselring is not None else _STANDARD_SCHLUESSELRING
-    snapshot, snapshot_name, verifiziert = lies_am4_snapshot(
-        fall, snapshot_sha256, schluesselring=ring)
-    # Zeichnungsschicht zu Ende (Entscheid 2026-09-22): Registriert wird
-    # nur ein Snapshot des aktuellen Schemas — mit Schluesselklasse und
-    # Rolle aus der Zeichnungsordnung. Ein Altsnapshot (Schema 6) traegt
-    # beides nicht; lesen laesst er sich weiter (Seite), eintreten nicht.
-    from rechner_pipeline.models.schemas import P9_SNAPSHOT_SCHEMA_VERSION
-    if snapshot.get("schema_version") != P9_SNAPSHOT_SCHEMA_VERSION:
+    if not ring:
+        # Registriert wird nur, was der Tagesbetrieb annimmt (Angriffsrunde
+        # nach T27): Ohne Schluessel entstand ein Eingang mit
+        # signatur_verifiziert = false, den jeder Tageslauf verweigerte —
+        # und neu registrieren ging nicht, weil ein Eingang nie
+        # ueberschrieben wird. Der Betrieb stand.
         raise UebernahmeError(
-            f"{snapshot_name}: Schema {snapshot.get('schema_version')!r} — ein "
-            f"Eingang braucht eine Zeichnung mit Schluesselklasse (Schema "
-            f"{P9_SNAPSHOT_SCHEMA_VERSION}); den Fall neu zeichnen"
-        )
+            "ohne Freigabeschluessel wird nichts registriert — der Tagesbetrieb "
+            "nimmt nur einen Eingang mit verifizierter Signatur an; "
+            "--freigabe-schluessel angeben")
+    snapshot, snapshot_name, verifiziert = lies_am4_snapshot(
+        fall, snapshot_sha256, schluesselring=ring, ordnung=ordnung,
+        ordnungslinie=ordnungslinie)
+    # Zeichnungsschicht zu Ende (Entscheid 2026-09-22): Registriert wird
+    # nur ein Snapshot des aktuellen Schemas — das haelt seit Pruefrunde I
+    # (I08) der eine Leser (lies_abnahme_snapshot) fuer JEDE Abnahme, auf der
+    # der Betrieb gruendet, nicht mehr diese Stelle fuer A-M4 allein.
     zeichnung = _zeichnung_aus_daten(snapshot, snapshot_name, verifiziert=verifiziert)
+    # Die Zugangsabnahme A-B2 (ADR-022, Entscheid des Maintainers
+    # 2026-09-30): Ohne sie wird nichts registriert. Geprueft wird der
+    # Snapshot HIER, vor dem ersten Seiteneffekt (Schema, Kette, Signatur);
+    # seine Bindung an den Eingang und den Stand der Ablage erst unter der
+    # Sperre, wenn beide feststehen. Die Probe selbst registriert in ihrer
+    # Kopie ohne — sie erzeugt erst, was A-B2 abnimmt.
+    ab2: Optional[Tuple[Dict[str, Any], str]] = None
+    ab2_verifiziert = False
+    if not probe_kopie:
+        if zugangsabnahme_sha256 is None:
+            ledger_ab2 = fall / "abgeleitet" / "diagnostics" / "gate_entscheid_ab2.gate.json"
+            if ledger_ab2.is_file():
+                try:
+                    zugangsabnahme_sha256 = json.loads(ledger_ab2.read_text(
+                        encoding="utf-8"))["summary"]["snapshot_sha256"]
+                except (OSError, json.JSONDecodeError, KeyError, TypeError):
+                    zugangsabnahme_sha256 = None
+        if zugangsabnahme_sha256 is not None:
+            ab2_daten, ab2_name, ab2_verifiziert = lies_abnahme_snapshot(
+                fall, "A-B2", zugangsabnahme_sha256, schluesselring=ring,
+                ordnung=ordnung, ordnungslinie=ordnungslinie)
+            ab2 = (ab2_daten, ab2_name)
+        elif _STANDARD_ZUGANGSABNAHME is None:
+            raise UebernahmeError(
+                f"{fall}: kein A-B2-Snapshot — ohne Zugangsabnahme wird nichts "
+                "registriert, ohne A-B2 kein Eintritt (ADR-022). Ausweg: "
+                + _ABNAHME["A-B2"][1])
     # Was uebernommen wird, muss das sein, was die Abnahme gesehen hat
     # (Befund T26-03). Geprueft VOR dem ersten Seiteneffekt: Ein Eingang,
     # dessen Tabellen die Migrationsabnahme nicht bezeugt, entsteht nicht.
     belegt = belegte_tabellen(fall, snapshot)
     unbelegt: List[str] = []
-    for datei in (f"{name}.parquet" for name in PFLICHT):
+    # EINMAL lesen, dann nur noch diese Bytes verwenden (Pruefrunde T27,
+    # Befund 04): Die erste Fassung hashte die Quelldateien hier und las
+    # sie nach dem Eintritt in die Sperre ein zweites Mal von der Platte.
+    # Wer die Quelle dazwischen tauschte, bekam andere Tabellen in den
+    # Eingang als die, die die Abnahme bezeugt — mit gruener Hashpruefung
+    # und verifizierter Signatur. Die Sperre schuetzt konkurrierende
+    # Eingangsschreiber, nicht den Produzenten der Quelle; nur die Bytes
+    # selbst tun das.
+    roh: Dict[str, bytes] = {}
+    for datei in [f"{n}.parquet" for n in list(PFLICHT) + list(OPTIONAL)] + list(BELEGE):
+        if (quelle / datei).is_file():
+            roh[datei] = (quelle / datei).read_bytes()
+    # Gebunden wird JEDE Tabelle, die der Graph bezeugt — auch Scheiben,
+    # Schichten, Verankerung und Merkmale (Angriffsrunde 2 Betrieb, Fund
+    # N21: die Schleife lief nur ueber die Pflichttabellen, obwohl
+    # belegte_tabellen die Hashes der Nebentabellen laengst gesammelt
+    # hatte; eine getauschte Scheibentabelle ging ungeprueft ein). Und eine
+    # mitgebrachte Nebentabelle, die der Graph NICHT nennt, ist ebenso eine
+    # Luecke wie eine Pflichttabelle (Angriffsrunde nach T27: eine nach der
+    # Abnahme hinzugelegte Korrekturschicht hob den Rueckkaufswert auf das
+    # Zwanzigfache). Die Fuehrungsprobe bindet jede Tabelle, die sie liest.
+    for datei in (f"{name}.parquet" for name in list(PFLICHT) + list(OPTIONAL)):
         quell_pfad = quelle / datei
-        if not quell_pfad.is_file():
+        if datei not in roh:
             continue
-        ist = sha256_bytes(quell_pfad.read_bytes())
+        ist = sha256_bytes(roh[datei])
         soll = bezeugter_hash(belegt, fall, quell_pfad, datei)
         if soll is None:
+            # JEDE mitgebrachte Tabelle, nicht nur die drei Pflichttabellen
+            # (Angriffsrunde nach T27): Eine nach der Abnahme hinzugelegte
+            # Korrekturschicht ging ungeprueft in Storno und Bewertung ein.
             unbelegt.append(datei)
         elif soll != ist:
             raise UebernahmeError(
@@ -1152,6 +1994,129 @@ def eingang_anlegen(
             "Tabelle(n) nicht. Ohne diesen Bezug ist der Eingang eine "
             "Behauptung (Befund T26-03; Annahme 5 streng)"
         )
+    # Der Uebernahmebeleg ist Pflicht und muss der bezeugte sein
+    # (Angriffsrunde nach T27): Er traegt die Tarifwerk-Schalter, gegen die
+    # der Tageslauf die Config haelt. Nur die Tabellen wurden gegen den
+    # Graphen gehalten; ein geaenderter oder entfernter Beleg liess den
+    # Betrieb mit anderen Schaltern fuehren, als abgenommen war.
+    for datei in BELEGE:
+        if datei not in roh:
+            raise UebernahmeError(
+                f"{quelle / datei}: der Uebernahmebeleg fehlt — ohne ihn ist nicht "
+                "ablesbar, unter welchem Tarifwerk die Abnahmen bestanden wurden")
+        soll = bezeugter_hash(belegt, fall, quelle / datei, datei)
+        ist = sha256_bytes(roh[datei])
+        if soll != ist:
+            raise UebernahmeError(
+                f"{quelle / datei}: der Uebernahmebeleg ist nicht der, den der "
+                "A-M4-Snapshot bezeugt"
+                + (" (der Beleggraph nennt ihn nicht)" if soll is None
+                   else f" ({ist[:16]}… statt {soll[:16]}…)")
+                + " — den abgenommenen Beleg uebernehmen oder den Fall neu abnehmen")
+    return Vorbedingungen(
+        fall=fall, fallname=fallname, quelle=quelle, ring=ring,
+        snapshot_sha256=str(snapshot_sha256), snapshot=snapshot, zeichnung=zeichnung,
+        ab2=ab2, ab2_verifiziert=ab2_verifiziert, roh=roh)
+
+
+def eingang_anlegen(
+    stand: Path,
+    fall: Path,
+    stichtag: _dt.date,
+    *,
+    quelle: Optional[Path] = None,
+    snapshot_sha256: Optional[str] = None,
+    schluesselring: Optional[Mapping[str, bytes]] = None,
+    betriebsschluessel: Optional[Path] = None,
+    zeichnungsordnung: Optional[Path] = None,
+    zugangsabnahme_sha256: Optional[str] = None,
+    probe_kopie: bool = False,
+    linie: Optional[Path] = None,
+) -> Path:
+    """Den Zugangsstand eines Falls als Eingang der Laufzeitumgebung registrieren.
+
+    ``zugangsabnahme_sha256``: der Snapshot der angenommenen Zugangsabnahme
+    A-B2 (ADR-022; Default: das A-B2-Gate-Ledger des Falls). Ohne sie wird
+    nichts registriert; sie muss GENAU den Eingang binden, den diese
+    Registrierung schreibt, und den gefuehrten Stand der Ablage, auf dem sie
+    ihn schreibt. Die Registrierung legt die gepruefte Abnahme als
+    ``zugangsabnahme.json`` neben eingang.json, gezeichnet mit dem
+    Betriebsschluessel; der Tageslauf haelt sie beim Eintritt noch einmal
+    gegen den Stand.
+
+    ``probe_kopie``: NUR fuer ``betrieb.zugangsprobe`` auf ihrer
+    gekennzeichneten Kopie der Ablage — dort entsteht der Eingang, den A-B2
+    danach abnimmt, und eine Abnahme gibt es dort noch nicht. Auf einer
+    Ablage ohne das Kennzeichen verweigert der Schalter.
+
+    ``betriebsschluessel``/``zeichnungsordnung``: der Betriebsschluessel,
+    mit dem eingang.json gezeichnet wird (Schema 3; Aufloesung wie im
+    Tageslauf: ausdruecklich > Naht > Fehler). Ohne ihn wird nichts
+    registriert — der Tageslauf nimmt keinen ungezeichneten neuen Eingang an.
+
+    Kopiert die Tabellen aus ``<fall>/abgeleitet/bestand/`` (dem Erzeugnis
+    von ``gates.bestand_uebernehmen``; ``quelle`` uebersteuert) nach
+    ``<stand>/uebernahme/<fallname>/``, schreibt ``eingang.json`` mit
+    Fallname, Stichtag, Snapshot-Hash der A-M4-Annahme und der SHA-256
+    jeder Datei, und setzt die Kopien schreibgeschuetzt. Ein vorhandener
+    Eingang wird nie ueberschrieben — eine neue Lieferung ist ein neuer
+    Eingang unter neuem Namen.
+
+    Den Snapshot-Hash liest das Kommando aus dem Gate-Beleg der
+    A-M4-Entscheidung (``abgeleitet/diagnostics/gate_entscheid_am4.gate.json``,
+    ``summary.snapshot_sha256``), wenn er nicht uebergeben wird; fehlt
+    beides, ist das kein Fehler, sondern ein leeres Feld — der
+    Fall-Bezug ist Provenienz, nicht Voraussetzung des Betriebs.
+    """
+    import os
+
+    from rechner_pipeline.betrieb.tageslauf import Ablage as _Ablage
+    from rechner_pipeline.betrieb.tageslauf import TageslaufError as _TageslaufError
+    from rechner_pipeline.betrieb.tageslauf import betriebszeichner
+
+    # Kopie oder Ablage — VOR jedem Seiteneffekt (ADR-022): Die Probe
+    # registriert nur in ihrer gekennzeichneten Kopie ohne Abnahme, und in
+    # eine Probenkopie registriert niemand sonst.
+    from rechner_pipeline.betrieb.tageslauf import ZUGANGSPROBE_KOPIE_DATEI
+
+    kennzeichen = Path(stand) / ZUGANGSPROBE_KOPIE_DATEI
+    if probe_kopie and not kennzeichen.is_file():
+        raise UebernahmeError(
+            f"{stand}: eine Registrierung ohne Zugangsabnahme nur in der "
+            f"gekennzeichneten Kopie einer Zugangsprobe ({kennzeichen.name} fehlt) — in "
+            "eine echte Ablage tritt kein Eingang ohne A-B2 ein (ADR-022)")
+    if not probe_kopie and kennzeichen.exists():
+        raise UebernahmeError(
+            f"{stand}: die Ablage ist die Kopie einer Zugangsprobe ({kennzeichen.name}) — "
+            "registriert wird in die produktive Ablage")
+    if not probe_kopie:
+        # Auch ohne Kennzeichen (Runde F, F9): Eine Probezeile im Protokoll
+        # macht die Ablage zur Probenkopie — das Kennzeichen ist ungezeichnet.
+        from rechner_pipeline.betrieb.tageslauf import probenkopie_fehler
+
+        fehler = probenkopie_fehler(_Ablage(Path(stand)))
+        if fehler:
+            raise UebernahmeError(f"{fehler} — registriert wird in die produktive Ablage")
+    # Der Betriebsschluessel VOR jedem Seiteneffekt: Ohne ihn entstuende ein
+    # Eingang, den der Tageslauf nie annimmt.
+    try:
+        zeichner = betriebszeichner(
+            _Ablage(Path(stand)), betriebsschluessel, zeichnungsordnung,
+            wofuer="die Registrierung", ohne="keine Registrierung",
+            flag="--betriebsschluessel", linie=linie,
+            # Die Linie wird mit dem Ring gelesen, der die Abnahmen prueft —
+            # unter ihnen der Schluessel des Vorstands (Pruefrunde G, G09).
+            ring=schluesselring if schluesselring is not None else _STANDARD_SCHLUESSELRING)
+    except _TageslaufError as exc:
+        raise UebernahmeError(str(exc)) from exc
+    vor = registrierung_vorbedingungen(
+        fall, ordnung=zeichner.ordnung, schluesselring=schluesselring,
+        snapshot_sha256=snapshot_sha256, zugangsabnahme_sha256=zugangsabnahme_sha256,
+        quelle=quelle, probe_kopie=probe_kopie, ordnungslinie=zeichner.ordnungslinie)
+    fall, fallname, quelle, ring = vor.fall, vor.fallname, vor.quelle, vor.ring
+    snapshot_sha256, snapshot, zeichnung = vor.snapshot_sha256, vor.snapshot, vor.zeichnung
+    ab2, ab2_verifiziert, roh = vor.ab2, vor.ab2_verifiziert, vor.roh
+    _pruefe_tarifwerk_gegen_ablage(Path(stand), roh, quelle)
     ziel = Path(stand) / UEBERNAHME_DIR / fallname
     if ziel.exists():
         raise UebernahmeError(
@@ -1163,7 +2128,37 @@ def eingang_anlegen(
     # gelesen, um das naechste Band zu bestimmen, und durch die
     # Publikation fortgeschrieben. Zwei gleichzeitige Registrierungen
     # bekamen sonst dasselbe Band und veroeffentlichten beide.
-    with eingang_sperre(stand):
+    # Dazu die LAUF-Sperre der Ablage (Angriffsrunde Betrieb): Registrierung
+    # und Tageslauf nahmen verschiedene Sperren; ein Lauf, der zwischen
+    # Pruefung und Publikation einen Abschluss schrieb, machte den frisch
+    # registrierten Eingang dauerhaft unannehmbar — beide Kommandos meldeten
+    # Erfolg. Unter der Lauf-Sperre gibt es kein Dazwischen, und die
+    # Registrierung kann pruefen, was der Lauf verlangen wird.
+    from contextlib import ExitStack
+
+    from rechner_pipeline.betrieb.tageslauf import (
+        Ablage,
+        TageslaufError,
+        _festgeschriebene_abschluesse,
+        lauf_sperre,
+    )
+
+    ablage_ziel = Ablage(Path(stand))
+    with ExitStack() as sperren:
+        try:
+            sperren.enter_context(lauf_sperre(ablage_ziel))
+            # Der gefuehrte Stand, auf dem registriert wird — unter der
+            # Sperre, also derselbe, auf dem der naechste Lauf den Eingang
+            # aufnimmt (ADR-022).
+            from rechner_pipeline.betrieb.tageslauf import ablage_stand
+            from rechner_pipeline.models.zugangsprobe import stand_sha256 as _stand_sha
+
+            stand_inhalt = ablage_stand(ablage_ziel)
+            stand_sha = _stand_sha(stand_inhalt)
+        except TageslaufError as exc:
+            raise UebernahmeError(str(exc)) from exc
+        _pruefe_stichtag_gegen_ablage(ablage_ziel, stichtag, fallname)
+        sperren.enter_context(eingang_sperre(stand))
         # Der Eingang entsteht VOLLSTAENDIG neben seinem Namen und wird dann in
         # einem Zug umbenannt (Review T22-03): Ein halb geschriebener Eingang
         # blockierte sonst dauerhaft, weil das Verzeichnis als "nie
@@ -1176,11 +2171,19 @@ def eingang_anlegen(
         staging = Path(stand) / STAGING_DIR
         arbeit = staging / fallname
         if arbeit.exists():
+            # Publikationszustand und Arbeitswurzel GEMEINSAM: ``ziel``
+            # existiert nicht (oben geprueft), also ist nichts unter diesem
+            # Namen veroeffentlicht — auch ein vollstaendig geschriebenes
+            # Staging mit eingang.json ist dann ein Rest, dessen finaler
+            # Rename scheiterte. Die erste Fassung hielt den Marker fuer
+            # den Beweis einer Publikation und verweigerte; die Wiederholung
+            # derselben Registrierung scheiterte dauerhaft (Pruefrunde T27,
+            # Befund 03). Der Marker sperrt, sobald das Ziel steht.
             try:
                 entferne_verzeichnis(
                     arbeit, innerhalb=staging,
                     name_ok=lambda n: n == fallname,
-                    ohne_marker=EINGANG_DATEI,
+                    ohne_marker=EINGANG_DATEI if ziel.exists() else None,
                     grund="Rest eines abgebrochenen Anlegens",
                 )
             except LoeschFehler as exc:
@@ -1202,7 +2205,7 @@ def eingang_anlegen(
         # Nummernvergabe davon ab, was die Quelle zufaellig geliefert hat, und
         # die Uebersetzungstabelle waere mal die Identitaet und mal nicht — ein
         # Leser baut sich dann zwei Lesewege.
-        stamm_quelle = read_portfolio(quelle / "bestand.parquet", expected_columns=STAMM_NAMES)
+        stamm_quelle = read_portfolio(io.BytesIO(roh["bestand.parquet"]), expected_columns=STAMM_NAMES)
         quelle_ids = sorted(int(p) for p in stamm_quelle["police_id"])
         if len(quelle_ids) != len(set(quelle_ids)):
             raise UebernahmeError(
@@ -1216,7 +2219,7 @@ def eingang_anlegen(
         spalten_je_tabelle = {**PFLICHT, **OPTIONAL}
         kandidaten = [f"{name}.parquet" for name in list(PFLICHT) + list(OPTIONAL)] + list(BELEGE)
         for datei in kandidaten:
-            if not (quelle / datei).is_file():
+            if datei not in roh:
                 continue
             if datei in BELEGE:
                 # Belege sprechen die Sprache des FALLS und bleiben bei den
@@ -1224,11 +2227,12 @@ def eingang_anlegen(
                 # getan hat, und seine Freitexte nennen Policen. Ein Beleg, den
                 # der Betrieb umschreibt, bezeugt nicht mehr den Fall. Die
                 # Uebersetzungstabelle ist die Bruecke zwischen beiden Welten.
-                daten = (quelle / datei).read_bytes()
+                daten = roh[datei]
                 (arbeit / datei).write_bytes(daten)
             else:
                 tabelle = read_portfolio(
-                    quelle / datei, expected_columns=spalten_je_tabelle[datei[:-len(".parquet")]])
+                    io.BytesIO(roh[datei]),
+                    expected_columns=spalten_je_tabelle[datei[:-len(".parquet")]])
                 write_portfolio(_umnummeriert(tabelle, abbildung, datei), arbeit / datei)
                 daten = (arbeit / datei).read_bytes()
             if os.name != "nt":
@@ -1255,6 +2259,18 @@ def eingang_anlegen(
                 f"{quelle}: der Zugangsstand traegt Nebentabellen, die das Gate "
                 "nicht annehmen wuerde — nichts registriert: " + "; ".join(nt_fehler[:5])
             )
+        # Und dieselbe Pruefung, mit der die Wache des Tageslaufs den Stand
+        # abnimmt (Angriffsrunde Betrieb): Ein Zugangsstand, dessen Vertraege
+        # am Stichtag schon abgelaufen sind, wurde registriert, und der
+        # Tagesbetrieb stand danach an jedem Tag still. Der Snapshot bezeugt
+        # die Bytes; ob der Betrieb sie fuehren kann, sagt erst die
+        # Pruefung selbst — sie wird hier nicht geglaubt, sondern gefahren.
+        pb1_fehler = _eingang_pb1_fehler(arbeit, stichtag, ablage_ziel.config_pfad)
+        if pb1_fehler:
+            raise UebernahmeError(
+                f"{quelle}: der Zugangsstand ist nicht, was die Wache des "
+                "Tageslaufs (P-B1) annimmt — nichts registriert: "
+                + "; ".join(pb1_fehler[:5]))
         eingang = {
             "schema_version": EINGANG_SCHEMA_VERSION,
             "fall": fallname,
@@ -1270,9 +2286,37 @@ def eingang_anlegen(
             "band": {"von": band_von, "bis": band_bis},
             "dateien": dict(sorted(dateien.items())),
         }
+        # Gezeichnet ueber ALLE Felder (Schema 3): Datei-Hashes, Snapshot-Hash
+        # und der A-M4-Block mit signatur_verifiziert. Die Registrierung ist
+        # der Moment, in dem die Freigabesignatur geprueft wurde; danach
+        # bezeugt nur noch diese Zeichnung, dass es so war.
+        eingang["betriebszeichnung"] = zeichner.zeichne({"eingang": eingang})
+        if not probe_kopie:
+            # Die Zugangsabnahme gegen GENAU diesen Eingang und diesen Stand
+            # (ADR-022). Ohne ausdrueckliche Abnahme liefert sie nur die
+            # Test-Naht; produktiv hat der Weg oben schon verweigert.
+            if ab2 is None:
+                sha = _STANDARD_ZUGANGSABNAHME(  # type: ignore[misc]
+                    fall, ablage_stand=stand_inhalt, eingang_roh=_eingang_bytes(eingang),
+                    am4_snapshot_sha256=snapshot_sha256, zeichner=zeichner,
+                    schluesselring=ring)
+                ab2_daten, ab2_name, ab2_verifiziert = lies_abnahme_snapshot(
+                    fall, "A-B2", sha, schluesselring=ring, ordnung=zeichner.ordnung,
+                    ordnungslinie=zeichner.ordnungslinie)
+                ab2 = (ab2_daten, ab2_name)
+            abnahme = _zugangsabnahme_binden(
+                fall, fallname, ab2[0], ab2[1], stand_sha256=stand_sha,
+                eingang=eingang, am4_sha256=str(snapshot_sha256), zeichner=zeichner,
+                am4=snapshot, schluesselring=ring, ab2_verifiziert=ab2_verifiziert)
+            abnahme["betriebszeichnung"] = zeichner.zeichne({"zugangsabnahme": abnahme})
+            abnahme_pfad = arbeit / ZUGANGSABNAHME_DATEI
+            abnahme_pfad.write_text(
+                json.dumps(abnahme, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8", newline="\n")
+            if os.name != "nt":
+                abnahme_pfad.chmod(0o444)
         pfad = arbeit / EINGANG_DATEI
-        pfad.write_text(json.dumps(eingang, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                        encoding="utf-8", newline="\n")
+        pfad.write_bytes(_eingang_bytes(eingang))
         if os.name != "nt":
             pfad.chmod(0o444)
         os.rename(arbeit, ziel)
@@ -1295,10 +2339,25 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="Verzeichnis des Zugangsstands (Default: <fall>/abgeleitet/bestand).")
     parser.add_argument("--freigabe-schluessel", action="append", default=None,
                         help="Pfad eines Freigabeschluessels (mehrfach moeglich), ausserhalb des "
-                             "Falls; prueft die Signatur des A-M4-Snapshots. Ohne ihn wird "
-                             "unverifiziert registriert, und der Tageslauf nimmt den Eingang nicht.")
+                             "Falls; prueft die Signatur des A-M4-Snapshots. Pflicht: ohne ihn "
+                             "wird nichts registriert, denn der Tageslauf nimmt nur einen "
+                             "verifizierten Eingang an.")
     parser.add_argument("--snapshot", default=None,
                         help="Snapshot-Hash der A-M4-Annahme (Default: aus dem Gate-Beleg des Falls).")
+    parser.add_argument("--zugangsabnahme", default=None,
+                        help="Snapshot-Hash der angenommenen Zugangsabnahme A-B2 (ADR-022; "
+                             "Default: aus dem A-B2-Gate-Beleg des Falls). Pflicht: ohne A-B2 "
+                             "wird nichts registriert.")
+    parser.add_argument("--betriebsschluessel", required=True,
+                        help="Betriebsschluessel (Rolle betrieb/<name>, Klasse betrieb), mit dem "
+                             "eingang.json gezeichnet wird; ausserhalb der Ablage.")
+    parser.add_argument("--zeichnungsordnung", required=True,
+                        help="Zeichnungsordnung, die dem Betriebsschluessel seine Rolle gibt.")
+    parser.add_argument("--linie", required=True,
+                        help="Linienbereich (ADR-025; Pflicht seit dem Nachtrag 2026-10-01): "
+                             "die Abnahmen werden gegen die Ordnung gehalten, unter der sie "
+                             "gezeichnet wurden (Ordnungslinie). Kein Default, keine "
+                             "Umgebungsvorgabe: der Ort wird bei jedem Aufruf genannt.")
     ns = parser.parse_args(argv)
     ring: Optional[Mapping[str, bytes]] = None
     if ns.freigabe_schluessel:
@@ -1317,10 +2376,23 @@ def main(argv: Optional[List[str]] = None) -> int:
         ziel = eingang_anlegen(
             Path(ns.stand), Path(ns.fall), stichtag,
             quelle=Path(ns.quelle) if ns.quelle else None, snapshot_sha256=ns.snapshot,
-            schluesselring=ring,
+            schluesselring=ring, betriebsschluessel=Path(ns.betriebsschluessel),
+            zeichnungsordnung=Path(ns.zeichnungsordnung),
+            zugangsabnahme_sha256=ns.zugangsabnahme,
+            linie=Path(ns.linie),
         )
     except UebernahmeError as exc:
         print(f"uebernahme: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        # Eine unlesbare Eingabe (etwa eine halb kopierte Config der
+        # Ablage) ist ein Eingangsfehler mit Meldung (Angriffsrunde nach T27).
+        print(f"uebernahme: Eingabe nicht lesbar: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    except OSError as exc:
+        # Meldung statt Traceback und Exit 1, wie tageslauf und seite
+        # (Angriffsrunde nach T27).
+        print(f"uebernahme: Ein-/Ausgabefehler: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     print(f"uebernahme: Eingang angelegt -> {ziel}", file=sys.stderr)
     return 0

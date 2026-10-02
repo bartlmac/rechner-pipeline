@@ -41,6 +41,9 @@ def _schluessel(pfad: Path, inhalt: bytes) -> str:
 
 VA = "mensch/aktuariat"
 QUELLE = "mensch/quell-aktuar"
+#: Eine Rolle der PLV ohne Gate-Recht: Die Rolle des abgebenden Hauses kommt
+#: nicht in die Linie (ADR-025), die Linie ist Pflicht (Nachtrag 2026-10-01).
+OHNE_RECHT = "mensch/revision"
 IT = "mensch/architektur"
 
 
@@ -56,16 +59,38 @@ def _schreibe_ordnung(pfad: Path, rollen: dict) -> Path:
     return pfad
 
 
-def _entscheid(fall: Path, gate: str, schluessel: Path, *extra: str):
-    from tests.zeichnung_fixture import mandat_datei
+def _ausserhalb_der_linie(ordnung: Path, fall: Path) -> bool:
+    """Ob die Ordnung (mit der Wurzelrolle der Suite) nicht in die Linie darf."""
+    from rechner_pipeline.models.ordnungslinie import ordnung_inhalt_fehler
+    from tests.zeichnung_fixture import _wurzel_sicherstellen
 
+    try:
+        _wurzel_sicherstellen(ordnung, fall.parent)
+    except (ValueError, KeyError, TypeError):
+        return True
+    return bool(ordnung_inhalt_fehler(ordnung.read_text(encoding="utf-8"))[1])
+
+
+def _entscheid(fall: Path, gate: str, schluessel: Path, *extra: str):
+    from tests.zeichnung_fixture import auftrag_args, mandat_datei
+
+    # Der Fall ist beauftragt, unter der Ordnung des Tests (ADR-026), und sie
+    # ist die Spitze der Linie (ADR-025: die Linie ist Pflicht). Eine Ordnung,
+    # die nicht in die Linie darf, bekommt die Linie der Standardordnung — der
+    # Aufruf zeichnet dann nicht unter der Spitze.
+    ordnung = (Path(extra[extra.index("--zeichnungsordnung") + 1])
+               if "--zeichnungsordnung" in extra else None)
+    if ordnung is not None and ordnung.is_file() and not _ausserhalb_der_linie(ordnung, fall):
+        vorab = auftrag_args(fall, ordnung)
+    else:
+        vorab = auftrag_args(fall)
     # Das Mandat faehrt immer mit: Pflicht bei Schluesselklasse simulation
     # (T22-07), ohne Wirkung bei mensch.
     return gate_entscheid.main([
         "--fall", str(fall), "--gate", gate,
         "--entscheid", "angenommen",
         "--entscheider", "fachrolle", "--begruendung", "geprueft",
-        "--repo-root", str(REPO_ROOT),
+        "--repo-root", str(REPO_ROOT), *vorab,
         "--freigabe-schluessel", str(schluessel),
         "--mandat", str(mandat_datei(fall)),
         *extra,
@@ -86,7 +111,7 @@ def aufbau(tmp_path: Path):
     ordnung = _schreibe_ordnung(tmp_path / "zeichnungsordnung.json", {
         VA: {"schluessel_sha256": fp_va,
              "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
-        QUELLE: {"schluessel_sha256": fp_exp, "gates": []},
+        OHNE_RECHT: {"schluessel_sha256": fp_exp, "gates": []},
     })
     return fall, va, experte, ordnung
 
@@ -122,7 +147,7 @@ def test_eine_rolle_ohne_gate_recht_wird_abgewiesen(aufbau):
         fall, "A-Q1", experte, "--zeichnungsordnung", str(ordnung))
     assert ergebnis.exit_code == 20
     meldung = ergebnis.errors[0]["message"]
-    assert QUELLE in meldung and "A-Q1" in meldung
+    assert OHNE_RECHT in meldung and "A-Q1" in meldung
     assert list((fall / "entscheide").glob("A-Q1-*.json")) == []
 
 
@@ -153,7 +178,7 @@ def test_zwei_rollen_mit_demselben_schluessel_sind_ein_fehler(aufbau, tmp_path):
     fp = hashlib.sha256(va.read_bytes()).hexdigest()
     doppelt = _schreibe_ordnung(tmp_path / "doppelt.json", {
         VA: {"schluessel_sha256": fp, "gates": ["A-Q1"]},
-        QUELLE: {"schluessel_sha256": fp, "gates": []},
+        OHNE_RECHT: {"schluessel_sha256": fp, "gates": []},
     })
     ergebnis = _entscheid(fall, "A-Q1", va, "--zeichnungsordnung", str(doppelt))
     assert ergebnis.exit_code == 2
@@ -177,9 +202,14 @@ def test_jedes_zeichenbare_gate_ist_einer_rolle_zuweisbar(tmp_path):
     assert sha
 
 
-def test_der_mensch_zeichnet_alles(aufbau, tmp_path):
-    """Eskalationsrolle: gates '*' — die Programmleitung als natuerliche
-    Person (Schluesselklasse mensch) nach Abbruchkriterium."""
+def test_eine_allzweck_rolle_zeichnet_nicht_mehr(aufbau, tmp_path):
+    """Die fruehere Eskalationsrolle (gates '*', die Programmleitung als
+    Allzweck-Zeichner) gibt es nicht mehr: Eine solche Ordnung kommt nicht in
+    die Linie (ADR-025), und gezeichnet wird nur unter der Spitze der Linie
+    (Nachtrag 2026-10-01: die Linie ist Pflicht). Den Abbruch zeichnet die
+    Programmleitung mit dem Recht aus dem Fallauftrag (A-M5, ADR-026)."""
+    from rechner_pipeline.models.ordnungslinie import ordnung_inhalt_fehler
+
     fall, va, _experte, _ordnung = aufbau
     mensch = tmp_path / "mensch.key"
     fp = _schluessel(mensch, b"maintainer-eskalations-schluessel!" * 2)
@@ -187,12 +217,12 @@ def test_der_mensch_zeichnet_alles(aufbau, tmp_path):
         "mensch/programmleitung": {"schluessel_sha256": fp,
                                    "schluesselklasse": "mensch", "gates": ["*"]},
     })
+    assert ordnung_inhalt_fehler(ordnung.read_text(encoding="utf-8"))[1]
     ergebnis = _entscheid(
         fall, "A-Q1", mensch, "--zeichnungsordnung", str(ordnung))
-    assert ergebnis.exit_code == 0
-    snapshot = json.loads(
-        Path(ergebnis.paths["snapshot"]).read_text(encoding="utf-8"))
-    assert snapshot["zeichnung"]["schluesselklasse"] == "mensch"
+    assert ergebnis.exit_code == 20, ergebnis.errors
+    assert "Spitze" in ergebnis.errors[0]["message"]
+    assert list((fall / "entscheide").glob("A-Q1-*.json")) == []
 
 
 def test_ohne_ordnung_keine_annahme(aufbau):
@@ -208,24 +238,31 @@ def test_ohne_ordnung_keine_annahme(aufbau):
 
 
 def test_die_kette_prueft_die_zeichnung_der_vorbedingungen(aufbau):
-    """A-M4 verwirft eine Vorbedingung, die der Falsche gezeichnet hat.
+    """A-M4 haelt jede Vorbedingung gegen die Ordnung, unter der sie
+    gezeichnet wurde (ADR-025: die Linie ist Pflicht) — hier ein Snapshot
+    unter einem Glied, das die Linie nicht kennt (die Zeichnung unter einer
+    fremden, nicht eingetragenen Ordnung): als Vorbedingung wertlos.
 
-    A-Q1 und A-M1 wurden unter einer laxen Ordnung vom Quell-Aktuar
-    gezeichnet -- formal gueltige, signierte Snapshots. Gilt die richtige
-    Ordnung, sind
-    sie als Vorbedingung wertlos: Die Annahme des aufnehmenden
-    Unternehmens stuetzt sich nicht auf Zeichnungen einer Rolle, die
-    dafuer nie berechtigt war.
+    Frueher: A-Q1 und A-M1 unter einer laxen Ordnung (Stern fuer den
+    Quell-Aktuar), A-M4 unter der richtigen — die Stern-Ordnung kommt heute
+    nicht mehr in die Linie, und eine spaetere Ordnung entwertet eine
+    damals berechtigte Zeichnung nicht (ein Entzug wirkt nicht zurueck).
+    Was bleibt, ist die Frage, ob die Vorbedingung in DIESER Linie
+    lokalisierbar ist.
     """
-    fall, _va, experte, ordnung = aufbau
-    # Eine (falsche) Ordnung, die dem Quell-Aktuar alles erlaubt: So
-    # entstehen formal gueltige, signierte Snapshots der falschen Rolle.
-    lax = _schreibe_ordnung(fall.parent / "lax.json", {
-        QUELLE: {"schluessel_sha256": hashlib.sha256(experte.read_bytes()).hexdigest(),
-                 "gates": ["*"]},
-    })
-    assert _entscheid(fall, "A-Q1", experte, "--zeichnungsordnung", str(lax)).exit_code == 0
-    assert _entscheid(fall, "A-M1", experte, "--zeichnungsordnung", str(lax)).exit_code == 0
+    from tests.test_abnahme_rolle_klasse import _neu_signiert
+
+    fall, va, experte, ordnung = aufbau
+    assert _entscheid(fall, "A-Q1", va, "--zeichnungsordnung", str(ordnung)).exit_code == 0
+    assert _entscheid(fall, "A-M1", va, "--zeichnungsordnung", str(ordnung)).exit_code == 0
+    # A-Q1 unter einem fremden Glied neu signieren (gueltige Signatur)
+    (pfad,) = list((fall / "entscheide").glob("A-Q1-*.json"))
+    daten = json.loads(pfad.read_text(encoding="utf-8"))
+    neu = _neu_signiert(daten, va.read_bytes(), zeichnung={
+        **daten["zeichnung"], "ordnungsglied_sha256": "ab" * 32})
+    pfad.unlink()
+    (pfad.parent / f"A-Q1-{neu['snapshot_sha256']}.json").write_text(
+        json.dumps(neu, ensure_ascii=False), encoding="utf-8")
     # Der P-K1-Beleg ist eine eigene Vorbedingung von A-M4 und hier nicht
     # Gegenstand -- er wird regulaer erzeugt, damit die Kette bis zur
     # Zeichnungspruefung kommt.
@@ -235,7 +272,7 @@ def test_die_kette_prueft_die_zeichnung_der_vorbedingungen(aufbau):
     ]).exit_code == 0
 
     ergebnis = _entscheid(
-        fall, "A-M4", experte, "--zeichnungsordnung", str(ordnung))
+        fall, "A-M4", va, "--zeichnungsordnung", str(ordnung))
     assert ergebnis.exit_code == 20
     meldung = ergebnis.errors[0]["message"]
-    assert "A-Q1" in meldung and "unberechtigt" in meldung
+    assert "A-Q1" in meldung and "unberechtigt" in meldung and "Ordnungslinie" in meldung

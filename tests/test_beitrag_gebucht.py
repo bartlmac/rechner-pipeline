@@ -109,13 +109,17 @@ def test_p_b1_rechnet_den_gebuchten_beitrag_nach(lauf):
 
     Mutationsprobe: einen gebuchten Beitrag veraendern -> P-B1 findet ihn."""
     config, basis, erg = lauf
+    # Die Reduktionen gehoeren dazu, seit die Config Herabsetzung und
+    # Teilkuendigung erzeugt (2026-10-01).
     assert pruefe_ledger_betraege(
-        basis, erg.ledger, config, scheiben=erg.scheiben, historie=erg.historie) == []
+        basis, erg.ledger, config, scheiben=erg.scheiben, historie=erg.historie,
+        reduktionen=erg.reduktionen) == []
     verfaelscht = erg.ledger.copy()
     ziel = verfaelscht.index[verfaelscht["betrag_art"] == "BJB"][0]
     verfaelscht.loc[ziel, "betrag"] = float(verfaelscht.loc[ziel, "betrag"]) * 1.1
     befunde = pruefe_ledger_betraege(
-        basis, verfaelscht, config, scheiben=erg.scheiben, historie=erg.historie)
+        basis, verfaelscht, config, scheiben=erg.scheiben, historie=erg.historie,
+        reduktionen=erg.reduktionen)
     assert any("nicht aus dem Kern" in b for b in befunde), befunde
 
 

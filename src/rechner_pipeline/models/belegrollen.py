@@ -24,6 +24,12 @@ from typing import List
 #: Die Scopes eines Falls — Spiegel von ``fall.FALL_SCOPES`` (Ratsche:
 #: tests/test_belegrollen_und_zeichnung_t2603.py).
 SCOPES = ("tarif", "bestand")
+#: Der Scope des Linienbereichs (ADR-025): Abnahmen des Zielsystems
+#: ausserhalb eines Falls. Kein Fall-Scope — ``fall.FALL_SCOPES`` kennt ihn
+#: nicht, und nur die Gates mit einem Eintrag ``"linie"`` in
+#: :data:`BELEGROLLEN` sind dort zeichenbar (die vier Gegenstaende von
+#: ``models.standabnahme``).
+LINIE = "linie"
 
 
 class BelegrollenFehler(ValueError):
@@ -89,6 +95,7 @@ BELEGROLLEN = {
     "A-O1": {
         "tarif": ("tbox_aenderung", "stellungnahme_aktuariat"),
         "bestand": ("tbox_aenderung", "stellungnahme_aktuariat"),
+        "linie": ("tbox_aenderung", "stellungnahme_aktuariat"),
     },
     # A-K2 (Kern-Aenderung, Entscheid des Maintainers 2026-09-16): ZWEI
     # Pflichtbelege, die verschiedene Dinge bezeugen. Der
@@ -98,17 +105,30 @@ BELEGROLLEN = {
     # bestehenden Bestand bedeutet — jeder Vertrag mit altem und neuem
     # Kern durchgerechnet, Differenz JE VERTRAG.
     #
-    # Die Regression ist Pflicht, nicht Kuer ("ohne das kann die
-    # Aenderung im Rechenkern nicht abgenommen werden"). Solange es den
-    # Produzenten nicht gibt, ist A-K2 damit nicht zeichenbar — das ist
-    # gewollt. Ein optionaler Beleg waere derselbe Fehler, den A-M4 im
-    # Bestands-Scope schon einmal gemacht hat (T21-02/T22-01:
-    # "ausweisen statt erzwingen" nahm jedes Teilprofil an).
+    # Die Regression bleibt Pflichtrolle — ein optionaler Beleg waere
+    # derselbe Fehler, den A-M4 im Bestands-Scope schon einmal gemacht hat
+    # (T21-02/T22-01: "ausweisen statt erzwingen" nahm jedes Teilprofil
+    # an). Bis ihr Produzent gebaut ist, steht an ihrer Stelle die benannte
+    # AUSNAHME "nicht gefahren, Werkzeug noch nicht erstellt"
+    # (``models.kernabnahme``, ADR-018 Nachtrag 2026-10-01) — eine Rolle,
+    # die belegt, was NICHT geprueft ist, statt still zu fehlen.
     #
     # Scope-unabhaengig: Ein geaenderter Kern rechnet in jedem Scope.
     "A-K2": {
         "tarif": ("kernaenderung", "regression"),
         "bestand": ("kernaenderung", "regression"),
+        "linie": ("kernaenderung", "regression"),
+    },
+    # A-T1 (Tarifwerk der PLV, ADR-025): EIN Pflichtbeleg, der
+    # Aenderungsbeleg des Tarifwerks (``gates.tarifwerk_belegen``) — je
+    # Tarifplan und je eigener Tarifgeneration, was sich seit dem zuletzt
+    # abgenommenen Stand geaendert hat, mit den Commits des Zweigs; das Gate
+    # rechnet ihn nach. Scope-unabhaengig wie A-K2: Ein geaendertes Tarifwerk
+    # gilt in jedem Scope. Gezeichnet von mensch/aktuariat.
+    "A-T1": {
+        "tarif": ("tarifwerk_aenderung",),
+        "bestand": ("tarifwerk_aenderung",),
+        "linie": ("tarifwerk_aenderung",),
     },
     # A-B1 (Auslieferung, Entscheid des Maintainers 2026-09-16): Der
     # Beleg ist der ANKERSATZ des auszuliefernden Pakets — der Satz, der
@@ -123,8 +143,54 @@ BELEGROLLEN = {
         "tarif": (),
         "bestand": ("anker",),
     },
+    # A-B2 (Zugangsabnahme, ADR-022, Entscheid des Maintainers
+    # 2026-09-30): DREI Pflichtbelege, jeder bezeugt etwas anderes. Die
+    # ZUGANGSPROBE ist die Rechnung — zwei Laeufe auf einer Kopie der
+    # produktiven Ablage, mit und ohne den Eingang, ihre Differenz gegen
+    # den abgenommenen Bestand; sie bindet auch den Stand der Ablage, auf
+    # dem sie lief. Der A-M4-SNAPSHOT sagt, WAS abgenommen wurde; der
+    # EINGANG (eingang.json mit Betriebszeichnung), WAS eintreten soll. Die
+    # Registrierung haelt ihre eigene eingang.json und den Stand der Ablage
+    # gegen genau diese Hashes, der Tageslauf beim Eintritt noch einmal.
+    #
+    # Nur im Bestands-Scope. Ein Tarif-Fall hat keinen Zugang.
+    "A-B2": {
+        "tarif": (),
+        "bestand": ("zugangsprobe", "am4_snapshot", "eingang"),
+    },
+    # A-B3 (Anfangsbestand, ADR-025): der Beleg des Anfangsbestands einer
+    # aufgesetzten Ablage (``betrieb.anfangsbestand belegen``: Tabellen,
+    # Config, Code-Stand, P-B1-Befund, Kennzahlen). NUR im Linienbereich —
+    # der Anfangsbestand gehoert einer Ablage, keinem Fall; in beiden
+    # Fall-Scopes ist die Rollenmenge leer, und das Gate verweigert ihn dort.
+    "A-B3": {
+        "tarif": (),
+        "bestand": (),
+        "linie": ("anfangsbestand",),
+    },
+    # A-M6 Fallauftrag und A-M5 Fallabbruch (ADR-026): je die Vorlage am
+    # festen Ort (``gates.fall_belegen``), die das Gate gegen Fall, Eingang und
+    # Linie nachrechnet; ihr Inhalt steht zusaetzlich signiert im Snapshot
+    # (``auftrag`` bzw. ``abbruch``). In beiden Fall-Scopes, nie in der Linie.
+    "A-M6": {
+        "tarif": ("fallauftrag",),
+        "bestand": ("fallauftrag",),
+    },
+    "A-M5": {
+        "tarif": ("fallabbruch",),
+        "bestand": ("fallabbruch",),
+    },
+    # A-M4 verlangt seit dem Entscheid des Maintainers 2026-10-01 in BEIDEN
+    # Scopes, dass der Stand, auf dem der Fall laeuft, abgenommen ist — je
+    # Gegenstand eine Rolle (models.standabnahme, ADR-018 Nachtrag
+    # 2026-10-01, ADR-025): ``kernstand`` (A-K2), ``tboxstand`` (A-O1) und
+    # ``tarifwerkstand`` (A-T1). Gepinnt wird der Beleg des Wegs: der
+    # Snapshot im Fall (a) oder der Verweis auf einen frueher angenommenen
+    # Snapshot — die Erstabnahme der Linie oder einen frueheren Fall — bei
+    # unveraendertem Stand (b).
     "A-M4": {
-        "tarif": ("pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege"),
+        "tarif": ("pq3_ledger", "aq1_snapshot", "am1_snapshot", "pk1_belege",
+                  "kernstand", "tboxstand", "tarifwerkstand"),
         "bestand": (
             "pq3_ledger",
             "aq1_snapshot",
@@ -132,6 +198,9 @@ BELEGROLLEN = {
             "am2_snapshot",
             "am3_snapshot",
             "pk1_belege",
+            "kernstand",
+            "tboxstand",
+            "tarifwerkstand",
             "pb1_ledger",
             "migrationssuite",
             # Freischaltung (Schritt 6): der Beleg, dass die Fuehrung die
@@ -150,6 +219,12 @@ def belegrollen(gate: str, scope: str) -> List[str]:
             f"kein Belegrollen-Vertrag fuer Gate {gate!r} "
             f"(deklariert: {sorted(BELEGROLLEN)})"
         )
+    if scope == LINIE:
+        if LINIE not in BELEGROLLEN[gate]:
+            raise BelegrollenFehler(
+                f"{gate} ist im Linienbereich nicht zeichenbar — dort nur "
+                f"{sorted(g for g, v in BELEGROLLEN.items() if LINIE in v)} (ADR-025)")
+        return list(BELEGROLLEN[gate][LINIE])
     if scope not in SCOPES:
         raise BelegrollenFehler(
             f"Scope {scope!r} ist ungueltig — erlaubt: {', '.join(SCOPES)}"

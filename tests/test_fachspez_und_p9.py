@@ -38,7 +38,7 @@ PLAUSIBEL = {
 }
 
 
-from tests.zeichnung_fixture import VA, annahme_args
+from tests.zeichnung_fixture import linie_args, entscheide_args, VA, annahme_args
 
 
 def _freigabe_arg(fall: Path) -> list[str]:
@@ -115,13 +115,13 @@ def test_p9_annahme_blockt_bei_vorlaeufigen(fall_mit_konflikt):
     from rechner_pipeline.gates.gate_entscheid import main
 
     f, *_ = fall_mit_konflikt
-    result = main(["--fall", str(f), "--gate", "A-Q1",
+    result = main(["--fall", str(f), *linie_args(f), "--gate", "A-Q1",
                    "--entscheid", "angenommen", "--rolle", VA, "--entscheider", "maintainer",
                    "--begruendung", "ok", "--repo-root", "."])
     assert result.exit_code == 20
     assert any("vorlaeufig" in e["code"] for e in result.errors)
     # Ablehnung ist jederzeit snapshotbar:
-    result = main(["--fall", str(f), "--gate", "A-Q1",
+    result = main(["--fall", str(f), *linie_args(f), "--gate", "A-Q1",
                    "--entscheid", "abgelehnt", "--rolle", VA, "--entscheider", "maintainer",
                    "--begruendung", "Zins offen", "--repo-root", "."])
     assert result.exit_code == 0
@@ -140,7 +140,7 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
 
     f, _, _, d_id = fall_mit_konflikt
     rc = entscheide([
-        "--fall", str(f), *_freigabe_arg(f), "--diskrepanz", d_id, "--wert", "0.025",
+        "--fall", str(f), *entscheide_args(f), "--diskrepanz", d_id, "--wert", "0.025",
         "--entscheider", "maintainer",
         "--begruendung", "Meldung ist die eingereichte Fassung",
     ])
@@ -156,7 +156,7 @@ def test_entscheide_cli_finalisiert_und_p9_nimmt_an(fall_mit_konflikt, capsys):
     assert abox.generationen[0].zellen[0].parameter["beta1"].wert == 0.025
     # Eine endgueltige Entscheidung ist nicht erneut ueberschreibbar:
     rc = entscheide([
-        "--fall", str(f), *_freigabe_arg(f), "--diskrepanz", d_id, "--wert", "0.03",
+        "--fall", str(f), *entscheide_args(f), "--diskrepanz", d_id, "--wert", "0.03",
         "--entscheider", "X", "--begruendung", "y",
     ])
     assert rc == 1
@@ -195,7 +195,7 @@ def test_p9_meldungen_nennen_das_kommando_das_weiterhilft(fall_mit_konflikt, tmp
 
     # (a) gar kein Arbeitsbereich -> das Anlege- UND das Registrier-Kommando
     leer = tmp_path / "kein_fall"
-    result = main(["--fall", str(leer)] + basis)
+    result = main(["--fall", str(leer), *linie_args(leer)] + basis)
     assert result.exit_code == 2
     [fehler] = result.errors
     assert "rechner_pipeline.fall anlegen" in fehler["message"]
@@ -207,7 +207,7 @@ def test_p9_meldungen_nennen_das_kommando_das_weiterhilft(fall_mit_konflikt, tmp
     quelle = tmp_path / "rechner.xlsm"
     quelle.write_bytes(b"x")
     registrieren(ohne_abox, quelle)
-    result = main(["--fall", str(ohne_abox)] + basis)
+    result = main(["--fall", str(ohne_abox), *linie_args(ohne_abox)] + basis)
     assert result.exit_code == 20
     [fehler] = result.errors
     assert fehler["code"] == "abox"
@@ -217,11 +217,11 @@ def test_p9_meldungen_nennen_das_kommando_das_weiterhilft(fall_mit_konflikt, tmp
     # (c) A-Box entschieden, aber Gate P-Q3 nie gelaufen -> das P-Q3-Kommando
     f, _, _, d_id = fall_mit_konflikt
     assert entscheide([
-        "--fall", str(f), *_freigabe_arg(f), "--diskrepanz", d_id,
+        "--fall", str(f), *entscheide_args(f), "--diskrepanz", d_id,
         "--wert", "0.025", "--entscheider", "maintainer",
         "--begruendung", "Meldung ist die eingereichte Fassung",
     ]) == 0
-    result = main(["--fall", str(f)] + basis)
+    result = main(["--fall", str(f), *linie_args(f)] + basis)
     assert result.exit_code == 20
     [fehler] = result.errors
     assert fehler["code"] == "vorbedingung"
@@ -310,7 +310,7 @@ def test_pk1_hinweis_ist_je_generation_eine_kopierbare_zeile(tmp_path: Path):
     assert [g.id for g in abox.generationen] == ["klv/tg2012", "klv/tg2015"]
     assert pq3(["--fall", str(f)]).exit_code == 0
 
-    result = main(["--fall", str(f), "--gate", "A-M4", "--entscheid",
+    result = main(["--fall", str(f), *linie_args(f), "--gate", "A-M4", "--entscheid",
                    "angenommen", "--rolle", VA, "--entscheider",
                    "maintainer", "--begruendung", "ok", "--repo-root", "."])
     assert result.exit_code == 20
@@ -409,21 +409,41 @@ def test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt():
         and isinstance(knoten.value, ast.Name)
         and knoten.value.id == "subprocess"
     ]
-    assert stellen == [("_git_stand", "run")]
+    assert stellen == [("_git_lesen", "run")]
 
-    # Nur lesende git-Aufrufe — kein beliebiges Kommando, kein Netz.
-    kommandos = [
-        [e.value for e in knoten.elts]
+    # Nur lesende git-Kommandos — abschliessend aufgezaehlt, kein beliebiges
+    # Kommando, kein Netz. Die ersten drei protokollieren den Systemstand
+    # (P-K1, P9), die uebrigen belegen den Kernstand fuer A-K2 (Entscheid des
+    # Maintainers 2026-10-01). Was nach dem Kommando kommt, sind Daten:
+    # _git_lesen weist alles ab, was mit einem Strich beginnt.
+    from rechner_pipeline.gates import _provenienz
+
+    assert _provenienz.LESENDE_KOMMANDOS == (
+        ("rev-parse", "HEAD"),
+        ("rev-parse", "--abbrev-ref", "HEAD"),
+        ("status", "--porcelain"),
+        ("status", "--porcelain", "--untracked-files=all", "--"),
+        ("rev-parse", "--verify", "--quiet"),
+        ("merge-base",),
+        ("diff", "--numstat", "--no-renames"),
+        ("log", "--no-renames", "--name-only", "--format=%x1e%H%x1f%cs%x1f%s"),
+        ("ls-tree", "-r", "--name-only"),
+        ("show",),
+    )
+    # Jeder Aufruf der Stelle nennt eine dieser Konstanten, nie ein Literal.
+    aufrufe = [
+        ast.unparse(knoten.args[1])
         for knoten in ast.walk(baum)
-        if isinstance(knoten, ast.List) and knoten.elts
-        and all(isinstance(e, ast.Constant) for e in knoten.elts)
-        and knoten.elts[0].value == "git"
+        if isinstance(knoten, ast.Call) and isinstance(knoten.func, ast.Name)
+        and knoten.func.id == "_git_lesen"
     ]
-    assert kommandos == [
-        ["git", "rev-parse", "HEAD"],
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        ["git", "status", "--porcelain"],
-    ]
+    namen = {name for name, wert in vars(_provenienz).items()
+             if isinstance(wert, tuple) and wert in _provenienz.LESENDE_KOMMANDOS}
+    assert aufrufe and set(aufrufe) <= namen, aufrufe
+    with pytest.raises(_provenienz.GitAngabeFehler):
+        _provenienz._git_lesen(Path("."), ("push",))
+    with pytest.raises(_provenienz.GitAngabeFehler):
+        _provenienz._git_lesen(Path("."), _provenienz.GIT_DIFFSTAT, "--output=/tmp/x")
 
     # Kein Prozessstart am subprocess-Waechter vorbei (os.system & Co.):
     ueber_os = {
@@ -439,7 +459,7 @@ def test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt():
         Path(__file__).resolve().parents[1] / "ONBOARDING.md"
     ).read_text(encoding="utf-8")
     assert "no subprocess" in onboarding
-    assert "gates/_provenienz._git_stand" in onboarding
+    assert "gates/_provenienz._git_lesen" in onboarding
     assert "exactly ONE subprocess exception" in onboarding
     assert (
         "test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt"
@@ -452,7 +472,7 @@ def test_entscheide_alle_vorlaeufigen_nach_quelle(fall_mit_konflikt, capsys):
 
     f, *_ = fall_mit_konflikt
     rc = entscheide([
-        "--fall", str(f), *_freigabe_arg(f), "--alle-vorlaeufigen",
+        "--fall", str(f), *entscheide_args(f), "--alle-vorlaeufigen",
         "--quelle", "rechner.xlsm", "--entscheider", "maintainer",
         "--begruendung", "Fachverantwortlicher bestaetigt den Rechner-Stand",
     ])
@@ -488,3 +508,164 @@ def test_code_index_des_repos_hat_keinen_drift():
     assert drift_report(index, ["klv", "bu"]) == []
     # Die Ontologie-/Spez-/Gate-Schicht ist annotiert:
     assert len(index["knoten"]["klv"]) >= 8
+
+
+# --------------------------------------------------------------------------- #
+# RC07 (Angriffsrunde C): ein Prozessende hinterlaesst einen Rest, keinen Beleg
+# --------------------------------------------------------------------------- #
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+#: Kindprozess: faehrt gate_entscheid unter run_command und beendet sich an
+#: der benannten Stelle hart (os._exit — kein finally, kein atexit), wie
+#: SIGKILL oder ein Stromausfall. 'link' = nach dem Einhaengen des Snapshots,
+#: vor dem Loeschen der Tempdatei; 'ledger' = beim Ersetzen des End-Ledgers
+#: (das zweite os.replace auf das Ledger dieses Kommandos).
+_KIND = '''
+import os, sys
+from pathlib import Path
+
+stelle = sys.argv[1]
+zaehler = [0]
+_unlink, _replace = Path.unlink, os.replace
+
+
+def unlink(self, *a, **k):
+    if stelle == "link" and self.name.startswith(".A-Q1-") and self.name.endswith(".tmp"):
+        os._exit(137)
+    return _unlink(self, *a, **k)
+
+
+def replace(quelle, ziel, *a, **k):
+    if stelle == "ledger" and Path(ziel).name == "gate_entscheid_aq1.gate.json":
+        zaehler[0] += 1
+        if zaehler[0] == 2:
+            os._exit(137)
+    return _replace(quelle, ziel, *a, **k)
+
+
+Path.unlink, os.replace = unlink, replace
+from rechner_pipeline.gates import gate_entscheid
+from rechner_pipeline.gates._common import run_command
+sys.exit(run_command(gate_entscheid.main, sys.argv[2:]))
+'''
+
+
+def _ablehnung(fall: Path) -> list[str]:
+    return ["--fall", str(fall), *linie_args(fall), "--gate", "A-Q1", "--entscheid", "abgelehnt",
+            "--rolle", VA, "--entscheider", "maintainer",
+            "--begruendung", "Zins offen", "--repo-root", str(REPO_ROOT)]
+
+
+def _hartes_prozessende(tmp_path: Path, fall: Path, stelle: str) -> int:
+    import os
+    import subprocess
+    import sys
+
+    kind = tmp_path / "kind.py"
+    kind.write_text(_KIND, encoding="utf-8")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)
+    lauf = subprocess.run([sys.executable, str(kind), stelle, *_ablehnung(fall)],
+                          cwd=REPO_ROOT, env=env, capture_output=True, text=True)
+    return lauf.returncode
+
+
+@pytest.mark.parametrize("stelle", ["link", "ledger", "keine"])
+def test_die_wiederholung_nach_hartem_prozessende_meldet_bereits_vorhanden(
+        fall_mit_konflikt, tmp_path, stelle):
+    """Idempotenzvertrag des Gates: derselbe Entscheid auf demselben Stand
+    wird gemeldet, nicht dupliziert. Ein Prozessende zwischen os.link und
+    dem Loeschen der Tempdatei (Hardlink-Zwilling des Snapshots) oder beim
+    Ersetzen des End-Ledgers liess einen Punktnamen-Rest liegen, den
+    _artefakt_hashes als Artefakt aufnahm: ein ZWEITER Snapshot, der den
+    Rest als entscheidungsrelevant nannte — und jeder weitere Snapshot des
+    Falls trug ihn mit. Positivkontrolle ('keine'): dasselbe ohne
+    Prozessende — kein Rest, ein Snapshot, bereits_vorhanden.
+    Mutationsprobe: _artefakt_hashes nimmt Punktreste wieder auf -> rot."""
+    from rechner_pipeline.gates.gate_entscheid import main
+
+    f, *_ = fall_mit_konflikt
+    assert _hartes_prozessende(tmp_path, f, stelle) == (0 if stelle == "keine" else 137)
+    reste = sorted(p.name for p in f.rglob(".*.tmp"))
+    assert bool(reste) == (stelle != "keine"), (
+        "Voraussetzung: das Prozessende hat einen Rest hinterlassen (Kontrolle: keinen)")
+    result = main(_ablehnung(f))
+    assert result.exit_code == 0, result.errors
+    assert result.summary.get("bereits_vorhanden") is True, result.summary
+    assert len(list((f / "entscheide").glob("A-Q1-*.json"))) == 1
+    for snapshot in (f / "entscheide").glob("A-Q1-*.json"):
+        genannt = json.loads(snapshot.read_text(encoding="utf-8"))["artefakt_hashes"]
+        assert [k for k in genannt if Path(k).name.startswith(".")] == []
+    # Nach der Wiederholung liegt nirgends im Fall ein Rest (RC07, Nachbesserung):
+    # weder der Hardlink-Zwilling in entscheide/ noch die Ledger-Tempdatei.
+    assert sorted(p.name for p in f.rglob(".*.tmp")) == []
+
+
+@pytest.mark.parametrize("pfad", ["bereits_vorhanden", "neuer_snapshot"])
+def test_ein_liegengebliebener_rest_wird_vom_naechsten_lauf_des_gates_entfernt(
+        fall_mit_konflikt, pfad):
+    """Ein Rest ist kein Beleg — und er bleibt nicht fuer immer liegen
+    (entscheide/ darf niemand von Hand bereinigen). Der ECHTE Ablauf von
+    gate_entscheid raeumt zu Beginn die Reste seiner Ziele weg — die
+    Snapshots dieses Gates in entscheide/ und sein Ledger im eigenen
+    Verzeichnis —, auch im Pfad 'bereits_vorhanden', der gar nichts
+    schreibt (dort greift kein Schreiber-Aufraeumen). Fremde Punktdateien
+    und die Reste anderer Gates bleiben. Der Test geht durch main() statt
+    durch den Schreiber (blinde Bauform 'Test baut seine Eingaben selbst');
+    die Reste eines echten harten Prozessendes deckt
+    test_die_wiederholung_nach_hartem_prozessende..., dieser hier ergaenzt
+    Kontrollnamen (fremdes Gate, fremde Punktdatei) und den Pfad 'neuer
+    Snapshot'.
+    Mutationsprobe: das Aufraeumen am Laufanfang entfernen -> rot
+    (bereits_vorhanden); das Aufraeumen in write_gate_ledger entfernen ->
+    rot (beide)."""
+    from rechner_pipeline.gates.gate_entscheid import main
+
+    f, *_ = fall_mit_konflikt
+    if pfad == "bereits_vorhanden":
+        assert main(_ablehnung(f)).exit_code == 0
+    entscheide = f / "entscheide"
+    diagnostik = f / "abgeleitet" / "diagnostics"
+    entscheide.mkdir(exist_ok=True)
+    diagnostik.mkdir(parents=True, exist_ok=True)
+    eigene = [
+        entscheide / ".A-Q1-abc.json.0123456789abcdef.tmp",
+        diagnostik / ".gate_entscheid_aq1.gate.json.0123456789abcdef.tmp",
+    ]
+    fremde = [
+        entscheide / ".A-Q2-abc.json.0123456789abcdef.tmp",
+        entscheide / ".fremd.tmp",
+        diagnostik / ".gate_entscheid_aq2.gate.json.0123456789abcdef.tmp",
+    ]
+    for p in eigene + fremde:
+        p.write_bytes(b"halb")
+    result = main(_ablehnung(f))
+    assert result.exit_code == 0, result.errors
+    assert bool(result.summary.get("bereits_vorhanden")) is (pfad == "bereits_vorhanden")
+    assert [p.name for p in eigene if p.exists()] == []
+    assert all(p.exists() for p in fremde)
+
+
+def test_schreibe_exklusiv_raeumt_die_reste_seines_ziels(tmp_path):
+    """Einheitstest der Schreiber-Ebene (den Ablauf deckt der Test davor):
+    Reste dieses Ziels gehen, fremde Punktdateien und Reste anderer Ziele
+    bleiben — auch beim Fehlschlag 'Ziel existiert'. Mutationsprobe: das
+    Aufraeumen in schreibe_exklusiv entfernen -> rot."""
+    from rechner_pipeline.gates import _common
+
+    ziel = tmp_path / "A-Q1-abc.json"
+    rest = tmp_path / ".A-Q1-abc.json.0123456789abcdef.tmp"
+    anderes_ziel = tmp_path / ".A-Q1-xyz.json.0123456789abcdef.tmp"
+    fremd = tmp_path / ".gitkeep"
+    for p in (rest, anderes_ziel, fremd):
+        p.write_bytes(b"halb")
+    _common.schreibe_exklusiv(ziel, b"{}\n")
+    assert ziel.read_bytes() == b"{}\n"
+    assert not rest.exists()
+    assert anderes_ziel.exists() and fremd.exists()
+    zwilling = tmp_path / ".A-Q1-abc.json.fedcba9876543210.tmp"
+    zwilling.write_bytes(b"{}\n")
+    with pytest.raises(FileExistsError):
+        _common.schreibe_exklusiv(ziel, b"[]\n")
+    assert not zwilling.exists() and ziel.read_bytes() == b"{}\n"

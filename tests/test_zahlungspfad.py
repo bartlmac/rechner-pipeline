@@ -302,7 +302,7 @@ def test_ohne_kostenprofil_weicht_der_pfad_messbar_ab():
 
     kern = Rechenkern(KLV_DEFAULT)
     mp, basis = kern.mp, kern.basis
-    red = reduziere(kern, 5, 0.6)
+    red = reduziere(kern, 5, 0.6, verfahren="prospektiv")
     skaliert = ReduzierterVertrag(kern=kern, reduktion=red)
     mit = als_zahlungspfad(red, mp)
     ohne = Zahlungspfad(leistung=mit.leistung, ablauf=mit.ablauf,

@@ -38,7 +38,7 @@ from rechner_pipeline.ontologie.diskrepanz import Diskrepanz, Entscheidung
 from rechner_pipeline.ontologie.kette import pruefe_kette
 from tests.e2e_fixture import bereite_pk1_fall
 from tests.test_kette_und_vorbedingungen import fall_mit_fragmenten, merge_cli  # noqa: F401
-from tests.zeichnung_fixture import VA, ordnung_schreiben, schluessel_anlegen
+from tests.zeichnung_fixture import VA, auftrag_args, ordnung_schreiben, schluessel_anlegen
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SHA = "a" * 64
@@ -231,7 +231,10 @@ def test_betriebseingang_behauptet_keine_fremde_klasse_und_keine_simulation_ohne
     sagt nichts mehr ueber Schluesselklassen.
     """
     basis = {"schema_version": ueb.EINGANG_SCHEMA_VERSION, "fall": "f", "stichtag": "2026-01-01",
-             "snapshot_sha256": "a" * 64, "dateien": {"bestand.parquet": "d" * 64}}
+             "snapshot_sha256": "a" * 64, "dateien": {"bestand.parquet": "d" * 64},
+             # Schema 3 traegt die Betriebszeichnung; ihre Form prueft der
+             # Leser (lies_uebernahme), hier geht es nur um die Klasse.
+             "betriebszeichnung": {"verfahren": "hmac-sha256-v2"}}
     abnahme = {"gate": "A-M4", "entscheid": "angenommen"}
     ok = ueb.validate_eingang({**basis, "zeichnung": {
         **abnahme, "schluesselklasse": "simulation", "mandat_sha256": "b" * 64}})
@@ -269,6 +272,8 @@ def _annahme(fall, schluessel, ordnung, *extra):
         "--fall", str(fall), "--gate", "A-Q1", "--entscheid", "angenommen",
         "--entscheider", "fachrolle", "--begruendung", "geprueft",
         "--repo-root", str(REPO_ROOT),
+        # Der Fall ist beauftragt, unter der Ordnung des Tests (ADR-026).
+        *auftrag_args(fall, ordnung),
         "--freigabe-schluessel", str(schluessel), "--zeichnungsordnung", str(ordnung),
         *extra,
     ])
@@ -282,7 +287,7 @@ def test_wiederholung_ohne_mandat_ist_kein_treffer_sondern_sperre(fall, tmp_path
     key = tmp_path / "va.key"
     fp = schluessel_anlegen(key)
     ordnung = ordnung_schreiben(tmp_path / "ordnung.json", {
-        VA: {"schluessel_sha256": fp, "schluesselklasse": "simulation", "gates": ["*"]},
+        VA: {"schluessel_sha256": fp, "schluesselklasse": "simulation", "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
     })
     mandat = tmp_path / "mandat.md"
     mandat.write_text("Mandat.", encoding="utf-8")
@@ -303,15 +308,15 @@ def test_andere_ordnung_oder_anderer_schluessel_ist_kein_identischer_entscheid(f
     key = tmp_path / "va.key"
     fp = schluessel_anlegen(key)
     ordnung = ordnung_schreiben(tmp_path / "ordnung.json", {
-        VA: {"schluessel_sha256": fp, "schluesselklasse": "mensch", "gates": ["*"]},
+        VA: {"schluessel_sha256": fp, "schluesselklasse": "mensch", "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
     })
     erste = _annahme(fall, key, ordnung)
     assert erste.exit_code == 0, erste.errors
     s1 = _snapshot(erste)
     # (b) geaenderte Ordnung, gleiche Rolle: kein Treffer, neuer Snapshot in der Kette
     ordnung2 = ordnung_schreiben(tmp_path / "ordnung2.json", {
-        VA: {"schluessel_sha256": fp, "schluesselklasse": "mensch", "gates": ["*"]},
-        "mensch/quell-aktuar": {"schluessel_sha256": "9" * 64, "schluesselklasse": "mensch", "gates": []},
+        VA: {"schluessel_sha256": fp, "schluesselklasse": "mensch", "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
+        "mensch/revision": {"schluessel_sha256": "9" * 64, "schluesselklasse": "mensch", "gates": []},
     })
     zweite = _annahme(fall, key, ordnung2)
     assert zweite.exit_code == 0, zweite.errors
@@ -323,7 +328,7 @@ def test_andere_ordnung_oder_anderer_schluessel_ist_kein_identischer_entscheid(f
     key2 = tmp_path / "va2.key"
     fp2 = schluessel_anlegen(key2, b"another-key-of-the-same-role!!" * 2)
     ordnung3 = ordnung_schreiben(tmp_path / "ordnung3.json", {
-        VA: {"schluessel_sha256": fp2, "schluesselklasse": "mensch", "gates": ["*"]},
+        VA: {"schluessel_sha256": fp2, "schluesselklasse": "mensch", "gates": ["A-Q1", "A-M1", "A-M2", "A-M3", "A-M4"]},
     })
     # Die Kette verlangt die Schluessel der Vorgaenger-Signaturen im Ring;
     # der ZULETZT genannte Schluessel zeichnet (key2), der alte prueft nur.

@@ -13,7 +13,7 @@ Geschaeftsvorfall (Klasse A, "Herabsetzung").
 
 **Die gemeinsame Konstruktion.** Der Vertrag wird NICHT geteilt. Er
 bekommt ab dem Reduktionsjahr einen geknickten Verlauf: Der Beitrag faellt
-auf den Anteil ``f``, und der freiwerdende Reserveanteil wird in
+auf den Anteil ``f``, und der freiwerdende Anteil des Rueckkaufswerts wird in
 beitragsfreie Summe umgewandelt, die als eigenes Leistungsprofil neben
 dem fortgefuehrten steht (:func:`als_zahlungspfad`). Weil der
 Jahresbeitrag proportional zur Versicherungssumme ist (``BJB = VS *
@@ -24,26 +24,71 @@ Die Rede vom "geteilten Vertrag" stammt aus der Zeit, in der die
 Folgebewertung zwei skalierte Vertraege addierte. Sie hat die Mathematik
 falsch dargestellt: Es gibt einen Vertrag und einen Verlauf.
 
-**Wo sie sich unterscheiden: was mit dem freiwerdenden Reserveanteil
-geschieht.**
+**Wo sie sich unterscheiden: was mit dem freiwerdenden Anteil des
+Rueckkaufswerts geschieht.**
 
 ``prospektiv`` (Zielverfahren)
     Der freiwerdende Anteil wird **verlustfrei** in beitragsfreie
-    Versicherungssumme umgewandelt — mit demselben Satz, den auch die
-    vollstaendige Beitragsfreistellung verwendet. Die Deckungs-
-    rueckstellung bleibt in voller Hoehe im Vertrag.
+    Versicherungssumme umgewandelt — mit demselben Satz UND auf
+    demselben Track, den auch die vollstaendige Beitragsfreistellung
+    verwendet: dem Rueckkaufswert-Track V^MRV, nicht der
+    Deckungsrueckstellung V^bpfl (Entscheid des Maintainers
+    2026-09-30, F1 (b)). Innerhalb der Zillmerdauer liegen beide Tracks
+    um den noch nicht getilgten Abschlusskostenrest auseinander; auf
+    V^bpfl umgewandelt lag die Herabsetzung mit f -> 0 darunter (Messung
+    der Runde C, KLV a0 = 1: Beitragsfreistellung 4.898,47, Herabsetzung
+    mit f = 0 2.356,97), und der Tarifplan widersprach sich selbst.
 
 ``mit_abzug`` (verbreitetes Altverfahren)
     Das System behandelt die Reduktion wie eine **Teilkuendigung**: Auf
     den freiwerdenden Anteil wird der anteilige Stornoabzug erhoben,
-    bevor er in beitragsfreie Summe umgewandelt wird. Auch das ist
+    bevor er in beitragsfreie Summe umgewandelt wird — umgewandelt wird
+    also (1-f) x RKW, RKW = max(0, V^MRV - StoAb), genau die Groesse, die
+    die Quelle bei der Teilkuendigung auszahlt. Auch das ist
     vertretbar — bei einem Teilrueckkauf ist der Abzug ueblich, und
-    genau so haben viele Altbestaende die Herabsetzung geführt.
+    genau so haben viele Altbestaende die Herabsetzung gefuehrt.
 
-Beide treffen die Randfaelle: Bei ``f = 1`` (keine Reduktion) aendert
-sich nichts, bei ``f = 0`` sind sie die vollstaendige
-Beitragsfreistellung — verlustfrei die eine, mit Abzug die andere.
-Dazwischen weichen sie um den anteiligen Stornoabzug ab.
+Bei ``f = 1`` (keine Reduktion) aendert sich nichts. Bei ``f = 0`` ist
+die prospektive Herabsetzung die Beitragsfreistellung (gleiche Summe,
+gleicher Pfad, auch innerhalb der Zillmerdauer); die mit Abzug liegt um
+den Stornoabzug darunter. Dazwischen weichen die Verfahren um den
+anteiligen Stornoabzug (1-f) x StoAb ab; der Abzug ist hoechstens der
+Rueckkaufswert selbst.
+
+**Untergrenze.** Der umgewandelte Teil ist nie negativ (wie
+RKW = max(0, ...)): Keine Summe und keine Leistung wird negativ, auch
+nicht bei nicht positiver Rueckstellung im ersten Vertragsjahr (Befund
+RC01 der Runde C). Auf dem Rueckkaufs-Track entsteht dort nach der
+Nachmessung kein negativer Wert mehr; die Untergrenze bleibt als
+Eigenschaft der Regel.
+
+**Grenze des Floors (Entscheid des Maintainers 2026-09-30).** Der Floor auf
+null gilt fuer den umgewandelten Teil der BASISSCHICHT, nicht fuer die
+Korrekturschicht: Eine negative Schicht (rho < 0) kann den umgewandelten
+Teil darunter druecken, und die Summe wird dann nicht geklemmt. Die Schicht
+ist Migrationsdifferenz, keine Tarifgroesse — eine Untergrenze, die sie
+einschlosse, machte aus einer Differenz zwischen zwei Systemen eine
+Tarifaussage und verdeckte genau die Abweichung, die die Schicht ausweisen
+soll. (Die Teilkuendigung kappt die Auszahlung dagegen auf null, weil dort
+Geld fliesst und ein Kunde aus einer Migrationsdifferenz keine
+Nachzahlungsforderung bekommt, Entscheid 2026-09-26 — siehe die Engine.)
+
+**Zwei Geschaeftsvorfaelle** (Entscheid des Maintainers 2026-10-01,
+ADR-023; klv.md 7.1 und 7.2). Die BEITRAGSHERABSETZUNG (``RED``) senkt den
+Beitrag auf f und wandelt den freiwerdenden Teil in beitragsfreie Summe um
+(``prospektiv`` oder ``mit_abzug``); es fliesst kein Geld, und sie setzt
+einen laufenden Beitrag voraus (``0 < jahr < t``). Die TEILKUENDIGUNG
+(``TKU``) kuendigt einen Summenanteil (1-f) und zahlt dessen
+Rueckkaufswert nach Tarif aus; sie ist in jeder Generation beitragspflichtig,
+ausfinanziert und nach einer Beitragsfreistellung moeglich
+(``0 < jahr < n``). Hier rechnet ``verfahren=TEILKUENDIGUNG`` diesen Vorgang
+fuer EINEN Vorgang je Vertrag; beliebig viele Vorgaenge in jeder Reihenfolge
+rechnet :mod:`rechner_pipeline.kern.vorgangsfolge`, und fuer einen einzelnen
+Vorgang bitgleich zu dieser Klasse. Verworfen wurde EIN Vorgang mit
+Verfahrensschalter, der eine Herabsetzung nach t still als Teilkuendigung
+rechnet: Es sind zwei Vorgaenge mit verschiedener Wirkung, und das Ledger
+muss sagen, was geschah. Eine Herabsetzung nach t verweigert der Kern
+deshalb benannt, mit dem Ausweg Teilkuendigung.
 
 Knoten: klv
 """
@@ -58,12 +103,14 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 if TYPE_CHECKING:  # pragma: no cover
     from rechner_pipeline.kern.produkte.klv import Monatsreserve
 
+from rechner_pipeline.kern.konventionen import untergrenze_basissumme
 from rechner_pipeline.kern.korrekturschicht import (
     schicht_traegt,
     schichtwert_bei,
 )
 from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
+    pruefe_scheibenjahre,
     vertrags_monatsreserve,
 )
 
@@ -72,8 +119,16 @@ from rechner_pipeline.kern.rechenkern import (
 #: im Modellpunkt.
 PROSPEKTIV = "prospektiv"
 MIT_ABZUG = "mit_abzug"
-#: Quell-Verfahren der Baldrian-Uebernahme (Bedingungswerk Ziffer 6,
-#: A-M3-Befund des zweiten Laufs): Der Anteil (1-f) der
+#: Die Teilkuendigung — seit dem Entscheid 2026-10-01 ein EIGENER
+#: Geschaeftsvorfall (``TKU``) jeder Generation; als ``red_verfahren`` einer
+#: Generation heisst der Wert: Dieser Tarif kennt keine Beitragsherabsetzung
+#: (Entscheid des Maintainers 2026-10-01: der uebernommene Tarif kennt nur die
+#: Teilkuendigung; sie kommt aus ihrer eigenen Rate, nicht aus einem
+#: Herabsetzungswunsch — die fruehere Annahme A1 ist ersetzt). Ob sie nur die
+#: Grundversicherung oder alle Bausteine kuerzt, sagt das Merkmal
+#: ``tku_umfang`` (Entscheid B1, klv.md 7.2). Herkunft: Quell-Verfahren der
+#: Baldrian-Uebernahme (Bedingungswerk Ziffer 6, A-M3-Befund des zweiten
+#: Laufs): Der Anteil (1-f) der
 #: GRUNDVERSICHERUNG wird GEKUENDIGT und sein Rueckkaufswert
 #: ausgezahlt — kein beitragsfrei gestellter Teil bleibt zurueck, der
 #: Vertrag danach ist der zustandslose Vertrag mit f x S (die Quelle
@@ -131,7 +186,7 @@ class Reduktion:
 
 
 def reduziere(
-    kern: Rechenkern, jahr: int, anteil: float, *, verfahren: str = PROSPEKTIV,
+    kern: Rechenkern, jahr: int, anteil: float, *, verfahren: str,
     zusatz_dk: float = 0.0,
 ) -> Reduktion:
     """Den Beitrag im Vertragsjahr ``jahr`` auf ``anteil`` senken.
@@ -199,10 +254,11 @@ def reduziere(
 
     zeile = kern.verlaufszeile(jahr)
     # Der ungeteilte Vertrag traegt seinen eigenen Stornoabschlag; beim
-    # verlustfreien Verfahren wird keiner erhoben.
+    # verlustfreien Verfahren wird keiner erhoben. Der Abzug bezieht sich
+    # auf den Track, der umgewandelt wird: den Rueckkaufswert V^MRV.
     nach_abzug = (
         1.0 if verfahren == PROSPEKTIV
-        else _abzugsfaktor(zeile.drx_bpfl, zeile.stoab, jahr)
+        else _abzugsfaktor(zeile.vx_mrv, zeile.stoab)
     )
     return _reduziere_eine_schicht(
         kern, jahr, anteil, nach_abzug, verfahren, zusatz_dk=zusatz_dk)
@@ -233,37 +289,107 @@ def _pruefe_eingaben(
             f"Anteil {anteil!r} liegt nicht in [0, 1] — er ist der "
             "fortgefuehrte Bruchteil des Beitrags"
         )
-    if jahr < 0 or jahr > mp.n:
+    pruefe_vorgangsjahr(mp, jahr, "TKU" if verfahren == TEILKUENDIGUNG else "RED")
+
+
+#: Obere Grenze des Vertragsjahres je Vorgangsart (Tarifplan KLV 7 und 7.3):
+#: ``t`` — nur waehrend der Beitragszahlung (Herabsetzung, Erhoehung,
+#: Beitragsfreistellung: nach dem Beitragsende ist der Vertrag ausfinanziert,
+#: nicht beitragsfrei gestellt); ``n`` — bis vor den Ablauf (Teilkuendigung). Die
+#: untere Grenze ist fuer jede Art dieselbe: ``0 < jahr``. Die Schluessel sind
+#: die Vorgangscodes der Folge (``kern.vorgangsfolge.RANG``); ein Test haelt
+#: beide Mengen mit ``==`` gleich.
+VORGANGSJAHR_OBERGRENZE: Dict[str, str] = {"RED": "t", "TKU": "n", "PEX": "t", "ERH": "t"}
+
+
+def pruefe_vorgangsjahr(mp: Any, jahr: int, art: str) -> None:
+    """Die Jahresgrenzen der zulaessigen Folgen — die EINE Stelle.
+
+    Tarifplan KLV 7.3: zulaessig ist eine Folge mit jedem Vorgang im
+    Vertragsjahr ``0 < a < n``; Herabsetzung, Erhoehung und
+    Beitragsfreistellung nur waehrend der Beitragszahlung, ``0 < a < t``
+    (Entscheid 2026-10-01: eine Beitragsfreistellung gibt es nur, solange
+    Beitraege laufen; GeVo-Katalog der T-Box). Jede Folge ausserhalb wird
+    benannt verweigert, mit dem Ausweg. Durch diese Funktion gehen die
+    Einzelreduktion (:func:`reduziere`, :func:`reduziere_geschichtet`) und
+    jeder Vorgang der Folge (Herabsetzung, Teilkuendigung,
+    Beitragsfreistellung, Erhoehung; ``kern.vorgangsfolge``).
+
+    Bis Kern 3.17.0 fehlte die untere Grenze: Herabsetzung und Teilkuendigung
+    im Vertragsjahr 0 und eine Beitragsfreistellung im Jahr 0 oder ab dem
+    Beitragsende rechnete der Kern still (Pruefrunde G, Fund G02). Am Jahrestag 0
+    ist der Vertrag gerade erst entstanden — es gibt keinen Stand, den ein
+    Vorgang aendern koennte; was dort gewollt ist, ist ein anderer Vertrag.
+    """
+    if art not in VORGANGSJAHR_OBERGRENZE:
         raise BeitragsreduktionFehler(
-            f"Vertragsjahr {jahr} ausserhalb der Laufzeit (n={mp.n})"
+            f"unbekannte Vorgangsart {art!r} (bekannt: {sorted(VORGANGSJAHR_OBERGRENZE)})")
+    jahr = int(jahr)
+    if jahr <= 0:
+        raise BeitragsreduktionFehler(
+            f"Vertragsjahr {jahr}: ein Vorgang ({art}) wirkt fruehestens am ersten "
+            "Jahrestag nach dem Versicherungsbeginn (0 < jahr, Tarifplan KLV 7.3) — "
+            "am Beginn gibt es keinen Vertragsstand, den er aendern koennte. "
+            "Ausweg: den Vertrag mit Summe und Beitrag nach dem Vorgang beginnen "
+            "lassen (Zugang mit diesen Werten) oder den Vorgang am ersten Jahrestag "
+            "(Vertragsjahr 1) buchen")
+    if jahr > mp.n:
+        raise BeitragsreduktionFehler(
+            f"Vertragsjahr {jahr} ausserhalb der Laufzeit (n={mp.n}) — Ausweg: "
+            "das Vertragsjahr der Grundversicherung angeben, in dem der Vorgang wirkt"
         )
-    if verfahren == TEILKUENDIGUNG:
-        # Die Teilkuendigung (Bedingungswerk Ziffer 6) kuendigt einen
-        # Anteil der GRUNDVERSICHERUNGSSUMME mit Auszahlung — sie setzt
-        # keinen laufenden Beitrag voraus und ist darum auch im
-        # beitragsfreien Nachlauf (t <= jahr < n) definiert. Ihre
-        # Grenze ist der Ablauf, nicht das Beitragsende.
-        if jahr >= mp.n:
+    if VORGANGSJAHR_OBERGRENZE[art] == "t" and jahr >= mp.t:
+        if art == "PEX":
             raise BeitragsreduktionFehler(
-                f"Vertragsjahr {jahr}: der Vertrag laeuft bei n={mp.n} "
-                "ab — am oder nach dem Ablauf gibt es nichts mehr zu "
-                "kuendigen"
-            )
-    elif jahr >= mp.t:
+                f"Vertragsjahr {jahr}: Beitragsfreistellung nach dem Beitragsende "
+                f"(t={mp.t}) — der Vertrag ist ausfinanziert, nicht beitragsfrei "
+                "gestellt; eine Beitragsfreistellung gibt es nur, solange Beitraege "
+                "laufen (Tarifplan KLV 7.3). Ausweg: keiner noetig, der Vertrag laeuft "
+                "beitragsfrei bis zum Ablauf; eine Teilkuendigung (TKU) bleibt bis "
+                "zum Ablauf moeglich")
+        if art == "ERH":
+            raise BeitragsreduktionFehler(
+                f"Vertragsjahr {jahr}: Erhoehung nach dem Beitragsende (t={mp.t}) — "
+                "die Dynamik laeuft nur auf dem beitragspflichtigen Track. Ausweg: "
+                "keiner noetig, ohne Beitrag gibt es keine Erhoehung; die Summe "
+                "bleibt, wie sie ist")
         raise BeitragsreduktionFehler(
             f"Vertragsjahr {jahr}: die Beitragszahlungsdauer ist beendet "
-            f"(t={mp.t}) — es gibt keinen Beitrag zu reduzieren"
+            f"(t={mp.t}) — es gibt keinen Beitrag zu reduzieren. Eine "
+            "Beitragsherabsetzung setzt einen laufenden Beitrag voraus; "
+            "Ausweg: die Teilkuendigung (eigener Geschaeftsvorfall TKU, "
+            "verfahren='teilkuendigung'), die einen Summenanteil kuendigt "
+            "und auszahlt"
         )
-
-
-def _abzugsfaktor(dk: float, stoab: float, jahr: int) -> float:
-    """Der Anteil der Reserve, der den Stornoabschlag ueberlebt."""
-    if dk <= 0.0:
+    if VORGANGSJAHR_OBERGRENZE[art] == "n" and jahr >= mp.n:
+        # Die Teilkuendigung (Bedingungswerk Ziffer 6) kuendigt einen
+        # Summenanteil mit Auszahlung — sie setzt keinen laufenden Beitrag
+        # voraus und ist darum auch im beitragsfreien Nachlauf (t <= jahr < n)
+        # definiert. Ihre Grenze ist der Ablauf, nicht das Beitragsende.
         raise BeitragsreduktionFehler(
-            f"Vertragsjahr {jahr}: Deckungsrueckstellung ist {dk!r} — ein "
-            "anteiliger Stornoabschlag ist darauf nicht bildbar"
+            f"Vertragsjahr {jahr}: der Vertrag laeuft bei n={mp.n} "
+            f"ab — am oder nach dem Ablauf gibt es nichts mehr zu kuendigen. "
+            "Ausweg: der Ablauf (ABL) zahlt die Leistung; vor dem Ablauf "
+            "der Vorgang in einem Vertragsjahr unter n"
         )
-    return 1.0 - stoab / dk
+
+
+def _abzugsfaktor(mrv: float, stoab: float) -> float:
+    """Der Anteil des Rueckkaufswerts, der den Stornoabschlag ueberlebt.
+
+    Faktor f mit mrv * f = max(0, mrv - StoAb) = RKW: Umgewandelt wird bei
+    der Herabsetzung mit Abzug der Rueckkaufs-Track (klv.md 7.1, wie bei
+    der Beitragsfreistellung), und der Abzug ist hoechstens der Wert, von
+    dem er abgezogen wird — wie beim Rueckkaufswert selbst
+    (RKW = max(0, V^MRV - StoAb); Angriffsrunde nach T27: bei kleinen
+    Summen trieb der Mindestabzug die umgewandelte Summe unter null, und
+    negative Leistungen folgten). Bei nicht positivem Rueckkaufswert gibt
+    es nichts abzuziehen: Dann rechnet das Verfahren wie das
+    prospektive, und "mit Abzug" liegt nie ueber "prospektiv".
+    """
+    if mrv <= 0.0:
+        return 1.0
+    return 1.0 - min(stoab, mrv) / mrv
 
 
 def _reduziere_eine_schicht(
@@ -271,15 +397,15 @@ def _reduziere_eine_schicht(
     jahr: int,
     anteil: float,
     nach_abzug: float,
-    verfahren: str = PROSPEKTIV,
+    verfahren: str,
     *,
     zusatz_dk: float = 0.0,
 ) -> "Reduktion":
     """Die Reduktion EINER Schicht — der gemeinsame Rechenteil.
 
-    ``nach_abzug`` ist der Anteil der Reserve, der die Umwandlung
-    ueberlebt: 1.0 beim verlustfreien Verfahren, sonst der vertragsweit
-    gebildete Faktor. Beim ungeteilten Vertrag ist die Schicht der
+    ``nach_abzug`` ist der Anteil des Rueckkaufswerts (V^MRV), der die
+    Umwandlung ueberlebt: 1.0 beim verlustfreien Verfahren, sonst der
+    vertragsweit gebildete Faktor (RKW / V^MRV). Beim ungeteilten Vertrag ist die Schicht der
     Vertrag, und beide Wege rechnen dieselbe Formel — deshalb steht sie
     hier einmal.
     """
@@ -290,8 +416,26 @@ def _reduziere_eine_schicht(
     bjb_alt = kern.gross_annual_premium()
 
     # Der fortgefuehrte Teil bleibt unveraendert; nur der freiwerdende
-    # Anteil wird umgewandelt.
-    umgewandelt = dk_vor * nach_abzug * (1.0 - anteil)
+    # Anteil wird umgewandelt — auf dem Rueckkaufswert-Track V^MRV, GENAU
+    # wie die Beitragsfreistellung (S_bfr = V^MRV / V^bfr, klv.md 6):
+    # Entscheid des Maintainers 2026-09-30, F1 (b). Auf V^bpfl umgewandelt
+    # lag die Herabsetzung mit f -> 0 innerhalb der Zillmerdauer um den
+    # Abschlusskostenrest unter der Beitragsfreistellung (KLV a0 = 1:
+    # 2.356,97 gegen 4.898,47). Der Anteil (1-f) des Rests folgt dem
+    # Beitrag und ist mit der Herabsetzung abgeschrieben (klv.md 7.1,
+    # "Abschlusskosten folgen dem Beitrag"): ein Verlust des Unternehmens,
+    # beim Verfahren mit Abzug teilweise durch den Stornoabzug gedeckt.
+    #
+    # Untergrenze null (RC01, Runde C): der umgewandelte Teil ist nie
+    # negativ, wie RKW = max(0, ...). Ohne sie ging bei nicht positivem
+    # Wert eine NEGATIVE Summe in den Vertrag, und die Leistungen mit ihr
+    # (-239,41 auf dem Modellpunkt des Angreifers, x=20, n=t=40, f=0,001,
+    # als die Umwandlung noch auf der Rueckstellung lag; auf dem Testpunkt
+    # RC01 auf KLV_DEFAULT -305,02, alt — tests/test_herabsetzung_mrv_track.py).
+    # Der Floor gilt fuer die Basisschicht; die Korrekturschicht kommt
+    # darunter noch hinzu (siehe unten) und wird nicht mehr geklemmt.
+    umgewandelt = untergrenze_basissumme(
+        zeile.vx_mrv * nach_abzug * (1.0 - anteil))
     # ``zusatz_dk`` ist Deckungskapital OHNE eigene Zusage — die
     # Korrekturschicht eines uebernommenen Vertrags. Sie traegt keinen
     # Beitrag, gehoert also vollstaendig zum umgewandelten Teil, nicht
@@ -305,8 +449,17 @@ def _reduziere_eine_schicht(
     # Als eigener Summand, nicht in den Ausdruck darueber gezogen: Ohne
     # Schicht bleibt die Rechnung bitgleich zu der, die die
     # Charakterisierungswerte des Kerns tragen.
+    #
+    # UNGEKUERZT, auch mit Abzug (Angriffsrunde nach T27): Der Stornoabzug
+    # ist ein Betrag des Grundvertrags, (1-f) x StoAb, und steckt schon im
+    # Summanden darueber (klv.md 7.1; Grundsatz 9.7: den Abzug traegt die
+    # Basisschicht, nicht die Schicht). Mit einem Abzugsfaktor
+    # multipliziert (damals auf der Rueckstellung gebildet, 1 - StoAb/DR),
+    # zog die Schicht den Abzug ein zweites Mal an — nahe DR = 0
+    # unbegrenzt, bei DR < 0 als Geschenk; auf V^MRV gebildet bleibt es
+    # dasselbe Doppelzaehlen.
     if zusatz_dk:
-        umgewandelt += zusatz_dk * nach_abzug
+        umgewandelt += zusatz_dk
 
     if zeile.vx_bfr <= 0.0:
         raise BeitragsreduktionFehler(
@@ -316,8 +469,10 @@ def _reduziere_eine_schicht(
     vs_bfr_teil = umgewandelt / zeile.vx_bfr
     vs_neu = vs_alt * anteil + vs_bfr_teil
 
-    # Das Deckungskapital nach dem Vorfall: der fortgefuehrte Teil traegt
-    # seine anteilige Reserve, der umgewandelte seinen Wert.
+    # Das Deckungskapital nach dem Vorfall (Basis der Rueckstellung, wie
+    # dk_vor): der fortgefuehrte Teil traegt seine anteilige Reserve, der
+    # umgewandelte seinen Wert — dieselbe Groesse, die der Zahlungspfad im
+    # Reduktionsjahr als Rueckstellung ausweist (Test).
     dk_nach = dk_vor * anteil + umgewandelt
 
     return Reduktion(
@@ -356,8 +511,9 @@ def reduziere_geschichtet(
     jahr: int,
     anteil: float,
     *,
-    verfahren: str = PROSPEKTIV,
+    verfahren: str,
     zusatz_dk: float = 0.0,
+    stoab_je_baustein: bool,
 ) -> List[Tuple[int, "Reduktion"]]:
     """Herabsetzung eines Vertrags MIT dynamischen Erhoehungsscheiben.
 
@@ -380,9 +536,22 @@ def reduziere_geschichtet(
     Schicht gebildet griffen sie mehrfach und der Abzug waere bei einem
     geschichteten Vertrag ein Vielfaches des zugesagten. Er wird deshalb
     EINMAL auf den Gesamtwerten gebildet und dann proportional zur
-    Deckungsrueckstellung der Schicht verteilt — dem Anteil, aus dem der
+    Rueckkaufswert der Schicht verteilt — dem Anteil, aus dem der
     umgewandelte Betrag stammt. Beim verlustfreien Verfahren entfaellt
     die Frage, dort wird kein Abzug erhoben.
+
+    **Je Baustein, wo das Tarifwerk es sagt** (Runde D): Bei
+    ``stoab_je_baustein=True`` (Bedingungswerk Ziffer 4) gilt der Abzug je
+    BAUSTEIN mit eigenen Grenzen, und der Rueckkaufswert des Vertrags ist
+    die Summe der auf null begrenzten Baustein-Rueckkaufswerte. Umgewandelt
+    wird dann (1-f) x dieser RKW — dieselbe Groesse, die ein Storno am
+    selben Tag zahlt (``vertrags_rkw``) und die die Teilkuendigung schon
+    hielt. Der Faktor bleibt einer fuer alle Schichten (RKW / V^MRV der
+    Summe); die vertragsweite Bildung ignorierte den Schalter und wich im
+    Messfall (KLV_DEFAULT, Abzug 0,005 / 50 / 200, Scheiben in Jahr 2 und 3,
+    a0 = 6, f = 0,3) um 92,87 EUR Summe ab (54.578,30 statt 54.485,43).
+    Das Tarifwerk wird nie geraten: Der Aufrufer reicht den Schalter der
+    Generation durch.
 
     **Die Korrekturschicht gehoert zur Grundscheibe.** ``zusatz_dk`` geht
     dort in die Umwandlung ein und nirgends sonst: Die Schicht ist auf den
@@ -393,6 +562,7 @@ def reduziere_geschichtet(
     Rueckgabe: je Schicht ihr Erhoehungsjahr und ihre Reduktion, in der
     Reihenfolge (Grundscheibe zuerst) von ``vertrags_monatsreserve``.
     """
+    pruefe_scheibenjahre(grund.mp, scheiben)
     if verfahren == TEILKUENDIGUNG:
         # Teilkuendigung (Bedingungswerk Ziffer 6) trifft NUR die
         # Grundversicherung: Ihr Anteil (1-f) wird gekuendigt und
@@ -440,14 +610,57 @@ def reduziere_geschichtet(
 
     # Die vertragsweiten Groessen am Reduktionsstichtag: Sie entscheiden
     # ueber den Abzug, bevor irgendeine Schicht gerechnet wird.
-    gesamt = vertrags_monatsreserve(grund, list(scheiben), 12 * jahr)
-    # Der Anteil der Reserve, der die Umwandlung ueberlebt. Derselbe
-    # Faktor fuer jede Schicht: Der Abzug ist vertragsweit gebildet und
-    # wird proportional zur eingebrachten Reserve getragen.
-    nach_abzug = (
-        1.0 if verfahren == PROSPEKTIV
-        else _abzugsfaktor(gesamt.drx_bpfl, gesamt.stoab, jahr)
-    )
+    gesamt = vertrags_monatsreserve(
+        grund, list(scheiben), 12 * jahr, stoab_je_baustein=stoab_je_baustein)
+    # Der Anteil des Rueckkaufswerts, der die Umwandlung ueberlebt, JE SCHICHT.
+    if verfahren == PROSPEKTIV:
+        nach_abzug = [1.0] * len(teile)
+    elif stoab_je_baustein:
+        # Abzug je Baustein (Bedingungswerk Ziffer 4): Jeder Baustein traegt
+        # seinen eigenen Abzug und wandelt genau SEINEN Rueckkaufswert um,
+        # ``max(0, V^MRV_i - StoAb_i)`` — dieselbe Groesse, die sein Storno am
+        # selben Tag zahlt, und dieselbe Bildung wie beim ungeteilten Vertrag
+        # (``reduziere``: ``_abzugsfaktor``). Die Summe ist (1-f) x
+        # ``gesamt.rkw`` (die Summe der auf null begrenzten Baustein-Werte),
+        # und ein Baustein mit negativem Rueckkaufs-Track wandelt nichts um
+        # (Floor je Schicht). Runde F, Nachbesserung 2: Vorher bekam jede
+        # Schicht denselben Faktor ``gesamt.rkw / sum max(0, V^MRV_i)`` — die
+        # Summe stimmte, die Werte je Schicht nicht: Der Baustein mit dem
+        # kleineren Abzug wandelte mehr um als seinen eigenen Rueckkaufswert,
+        # der mit dem groesseren weniger (Messfall: Abzug 0,005 / 50 / 200,
+        # Zillmerdauer 5, f = 0,5, Herabsetzung Jahr 2, V^MRV Grund 2.605,86 /
+        # Scheibe 275,25, Abzug 200,00 / 101,41: umgewandelt Grund 1.166,62
+        # statt 1.202,93, Scheibe 123,23 statt 86,92 — Summe 1.289,85 gleich).
+        # Der Auftrag sagt "verteilt nach dem geklemmten
+        # Baustein-RKW"; der gemeinsame Faktor tat es nur ohne verschiedene
+        # Abzuege (Tarifplan klv.md 7.1 steht nicht dagegen).
+        nach_abzug = [
+            _abzugsfaktor(k.verlaufszeile(jahr - e).vx_mrv,
+                          k.verlaufszeile(jahr - e).stoab)
+            for e, k in teile]
+    else:
+        # Abzug je Vertrag (Tarifplan 6): einmal auf den Gesamtwerten
+        # gebildet, ``gesamt.rkw`` = max(0, sum V^MRV - StoAb). Umgewandelt wird
+        # (1-f) x dieser RKW — genau so viel, auch wenn ein Baustein einen
+        # negativen Rueckkaufs-Track hat (Runde F, F1) —, verteilt nach dem auf
+        # null begrenzten Rueckkaufs-Track der Schicht (die Baustein-Groesse,
+        # auf der der vertragsweite Abzug aufsitzt; ein Baustein-RKW mit eigenem
+        # Abzug gibt es hier nicht). Der Faktor ist RKW geteilt durch die Summe
+        # der auf null begrenzten V^MRV, denn nur diese Summe geht in die
+        # Umwandlung ein (``_reduziere_eine_schicht``: je Schicht max(0, ...)).
+        # Geteilt durch die UNBEGRENZTE Summe (``gesamt.vx_mrv``) wurde der
+        # Faktor groesser als eins, sobald eine junge Scheibe in der
+        # Zillmerdauer negativ war: Messfall KLV x=18, n=t=40, alpha 0,04,
+        # zillmer_dauer 1, Scheibe 20.000 aus Jahr 1, Herabsetzung Jahr 2,
+        # f = 0,5: Ist 334,40, Soll 114,88 (V^MRV Grund 429,77, Scheibe
+        # -282,12); ohne Abzug 625,47 statt 214,88 — "mit Abzug" lag UEBER
+        # "prospektiv". Mit Abzug 0 und f -> 0 lag es bei 1.250,94 statt beim
+        # Storno-RKW 429,77.
+        positiv = sum(
+            max(0.0, kern.verlaufszeile(jahr - erh_jahr).vx_mrv)
+            for erh_jahr, kern in teile)
+        faktor = min(1.0, gesamt.rkw / positiv) if positiv > 0.0 else 1.0
+        nach_abzug = [faktor] * len(teile)
 
     aus: List[Tuple[int, "Reduktion"]] = []
     for i, (erh_jahr, kern) in enumerate(teile):
@@ -457,7 +670,7 @@ def reduziere_geschichtet(
         # die Korrekturschicht nur bei der Grundscheibe (teile[0]): Sie
         # ist auf DEREN Modellpunkt kalibriert.
         aus.append((erh_jahr, _reduziere_eine_schicht(
-            kern, jahr - erh_jahr, anteil, nach_abzug, verfahren,
+            kern, jahr - erh_jahr, anteil, nach_abzug[i], verfahren,
             zusatz_dk=zusatz_dk if i == 0 else 0.0)))
     return aus
 
@@ -470,6 +683,7 @@ def reduzierte_teile(
     verfahren: str,
     *,
     schicht: Optional[Tuple[Any, int]] = None,
+    stoab_je_baustein: bool,
 ) -> List[Tuple[int, Any]]:
     """Der herabgesetzte Vertrag, je Schicht — DIE eine Rekonstruktion.
 
@@ -486,17 +700,39 @@ def reduzierte_teile(
     (Entscheid des Maintainers 2026-09-15) — danach traegt der Vertrag
     keine Schicht mehr.
     """
+    pruefe_scheibenjahre(grund.mp, scheiben)
     zusatz = 0.0
     if schicht_traegt(schicht, 12 * jahr):
         zusatz = schichtwert_bei(schicht[0], int(schicht[1]), grund.mp, 12 * jahr)
     aktive = [(j, k) for j, k in scheiben if j < jahr]
     teile = reduziere_geschichtet(
-        grund, aktive, jahr, anteil, verfahren=verfahren, zusatz_dk=zusatz)
+        grund, aktive, jahr, anteil, verfahren=verfahren, zusatz_dk=zusatz,
+        stoab_je_baustein=stoab_je_baustein)
     kerne = [grund] + [k for _, k in aktive]
-    return [
+    aus = [
         (erh_jahr, ReduzierterVertrag(kern=kerne[i], reduktion=red))
         for i, (erh_jahr, red) in enumerate(teile)
     ]
+    # Erhoehungen AB dem Reduktionsjahr: Die Dynamik laeuft nach einer
+    # Herabsetzung weiter, bezogen auf die Summe danach (Entscheid des
+    # Projekts 2026-09-26). Jede spaetere Scheibe ist ein gewoehnlicher,
+    # nicht herabgesetzter Baustein. Vorher liess dieser Pfad sie still
+    # weg — die Bewertung fuehrte eine gebuchte Erhoehung nicht.
+    aus += [(j, nachher_zugekommen(k)) for j, k in scheiben if j >= jahr]
+    return aus
+
+
+def nachher_zugekommen(kern: Rechenkern) -> "ReduzierterVertrag":
+    """Eine Erhoehungsscheibe, die NACH der Herabsetzung entstand: ein
+    gewoehnlicher Baustein in der Form des herabgesetzten Vertrags
+    (Anteil 1, ab seinem eigenen Vertragsjahr 0)."""
+    return ReduzierterVertrag(kern=kern, reduktion=_unveraendert(kern, 0))
+
+
+def bestehende_teile(teile, monate: int):
+    """Die Bausteine, die am Monats-Stichtag schon bestehen — spaetere
+    Erhoehungen gehoeren erst ab ihrem Jahrestag zum Vertrag."""
+    return [(e, v) for e, v in teile if 12 * int(e) <= int(monate)]
 
 
 def absorbierte_schicht(
@@ -514,27 +750,49 @@ def absorbierte_schicht(
 
 
 def vertrags_monatsreserve_reduziert(
-    teile: Sequence[Tuple[int, "ReduzierterVertrag"]], monate: int
+    teile: Sequence[Tuple[int, "ReduzierterVertrag"]], monate: int,
+    *, stoab_je_baustein: bool,
 ) -> "Monatsreserve":
     """Vertragsweite Monatsreserve eines herabgesetzten GESCHICHTETEN Vertrags.
 
     Spiegel von
     :func:`rechner_pipeline.kern.rechenkern.vertrags_monatsreserve`, nur
     dass jede Schicht ihren herabgesetzten Verlauf rechnet: Reserven sind
-    die Summe der Schichtwerte, jede an ihrem versetzten Stichtag; der
-    Stornoabschlag gilt je VERTRAG und wird einmal auf den Gesamtwerten
-    gebildet.
+    die Summe der Schichtwerte, jede an ihrem versetzten Stichtag.
 
-    Bezugsgroesse des Abschlags ist die NEUE Gesamtsumme — die Summe der
-    ``vs_neu`` aller Schichten, also fortgefuehrter plus umgewandelter
-    Teil. Die alte waere die Summe eines Vertrags, den es nicht mehr gibt.
+    WO der Stornoabschlag greift, sagt das Tarifwerk der Generation — und
+    zwar auch NACH der Herabsetzung (Pruefrunde T27, Befund 12: der
+    reduzierte Verlauf kannte den Schalter nicht, ein Folge-Rueckkauf nach
+    Teilkuendigung verlor den Abzug je Baustein, und die P-B1-Kontrolle
+    rechnete ueber denselben Weg). Deshalb hat ``stoab_je_baustein`` hier
+    KEINEN Default: Wer den reduzierten Verlauf bewertet, schreibt das
+    Tarifwerk hin, sonst laeuft er nicht.
+
+    * ``False`` (Tarifplan KLV, Abschnitt 6/7.1): der Abschlag gilt je
+      VERTRAG, einmal auf den Gesamtwerten gebildet. Bezugsgroesse ist die
+      NEUE Gesamtsumme — die Summe der ``vs_neu`` aller Schichten, also
+      fortgefuehrter plus umgewandelter Teil. Die alte waere die Summe
+      eines Vertrags, den es nicht mehr gibt.
+    * ``True`` (Bedingungswerk einer uebernommenen Generation, Ziffer 4):
+      jeder Baustein traegt seinen eigenen Abzug mit eigenen Grenzen,
+      bezogen auf SEINE herabgesetzte Summe ``vs_neu`` und seine eigene
+      Reserve, mit eigener Ablauf-/Flexphasenpruefung am versetzten
+      Stichtag; der Rueckkaufswert ist die Summe der auf null begrenzten
+      Baustein-Rueckkaufswerte — derselbe Weg wie
+      ``vertrags_monatsreserve(stoab_je_baustein=True)``, nur mit der
+      Summe nach der Herabsetzung.
     """
     from rechner_pipeline.kern.produkte.klv import Monatsreserve
 
     if not teile:
         raise BeitragsreduktionFehler(
             "keine Schichten — ein Vertrag ohne Grundscheibe ist keiner")
+    # Die Grundscheibe steht zuerst (Erhoehungsjahr 0); jede weitere ist eine
+    # Erhoehung und geht durch die Jahresgrenze des Kerns.
+    pruefe_scheibenjahre(teile[0][1].kern.mp, teile[1:])
+    teile = bestehende_teile(teile, monate)
     dr = mrv = 0.0
+    stuecke: List[Tuple[Any, int, Any]] = []
     for erh_jahr, vertrag in teile:
         versetzt = monate - 12 * erh_jahr
         if versetzt < 0:
@@ -545,20 +803,37 @@ def vertrags_monatsreserve_reduziert(
         reserve = vertrag.monatsreserve(versetzt)
         dr += reserve.drx_bpfl
         mrv += reserve.vx_mrv
+        stuecke.append((vertrag, versetzt, reserve))
 
     grund = teile[0][1].kern
     mp = grund.mp
     a = monate // 12
-    if a > mp.n or grund.produkt.ist_flex_phase(a):
-        stoab = 0.0
+    if stoab_je_baustein:
+        stoab = rkw = 0.0
+        for vertrag, versetzt, reserve in stuecke:
+            mp_k = vertrag.kern.mp
+            a_k = versetzt // 12
+            if a_k > mp_k.n or vertrag.kern.produkt.ist_flex_phase(a_k):
+                teil_stoab = 0.0
+            else:
+                teil_stoab = min(
+                    mp_k.stoab_max,
+                    max(mp_k.stoab_min,
+                        mp_k.stoab_satz
+                        * (vertrag.reduktion.vs_neu - reserve.drx_bpfl)))
+            stoab += teil_stoab
+            rkw += max(0.0, reserve.vx_mrv - teil_stoab)
     else:
-        vs = sum(v.reduktion.vs_neu for _, v in teile)
-        stoab = min(mp.stoab_max,
-                    max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
+        if a > mp.n or grund.produkt.ist_flex_phase(a):
+            stoab = 0.0
+        else:
+            vs = sum(v.reduktion.vs_neu for _, v in teile)
+            stoab = min(mp.stoab_max,
+                        max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
+        rkw = max(0.0, mrv - stoab)
     return Monatsreserve(
         monate=monate, jahr=a, monatsanteil=(monate % 12) / 12.0,
-        drx_bpfl=dr, vx_mrv=mrv, stoab=stoab,
-        rkw=max(0.0, mrv - stoab),
+        drx_bpfl=dr, vx_mrv=mrv, stoab=stoab, rkw=rkw,
     )
 
 
@@ -606,6 +881,15 @@ def als_zahlungspfad(red: "Reduktion", mp: ModelPoint) -> "Zahlungspfad":
         beitrag=tuple(1.0 if j < a0 else f for j in range(mp.t)),
         kosten_bpfl=tuple(1.0 if j < a0 else f for j in range(mp.n)),
         kosten_bfr=tuple(0.0 if j < a0 else q for j in range(mp.n)),
+        # Die Abschlusskosten folgen dem Beitrag (klv.md 7.1): Der
+        # fortgefuehrte Vertrag traegt f des noch nicht getilgten Rests,
+        # (1-f) ist mit der Herabsetzung abgeschrieben — ein Verlust des
+        # Unternehmens, beim Verfahren mit Abzug teilweise durch den
+        # Stornoabzug gedeckt. Vorher trug der Pfad den vollen Rest,
+        # waehrend die beitragsfreie Summe f rechnete: Eine
+        # Beitragsfreistellung nach der Herabsetzung sprang in der
+        # Zillmerdauer um bis zu einem Tausender je 100.000 EUR.
+        abschlusskosten=tuple(1.0 if j < a0 else f for j in range(mp.n)),
     )
 
 
@@ -638,7 +922,7 @@ class ReduzierterVertrag:
     @classmethod
     def nach(
         cls, kern: Rechenkern, jahr: int, anteil: float,
-        *, verfahren: str = PROSPEKTIV, zusatz_dk: float = 0.0,
+        *, verfahren: str, zusatz_dk: float = 0.0,
     ) -> "ReduzierterVertrag":
         if verfahren == TEILKUENDIGUNG:
             raise BeitragsreduktionFehler(
@@ -654,6 +938,33 @@ class ReduzierterVertrag:
     def bfr_teil(self) -> float:
         """Die bei der Reduktion fixierte beitragsfreie Summe."""
         return self.reduktion.vs_neu - self.reduktion.anteil * self.reduktion.vs_alt
+
+    @property
+    def ist_teilkuendigung(self) -> bool:
+        return self.reduktion.verfahren == TEILKUENDIGUNG
+
+    @property
+    def folgekern(self) -> Rechenkern:
+        """Der Vertrag nach der TEILKUENDIGUNG: der ZUSTANDSLOSE Kern mit der
+        fortgefuehrten Summe — ein gewoehnlicher Vertrag mit kleinerer Summe
+        (Bedingungswerk Ziffer 6; klv.md 7.1).
+
+        Der Zahlungspfad mit q = 0 ist ihm NICHT gleich: Er rechnet den
+        Zillmer-Rueckstand alpha * t * BJB des UNGEKUERZTEN Vertrags weiter
+        (zahlungspfad, Skalare des Ursprungsvertrags), waehrend der Kern
+        mit f x S nur f mal diesen Rueckstand traegt. In den Jahren der
+        Zillmerdauer lag der Rueckkaufswert damit um (1-f) x alpha x t x
+        BJB x azd/azd_full zu hoch, und ein Storno zahlte zu viel — der
+        gekuendigte Anteil und der verbliebene Vertrag fuehrten den
+        Rueckstand beide (Angriffsrunde 2 der Pruefrunde T27, Fund N10;
+        der Test von T26-12 verglich erst ab Jahr 10, nach der
+        Zillmerdauer, und war blind). Fuer eine unveraenderte Scheibe
+        (anteil 1) ist der Folgekern der Kern selbst.
+        """
+        if self.reduktion.vs_neu == self.kern.mp.sum_insured:
+            return self.kern
+        return Rechenkern(dataclasses.replace(
+            self.kern.mp, sum_insured=self.reduktion.vs_neu))
 
     def _pruefe_monat(self, monate: int) -> None:
         if monate < 12 * self.reduktion.jahr:
@@ -699,6 +1010,8 @@ class ReduzierterVertrag:
         )
 
         self._pruefe_monat(monate)
+        if self.ist_teilkuendigung:
+            return self.folgekern.monatsreserve(int(monate))
         mp = self.kern.mp
         werte = pfad_monatsreserve(
             mp, als_zahlungspfad(self.reduktion, mp), self.kern.basis,
@@ -730,8 +1043,25 @@ class ReduzierterVertrag:
                 f"Beitragsfreistellung im Jahr {pex_jahr} vor der Reduktion "
                 f"(Jahr {self.reduktion.jahr})"
             )
-        return (self.reduktion.anteil * self.kern.beitragsfreie_summe(pex_jahr)
-                + self.bfr_teil)
+        if self.ist_teilkuendigung:
+            return self.folgekern.beitragsfreie_summe(pex_jahr)
+        # Ueber DENSELBEN Pfad wie die Reserve — ein Vertrag, ein Weg
+        # (vorher: der skalierte Ursprungsvertrag, der den
+        # Abschlusskostenrest anders las als der Pfad). S_bfr = V_MRV /
+        # V_bfr wie im Tarifplan (klv.md 6); ab Beitragsende die Summe.
+        from rechner_pipeline.kern.zahlungspfad import (
+            verlaufszeile as pfad_verlaufszeile,
+            vertragskonstanten,
+        )
+
+        mp = self.kern.mp
+        if pex_jahr >= mp.t:
+            return self.reduktion.vs_neu
+        zeile = pfad_verlaufszeile(
+            mp, als_zahlungspfad(self.reduktion, mp), self.kern.basis,
+            int(pex_jahr), skalare=vertragskonstanten(mp, self.kern.basis))
+        return untergrenze_basissumme(
+            zeile.vx_mrv / self.kern.verlaufszeile(int(pex_jahr)).vx_bfr)
 
     def reserve_beitragsfrei(self, pex_jahr: int, monate: int) -> float:
         """Reserve nach einer SPAETEREN Beitragsfreistellung des
@@ -743,6 +1073,8 @@ class ReduzierterVertrag:
                 f"Monats-Stichtag {monate} vor der Beitragsfreistellung "
                 f"(Jahr {pex_jahr})"
             )
+        if self.ist_teilkuendigung:
+            return self.folgekern.monatsreserve_beitragsfrei(pex_jahr, int(monate))
         return self.beitragsfreie_summe(pex_jahr) * self._bfr_satz(monate)
 
     def terminale_leistung(self, pex_jahr: Optional[int] = None) -> float:

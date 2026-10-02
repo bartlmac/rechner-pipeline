@@ -49,7 +49,8 @@ from rechner_pipeline.models.bestand import (
 )
 from tests.test_betrieb_neuaufsetzen import _fall_mit_nebentabellen, _schichten, _verankerung
 from tests.test_betrieb_seite import _ablage
-from tests.test_betrieb_uebernahme import STICHTAG, _fall
+from tests.test_betrieb_uebernahme import STICHTAG, _beleg_neu, _fall
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src" / "rechner_pipeline"
@@ -61,7 +62,7 @@ def gefuehrt_mit_schicht(tmp_path_factory):
     wurzel = tmp_path_factory.mktemp("n01")
     fall = _fall_mit_nebentabellen(wurzel)
     stand = wurzel / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     ablage = _ablage(stand)
     code, zeile = tageslauf(ablage, dt.date(2026, 2, 3))
     assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
@@ -178,6 +179,10 @@ def _fall_mit_schicht_auf_allen(wurzel: Path) -> Path:
         verankerung["police_id"] == 7_000_003, "zustand_ta"] = "beitragsfrei"
     write_portfolio(schichten, quelle / "schichten.parquet")
     write_portfolio(verankerung, quelle / "verankerung.parquet")
+    # Die Nebentabellen sind nach der Abnahme angefasst worden — seit der
+    # Eingang auch sie gegen den Beleggraphen haelt (T27, Fund N21), muss
+    # die Abnahme die neuen Bytes bezeugen.
+    _beleg_neu(fall)
     return fall
 
 
@@ -189,7 +194,7 @@ def test_ein_storno_mit_schicht_laeuft_gruen_durch_die_wache(tmp_path):
     Mutationsprobe: schichten/verankerung aus lauf_eingaben nehmen -> rot."""
     fall = _fall_mit_schicht_auf_allen(tmp_path)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     ablage = _ablage(stand)
     eingang = next(p for p in ablage.uebernahme.iterdir() if p.is_dir())
     ziele = set(ueb.zielnummern(eingang).values())
@@ -249,9 +254,10 @@ def test_ein_zugangsstand_mit_fremder_vokabel_wird_kein_eingang(tmp_path, tabell
     df = read_portfolio(quelle / f"{tabelle}.parquet")
     df[spalte] = wert
     write_portfolio(df, quelle / f"{tabelle}.parquet")
+    _beleg_neu(fall)   # bezeugte Bytes, damit die VOKABEL-Wache greift, nicht die Hash-Wache
     stand = tmp_path / "daten"
     with pytest.raises(ueb.UebernahmeError, match="Gate"):
-        ueb.eingang_anlegen(stand, fall, STICHTAG)
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     assert not (stand / "uebernahme" / "probe-uebernahme").exists()
     # Dieselbe Pruefung faengt es auch beim Lesen — ein Eingang, der die
     # Registrierung umgangen hat, kommt nicht in die Fortschreibung.
@@ -304,7 +310,14 @@ ERBAUER = {SRC / "bestand" / "manifest.py", SRC / "bestand" / "vorbedingungen.py
 #: waechst, weil es mehr Vertraege gibt oder weil der Detektor zu grob ist
 #: (merge-session, 2026-09-15). Fehlalarme gehoeren in den Detektor.
 GATE_VERTRAEGE = {("abnahmebericht.py", "PB1_VOLLPROFIL"),
-                  ("abnahmebericht.py", "PB1_VOLLPROFIL_SCHICHT")}
+                  ("abnahmebericht.py", "PB1_VOLLPROFIL_SCHICHT"),
+                  # Kein Rollenmapping der Engine, sondern der Tabellenvertrag
+                  # des Eingangs: genau, was gates.bestand_uebernehmen neben
+                  # die Pflichttabellen schreibt. Herabsetzungen VOR dem
+                  # Zugang stehen in der Historie, eine Tabelle dafuer
+                  # erzeugt die Uebernahme nicht. Die Engine-Rollen der
+                  # Registrierung kommen aus PB1_ROLLEN_DATEIEN.
+                  ("uebernahme.py", "OPTIONAL")}
 
 
 def _rollen_literale(quelle: str) -> list:
@@ -358,8 +371,11 @@ def test_kein_aufrufer_der_engine_baut_die_rollen_von_hand():
     # die Ratsche ihn nicht still uebernimmt (Testat 5ca0306: der fuenfte,
     # der Abnahmebericht, fuehrte seine Rollen als SET, das die erste Fassung
     # der Ratsche nicht las).
+    # Der sechste (Angriffsrunde Betrieb): die Registrierung eines
+    # Eingangs faehrt dieselbe Pruefung wie die Wache des Tageslaufs.
     assert {p.name for p in aufrufer} == {
         "tageslauf.py", "cli_abschluss.py", "cli_report.py", "bestand_validate.py", "abnahmebericht.py",
+        "uebernahme.py",
     }
     befunde = {
         str(p.relative_to(REPO_ROOT)): treffer

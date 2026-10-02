@@ -22,9 +22,11 @@ Nachrechenbarkeit; Test und Beleg duerfen dann sogar vom selben
 Operator gefahren werden, weil keiner von beiden einen freien Wert
 setzen kann.
 
-Die AUSGESTALTUNG (Formfunktion, ggf. Fenster) ist eine Entscheidung
-des Operators (Skill-Pflichtschritt Tarifplan-Ausgestaltung) und wird
-als Parameter im Beleg dokumentiert — der Producer trifft sie nicht.
+Die AUSGESTALTUNG (Formfunktion, ggf. Fenster) ist Inhalt des
+Tarifplans der Migration (Grundsatzdokumentation 10 Nr. 9) und steht
+belegt in der Spez der Generation (``quellverfahren.formfunktion``,
+``.fenster``; ADR-024, Nachtrag); der Beleg dokumentiert sie — der
+Producer trifft sie nicht, und kein Aufruf setzt sie.
 
 Producer, kein Gate: Exit 0 nur, wenn JEDE Police getragen ist; sonst
 Exit 1 mit Befundliste im Beleg — eine halbe Schichttabelle liesse die
@@ -43,13 +45,20 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline.bestand.migrationszugang import (
-    FORMEN,
     MigrationszugangFehler,
     Uebernahme,
     uebernehmen,
 )
 from rechner_pipeline.gates._provenienz import systemstand
+from rechner_pipeline.spez.tarifregeln import (
+    TarifregelnFehler,
+    verweigere_entfallene_schalter,
+)
+# Die eine Stelle, an der die Kommandos der Bestandsstrecke ihre Regeln
+# beziehen: Scope des Falls und Spez (Pruefrunde G).
+from rechner_pipeline.gates.migrationssuite_lauf import tarifregeln_des_falls
 from rechner_pipeline.models.bestand import ZUSTAENDE_TA, model_point_kwargs
 
 #: Zustandsuebersetzung Verankerungstabelle -> Uebernahme-Zustand.
@@ -90,6 +99,7 @@ def _zustands_dk_prosp(
     monate_ta: int,
     *,
     scheiben_mit_gamma1: bool,
+    tarifwerk: Optional[Dict[str, Any]] = None,
 ) -> Optional[float]:
     """Prospektiver Wert am t_a auf der ZUSTANDS-Welt (None = Stamm).
 
@@ -107,7 +117,8 @@ def _zustands_dk_prosp(
     scheiben = tuple(zustand.get("scheiben", ()))
     pex = zustand.get("beitragsfrei_seit_jahr")
     reduktion = zustand.get("reduktion")
-    if not scheiben and pex is None and reduktion is None:
+    vorgaenge = tuple(zustand.get("vorgaenge", ()))
+    if not scheiben and pex is None and reduktion is None and not vorgaenge:
         return None
     from rechner_pipeline.kern import ModelPoint, Rechenkern
     from rechner_pipeline.kern.rechenkern import (
@@ -117,17 +128,43 @@ def _zustands_dk_prosp(
 
     grund_mp = ModelPoint(**mp_kwargs)
     kern = Rechenkern(grund_mp)
-    if reduktion is not None:
-        # Nur die PLV-Teilungsverfahren liefern diesen Zustand; unter
-        # der Teilkuendigungs-Semantik fuehrt der Zustandsbau die
-        # Police zustandslos (Ausweitung 16/17).
-        from rechner_pipeline.kern.beitragsreduktion import (
-            ReduzierterVertrag,
-        )
+    if reduktion is not None or vorgaenge or (pex is not None and scheiben):
+        # Beitragsfrei uebernommen MIT Bausteinen (Pruefrunde J, J04): jeder
+        # Baustein mit seiner eigenen beitragsfreien Summe — die Folge des
+        # Kerns; der Zweig ``pex`` unten kennt nur den Grundbaustein.
+        # Ein GETEILTER Vertrag (Herabsetzung der Vorgeschichte, einzeln oder
+        # in einer Folge): die Vorgangsfolge des Kerns, dieselbe wie in den
+        # Pruefstrecken und der Fuehrung. Vorher rechnete dieser Zweig EINE
+        # Herabsetzung immer prospektiv, gleich welches Verfahren der Fall
+        # fuehrte. Das Verfahren ist Eigenschaft des Falls — ohne Tarifwerk
+        # wird nicht geraten.
+        from rechner_pipeline.kern import Vorgangsfolge, vorgang
 
-        rv = ReduzierterVertrag.nach(
-            kern, int(reduktion[0]), float(reduktion[1]))
-        return rv.monatsreserve(monate_ta).vx_mrv
+        if tarifwerk is None or any(
+                tarifwerk.get(k) is None
+                for k in ("red_verfahren", "stoab_je_baustein", "tku_umfang")):
+            raise MigrationszugangFehler(
+                "Verankerung eines geteilten Vertrags ohne Verfahren, Abzug "
+                "oder Umfang der Teilkuendigung — sie stehen in der Spez "
+                "(quellverfahren.red_verfahren, tarifwerk.stoab_je_baustein, "
+                "tarifwerk.tku_umfang); keine Vorgabe ergaenzt sie")
+        verfahren = str(tarifwerk["red_verfahren"])
+        folge_vorgaenge = [vorgang(int(j), float(a), str(v)) for j, a, v in vorgaenge]
+        if reduktion is not None:
+            folge_vorgaenge.append(vorgang(int(reduktion[0]), float(reduktion[1]), verfahren))
+        kerne = [
+            (int(j), Rechenkern(erhoehungs_scheibe(
+                grund_mp, int(j), float(s),
+                gamma1_uebernehmen=scheiben_mit_gamma1)))
+            for j, s in scheiben
+        ]
+        stand = Vorgangsfolge(
+            kern, kerne, folge_vorgaenge, pex_jahr=pex,
+            stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]),
+            tku_umfang=str(tarifwerk["tku_umfang"]),
+        ).stand_am(monate_ta)
+        w = stand.werte(monate_ta)
+        return w["deckungskapital"] if w["status"] == "PEX" else w["vx_mrv"]
     if pex is not None:
         # Die beitragsfreie Reserve kennt im Kern nur einen Begriff.
         return kern.monatsreserve_beitragsfrei(int(pex), monate_ta)
@@ -151,6 +188,7 @@ def baue_schichtbeleg(
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None,
     scheiben_mit_gamma1: bool = False,
     summen: Optional[Dict[str, float]] = None,
+    tarifwerk: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Schichtparameter je Police — der rechnende Kern des Producers.
 
@@ -217,7 +255,7 @@ def baue_schichtbeleg(
             # Phantom-Residuum (zweiter Baldrian-Lauf, rho bis 0,04).
             dk_prosp_extern=_zustands_dk_prosp(
                 mp, anfangszustand, int(zeile["monate_ta"]),
-                scheiben_mit_gamma1=scheiben_mit_gamma1),
+                scheiben_mit_gamma1=scheiben_mit_gamma1, tarifwerk=tarifwerk),
         ))
 
     ergebnisse = uebernehmen(
@@ -251,18 +289,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             "Schichtbeleg der Uebernahme erzeugen (Korrekturschicht je "
             "Police aus verankerung.parquet). Producer, kein Gate."))
     p.add_argument("--fall", required=True)
-    p.add_argument("--repo-root", dest="repo_root", required=True)
+    p.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", required=True)
     p.add_argument("--generation", required=True,
                    help="Knoten-Id der Tarifgeneration, z. B. klv/tg2015")
     p.add_argument("--uebernahme", default=None,
                    help="Uebernahme-Verzeichnis (Vorgabe: "
                         "<fall>/abgeleitet/bestand)")
-    p.add_argument("--formfunktion", required=True, choices=sorted(FORMEN),
-                   help="Ausgestaltungs-Entscheidung des Operators "
-                        "(Skill-Pflichtschritt) — wird im Beleg "
-                        "dokumentiert")
-    p.add_argument("--fenster", type=int, default=None,
-                   help="Amortisationsfenster (nur konstantes_fenster)")
     p.add_argument("--zeilen", default=None,
                    help="transformierte Zeilen (fuer den Zustandsbau; "
                         "Pflicht bei mehrzelliger Spez mit Vorgeschichte)")
@@ -272,25 +304,18 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "ZUSTANDS-Welt (Scheiben, Beitragsfreistellung, "
                         "Herabsetzung) — ohne sie traegt die Schicht die "
                         "Weltendifferenz als Phantom-Residuum.")
-    p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
-                   default=None, metavar="SATZ",
-                   help="belegter Dynamiksatz (siehe aktuartest_lauf)")
-    p.add_argument("--red-verfahren", dest="red_verfahren",
-                   default=None,
-                   help="Verfahren der Beitragsherabsetzung (siehe "
-                        "aktuartest_lauf); Vorgabe: Zielverfahren")
-    p.add_argument("--red-anteil", dest="red_anteile", action="append",
-                   default=[], metavar="POLNR=ANTEIL",
-                   help="dokumentierte Anteils-Lesart je Police "
-                        "(wiederholbar)")
+    p.add_argument("--red-anteile-datei", dest="red_anteile_datei",
+                   default=None, metavar="REGISTRIERTE_DATEI",
+                   help="REGISTRIERTE Auskunft der Quelle zu den "
+                        "fortgefuehrten Beitragsanteilen (POLNR;GEVO;DATUM;"
+                        "ANTEIL, optional BEZUG; siehe aktuartest_lauf) — "
+                        "Name und SHA-256 stehen im Beleg; wirkt mit "
+                        "--vorgeschichte")
     p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
                    action="append", type=float, default=[],
                    metavar="ANTEIL",
-                   help="belegter Tarif-Kandidat (wiederholbar, siehe "
-                        "aktuartest_lauf)")
-    p.add_argument("--scheiben-mit-gamma1", dest="scheiben_mit_gamma1",
-                   action="store_true",
-                   help="volle Beitragsformel der Scheiben (siehe "
+                   help="Arbeitsannahme des Laufs: Kandidat des "
+                        "Herabsetzungsanteils (wiederholbar, siehe "
                         "aktuartest_lauf)")
     p.add_argument("--anker-erwartungswerte", dest="anker_quelle",
                    default=None, metavar="REGISTRIERTE_DATEI",
@@ -312,6 +337,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--out", default=None,
                    help="Zielpfad (Vorgabe: <fall>/abgeleitet/schichten/"
                         "verankerung_schichten.json)")
+    # Formfunktion und Fenster der Korrekturschicht (Ausgestaltung des
+    # Tarifplans der Migration, Grundsatzdokumentation 10 Nr. 9), Tarifwerk,
+    # Verfahren der Quelle und Dynamiksatz stehen in der Spez — dieselbe
+    # Fassung, mit der die Uebernahme die PEX-Buchung rechnet (ADR-024,
+    # Nachtrag). Vorher war die Formfunktion hier Pflichtschalter und dort
+    # ein Schalter mit Vorgabe; die Gleichheit beider hing an Erinnerung.
+    verweigere_entfallene_schalter(p)
     args = p.parse_args(argv)
 
     import io
@@ -352,13 +384,29 @@ def main(argv: Optional[List[str]] = None) -> int:
                 if merkmale_gelesen is not None else None)
 
     spez_gelesen = bindung.binde(spez_pfad(fall, args.generation))
-    spez = lade_spez_aus_bytes(spez_gelesen.roh)
+    # Laden und Regeln in EINEM Fang (Pruefrunde H): Auch der Lader verweigert
+    # benannt (Version, Regelwert); ein Traceback waere ein Fehler ohne Ausweg.
+    try:
+        spez = lade_spez_aus_bytes(spez_gelesen.roh)
+        regeln = tarifregeln_des_falls(fall, spez)
+    except ValueError as exc:
+        print(f"verankerung_belegen: {exc}", file=sys.stderr)
+        return 2
     bestand_gelesen = bindung.binde(pfade["bestand"])
     bestand = read_portfolio_aus_bytes(bestand_gelesen.roh)
     verankerung_gelesen = bindung.binde(pfade["verankerung"])
 
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None
     summen: Optional[Dict[str, float]] = None
+    # Der Beleg-Block der Auskunft (Name, SHA-256, Bezug je Police); None,
+    # wenn keine genannt wurde.
+    red_anteile_datei: Optional[Dict[str, Any]] = None
+    if args.red_anteile_datei is not None and args.vorgeschichte is None:
+        print("verankerung_belegen: --red-anteile-datei wirkt nur mit "
+              "--vorgeschichte (die Anteile gehoeren zu den Ereignissen der "
+              "Vorgeschichte) — ohne sie wuerde die Auskunft weder gelesen "
+              "noch gebunden", file=sys.stderr)
+        return 2
     if args.vorgeschichte is not None:
         # Dieselbe Zustandsbau-Maschinerie wie in den Pruefstrecken —
         # die Verankerung MUSS auf derselben Welt stehen, auf der
@@ -369,9 +417,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         from rechner_pipeline.gates.migrationssuite_lauf import (
             VORGABE,
             anfangszustaende_je_police,
+            verweigere_unbestimmte,
             auspraegungen_je_police,
+            lies_auskuenfte,
         )
-        from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV
+
 
         if args.zeilen is not None:
             zeilen = bindung.binde(Path(args.zeilen)).json()
@@ -392,13 +442,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             io.StringIO(vorgeschichte_gelesen.roh.decode("utf-8")),
             delimiter=";"))
         red_anteile: Dict[str, float] = {}
-        for eintrag in args.red_anteile:
-            police, _, wert = eintrag.partition("=")
-            if not police or not wert:
-                print(f"--red-anteil {eintrag!r}: erwartet POLNR=ANTEIL",
-                      file=sys.stderr)
-                return 2
-            red_anteile[police.strip()] = float(wert)
+        red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
+        if args.red_anteile_datei is not None:
+            auskuenfte = lies_auskuenfte(
+                fall, args.red_anteile_datei, bindung, vorgeschichte,
+                dict(VORGABE))
+            red_anteile = dict(auskuenfte.anteile)
+            red_anteile_je_datum = {
+                pol: dict(d) for pol, d in auskuenfte.je_datum.items()}
+            red_anteile_datei = auskuenfte.beleg
         anker: Dict[str, Tuple[int, float]] = {}
         if args.anker_quelle is not None:
             quelle = bindung.binde(
@@ -414,14 +466,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                         float(erster["erwartet"]["kVx_MRV"]))
         anfangszustaende, warnungen = anfangszustaende_je_police(
             spez, zeilen, vorgeschichte, bestand, spalten=dict(VORGABE),
-            red_verfahren=args.red_verfahren or PROSPEKTIV,
-            red_anteile=red_anteile, auspraegungen=auspraegungen,
-            erhoehungssatz=args.erhoehungssatz, anker=anker,
+            red_verfahren=regeln.quell_red_verfahren,
+            red_anteile=red_anteile,
+            red_anteile_je_datum=red_anteile_je_datum,
+            auspraegungen=auspraegungen,
+            erhoehungssatz=regeln.erhoehungssatz, anker=anker,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
-            scheiben_mit_gamma1=args.scheiben_mit_gamma1)
-        for w in warnungen:
-            print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
-                  file=sys.stderr)
+            scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
+            tku_umfang=regeln.tku_umfang,
+            stoab_je_baustein=regeln.stoab_je_baustein)
+        verweigere_unbestimmte(warnungen)
 
     try:
         beleg = baue_schichtbeleg(
@@ -429,11 +483,17 @@ def main(argv: Optional[List[str]] = None) -> int:
             bestand,
             merkmale,
             spez,
-            formfunktion=args.formfunktion,
-            fenster=args.fenster,
+            formfunktion=regeln.formfunktion,
+            fenster=regeln.fenster,
             anfangszustaende=anfangszustaende,
-            scheiben_mit_gamma1=args.scheiben_mit_gamma1,
+            scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
             summen=summen,
+            # Die Herabsetzung der Vorgeschichte liest die Verankerung in
+            # der Lesart der QUELLE (wie die Pruefstrecke); Abzug und Umfang
+            # sind Tarifwerk.
+            tarifwerk={"red_verfahren": regeln.quell_red_verfahren,
+                       "stoab_je_baustein": regeln.stoab_je_baustein,
+                       "tku_umfang": regeln.tku_umfang},
         )
     except MigrationszugangFehler as exc:
         print(f"verankerung_belegen: {exc}", file=sys.stderr)
@@ -530,15 +590,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         "eingaben": eingaben,
         "parameter": {
             "generation": args.generation,
-            "formfunktion": args.formfunktion,
-            "fenster": args.fenster,
+            "formfunktion": regeln.formfunktion,
+            "fenster": regeln.fenster,
             "vorgeschichte": args.vorgeschichte,
-            "erhoehungssatz": args.erhoehungssatz,
-            "red_verfahren": args.red_verfahren,
-            "red_anteile": sorted(args.red_anteile),
+            "red_anteile_datei": red_anteile_datei,
             "red_anteil_kandidaten": sorted(args.red_anteil_kandidaten),
-            "scheiben_mit_gamma1": args.scheiben_mit_gamma1,
             "anker_erwartungswerte": args.anker_quelle,
+            # Die Regeln, mit denen verankert wurde — aus der Spez, deren
+            # Bytes unter ``eingaben`` gebunden sind.
+            "tarifregeln": regeln.als_beleg(),
         },
     }
 

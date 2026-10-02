@@ -98,12 +98,22 @@ def test_nur_bekannte_verfahren():
         assert validate_reduktionen(_stamm(), _reduktionen(verfahren=v)) == []
 
 
-def test_zweite_herabsetzung_derselben_police_faellt():
-    """Der Kern kennt keinen zweimal herabgesetzten Vertrag."""
-    doppelt = pd.concat([_reduktionen(), _reduktionen(jahr=12)],
-                        ignore_index=True)
+def test_zweite_herabsetzung_derselben_police_ist_zulaessig_am_selben_jahrestag_nicht():
+    """Beliebig viele Vorgaenge je Police (Entscheid des Maintainers
+    2026-10-01): Eine zweite Herabsetzung in einem anderen Jahr ist Teil der
+    Folge. Zwei gleiche Vorgaenge am SELBEN Jahrestag haetten keine bestimmte
+    Reihenfolge — benannt verweigert, mit Ausweg. Herabsetzung und
+    Teilkuendigung am selben Jahrestag sind zulaessig (Reihenfolge der Engine).
+    Mutationsprobe: die Eindeutigkeit wieder je Police pruefen -> rot."""
+    zwei = pd.concat([_reduktionen(), _reduktionen(jahr=12)], ignore_index=True)
+    assert validate_reduktionen(_stamm(), zwei) == []
+    doppelt = pd.concat([_reduktionen(), _reduktionen()], ignore_index=True)
     befunde = validate_reduktionen(_stamm(), doppelt)
-    assert any("mehrere Herabsetzungen" in b for b in befunde)
+    assert any("zwei gleiche Vorgaenge am selben Jahrestag" in b and "Ausweg" in b
+               for b in befunde), befunde
+    gemischt = pd.concat([_reduktionen(), _reduktionen(verfahren="teilkuendigung")],
+                         ignore_index=True)
+    assert validate_reduktionen(_stamm(), gemischt) == []
 
 
 @pytest.mark.parametrize("jahr", [0, 20, 25])

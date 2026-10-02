@@ -25,7 +25,7 @@ jedes Dokument und jede Rolle gehört genau einer davon an:
 
 | Ebene | Was sie ist | Hier |
 |---|---|---|
-| Entwickler und KI | die Arbeit an Tool und Vorzeige | Reviews, ADRs, Suite, Gate A-K1 |
+| Entwickler und KI | die Arbeit an Tool und Vorzeige | Reviews, ADRs, Suite; Änderungen am Tool laufen über kein Laufzeit-Gate (ADR-017) |
 | KI-Tool | das agentische Migrationssystem, unabhängig vom Unternehmen | `ontologie/`, `spez/`, `gates/`, `models/`, `qa/`, `quellen/`, Skills und Agentenrollen, Berichts-Generatoren |
 | Vorzeige | ein fiktives Unternehmen, an dem sich das Tool zeigt und testen lässt | Referenz-Zielsystem `kern/`, Bestandsführung `bestand/`, der Migrationsfall, die Unternehmensseite |
 | Vorzeige-Werkzeuge | was die Vorzeige herstellt und in der Wirklichkeit ein Unternehmen oder Quellsystem liefern würde | Bestandssimulation, Quellsystem-Erzeugung, Regie-Mechanik |
@@ -154,7 +154,11 @@ quellen  ->  ontologie  ->  spez  ->  kern  ->  bestand  ->  qa  ->  gates
 **Ablauf eines Migrationsfalls** (Details:
 `docs/architektur/migrations-pipeline-v01.md`): Fall-Arbeitsbereich
 anlegen und Quellen registrieren (`eingang/` mit SHA-256-Register, nie
-still überschrieben — hier beginnt die Provenienzkette) -> je Quelle
+still überschrieben — hier beginnt die Provenienzkette) -> **Fallauftrag**
+`A-M6`: der Vorstand beauftragt den Fall, benennt die Programmleitung und
+bindet die Lieferung; jeder weitere Abnahmepunkt setzt ihn voraus, ein
+scheiternder Fall endet mit dem gezeichneten **Fallabbruch** `A-M5` der
+Programmleitung (ADR-026) -> je Quelle
 Vorverdichtung und Agenten-Extraktion -> deterministischer Merge zur
 A-Box -> Diskrepanzen als Entscheidungs-Dossier an den Menschen
 (Gate A-Q1) -> Spez -> parametrierter Kern -> Abnahme gegen die
@@ -164,7 +168,12 @@ eigenen Rechenpunkten** auf belegten Stichproben
 (`qa/aktuarieller_test`, `qa/testprofil`, `gates/aktuartest`) in drei
 einzeln gezeichneten Abnahmen — `A-M1` Stichtagstest, `A-M2`
 Verlaufstest, `A-M3` Geschäftsvorfalltest —, die dem Controlling `A-M4`
-vorausgehen (ADR-010, ADR-012) ->
+vorausgehen (ADR-010, ADR-012), ebenso wie die Abnahme des Stands, auf
+dem der Fall rechnet — Kernstand `A-K2`, T-Box-Stand `A-O1`, Tarifwerk
+`A-T1`; einmal ausserhalb jedes Falls im Linienbereich abgenommen
+(Erstabnahme, ADR-025), im Fall nur, was sich durch ihn aendert, sonst
+belegt durch einen Verweis auf die geltende Abnahme (ADR-018, Nachtrag
+2026-10-01) ->
 **Migrationscontrolling über zwei Stichtage**:
 Deckungskapital am Migrations- und am Folgestichtag plus die
 Geschäftsvorfälle dazwischen, gegen die gelieferten Erwartungswerte
@@ -227,12 +236,12 @@ startet keinen Gate-Lauf.
 |---|---|---|
 | P-Q1 | `gates.extract` | deterministische Vorverdichtung einer Quellmappe (Formeln, Werte, Namen, VBA) |
 | P-Q2 | `gates.abox_merge` | Zusammenführung der Extraktions-Fragmente zur A-Box |
-| P-Q3 (Version `1.0.0`) | `gates.abox_validate` | A-Box gegen T-Box: Abdeckung, Wertebereiche, Formel-Rück-Check; die A-Box muss die geltende T-Box-Version tragen (Review T22-02, Major: eine A-Box fremder Version war vorher grün) |
+| P-Q3 (Version `2.0.0`) | `gates.abox_validate` | A-Box gegen T-Box: Abdeckung, Wertebereiche, Formel-Rück-Check; die A-Box muss die geltende T-Box-Version tragen (Review T22-02, Major: eine A-Box fremder Version war vorher grün). `2.0.0`: im Bestands-Scope muss die A-Box die Tarifregeln der migrierten Generation belegt führen — Tarifwerk und Quellverfahren (`tbox.BESTAND_PFLICHT`, Code `tarifregeln`); eine A-Box ohne sie war vorher ein gültiger Beleg (ADR-024, Nachtrag) |
 | P-K1 (Version `1.0.0`) | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung; schreibt je Generation einen inhaltsadressierten Beleg des A-Box- und Systemstands; Spez, A-Box und Code müssen dieselbe T-Box-Version sprechen (Review T22-02, Major) |
-| P9 (Version `2.0.0`) | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (A-Q1, A-M1, A-M4, A-K1); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, A-M1 und A-M4 verlangen die zum Fall-Scope passenden Pflichtbelege je Gate, A-M4 verlangt die geltende, signierte A-M1-Annahme auf demselben Stand und pinnt sie als Pflichtrolle `am1_snapshot` (aktuarielle vor finanzieller Abnahme, ADR-010), A-K1 verlangt den Beleg der T-Box-Änderung `abgeleitet/tbox/aenderung.json` (alte und neue Version, Hash des T-Box-Moduls, Änderungsartefakt), und eine simulierte Rolle zeichnet nur mit Mandat (ADR-018). `1.0.0`: Akzeptanzmenge geändert durch Mandatspflicht und A-K1-Beleg (Review T22-02, T22-07); `2.0.0`: A-M4 verlangt im Bestands-Scope die Führungsprobe als Pflichtbelegrolle `fuehrungsprobe` (Freischaltung des übernommenen Bestands, Schritt 6) |
+| P9 (Version `5.0.0`) | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (A-Q1, A-O1, A-K2, A-T1, A-M1 bis A-M6, A-B1, A-B2, A-B3), im Fall oder — mit `--linie` allein — im Linienbereich der Erstabnahme (A-K2, A-O1, A-T1, A-B3); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, A-M1 und A-M4 verlangen die zum Fall-Scope passenden Pflichtbelege je Gate, A-M4 verlangt die geltende, signierte A-M1-Annahme auf demselben Stand und pinnt sie als Pflichtrolle `am1_snapshot` (aktuarielle vor finanzieller Abnahme, ADR-010), A-O1 (gezeichnet von `mensch/architektur`) verlangt den Beleg der T-Box-Änderung `abgeleitet/tbox/aenderung.json` (alte und neue Version, Hash des T-Box-Moduls, Änderungsartefakt), und eine simulierte Rolle zeichnet nur mit Mandat (ADR-018). `1.0.0`: Akzeptanzmenge geändert durch Mandatspflicht und den Beleg der T-Box-Änderung, damals unter dem Gate-Namen A-K1, der entfallen ist (heute A-O1, ADR-012) (Review T22-02, T22-07); `2.0.0`: A-M4 verlangt im Bestands-Scope die Führungsprobe als Pflichtbelegrolle `fuehrungsprobe` (Freischaltung des übernommenen Bestands, Schritt 6); `3.0.0`: A-M4 verlangt in beiden Scopes, dass der Stand des Falls abgenommen ist — Kernstand (A-K2, Rolle `kernstand`) und T-Box-Stand (A-O1, Rolle `tboxstand`) nach einer Regel: im Fall gezeichnet, „keine Änderung seit Abnahme …“ über einen Verweis auf einen früher angenommenen Snapshot (`gates.stand_belegen verweisen`), oder für die T-Box die Basislinie; A-K2 nimmt den Kernstand ab (Änderungen entlang der Module mit Commits, `gates.kernstand_belegen`; Regression bis zu ihrem Werkzeug als benannte Ausnahme „nicht gefahren“); P9-Schema 8 mit `stand`, `ausnahmen` und `standabnahmen` (ADR-018, Nachtrag 2026-10-01); `4.0.0`: A-M4 verlangt zusaetzlich das Tarifwerk der PLV (A-T1, Rolle `tarifwerkstand`, `gates.tarifwerk_belegen`), die Basislinie der T-Box entfaellt (Erstabnahme im Linienbereich, Verweis `stand_belegen verweisen --linie`), mit `--linie` wird nur unter der Spitze der Versionslinie der Zeichnungsordnung gezeichnet und jede Vorbedingung gegen die Ordnung gelesen, unter der sie gezeichnet wurde; P9-Schema 9 mit Scope `linie` und `zeichnung.ordnungsglied_sha256` (ADR-025); `5.0.0`: jede Annahme eines Falls ausser dem Auftrag selbst verlangt den geltenden, vom Vorstand gezeichneten Fallauftrag `A-M6` auf der heutigen Lieferung (`eingang.json`, `fall.json`) und nennt ihn signiert (`fallauftrag`); simulierte Rollen zeichnen nur unter dem Mandat, das der Auftrag ihnen nennt; neu der Fallabbruch `A-M5`, gezeichnet von der Programmleitung mit dem Recht aus dem Auftrag, danach ist im Fall nichts mehr zeichenbar; P9-Schema 10 mit `auftrag`, `abbruch` und `fallauftrag` (ADR-026); eine Annahme gruendet nur auf Annahmen des Falls unter dem geltenden Auftrag, die Linie des Aufrufs ist die Linie des Auftrags, und A-M5 geht auch bei verletztem Eingang mit dem Befund im Abbruch (ADR-026, Nachtrag Runde G); zugleich ist die Linie Pflicht: ohne `--linie` wird nicht entschieden, und keine Vorbedingung wird ohne sie gelesen (ADR-025, Nachtrag 2026-10-01) |
 | P-B1 (Version `4.0.0`) | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, endliche Beträge in Stamm, Scheiben und Ledger (`NaN` und `inf` sind Datenfehler), Zustandsregeln des geführten Bestands (Ursprungssatz `1`/`POL` am Versicherungsbeginn; Folgezustände nur mit Journal und deckungsgleich zum jüngsten Journalstand), die Form des `gamma1` jeder Erhöhungsscheibe (endlich, nicht negativ) und mit `--config` seinen Wert gegen das Tarifwerk der Generation (`0`, oder das `gamma1` der Zelle bei `scheiben_mit_gamma1`), mit `--schichten`/`--verankerung` die Korrekturschicht übernommener Verträge (Form, Zugehörigkeit, Anker) und ihren Anteil an jeder Storno-Herleitung, die Semantik jeder Ledger-Buchung (GeVo-Vokabular, Betragsart zum GeVo, Generation des Stammsatzes, Vertragsjahr zum Datum, Journalzeile zum Zustandswechsel) mit zeilenweiser Bindung jeder `ERH`-Buchung an genau eine Scheibe, mit `--config` die Betragsidentität jeder STO-/PEX-/TOD-/ABL-/ZUG-Buchung gegen die Kern-Herleitung für genau diese Police (Tarifzellen brauchen `--merkmale`), und Bewegungs-Identitäten je Jahr, Track und Maß; mit `--manifest` zusätzlich den belegten Horizont und die Bytes jeder Tabelle gegen das Laufmanifest. `2.0.0` änderte die normative Akzeptanzmenge (vorher grüne Belege werden rot und umgekehrt), `2.1.0` ergänzte die optionale Manifest-Bindung, `3.0.0` erweitert die Akzeptanzmenge um Ledger-Semantik, Betragsidentität und Herkunftsbindung — mit Config geprüfte, betragsfalsche Ledger werden rot (Review T21-09: eine geänderte Akzeptanzmenge braucht einen Versionssprung), `4.0.0` macht die `gamma1`-Regel zur Eigenschaft der Generation und nimmt Schicht und Verankerung in die Herleitung — Scheiben mit `gamma1` einer freigeschalteten Generation werden grün, Storno-Buchungen ohne ihre Schicht rot (Freischaltung des übernommenen Bestands, Schritt 4 und 5) |
 | A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
-| G2-Vorlage (Version `3.0.0`) | `gates.abnahmebericht` | berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu; ein grünes Ledger verlangt vollständige Pflichtartefakte, lückenlose Suite, kongruente Transformationszeilen, keine Transformationsbefunde und keine offenen Konflikte; im Bestands-Scope bindet es P-B1, Suite und Bericht auf denselben Stand sowie die vier Renderer-Eingaben unter festen Pfad-/SHA-256-Rollen, und der P-B1-Beleg muss das Vollprofil tragen (Stamm, Journal, Ledger, Config, Horizont, Betragsbindung). `2.0.0`: ein Teilprofil war vorher ein gültiger Beleg (Review T22-01); `3.0.0`: im Bestands-Scope bindet es zusätzlich die Führungsprobe (`gates.fuehrungsprobe`, bestanden, auf demselben Systemstand, auf dem Bestand der Suite) — ohne sie kein grüner Beleg (Freischaltung, Schritt 6) |
+| G2-Vorlage (Version `10.0.0`) | `gates.abnahmebericht` | berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu; ein grünes Ledger verlangt vollständige Pflichtartefakte, lückenlose Suite, kongruente Transformationszeilen, keine Transformationsbefunde und keine offenen Konflikte; im Bestands-Scope bindet es P-B1, Suite und Bericht auf denselben Stand sowie die vier Renderer-Eingaben unter festen Pfad-/SHA-256-Rollen, und der P-B1-Beleg muss das Vollprofil tragen (Stamm, Journal, Ledger, Config, Horizont, Betragsbindung). `2.0.0`: ein Teilprofil war vorher ein gültiger Beleg (Review T22-01); `3.0.0`: im Bestands-Scope bindet es zusätzlich die Führungsprobe (`gates.fuehrungsprobe`, bestanden, auf demselben Systemstand, auf dem Bestand der Suite) — ohne sie kein grüner Beleg (Freischaltung, Schritt 6); `4.0.0`: die Führungsprobe wird mit ihrem eigenen Aufruf nachgerechnet und Feld für Feld gegen den Beleg gehalten, die Fortschreibung ist Pflicht, und die Probe leitet den Endzustand (Historie, Zustand, Scheiben) aus Übernahme und Geschäftsvorfällen her (Prüfrunde T27); `5.0.0`: die Probe prüft die Übernahme des Falls (`abgeleitet/bestand`), ihre Fortschreibung reicht bis zum Folgestichtag, und P-B1 läuft vollständig auf dieser Fortschreibung; `6.0.0`: im Bestands-Scope muss die Suite die Auskunft zu den Herabsetzungsanteilen als `red_anteile_datei` führen (`null` = keine; Name und SHA-256 müssen unter den Eingaben der Suite stehen), und Suite und Führungsprobe müssen dieselbe Auskunft gelesen haben — eine Suite ohne das Feld war vorher ein gültiger Beleg (Block F, Nachbesserung); `7.0.0`: die Policen, deren Anfangszustand die Auskunft trägt (Übernahme, über die Führungsprobe als `gedeckt` geführt), sind die Pflichtschicht der Abnahmen — die Suite führt dieselbe Menge als `pflichtschicht`, und kein Beleg des aktuariellen Tests hat eine Fehlstelle in ihr; vorher lag eine solche Police in keiner Stichprobe, und der Beleg war gültig (Prüfer-Befund B1, 2026-10-01); `8.0.0`: im Bestands-Scope trägt die Suite in Fassung 2 je Vertrag den `fuehrungswert` — Deckungskapital, Rückkaufswert und Korrekturschicht, die der Monatsabschluss am Zugangs- und am Folgestichtag führt, als Systemwert auf dem Bestand der Suite (`models.fuehrungswert`); eine Suite ohne ihn war vorher ein gültiger Beleg (Entscheid des Maintainers 2026-10-01); `9.0.0`: die Führungsprobe trägt Fassung 5 — Tarifwerk und Quellverfahren aus der Spez statt aus Schaltern, ihr Aufruf nennt keine Tarifschalter mehr; ein Beleg der Fassung 4 war gültig und ist mit seinem Aufruf nicht mehr nachrechenbar (ADR-024, Nachtrag); `10.0.0`: der Führungswert der Suite wird auf den gebundenen Bytes (Bestand, Nebentabellen, Config, Tarifwerk der Spez) über denselben Weg wie die Suite nachgerechnet und in der Vorlage ausgewiesen (Summary `fuehrungswert`, HTML je Vertrag); A-M4 bindet die Spez der Generation (Summary `tarifregeln`), und jeder Beleg der Bestandsstrecke (Übernahme, Schicht, aktuarieller Test, Suite, Führungsprobe) muss genau ihre Regeln nennen und sie gelesen haben — ein verfälschter Führungswert oder ein Beleg mit anderer Regelangabe war vorher gültig (Prüfrunde G, ADR-024, vierter Nachtrag) |
 
 Gate-Versionen folgen der Akzeptanzmenge (ADR-012, Nachtrag 2026-09-05): Major, wenn ein vorher grüner Beleg rot werden kann oder umgekehrt; Minor für eine optionale Rolle oder Prüfung, die bestehende Belege nicht berührt; Patch für Meldetexte und Summary-Felder. Trägt eine Zeile dieser Tabelle eine Version, hält `tests/test_gate_versionsregel.py` sie mit der `GATE_VERSION` des Moduls zusammen.
 
@@ -374,7 +383,8 @@ Der Bestandsbericht rendert das als selbst-enthaltene HTML-Seite:
 python -m rechner_pipeline.bestand.cli_fortschreibung --config configs/bestand_gesamt.toml ...
 python -m rechner_pipeline.bestand.cli_report --portfolio <parquet> --out bericht.html ...
 python -m rechner_pipeline.bestand.cli_abschluss --config ... --lauf runs/bestand --stichtag 2026-01-01 --bis 2026-01-01
-python -m rechner_pipeline.betrieb.tageslauf --stand ~/apps/plv/daten [--heute 2026-09-05]   # der Tagesbetrieb der PLV
+python -m rechner_pipeline.betrieb.tageslauf --stand ~/apps/plv/daten [--heute 2026-09-05] \
+    --schluessel <betriebsschluessel> --zeichnungsordnung <ordnung>   # der Tagesbetrieb der PLV
 ```
 
 **Die Migrationsfälle** (`faelle/`, lokale Arbeitsbereiche, nicht
@@ -439,15 +449,34 @@ python -m rechner_pipeline.quellen.tafel_import --fall faelle/mein-fall --genera
 python -m rechner_pipeline.gates.generation_golden --fall faelle/mein-fall \
     --generation klv/tgX --repo-root .                                                 # P-K1
 
+# der Fallauftrag (ADR-026): Vorlage, ansehen, der Vorstand zeichnet A-M6 —
+# vor jedem anderen Abnahmepunkt; ein Abbruch laeuft ueber fall_belegen abbruch
+# und A-M5 (Bedienfolgen in docs/architektur/adr-026-lebenslauf-eines-falls.md;
+# auch bei verletztem Eingang, der Befund steht dann im Abbruch; liegt eine A-M4
+# im Fall, traegt der Ring des Abbruchs den Schluessel von mensch/aktuariat —
+# der Abbruch nach einer A-M4 geht nur gemeinsam mit dem Aktuariat):
+python -m rechner_pipeline.gates.fall_belegen auftrag --fall faelle/mein-fall \
+    --linie linie --zeichnungsordnung /sicher/zeichnungsordnung.json \
+    --programmleitung-schluessel /sicher/programmleitung.key \
+    --programmleitung-klasse mensch --auftrag "..."
+python -m rechner_pipeline.gates.gate_entscheid --fall faelle/mein-fall --gate A-M6 \
+    --entscheid angenommen --entscheider ... --begruendung ... --linie linie \
+    --zeichnungsordnung /sicher/zeichnungsordnung.json \
+    --freigabe-schluessel /sicher/vorstand.key
+
 # menschliche Gates (ADR-018: die zeichnende Rolle wird aus dem Schluessel
 # ueber die Zeichnungsordnung BESTIMMT, nicht behauptet):
 python -m rechner_pipeline.ontologie.entscheide --fall ... --diskrepanz ... \
     --wert ... --entscheider ... --begruendung ... \
     --zeichnungsordnung /sicher/zeichnungsordnung.json \
     --freigabe-schluessel /sicher/verantwortlicher-aktuar.key
+# (jeder Entscheid nennt die Linie, ADR-025: Pflicht; der Ring traegt den
+# Schluessel des Vorstands, der den Fallauftrag und die Glieder der Linie
+# prueft, ADR-026 und ADR-025; --repo-root ist der Baum des Pakets, das rechnet)
 python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate A-Q1 \
-    --entscheid angenommen --entscheider ... --begruendung ... \
+    --entscheid angenommen --entscheider ... --begruendung ... --linie linie \
     --zeichnungsordnung /sicher/zeichnungsordnung.json \
+    --freigabe-schluessel /sicher/vorstand.key \
     --freigabe-schluessel /sicher/verantwortlicher-aktuar.key
 ```
 
@@ -456,6 +485,58 @@ fallbezogene Dateisperre serialisiert. `eingang.json` wird erst nach dem
 vollständigen Schreiben und Synchronisieren einer temporären Datei atomar
 ersetzt; dadurch verlieren konkurrierende Read-Modify-Write-Abläufe keine
 Quellen und Leser sehen nie ein teilweise geschriebenes Register.
+
+Die Tarifregeln eines übernommenen Tarifs stehen einmal, belegt, in der
+A-Box und daraus in der Spez der Generation (ADR-024, Nachtrag): das
+Tarifwerk (`scheiben_mit_gamma1`, `stoab_je_baustein`, `red_verfahren`,
+`tku_umfang`) und das Verfahren der Quelle (`red_verfahren` als Lesart der
+Lieferung, `erhoehungssatz`, `dk_stichtag`, `formfunktion`, `fenster`). Im
+Bestands-Scope verlangt P-Q3 sie, und die fünf Kommandos der
+Bestandsstrecke (`gates.bestand_uebernehmen`, `verankerung_belegen`,
+`aktuartest_lauf`, `migrationssuite_lauf`, `fuehrungsprobe`) lesen sie über
+`gates.migrationssuite_lauf.tarifregeln_des_falls` aus der Spez — nur in einem
+Fall mit Scope `bestand` (ein Tariffall führt keinen Bestand) und ohne
+Schalter und Vorgabe. Ein Dynamiksatz, den der Tarif nicht kennt, steht in der
+Spez als ausdrückliche Feststellung `"nicht_belegt"`; fehlt der Eintrag, ist
+er nie erhoben, und jedes Kommando verweigert wie P-Q3 (ADR-024, vierter
+Nachtrag). Die früheren Schalter (`--red-verfahren`,
+`--stoab-je-baustein`, `--scheiben-mit-gamma1`, `--tku-umfang`,
+`--erhoehungssatz`, `--dk-stichtag`, `--formfunktion`, `--fenster`) werden mit
+dem Abschnitt der Spez verweigert; eine Spez ohne die Regeln ebenso. Am
+Aufruf bleiben registrierte Eingaben und die Arbeitsannahme des Laufs
+(`--red-anteil-kandidat`).
+
+Auskünfte der abgebenden Gesellschaft zu Herabsetzungsanteilen
+(`POLNR;GEVO;DATUM;ANTEIL`, optional `BEZUG` als Quellenangabe) kommen als
+registrierte Datei in den Fall und werden in allen fünf Kommandos, die
+Herabsetzungsanteile verarbeiten (`gates.bestand_uebernehmen`,
+`verankerung_belegen`, `aktuartest_lauf`, `migrationssuite_lauf`,
+`fuehrungsprobe`), mit `--red-anteile-datei <Dateiname>` genannt: erst
+`fall registrieren`, dann der Schalter. Ein Anteil je Police am Aufruf
+(`--red-anteil`) wird nicht mehr angenommen — er wäre für die Zeichnung nicht
+bindbar. Die Belege nennen die Datei mit ihrem SHA-256; ein Lauf mit
+`--schicht` verweigert, wenn der Schichtbeleg mit einer anderen Auskunft
+erzeugt wurde als der, die er selbst liest.
+
+Beitragsherabsetzung (`RED`) und Teilkündigung (`TKU`) sind zwei
+Geschäftsvorfälle (ADR-023; Tarifplan KLV, Abschnitte 7.1 bis 7.3): Die
+Herabsetzung senkt den Beitrag und gibt es nur, solange er gezahlt wird; die
+Teilkündigung zahlt einen Summenanteil aus und ist in jeder Generation auch
+nach dem Beitragsende und nach der Beitragsfreistellung möglich. Ein Vertrag
+trägt beliebig viele davon in jeder Reihenfolge (`kern.Vorgangsfolge`).
+Welche Bausteine eine Teilkündigung kürzt, sagt das Tarifwerk
+(`tku_umfang`). Ab der Migration
+gilt das Vokabular des Zielsystems (Grundsatzdokumentation 7.1): Eine
+gelieferte Absetzung **nach dem Beitragsende** oder nach einer
+Beitragsfreistellung war eine Teilkündigung, im übernommenen Tarif TG2015
+jede. Nach dem Beitragsende ist der gelieferte Vertrag der
+zustandslose Vertrag mit der gelieferten Summe und braucht für sich keine
+Auskunft. Wo der Anteil wirkt — eine solche Absetzung nach dynamischen
+Erhöhungen verteilt die gelieferte Summe auf Grund und Erhöhungen —, kommt
+er als Auskunft in dieser Datei; ohne sie verweigern die Kommandos und nennen
+`--red-anteile-datei` als Ausweg. Ein Vertrag, dessen Anfangszustand nicht
+ableitbar ist, wird nicht still als Grundvertrag übernommen; ein Vertrag,
+dessen Struktur die Auskunft trägt, ist Pflichtziehung der Abnahmen.
 
 Der Tafelimport akzeptiert nur eine vollstaendige Exportkette: Das
 `export_manifest.json` muss die registrierte XLSM sowie die konkrete

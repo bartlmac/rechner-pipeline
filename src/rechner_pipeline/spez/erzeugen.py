@@ -20,8 +20,10 @@ from rechner_pipeline.ontologie.aussage import Wert, Zustand
 from rechner_pipeline.ontologie.merge import werte_gleich
 from rechner_pipeline.ontologie.tbox import (
     ABox,
+    GENERATIONS_BLOECKE,
     PFLICHT_PARAMETER,
     Parametrierungszelle,
+    TARIFWERK_MERKMALE,
     Tarifgeneration,
 )
 from rechner_pipeline.spez.schema import (
@@ -31,6 +33,7 @@ from rechner_pipeline.spez.schema import (
     TarifSpez,
     ZellSpez,
 )
+from rechner_pipeline.spez.tarifregeln import spez_block
 
 
 class SpezFehler(ValueError):
@@ -82,6 +85,20 @@ def _pruefe_vorbedingungen(abox: ABox, gen: Tarifgeneration) -> None:
                 )
     if gen.unisex is not None and gen.unisex.zustand is not Zustand.BELEGT:
         probleme.append(f"{gen.id}/unisex: {gen.unisex.zustand.value}")
+    # Tarifwerk und Quellverfahren: belegt wird projiziert, nicht_belegt
+    # entfaellt (und bleibt in der Coverage sichtbar) — ausser fuer ein
+    # Merkmal, das nur erhoben sein muss (Dynamiksatz): Dort traegt die Spez
+    # die Feststellung (spez.tarifregeln.spez_block); ein Widerspruch oder
+    # eine Mehrdeutigkeit still zu verwerfen waere eine stille Entscheidung.
+    for block in GENERATIONS_BLOECKE:
+        for merkmal, aussage in sorted(gen.block(block).items()):
+            if aussage.zustand not in (Zustand.BELEGT, Zustand.NICHT_BELEGT):
+                probleme.append(
+                    f"{gen.id}/{block}/{merkmal}: {aussage.zustand.value}")
+            if aussage.diskrepanz_id in offene:
+                probleme.append(
+                    f"{gen.id}/{block}/{merkmal}: offene Diskrepanz "
+                    f"{aussage.diskrepanz_id}")
     if probleme:
         raise SpezFehler(
             "Spez nicht erzeugbar — erst Gate P-Q3 bestehen (Coverage + "
@@ -168,6 +185,21 @@ def strukturvergleich(
             "Kern-Formelaenderung (exakter Tafelname gewinnt in der "
             "Kern-Aufloesung)"
         )
+    # Tarifwerk (T-Box 0.2.0): ein Merkmal, das BEIDE Generationen belegen
+    # und verschieden fuehren, ist eine strukturelle Aussage — es aendert,
+    # wie Herabsetzung, Erhoehung oder Rueckkauf rechnen. Aus einer
+    # einseitigen Luecke urteilt man nicht (wie bei den Parametern).
+    geaendert_tw: List[str] = []
+    if referenz is not None:
+        for merkmal in TARIFWERK_MERKMALE:
+            a, b = neu.tarifwerk.get(merkmal), referenz.tarifwerk.get(merkmal)
+            if (a is not None and b is not None
+                    and a.zustand is Zustand.BELEGT and b.zustand is Zustand.BELEGT
+                    and not werte_gleich(a.wert, b.wert)):
+                geaendert_tw.append(merkmal)
+                begruendung.append(
+                    f"abweichendes Tarifwerk: {merkmal} {b.wert!r} "
+                    f"({referenz.id}) -> {a.wert!r}")
     if not begruendung:
         begruendung.append("keine strukturellen Unterschiede gefunden")
 
@@ -182,6 +214,7 @@ def strukturvergleich(
         neue_tafeln=neue_tafeln,
         geaenderte_parameter=geaenderte,
         formel_erweiterungen=formel_erweiterungen,
+        geaenderte_tarifwerksmerkmale=geaendert_tw,
         begruendung=begruendung,
     )
 
@@ -232,11 +265,17 @@ def baue_spez(
         Erweiterungsstelle(id=e, beschreibung=e)
         for e in urteil.formel_erweiterungen
     ]
+    # Belegt mit Wert; "ausdruecklich nicht belegt" eines zu erhebenden
+    # Merkmals (Dynamiksatz) als Feststellung — die EINE Projektion, die P-K1
+    # zurueckhaelt (spez.tarifregeln.spez_block; Pruefrunde G).
+    bloecke = {block: spez_block(block, gen.block(block)) for block in GENERATIONS_BLOECKE}
     return TarifSpez(
         generation=gen.id,
         familie=gen.familie,
         urteil=urteil,
         unisex=unisex,
+        tarifwerk=bloecke["tarifwerk"],
+        quellverfahren=bloecke["quellverfahren"],
         zellen=zellen,
         tafel_importe=tafel_importe,
         tafel_ableitungen=[ableitungen[k] for k in sorted(ableitungen)],

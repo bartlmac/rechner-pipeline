@@ -1,7 +1,8 @@
 """``gate_entscheid`` — der P9-Snapshot eines menschlichen Gates.
 
 Ein menschliches Gate (A-Q1 fachlich; A-M1, A-M2, A-M3 die drei
-aktuariellen Abnahmen; A-M4 Migrationsabnahme; A-O1 T-Box-Aenderung)
+aktuariellen Abnahmen; A-M4 Migrationsabnahme; A-O1 T-Box-Aenderung; A-K2
+der Kernstand des Falls; A-B1, A-B2 Auslieferung und Zugang)
 endet nicht in einer Commit-Message, sondern in einem unveraenderlichen,
 inhaltsadressierten Snapshot: WER hat WAS auf WELCHEM Stand entschieden,
 mit welcher Begruendung. Der Snapshot haelt die SHA-256-Hashes aller
@@ -41,9 +42,31 @@ und Zwei-Stichtagsstands. Die Reihenfolge ist erzwungen: Ein
 A-M4-Entscheid ohne geltende, signierte A-M1-Annahme auf demselben Stand
 ist unmoeglich (ADR-010); im Bestands-Scope gilt dasselbe fuer A-M2 und
 A-M3 (Entscheidung des Auftraggebers 2026-08-31), im Tarif-Scope bleibt
-es bei A-M1. Im Abnahme-Ledger verlangt A-M4 ausserdem die
+es bei A-M1. In beiden Scopes verlangt A-M4 seit dem Entscheid des
+Maintainers vom 2026-10-01 die geltende A-K2-Annahme des Kernstands, auf
+dem der Fall rechnet (ADR-018, Nachtrag 2026-10-01): Rolle
+``mensch/rechenkern``, Belege ``abgeleitet/kern/aenderung.json`` und
+``regression.json`` (bis zum Regressionswerkzeug die benannte Ausnahme
+"nicht gefahren"), nachgerechnet gegen den lebenden Kern. Im
+Abnahme-Ledger verlangt A-M4 ausserdem die
 vier festen Renderer-Artefaktrollen, prueft ihre aktuellen Bytes und
 leitet das Berichtsverdikt aus den gebundenen Inhalten neu ab.
+
+**Linienbereich und Ordnungslinie (ADR-025).** Mit ``--linie`` allein
+zeichnet das Kommando die Abnahmen des Zielsystems AUSSERHALB eines Falls
+(A-K2, A-O1, A-T1 Tarifwerk, A-B3 Anfangsbestand; Scope ``linie``) — die
+Erstabnahme und spaetere Aenderungen in der Entwicklung, mit derselben
+Kette, Signatur und Rollenregel. Mit ``--fall`` und ``--linie`` zeichnet es
+im Fall unter der Spitze der Versionslinie der Zeichnungsordnung und pinnt
+ihr Glied; jede Vorbedingung liest es gegen die Ordnung, unter der sie
+gezeichnet wurde. A-M4 verlangt zusaetzlich das Tarifwerk. Die Linie ist
+Pflicht (Nachtrag 2026-10-01): ohne ``--linie`` kein Entscheid.
+
+**Lebenslauf eines Falls (ADR-026).** Jede Annahme eines Falls ausser dem
+Auftrag selbst setzt den geltenden Fallauftrag ``A-M6`` voraus
+(:func:`fallauftrag_pruefen`, EINE Stelle) und nennt ihn signiert; nach dem
+gezeichneten Fallabbruch ``A-M5`` ist im Fall nichts mehr zu entscheiden
+(:func:`abbruch_im_fall`).
 
 Run via::
 
@@ -66,6 +89,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Tuple
 
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.models import anker as anker_mod
 from rechner_pipeline.gates._common import (
@@ -77,9 +101,12 @@ from rechner_pipeline.gates._common import (
     begin_gate_ledger_attempt,
     build_result,
     finalize_gate_ledger,
+    ist_schreibrest,
     lies_gehasht,
     parse_gate_args,
+    raeume_zwillinge,
     run_command,
+    schreibe_exklusiv,
     utc_now,
 )
 from rechner_pipeline.gates._fall_scope import (
@@ -89,14 +116,22 @@ from rechner_pipeline.gates._fall_scope import (
     scope_bindung,
     validate_scope_bindung,
 )
+from rechner_pipeline.gates import kernstand_belegen as _kernstand
+from rechner_pipeline.gates import sichten as _sichten
+from rechner_pipeline.gates import stand_belegen as _stand
+from rechner_pipeline.gates import tarifwerk_belegen as _tarifwerk
 from rechner_pipeline.gates._provenienz import (
     O3_BELEG_GLOB,
-    PRODUKTIVER_ZWEIG,
     git_stand,
     pruefe_pk1_beleg,
     systemstand,
     zweig_ist_aktuell,
 )
+from rechner_pipeline.models import anfangsbestand as _anfangsbestand
+from rechner_pipeline.models import kernabnahme as _kernabnahme
+from rechner_pipeline.models import ordnungslinie as _ordnungslinie
+from rechner_pipeline.models import standabnahme as _standabnahme
+from rechner_pipeline.models import tarifwerkabnahme as _tarifwerkabnahme
 from rechner_pipeline.models.belegrollen import (
     BelegrollenFehler,
     am4_belegrollen,
@@ -114,6 +149,8 @@ from rechner_pipeline.models.schemas import (
     P9_AKTUARIELLE_ABNAHMEN,
     P9_FREIGABE_VERFAHREN,
     P9_GATE_VERSION,
+    P9_GATES_MIT_AUSNAHMEN,
+    P9_GATES_MIT_STAND,
     P9_SNAPSHOT_SCHEMA_VERSION,
     P9Snapshot,
     p9_semantik_fehler,
@@ -124,13 +161,21 @@ from rechner_pipeline.models.schemas import (
 GATE_VERSION = P9_GATE_VERSION
 # Umzug 2026-09-01: der Rollen-/Gate-Vertrag lebt in models.zeichnung
 # (paketuebergreifend — auch ontologie.entscheide liest ihn seither).
+from rechner_pipeline.models import fallauftrag as _fallauftrag  # noqa: E402
+from rechner_pipeline.models.schemas import P9_LEBENSLAUF_FELDER  # noqa: E402
 from rechner_pipeline.models.zeichnung import (
+    ABBRUCH_GATE,
+    AUFTRAG_GATE,
+    FALLROLLEN_GATES,
     GATES_MIT_PFLICHTBELEGEN,
+    LEBENSLAUF_GATES,
     ausserhalb_des_falls,  # noqa: E402
     GUELTIGE_GATES,
     lade_zeichnungsordnung as _models_lade_zeichnungsordnung,
     zeichnungsrolle as _models_zeichnungsrolle,
     gueltige_rollenkennung,
+    rolle_darf_gate,
+    zeichnende_rolle_fehler,
     zeichnung_fuer,
 )
 #: Die drei aktuariellen Abnahmen desselben migrierten Bestands. Sie
@@ -291,8 +336,9 @@ def pruefe_snapshot_ohne_schluessel(
     return []
 
 
-#: Schema des A-O1-Belegs (Review T22-02).
-TBOX_AENDERUNG_SCHEMA_VERSION = 1
+#: Schema des A-O1-Belegs (Review T22-02; 2 seit ADR-025: mit dem ganzen
+#: Vokabular und dem zuletzt abgenommenen, Grundlage der lesbaren Sicht).
+TBOX_AENDERUNG_SCHEMA_VERSION = _stand.TBOX_AENDERUNG_SCHEMA_VERSION
 _SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -418,6 +464,21 @@ def pruefe_tbox_aenderung(
                 fehler.append(f"artefakt {pfad_roh!r}: Hash stimmt nicht")
     if not (isinstance(daten.get("begruendung"), str) and daten["begruendung"].strip()):
         fehler.append("begruendung fehlt")
+    # Das Vokabular, das die Sicht zeigt, ist das des Codes — nachgerechnet,
+    # nicht geglaubt (ADR-025); das zuletzt abgenommene steht mit seinem
+    # Abdruck daneben.
+    vokabular = json.loads(json.dumps(tbox_modul.vokabular(), sort_keys=True))
+    if daten.get("vokabular") != vokabular:
+        fehler.append("vokabular ist nicht das Vokabular des geladenen T-Box-Moduls")
+    if daten.get("vokabular_sha256") != tbox_modul.vokabular_sha256():
+        fehler.append("vokabular_sha256 ist nicht der Abdruck des Vokabulars")
+    vorher = daten.get("vorher")
+    if vorher is not None:
+        felder = {"beleg_sha256", "snapshot_sha256", "version", "vokabular_sha256", "vokabular"}
+        if not (isinstance(vorher, dict) and set(vorher) == felder
+                and _stand._vokabular_sha256(vorher.get("vokabular"))
+                == vorher.get("vokabular_sha256")):
+            fehler.append(f"vorher traegt genau {sorted(felder)} mit stimmigem Abdruck")
     return fehler
 
 
@@ -502,56 +563,24 @@ def pruefe_stellungnahme_aktuariat(
     return fehler
 
 
-#: Schema der beiden Belege von ``A-K2.kernaenderung`` (Entscheid des
-#: Maintainers 2026-09-16). Getrennt gehalten, weil sie verschiedene Dinge
-#: bezeugen: Der AENDERUNGSbeleg sagt, WAS am Kern anders wurde; der
-#: REGRESSIONSbeleg sagt, was das fuer den bestehenden Bestand bedeutet.
-KERN_AENDERUNG_SCHEMA_VERSION = 2
-KERN_REGRESSION_SCHEMA_VERSION = 1
+#: Schema der beiden Belege von ``A-K2.kernaenderung``. Getrennt gehalten,
+#: weil sie verschiedene Dinge bezeugen: Der AENDERUNGSbeleg sagt, WAS am
+#: Kern anders wurde; der REGRESSIONSbeleg sagt, was das fuer den bestehenden
+#: Bestand bedeutet. Vertrag und Produzent: ``gates.kernstand_belegen``,
+#: Gegenstand und Ausnahme: ``models.kernabnahme`` (ADR-018, Nachtrag
+#: 2026-10-01).
+KERN_AENDERUNG_SCHEMA_VERSION = _kernstand.KERN_AENDERUNG_SCHEMA_VERSION
+KERN_REGRESSION_SCHEMA_VERSION = _kernstand.KERN_REGRESSION_SCHEMA_VERSION
 
-#: Die eingefrorenen Referenzwerte des Kerns — die Regressionssicherung
-#: aus dem Abnahme-Protokoll (``kern/__init__``). Ihr Sammelhash bindet
-#: den Aenderungsbeleg an den Stand, den der Code wirklich traegt.
-KERN_REFERENZWERTE = ("tests", "fixtures", "kern_referenzwerte")
-
-#: Das Rechenkern-Paket. Der Beleg bindet es ueber einen Sammelhash,
-#: NICHT ueber einen Import: Das Entscheid-Kommando gehoert dem KI-Tool
-#: (Ebene 2), der Rechenkern der Vorzeige (Ebene 3), und das Tool greift
-#: nicht in die Vorzeige (ADR-017, TOOL_NACH_VORZEIGE_ERLAUBT). Ein Hash
-#: ueber die Quelldateien leistet ohnehin mehr als eine Versionsnummer:
-#: Eine Version kann man hochzaehlen, ohne etwas zu aendern, und etwas
-#: aendern, ohne sie hochzuzaehlen. Dieselbe Figur wie der Modul-Hash der
-#: T-Box in ``pruefe_tbox_aenderung``.
-KERN_PAKET = ("src", "rechner_pipeline", "kern")
-
-
-def referenzwerte_hash(repo_root: Path) -> str | None:
-    """Sammelhash der eingefrorenen Kern-Referenzwerte, sortiert.
-
-    Sortiert nach Dateiname, damit der Hash nicht von der Reihenfolge des
-    Dateisystems abhaengt; Name UND Inhalt gehen ein, sonst bliebe das
-    Umbenennen oder Loeschen einer Datei unsichtbar.
-    """
-    verzeichnis = repo_root.joinpath(*KERN_REFERENZWERTE)
-    if not verzeichnis.is_dir():
-        return None
-    sammel = hashlib.sha256()
-    for datei in sorted(verzeichnis.glob("*.json"), key=lambda d: d.name):
-        sammel.update(datei.name.encode("utf-8"))
-        sammel.update(datei.read_bytes())
-    return sammel.hexdigest()
-
-
-def kern_modul_hash(repo_root: Path) -> str | None:
-    """Sammelhash der Quelldateien des Rechenkerns, sortiert nach Name."""
-    verzeichnis = repo_root.joinpath(*KERN_PAKET)
-    if not verzeichnis.is_dir():
-        return None
-    sammel = hashlib.sha256()
-    for datei in sorted(verzeichnis.rglob("*.py"), key=lambda d: d.as_posix()):
-        sammel.update(datei.relative_to(verzeichnis).as_posix().encode("utf-8"))
-        sammel.update(datei.read_bytes())
-    return sammel.hexdigest()
+#: Die eingefrorenen Referenzwerte und das Rechenkern-Paket — als Pfadteile,
+#: aus dem EINEN Gegenstand (``models.kernabnahme.KERNSTAND``). Das Paket
+#: wird ueber einen Sammelhash gebunden, NICHT ueber einen Import: Das
+#: Entscheid-Kommando gehoert dem KI-Tool (Ebene 2), der Rechenkern der
+#: Vorzeige (Ebene 3), und das Tool greift nicht in die Vorzeige (ADR-017).
+KERN_REFERENZWERTE = tuple(_kernabnahme.KERN_REFERENZWERTE.split("/"))
+KERN_PAKET = tuple(_kernabnahme.KERN_PAKET.split("/"))
+referenzwerte_hash = _kernstand.referenzwerte_hash
+kern_modul_hash = _kernstand.kern_modul_hash
 
 
 def pruefe_kernaenderung(
@@ -561,19 +590,20 @@ def pruefe_kernaenderung(
     text: str | None = None,
     repo_root: Path | None = None,
 ) -> List[str]:
-    """Den Beleg einer Rechenkern-Aenderung gegen den Code halten.
+    """Den Aenderungsbeleg des Kernstands gegen Code und Git halten.
 
-    Gleiche Figur wie ``pruefe_tbox_aenderung``: Der Beleg sagt, VON
-    welcher Kern-Version NACH welcher es geht, welchen Sammelhash die
-    eingefrorenen Referenzwerte danach tragen, welche davon sich geaendert
-    haben und welches Artefakt die Aenderung begruendet.
+    Der Beleg sagt, VON welchem zuletzt abgenommenen Kernstand (Commit und
+    Version) NACH welchem es geht, was sich je Modul geaendert hat, mit
+    welchen Commits, und welchen Sammelhash Kern und Referenzwerte tragen.
+    Ein unveraenderter Kern ist ein gueltiger Beleg (Entscheid 2026-10-01:
+    jeder Fall traegt die Abnahme seines Kernstands) — er sagt dann genau
+    das.
 
-    Der ALTE Stand ist hier nicht aus dem Code nachweisbar — der Kern
-    deklariert keine Versionslinie wie die T-Box. Was nachweisbar ist und
-    deshalb geprueft wird: Die NEUE Version muss die sein, die der Code
-    jetzt traegt (``kern.__version__``), und der Sammelhash muss der der
-    tatsaechlich vorliegenden Referenzwerte sein. Ein Beleg, der eine
-    Aenderung behauptet, die der Code nicht traegt, wird nicht gezeichnet.
+    Geprueft wird erst Feld fuer Feld (die Meldungen nennen, was nicht
+    stimmt), dann wird der GANZE Beleg nachgerechnet
+    (``kernstand_belegen.nachgerechnet``): Ein Beleg, der nur in sich
+    stimmig ist, bezeugt nichts (T24-04) — eine erfundene Commit-Zeile, ein
+    weggelassenes Modul, ein geschoenter Diffstat fallen hier.
     """
     if not pfad.is_file():
         return ["Datei fehlt"]
@@ -588,21 +618,29 @@ def pruefe_kernaenderung(
     fehler: List[str] = []
     if daten.get("schema_version") != KERN_AENDERUNG_SCHEMA_VERSION:
         fehler.append(f"schema_version muss {KERN_AENDERUNG_SCHEMA_VERSION} sein")
+    if daten.get("art") != _kernstand.ART:
+        fehler.append(f"art muss {_kernstand.ART!r} sein")
     von, nach = daten.get("von_version"), daten.get("nach_version")
     semver_ok = True
     for name, wert in (("von_version", von), ("nach_version", nach)):
         if not isinstance(wert, str) or not _SEMVER.match(wert):
             fehler.append(f"{name} muss eine Version x.y.z sein")
             semver_ok = False
-    if von == nach:
-        fehler.append("von_version und nach_version sind gleich — keine Aenderung")
-    if semver_ok and von != nach:
-        if _semver_tuple(von) >= _semver_tuple(nach):
+    if semver_ok and _semver_tuple(von) > _semver_tuple(nach):
+        fehler.append(
+            f"von_version {von!r} liegt nach nach_version {nach!r} "
+            "— ein Uebergang laeuft nicht abwaerts"
+        )
+    wurzel = repo_root
+    if wurzel is not None and semver_ok:
+        init = wurzel.joinpath(*KERN_PAKET, "__init__.py")
+        ist_version = _kernstand.kern_version(
+            init.read_text(encoding="utf-8") if init.is_file() else None)
+        if ist_version != nach:
             fehler.append(
-                f"von_version {von!r} liegt nicht vor nach_version {nach!r} "
-                "— ein Uebergang laeuft aufwaerts"
+                f"nach_version {nach!r} ist nicht die Version, die der Kern "
+                f"traegt ({ist_version!r})"
             )
-    wurzel = repo_root if repo_root is not None else None
     kern_ist = kern_modul_hash(wurzel) if wurzel is not None else None
     kern_soll = daten.get("kern_sha256")
     if not (isinstance(kern_soll, str) and _SHA256.match(kern_soll)):
@@ -615,7 +653,7 @@ def pruefe_kernaenderung(
     elif kern_soll != kern_ist:
         fehler.append(
             "kern_sha256 stimmt nicht mit dem vorliegenden Rechenkern "
-            "ueberein — der Beleg behauptet eine Aenderung, die der Code "
+            "ueberein — der Beleg behauptet einen Kern, den der Code "
             "nicht traegt"
         )
     ist_hash = referenzwerte_hash(wurzel) if wurzel is not None else None
@@ -634,42 +672,32 @@ def pruefe_kernaenderung(
             "Referenzwerten ueberein — der Beleg gehoert zu einem anderen "
             "Stand des Kerns"
         )
-    # Der ALTE Stand (Entscheid des Maintainers 2026-09-16): Entwicklung
-    # im Fall laeuft auf einem Branch, der produktive Kern liegt auf
-    # ``main``. Damit ist die Vorher-Seite nicht mehr behauptet, sondern
-    # benennbar — und der Vergleich ist reproduzierbar, weil der Hash
-    # inhaltsadressiert ist und der Commit dazu im Beleg steht.
     kern_alt = daten.get("kern_alt_sha256")
     if not (isinstance(kern_alt, str) and _SHA256.match(kern_alt)):
         fehler.append("kern_alt_sha256 fehlt oder ist kein SHA-256")
-    elif isinstance(kern_soll, str) and kern_alt == kern_soll:
-        fehler.append(
-            "kern_alt_sha256 ist kern_sha256 — der Kern hat sich nicht "
-            "geaendert, es gibt nichts abzunehmen"
-        )
+    if not isinstance(daten.get("veraendert"), bool):
+        fehler.append("veraendert fehlt oder ist kein Wahrheitswert")
+    if not isinstance(daten.get("module"), list):
+        fehler.append("module fehlt oder ist keine Liste")
     git_beleg = daten.get("git")
     if not isinstance(git_beleg, dict):
         fehler.append("git fehlt oder ist kein Objekt")
     else:
-        if git_beleg.get("dirty") != "nein":
-            fehler.append(
-                "git.dirty ist nicht 'nein' — eine Regression gegen "
-                "uncommittete Aenderungen ist nicht reproduzierbar"
-            )
+        # Der Zweig muss den zuletzt abgenommenen Kernstand ENTHALTEN
+        # (merge_base == referenz_commit): Sonst mischte die Differenz die
+        # Aenderungen dieses Zweigs mit fremden.
         if not zweig_ist_aktuell(git_beleg):
             fehler.append(
-                f"der Zweig liegt nicht auf der Spitze von "
-                f"{git_beleg.get('referenz', PRODUKTIVER_ZWEIG)!r} "
-                "(merge_base != referenz_commit) — die Differenz mischte "
-                "die eigene Aenderung mit einer fremden"
+                f"der lebende Stand liegt nicht auf dem zuletzt abgenommenen "
+                f"Kernstand {git_beleg.get('referenz')!r} auf (merge_base != "
+                "referenz_commit) — die Differenz mischte die eigene Aenderung "
+                "mit einer fremden"
             )
+        # dirty sperrt die qualitative Pruefung NICHT mehr (2026-10-01): Die
+        # Sicht zeigt nicht committete Aenderungen ausdruecklich, und der
+        # Diffstat laeuft gegen den Arbeitsbaum. Die Sperre gehoert zur
+        # Regression und steht dort (pruefe_kernregression).
         if wurzel is not None:
-            # Gegen den LEBENDEN Git-Stand halten, nicht nur gegen sich
-            # selbst: Ein Beleg, der nur innerlich stimmig ist, bezeugt
-            # nichts (T24-04). Geprueft wird, was die DREI vorhandenen
-            # lesenden git-Aufrufe hergeben — Commit und dirty. Der
-            # Merge-Base bliebe ein vierter Aufruf und damit eine zweite
-            # Subprozess-Ausnahme; die gibt es hier nicht.
             jetzt = git_stand(wurzel)
             if jetzt.get("commit") == "unbekannt":
                 fehler.append(
@@ -683,12 +711,6 @@ def pruefe_kernaenderung(
                     f"({str(jetzt.get('commit'))[:12]!r}) — der Beleg "
                     "gehoert zu einem anderen Lauf"
                 )
-            # dirty wird NICHT gegen den lebenden Stand gehalten: Ob die
-            # Regression reproduzierbar ist, entscheidet der Baum zur
-            # MESSZEIT, nicht zur Unterschrift — die kann Tage spaeter
-            # fallen. Der festgehaltene Wert ist der richtige; und ein
-            # zwischenzeitlich veraenderter Kern faellt ohnehin ueber
-            # kern_sha256 auf.
     geaendert = daten.get("geaenderte_referenzwerte")
     if not isinstance(geaendert, list) or not all(
         isinstance(x, str) for x in geaendert
@@ -699,6 +721,61 @@ def pruefe_kernaenderung(
         fehler.append("geaenderte_referenzwerte fehlt oder ist keine Liste von Namen")
     if not (isinstance(daten.get("begruendung"), str) and daten["begruendung"].strip()):
         fehler.append("begruendung fehlt")
+    if fehler:
+        return fehler
+    if wurzel is None:
+        return ["der Beleg ist nicht nachrechenbar — --repo-root fehlt"]
+    try:
+        neu = _kernstand.nachgerechnet(wurzel, daten)
+    except (_kernstand.KernstandFehler, OSError) as exc:
+        return [f"der Beleg ist nicht nachrechenbar: {exc}"]
+    abweichend = sorted(k for k in set(neu) | set(daten) if neu.get(k) != daten.get(k))
+    if abweichend:
+        return [
+            "der Beleg ist nicht der Kernstand zwischen dem zuletzt abgenommenen "
+            f"Stand und dem Arbeitsbaum — abweichend: {abweichend}; neu erzeugen "
+            "mit: python -m rechner_pipeline.gates.kernstand_belegen --fall <fall> "
+            f"--repo-root <repo> --von {neu['git']['referenz']} --begruendung <text>"
+        ]
+    return []
+
+
+def _pruefe_regressionsausnahme(
+    daten: Dict[str, object], aenderung: Dict[str, object] | None
+) -> List[str]:
+    """Die benannte Ausnahme — genau diese Form, nichts anderes Unvollstaendiges."""
+    if not _kernabnahme.REGRESSION_AUSNAHME_ERLAUBT:
+        return [
+            "der Regressionsbeleg ist die Ausnahme 'nicht gefahren', die Ausnahme "
+            "ist aber nicht mehr erlaubt (models.kernabnahme."
+            "REGRESSION_AUSNAHME_ERLAUBT) — den Regressionsproduzenten fahren"
+        ]
+    fehler: List[str] = []
+    if set(daten) != _kernabnahme.AUSNAHME_FELDER:
+        fehler.append(
+            "der Ausnahmebeleg traegt genau die Felder "
+            f"{sorted(_kernabnahme.AUSNAHME_FELDER)} — fehlen="
+            f"{sorted(_kernabnahme.AUSNAHME_FELDER - set(daten))}, fremd="
+            f"{sorted(set(daten) - _kernabnahme.AUSNAHME_FELDER)}; ein Feld mehr "
+            "saehe wie ein Ergebnis aus"
+        )
+    if daten.get("schema_version") != KERN_REGRESSION_SCHEMA_VERSION:
+        fehler.append(f"schema_version muss {KERN_REGRESSION_SCHEMA_VERSION} sein")
+    for feld, soll in (("zustand", _kernabnahme.ZUSTAND_NICHT_GEFAHREN),
+                       ("grund", _kernabnahme.GRUND_NICHT_GEFAHREN),
+                       ("grundlage", _kernabnahme.AUSNAHME_GRUNDLAGE)):
+        if daten.get(feld) != soll:
+            fehler.append(f"{feld} muss {soll!r} sein, nicht {daten.get(feld)!r}")
+    if aenderung is None:
+        fehler.append("die Ausnahme ist an keinen Aenderungsbeleg gebunden")
+    else:
+        for feld in _kernabnahme.BINDUNGSFELDER:
+            if daten.get(feld) != aenderung.get(feld):
+                fehler.append(
+                    f"{feld} {daten.get(feld)!r} weicht vom Aenderungsbeleg "
+                    f"({aenderung.get(feld)!r}) ab — die Ausnahme gehoert zu "
+                    "einem anderen Uebergang"
+                )
     return fehler
 
 
@@ -709,19 +786,25 @@ def pruefe_kernregression(
     text: str | None = None,
     aenderung: Dict[str, object] | None = None,
 ) -> List[str]:
-    """Den Regressionsbeleg einer Kern-Aenderung pruefen.
+    """Den Regressionsbeleg des Kernstands pruefen.
 
-    Entscheid des Maintainers 2026-09-16: **Ohne Regression keine Abnahme.**
-    Eine Kern-Aenderung entsteht im Fall, aber der geaenderte Kern bewertet
-    danach den LAUFENDEN Bestand weiter — diese Wirkung sieht sonst
-    niemand. Der Beleg rechnet deshalb jeden Vertrag mit altem und neuem
-    Kern durch und weist die Differenz JE VERTRAG aus.
+    Zwei Formen, und nur diese:
 
-    Geprueft wird vor allem die Vollstaendigkeit: ``vertraege_geprueft``
-    muss ``vertraege_gesamt`` sein. Eine Stichprobe ist hier wertlos —
-    ein Fehler, der einen von tausend Vertraegen trifft, ist genau der,
-    den man sucht. Aggregate sind aus demselben Grund nicht zugelassen:
-    Gegenlaeufige Abweichungen heben sich in der Summe auf.
+    * die benannte AUSNAHME (ADR-018, Nachtrag 2026-10-01): Zustand
+      ``nicht_gefahren``, Grund "Werkzeug noch nicht erstellt", gebunden an
+      den Uebergang des Aenderungsbelegs — angenommen, solange
+      ``models.kernabnahme.REGRESSION_AUSNAHME_ERLAUBT`` gilt, und solange
+      sie gilt, ist sie die EINZIGE angenommene Form (Pruefrunde G, G10:
+      ohne Werkzeug ist ein Ergebnis eine Behauptung);
+    * das ERGEBNIS nach der Regel vom 2026-09-16 (erst, wenn die Konstante
+      mit dem Werkzeug kippt): jeder Vertrag mit altem
+      und neuem Kern durchgerechnet, Differenz JE VERTRAG.
+      ``vertraege_geprueft`` muss ``vertraege_gesamt`` sein — eine
+      Stichprobe ist hier wertlos, der Fehler, der einen von tausend
+      Vertraegen trifft, ist der gesuchte; Aggregate sind aus demselben
+      Grund nicht zugelassen. Und der Arbeitsbaum muss beim Belegen sauber
+      gewesen sein: Eine Regression gegen uncommittete Aenderungen ist
+      nicht reproduzierbar.
     """
     if not pfad.is_file():
         return ["Datei fehlt"]
@@ -733,18 +816,40 @@ def pruefe_kernregression(
         return [f"nicht lesbar: {exc}"]
     if not isinstance(daten, dict):
         return ["kein JSON-Objekt"]
+    if "zustand" in daten:
+        return _pruefe_regressionsausnahme(daten, aenderung)
+    if _kernabnahme.REGRESSION_AUSNAHME_ERLAUBT:
+        # Bis zu ihrem Werkzeug ist die Regression eine benannte AUSNAHME, nie
+        # "bestanden" (Entscheid des Maintainers; Pruefrunde G, G10): Es gibt
+        # keinen Produzenten, also ist jedes Ergebnis eine Behauptung, die
+        # niemand gefahren hat — und unter ihm verschwaende die Ausnahme aus
+        # dem signierten Snapshot. Der Ergebnis-Zweig unten gilt, sobald die
+        # Konstante mit dem Werkzeug kippt.
+        return [
+            "der Regressionsbeleg behauptet ein Ergebnis, aber es gibt kein Werkzeug, das "
+            "dieses Ergebnis erzeugt haben kann (models.kernabnahme."
+            "REGRESSION_AUSNAHME_ERLAUBT) — bis zu ihrem Werkzeug ist die Regression die "
+            "benannte Ausnahme 'nicht gefahren', nie 'bestanden' (ADR-018, Nachtrag "
+            "2026-10-01, Punkt 4). Ausweg: den Beleg neu vorlegen (python -m "
+            "rechner_pipeline.gates.kernstand_belegen ...), er schreibt die Ausnahme"]
     fehler: List[str] = []
     if daten.get("schema_version") != KERN_REGRESSION_SCHEMA_VERSION:
         fehler.append(f"schema_version muss {KERN_REGRESSION_SCHEMA_VERSION} sein")
     if aenderung is not None:
-        for feld in ("von_version", "nach_version", "kern_alt_sha256",
-                     "kern_sha256"):
+        for feld in _kernabnahme.BINDUNGSFELDER:
             if daten.get(feld) != aenderung.get(feld):
                 fehler.append(
                     f"{feld} {daten.get(feld)!r} weicht vom Aenderungsbeleg "
                     f"({aenderung.get(feld)!r}) ab — die Regression gehoert "
                     "zu einem anderen Uebergang"
                 )
+        git_beleg = aenderung.get("git") if isinstance(aenderung.get("git"), dict) else {}
+        if git_beleg.get("dirty") != "nein":
+            fehler.append(
+                "git.dirty des Aenderungsbelegs ist nicht 'nein' — eine "
+                "Regression gegen uncommittete Aenderungen ist nicht "
+                "reproduzierbar"
+            )
     gesamt, geprueft = daten.get("vertraege_gesamt"), daten.get("vertraege_geprueft")
     for name, wert in (("vertraege_gesamt", gesamt), ("vertraege_geprueft", geprueft)):
         if not isinstance(wert, int) or isinstance(wert, bool) or wert < 0:
@@ -803,6 +908,406 @@ def pruefe_kernregression(
     return fehler
 
 
+def _kernstand_kommando(fall: Path, repo_root: object) -> str:
+    return ("python -m rechner_pipeline.gates.kernstand_belegen "
+            f"--fall {fall} --repo-root {repo_root} --von <zuletzt abgenommener "
+            "Kernstand> --begruendung <text>")
+
+
+def kernstand_belege_pruefen(
+    fall: Path, repo_root: Optional[Path], *, sicht_belege: Optional[Dict[str, object]] = None,
+) -> Tuple[List[str], Dict[str, str], Dict[str, str]]:
+    """Die beiden Belege des Kernstands an ihren festen Orten pruefen.
+
+    Rueckgabe ``(fehler, {rolle: sha256}, ausnahmen)``. EINE Funktion fuer
+    beide Leser: das Zeichnen von A-K2 und die Vorbedingung von A-M4, die
+    dieselben Bytes nachrechnet, statt der A-K2-Annahme zu glauben. Die
+    ``ausnahmen`` sind aus dem Regressionsbeleg ABGELEITET
+    (``models.kernabnahme.ausnahmen_fuer``), nicht angegeben.
+    """
+    kern_pfad = fall / _kernabnahme.AENDERUNG_RELATIV
+    regr_pfad = fall / _kernabnahme.REGRESSION_RELATIV
+    kern_gelesen = lies_gehasht(kern_pfad) if kern_pfad.is_file() else None
+    kern_fehler = pruefe_kernaenderung(
+        kern_pfad, fall,
+        text=kern_gelesen.text() if kern_gelesen else None,
+        repo_root=repo_root,
+    )
+    if kern_fehler or kern_gelesen is None:
+        return ([f"{_kernabnahme.AENDERUNG_RELATIV}: {f}" for f in kern_fehler]
+                or [f"{_kernabnahme.AENDERUNG_RELATIV}: Datei fehlt"]), {}, {}
+    regr_gelesen = lies_gehasht(regr_pfad) if regr_pfad.is_file() else None
+    regr_fehler = pruefe_kernregression(
+        regr_pfad, fall,
+        text=regr_gelesen.text() if regr_gelesen else None,
+        aenderung=json.loads(kern_gelesen.text()),
+    )
+    if regr_fehler or regr_gelesen is None:
+        return ([f"{_kernabnahme.REGRESSION_RELATIV}: {f}" for f in regr_fehler]
+                or [f"{_kernabnahme.REGRESSION_RELATIV}: Datei fehlt"]), {}, {}
+    if sicht_belege is not None:
+        # Die geparsten Belege aus DIESER Lesung fuer die Sicht-Regel
+        # (gates.sichten; T23-01: kein zweites Lesen).
+        sicht_belege.update({"kernaenderung": json.loads(kern_gelesen.text()),
+                        "regression": json.loads(regr_gelesen.text())})
+    return [], {
+        "kernaenderung": kern_gelesen.sha256,
+        "regression": regr_gelesen.sha256,
+    }, _kernabnahme.ausnahmen_fuer(json.loads(regr_gelesen.text()))
+
+
+def tbox_belege_pruefen(
+    fall: Path, repo_root: Optional[Path], *, sicht_belege: Optional[Dict[str, object]] = None,
+) -> Tuple[List[str], Dict[str, str]]:
+    """Die beiden Belege einer T-Box-Aenderung an ihren festen Orten pruefen.
+
+    Rueckgabe ``(fehler, {rolle: sha256})``. EINE Funktion fuer beide Leser:
+    das Zeichnen von A-O1 und die Vorbedingung von A-M4 (Standabnahme, Weg
+    a), die dieselben Bytes nachrechnet, statt der Annahme zu glauben.
+    """
+    aenderung_pfad = fall / _stand.TBOX_AENDERUNG_RELATIV
+    aenderung_gelesen = (
+        lies_gehasht(aenderung_pfad) if aenderung_pfad.is_file() else None)
+    fehler = pruefe_tbox_aenderung(
+        aenderung_pfad, fall,
+        text=aenderung_gelesen.text() if aenderung_gelesen else None,
+        repo_root=repo_root,
+    )
+    if fehler or aenderung_gelesen is None:
+        return [f"den Beleg der T-Box-Aenderung ({_stand.TBOX_AENDERUNG_RELATIV}): "
+                + "; ".join(fehler or ["Datei fehlt"])], {}
+    stellung_pfad = fall / _stand.TBOX_STELLUNGNAHME_RELATIV
+    stellung_gelesen = (
+        lies_gehasht(stellung_pfad) if stellung_pfad.is_file() else None)
+    fehler = pruefe_stellungnahme_aktuariat(
+        stellung_pfad, fall,
+        text=stellung_gelesen.text() if stellung_gelesen else None,
+        aenderung=json.loads(aenderung_gelesen.text()),
+    )
+    if fehler or stellung_gelesen is None:
+        return [f"die aktuarielle Stellungnahme ({_stand.TBOX_STELLUNGNAHME_RELATIV}): "
+                + "; ".join(fehler or ["Datei fehlt"])], {}
+    if sicht_belege is not None:
+        sicht_belege["tbox_aenderung"] = json.loads(aenderung_gelesen.text())
+    return [], {
+        "tbox_aenderung": aenderung_gelesen.sha256,
+        "stellungnahme_aktuariat": stellung_gelesen.sha256,
+    }
+
+
+TARIFWERK_AENDERUNG_SCHEMA_VERSION = _tarifwerk.TARIFWERK_AENDERUNG_SCHEMA_VERSION
+
+
+def pruefe_tarifwerkaenderung(
+    pfad: Path, bereich: Path, *, text: str | None = None, repo_root: Path | None = None,
+) -> List[str]:
+    """Den Aenderungsbeleg des Tarifwerks gegen Code und Git halten (A-T1).
+
+    Erst die Form, dann der GANZE Beleg nachgerechnet
+    (``tarifwerk_belegen.nachgerechnet``): Ein Beleg, der nur in sich stimmig
+    ist, bezeugt nichts (T24-04) — ein weggelassenes Feld einer Generation,
+    ein geschoenter Tarifplan, ein erfundener Commit fallen hier.
+    """
+    if not pfad.is_file():
+        return ["Datei fehlt"]
+    try:
+        daten = json.loads(text if text is not None else pfad.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"nicht lesbar: {exc}"]
+    if not isinstance(daten, dict):
+        return ["kein JSON-Objekt"]
+    fehler: List[str] = []
+    if daten.get("schema_version") != TARIFWERK_AENDERUNG_SCHEMA_VERSION:
+        fehler.append(f"schema_version muss {TARIFWERK_AENDERUNG_SCHEMA_VERSION} sein")
+    if daten.get("art") != _tarifwerk.ART:
+        fehler.append(f"art muss {_tarifwerk.ART!r} sein")
+    git_beleg = daten.get("git") if isinstance(daten.get("git"), dict) else None
+    if git_beleg is None:
+        fehler.append("git fehlt oder ist kein Objekt")
+    elif not zweig_ist_aktuell(git_beleg):
+        fehler.append("der lebende Stand liegt nicht auf dem zuletzt abgenommenen Stand auf "
+                      "(merge_base != referenz_commit)")
+    if not (isinstance(daten.get("begruendung"), str) and daten["begruendung"].strip()):
+        fehler.append("begruendung fehlt")
+    if fehler:
+        return fehler
+    if repo_root is None:
+        return ["der Beleg ist nicht nachrechenbar — --repo-root fehlt"]
+    jetzt = git_stand(repo_root)
+    if git_beleg.get("aktuell") != jetzt.get("commit"):
+        return [f"git.aktuell {str(git_beleg.get('aktuell'))[:12]!r} ist nicht der "
+                f"gegenwaertige Commit ({str(jetzt.get('commit'))[:12]!r})"]
+    try:
+        neu = _tarifwerk.nachgerechnet(repo_root, daten)
+    except (_tarifwerkabnahme.TarifwerkFehler, OSError) as exc:
+        return [f"der Beleg ist nicht nachrechenbar: {exc}"]
+    abweichend = sorted(k for k in set(neu) | set(daten) if neu.get(k) != daten.get(k))
+    if abweichend:
+        return ["der Beleg ist nicht das Tarifwerk zwischen dem zuletzt abgenommenen Stand "
+                f"und dem Arbeitsbaum — abweichend: {abweichend}; neu erzeugen mit: python -m "
+                "rechner_pipeline.gates.tarifwerk_belegen --linie|--fall <bereich> --repo-root "
+                f"<repo> --von {neu['git']['referenz']} --begruendung <text>"]
+    return []
+
+
+def tarifwerk_belege_pruefen(
+    bereich: Path, repo_root: Optional[Path], *, sicht_belege: Optional[Dict[str, object]] = None,
+) -> Tuple[List[str], Dict[str, str]]:
+    """Den Beleg des Tarifwerks am festen Ort pruefen — fuer A-T1 und A-M4."""
+    pfad = bereich / _tarifwerkabnahme.AENDERUNG_RELATIV
+    gelesen = lies_gehasht(pfad) if pfad.is_file() else None
+    fehler = pruefe_tarifwerkaenderung(
+        pfad, bereich, text=gelesen.text() if gelesen else None, repo_root=repo_root)
+    if fehler or gelesen is None:
+        return [f"{_tarifwerkabnahme.AENDERUNG_RELATIV}: " + "; ".join(fehler or ["Datei fehlt"])], {}
+    if sicht_belege is not None:
+        sicht_belege["tarifwerk_aenderung"] = gelesen.json()
+    return [], {"tarifwerk_aenderung": gelesen.sha256}
+
+
+def anfangsbestand_belege_pruefen(
+    bereich: Path, *, sicht_belege: Optional[Dict[str, object]] = None,
+) -> Tuple[List[str], Dict[str, str]]:
+    """Den Beleg des Anfangsbestands am festen Ort pruefen (A-B3): Form,
+    gruene P-B1, innere Ableitungen. Gegen die Ablage haelt den Stand der
+    Betrieb beim Binden — das Gate sieht die Ablage nicht (ADR-025)."""
+    pfad = bereich / _anfangsbestand.BELEG_RELATIV
+    if not pfad.is_file():
+        return [f"{_anfangsbestand.BELEG_RELATIV}: Datei fehlt — belegen mit python -m "
+                "rechner_pipeline.betrieb.anfangsbestand belegen --stand <daten> --linie "
+                f"{bereich} ..."], {}
+    gelesen = lies_gehasht(pfad)
+    try:
+        beleg = gelesen.json()
+    except (OSError, ValueError) as exc:
+        return [f"{_anfangsbestand.BELEG_RELATIV}: nicht lesbar ({exc})"], {}
+    fehler = _anfangsbestand.beleg_fehler(beleg)
+    if fehler:
+        return [f"{_anfangsbestand.BELEG_RELATIV}: " + "; ".join(fehler[:4])], {}
+    if sicht_belege is not None:
+        sicht_belege["anfangsbestand"] = beleg
+    return [], {"anfangsbestand": gelesen.sha256}
+
+
+def _belege_im_fall(gate: str, fall: Path, repo_root: Optional[Path], *,
+                    sicht_belege: Optional[Dict[str, object]] = None,
+                    ) -> Tuple[List[str], Dict[str, str], Dict[str, str]]:
+    """Die Belege des Gates am festen Ort, je Gegenstand dieselbe Gestalt —
+    im Fall wie im Linienbereich. ``sicht_belege``: nimmt die geparsten
+    Belege dieser Lesung fuer die Sicht-Regel auf (``gates.sichten``)."""
+    if gate == "A-K2":
+        return kernstand_belege_pruefen(fall, repo_root, sicht_belege=sicht_belege)
+    if gate == "A-T1":
+        fehler, shas = tarifwerk_belege_pruefen(fall, repo_root, sicht_belege=sicht_belege)
+        return fehler, shas, {}
+    if gate == "A-B3":
+        fehler, shas = anfangsbestand_belege_pruefen(fall, sicht_belege=sicht_belege)
+        return fehler, shas, {}
+    fehler, shas = tbox_belege_pruefen(fall, repo_root, sicht_belege=sicht_belege)
+    return fehler, shas, {}
+
+
+def _anzeige_mit_ausnahmen(text: str, ausnahmen: Mapping[str, str]) -> str:
+    """Die Anzeige eines Wegs, und woertlich, was die Abnahme NICHT deckt."""
+    if ausnahmen.get("regression"):
+        return f"{text}; {_kernabnahme.ANZEIGE_REGRESSION}"
+    return text
+
+
+def standabnahme_pruefen(
+    gegenstand: "_standabnahme.Gegenstand",
+    *,
+    fall: Path,
+    repo_root: Optional[Path],
+    verzeichnis: Path,
+    schluesselring: Mapping[str, bytes],
+    systemstand: Mapping[str, str],
+    ordnung: Optional[dict],
+    fall_json_sha256: Optional[str],
+    linie: Optional[list] = None,
+    vorbedingungen: Dict[str, dict],
+    linie_bereich: Path,
+) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, object]]]:
+    """EINE Regel fuer jeden Gegenstand, den A-M4 verlangt (models.standabnahme).
+
+    Rueckgabe ``(meldung, pin_sha256, eintrag)``: ``meldung`` ist None, wenn
+    der Stand, auf dem der Fall laeuft, abgenommen ist; ``pin_sha256`` ist
+    der Beleg, den A-M4 als Pflichtrolle pinnt; ``eintrag`` steht im
+    A-M4-Snapshot unter ``standabnahmen``.
+
+    (a) Hat der Fall eine Kette des Gates, gilt nur sie: eindeutige,
+        signierte ANNAHME auf diesem Scope- und Systemstand, gezeichnet von
+        einer berechtigten Rolle (Rollenregel), ihre Belege am festen Ort
+        und gegen den lebenden Code nachgerechnet, ihr ``stand`` == der
+        lebende. Eine Ablehnung im Fall laesst sich nicht umgehen.
+    (b) Sonst ein Verweis am festen Ort: die Kopie der GELTENDEN Abnahme
+        der Linie, Signatur ueber den Ring, dieselbe Rollenregel, ``stand``
+        == der lebende — "keine Aenderung". Gueltigkeit, nicht nur Echtheit
+        (Pruefrunde G, G11): Der verwiesene Snapshot muss noch die geltende,
+        angenommene Spitze der Kette seines Gates in ``linie_bereich`` sein,
+        gelesen mit Signaturpruefung (derselbe Kettenleser wie fuer Ketten im
+        Fall). Eine spaetere Ablehnung oder Annahme in der Linie loest ihn ab;
+        der Snapshot eines frueheren Falls ist kein Glied dieser Kette.
+
+    ``linie``: die Glieder der Ordnungslinie (ADR-025). Mit ihr gilt fuer
+    die Rollenregel die Ordnung, unter der der Snapshot gezeichnet wurde.
+
+    ``vorbedingungen``: In Weg (a) gruendet A-M4 auf einer Annahme des
+    FALLS; sie wird hier angemeldet, und ``fallauftrag_pruefen`` haelt ihren
+    Auftrag gegen den geltenden (ADR-026, Nachtrag Runde G). Weg (b) liest
+    eine Abnahme der LINIE; sie traegt keinen Auftrag und wird nicht
+    angemeldet.
+
+    ``linie_bereich``: der Linienbereich, den das Gate bekommt — gegen
+    seine Ketten werden Verweis (b) und, fuer A-O1, die Regel "eine Version,
+    ein Vokabular" gehalten (beide Wege; Pruefrunde G, G13).
+    """
+    gate, titel = gegenstand.gate, gegenstand.titel
+    stand = _stand.lebender_stand(gate, repo_root)
+    if stand is None:
+        return (f"der {titel} ist nicht bestimmbar (--repo-root fehlt?)", None, None)
+    if gate == "A-O1":
+        # Eine Version, ein Vokabular (ADR-024, dritter Nachtrag) — auch gegen
+        # die Linie, die A-M4 bekommt, nicht nur gegen die, unter der A-O1
+        # gezeichnet wurde: Eine Kopie der Linie ohne Entscheide hat dieselben
+        # Glieder, aber keine A-O1-Kette (Pruefrunde G, G13).
+        regel = _stand.tbox_vokabular_fehler([fall, linie_bereich])
+        if regel:
+            return (f"der {titel} traegt die Regel 'eine Version, ein Vokabular' nicht: "
+                    + "; ".join(regel[:2]), None, None)
+    kette, spitzen, ketten_fehler = _lade_snapshot_kette(
+        verzeichnis, gegenstand.gate, fall, schluesselring, systemstand)
+    if ketten_fehler:
+        return (f"{gate}-Snapshot-Vertrag verletzt: " + "; ".join(ketten_fehler[:4]),
+                None, None)
+    if kette:
+        spitze = kette[spitzen[0]][1] if len(spitzen) == 1 else None
+        if not (
+            spitze is not None
+            and spitze["entscheid"] == "angenommen"
+            and spitze["artefakt_hashes"].get("fall.json") == fall_json_sha256
+            and spitze["system"] == systemstand
+        ):
+            return (f"keine eindeutige, signierte {gate}-ANNAHME des {titel}s auf "
+                    "aktuellem Scope- und Systemstand im Fall — eine Kette im Fall "
+                    "geht jedem Verweis vor", None, None)
+        _, zf = zeichnende_rolle_fehler(spitze, gegenstand.gate, ordnung, linie=linie)
+        if zf:
+            return (f"die geltende {gate}-Annahme wurde von einem unberechtigten "
+                    f"Schluessel gezeichnet -- {zf}", None, None)
+        belegfehler, shas, ausnahmen = _belege_im_fall(gate, fall, repo_root)
+        gepinnt = spitze.get("pflichtbelege") or {}
+        belegfehler += [
+            f"{rolle}: am festen Ort liegt nicht die Fassung, die {gate} pinnt"
+            for rolle, sha in shas.items() if gepinnt.get(rolle) != [sha]]
+        if not belegfehler and (spitze.get("ausnahmen") or {}) != ausnahmen:
+            belegfehler.append(
+                f"die {gate}-Annahme fuehrt die Ausnahmen {spitze.get('ausnahmen')!r}, "
+                f"die Belege ergeben {ausnahmen!r}")
+        if not belegfehler and spitze.get("stand") != stand:
+            belegfehler.append(
+                f"der abgenommene Stand {spitze.get('stand')!r} ist nicht der "
+                f"lebende {stand!r}")
+        if belegfehler:
+            return (f"die Belege des {titel}s tragen die geltende {gate}-Annahme "
+                    "nicht: " + "; ".join(belegfehler[:4]), None, None)
+        sha = spitze["snapshot_sha256"]
+        vorbedingungen[gate] = spitze
+        return None, sha, {
+            "gate": gate, "weg": _standabnahme.ABNAHME_IM_FALL,
+            "snapshot_sha256": sha, "stand": dict(stand), "ausnahmen": dict(ausnahmen),
+            "anzeige": _anzeige_mit_ausnahmen(
+                _standabnahme.anzeige_im_fall(gate, sha), ausnahmen),
+        }
+    verweis_pfad = fall / gegenstand.verweis_relativ
+    if verweis_pfad.is_file():
+        gelesen = lies_gehasht(verweis_pfad)
+        try:
+            verweis = gelesen.json()
+        except (OSError, ValueError) as exc:
+            return (f"{gegenstand.verweis_relativ} unlesbar: {exc}", None, None)
+        fehler = _stand.verweis_fehler(verweis, gegenstand, stand)
+        if not fehler:
+            fehler += _verweis_gilt_fehler(verweis["snapshot"], gegenstand.gate,
+                                           linie_bereich, schluesselring, systemstand)
+        if not fehler:
+            snap = verweis["snapshot"]
+            fehler += _pruefe_freigabe(snap, schluesselring)
+            _, zf = zeichnende_rolle_fehler(snap, gegenstand.gate, ordnung, linie=linie)
+            if zf:
+                fehler.append(f"der fruehere {gate}-Snapshot wurde von einem "
+                              f"unberechtigten Schluessel gezeichnet -- {zf}")
+        if fehler:
+            return (f"der Verweis {gegenstand.verweis_relativ} belegt keine "
+                    "unveraenderte Abnahme: " + "; ".join(fehler[:4]), None, None)
+        snap = verweis["snapshot"]
+        ausnahmen = dict(snap.get("ausnahmen") or {})
+        return None, gelesen.sha256, {
+            "gate": gate, "weg": _standabnahme.KEINE_AENDERUNG,
+            "snapshot_sha256": snap["snapshot_sha256"], "herkunft": verweis["herkunft"],
+            "stand": dict(stand), "ausnahmen": ausnahmen,
+            "anzeige": _anzeige_mit_ausnahmen(_standabnahme.anzeige_keine_aenderung(
+                snap["snapshot_sha256"], verweis["herkunft"]), ausnahmen),
+        }
+    vorlage = {
+        "A-K2": (f"python -m rechner_pipeline.gates.kernstand_belegen --fall {fall} "
+                 "--repo-root <repo> --von <zuletzt abgenommener Kernstand> --begruendung <text>"),
+        "A-O1": (f"python -m rechner_pipeline.gates.stand_belegen tbox --fall {fall} "
+                 "--vorher-linie <linie> --repo-root <repo> --artefakt <vermerk> "
+                 "--begruendung <text> und die "
+                 "aktuarielle Stellungnahme"),
+        "A-T1": (f"python -m rechner_pipeline.gates.tarifwerk_belegen --fall {fall} "
+                 "--repo-root <repo> --von <zuletzt abgenommener Stand> --begruendung <text>"),
+    }[gate]
+    wege = (f"bei unveraendertem Stand auf die geltende Abnahme der Linie verweisen: python "
+            f"-m rechner_pipeline.gates.stand_belegen verweisen --fall {fall} --gate {gate} "
+            f"--linie {linie_bereich} --repo-root <repo> (ADR-025); aendert der Fall den "
+            f"{titel}, vorlegen mit "
+            f"{vorlage}, dann {gate} im Fall zeichnen (gates.gate_entscheid --gate {gate})")
+    return (f"der {titel}, auf dem der Fall laeuft, ist nicht abgenommen (ADR-018, "
+            f"Nachtrag 2026-10-01; ADR-025) — {wege}", None, None)
+
+
+def _verweis_gilt_fehler(
+    snap: Mapping[str, object], gate: str, linie_bereich: Path,
+    schluesselring: Mapping[str, bytes], systemstand: Mapping[str, str],
+) -> List[str]:
+    """Ob der verwiesene Snapshot die GELTENDE, angenommene Abnahme der Linie
+    ist (Pruefrunde G, G11) — gelesen ueber denselben Kettenleser wie jede
+    Kette im Fall (Schema, Selbstadressierung, Signatur, Graph).
+
+    Dieselbe Invariante wie im Betrieb (``betrieb.uebernahme``, Pruefrunde
+    T27 Befund 05): Eine spaetere Ablehnung mit Vorgaengerbezug ueberholt
+    eine alte Annahme; Echtheit allein traegt nichts.
+    """
+    name = Path(linie_bereich).name
+    kette, spitzen, kf = _lade_snapshot_kette(
+        entscheide_verzeichnis(Path(linie_bereich)), gate, Path(linie_bereich),
+        schluesselring, systemstand)
+    if kf:
+        return [f"die {gate}-Kette der Linie {name} ist nicht lesbar ({'; '.join(kf[:2])}) — "
+                "ob der Verweis die geltende Abnahme traegt, ist nicht entscheidbar"]
+    if not kette:
+        return [f"die Linie {name} hat keine {gate}-Abnahme — ein Verweis zeigt nur auf die "
+                "geltende Abnahme der Linie, die das Gate bekommt"]
+    if len(spitzen) != 1:
+        return [f"die {gate}-Kette der Linie {name} hat keine eindeutige Spitze ({len(spitzen)})"]
+    spitze = kette[spitzen[0]][1]
+    verwiesen = str(snap.get("snapshot_sha256"))
+    if spitze.get("snapshot_sha256") != verwiesen or dict(spitze) != dict(snap):
+        return [
+            f"der Verweis zeigt auf {verwiesen[:16]}, die geltende {gate}-Abnahme der Linie "
+            f"{name} ist {str(spitze.get('snapshot_sha256'))[:16]} ({spitze.get('entscheid')}) "
+            "— ein Verweis traegt nur die GELTENDE Abnahme der Linie, nicht eine abgeloeste und "
+            "nicht die eines anderen Falls. Ausweg: neu verweisen (python -m "
+            f"rechner_pipeline.gates.stand_belegen verweisen --fall <fall> --gate {gate} "
+            f"--linie {linie_bereich} --repo-root <repo>) bzw. den Stand in der Linie oder im "
+            "Fall abnehmen"]
+    if spitze.get("entscheid") != "angenommen":
+        return [f"die geltende {gate}-Abnahme der Linie {name} ist eine Ablehnung"]
+    return []
+
+
 def _pruefe_g2_snapshot_semantik(
     snapshot: dict, aktueller_systemstand: Mapping[str, str]
 ) -> List[str]:
@@ -847,46 +1352,26 @@ def _pruefe_g2_snapshot_semantik(
 def _pruefe_snapshot_graph(
     snapshots: Mapping[str, Tuple[Path, dict]],
 ) -> Tuple[List[str], List[str]]:
-    """Check predecessor existence, cycles and the unique current tip."""
-    fehler: List[str] = []
-    for sha, (pfad, daten) in snapshots.items():
-        for vorgaenger in daten["vorgaenger"]:
-            if vorgaenger not in snapshots:
-                fehler.append(
-                    f"{pfad.name}: Vorgaenger {vorgaenger} existiert nicht"
-                )
-            if vorgaenger == sha:
-                fehler.append(f"{pfad.name}: Snapshot referenziert sich selbst")
+    """Check predecessor existence, cycles and the unique current tip.
 
-    zustand: Dict[str, int] = {}
+    Die Regel wohnt in models.snapshot_kette — der Betriebseingang liest
+    dieselbe (T27-05); hier wird nur der Dateiname fuer die Meldungen
+    beigesteuert.
+    """
+    from rechner_pipeline.models.snapshot_kette import pruefe_snapshot_graph
 
-    def _besuche(sha: str) -> None:
-        if zustand.get(sha) == 1:
-            fehler.append(f"Vorgaengerkette enthaelt einen Zyklus bei {sha}")
-            return
-        if zustand.get(sha) == 2:
-            return
-        zustand[sha] = 1
-        for vorgaenger in snapshots[sha][1]["vorgaenger"]:
-            if vorgaenger in snapshots:
-                _besuche(vorgaenger)
-        zustand[sha] = 2
+    return pruefe_snapshot_graph(
+        {sha: daten for sha, (_pfad, daten) in snapshots.items()},
+        {sha: pfad.name for sha, (pfad, _daten) in snapshots.items()},
+    )
 
-    for sha in snapshots:
-        _besuche(sha)
 
-    referenziert = {
-        vorgaenger
-        for _, daten in snapshots.values()
-        for vorgaenger in daten["vorgaenger"]
-    }
-    spitzen = sorted(set(snapshots) - referenziert)
-    if snapshots and len(spitzen) != 1:
-        fehler.append(
-            "Vorgaengerkette braucht genau eine eindeutige Spitze; "
-            f"gefunden: {spitzen}"
-        )
-    return spitzen, fehler
+#: Was A-B2 ueber die Betriebszeichnung der Zugangsprobe sagt (Block F,
+#: Nachbesserung, Pruefer-Befund 7).
+BETRIEBSSIGNATUR_NICHT_VERIFIZIERT = (
+    "nicht verifiziert — das Gate haelt den Betriebsschluessel nicht; es prueft "
+    "Form und Rolle der Betriebszeichnung, die Signatur rechnet die Registrierung "
+    "(betrieb.uebernahme) nach")
 
 
 def _lade_snapshot_kette(
@@ -895,16 +1380,24 @@ def _lade_snapshot_kette(
     fall: Path,
     schluesselring: Mapping[str, bytes],
     aktueller_systemstand: Mapping[str, str],
+    *,
+    gelesen: Optional[Dict[Path, str]] = None,
 ) -> Tuple[Dict[str, Tuple[Path, dict]], List[str], List[str]]:
-    """Validate schema, content address, signature and the complete DAG."""
+    """Validate schema, content address, signature and the complete DAG.
+
+    ``gelesen``: nimmt je gelesener Datei den SHA-256 genau der Bytes auf, die
+    geprueft wurden — fuer Artefakthashes ohne zweite Lesung (T23-01)."""
     snapshots: Dict[str, Tuple[Path, dict]] = {}
     fehler: List[str] = []
     for pfad in sorted(verzeichnis.glob(f"{gate}-*.json")):
         try:
-            daten = json.loads(pfad.read_text(encoding="utf-8"))
+            roh = pfad.read_bytes()
+            daten = json.loads(roh.decode("utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             fehler.append(f"{pfad.name}: nicht als JSON lesbar: {exc}")
             continue
+        if gelesen is not None:
+            gelesen[pfad] = hashlib.sha256(roh).hexdigest()
         schema_fehler = P9Snapshot.validate_payload(daten)
         if schema_fehler:
             fehler.extend(f"{pfad.name}: {meldung}" for meldung in schema_fehler)
@@ -1410,6 +1903,7 @@ def _passende_bestandsbelege(
                         stichtag_1=stichtage[0],
                         stichtag_2=stichtage[1],
                         erwartetes_system=dict(system),
+                        fall=fall,
                     )
                 )
                 if "abnahmebericht" in pfade:
@@ -1442,6 +1936,7 @@ def _passende_bestandsbelege(
                 abnahmebericht._fuehrungsprobe_fehler(
                     abnahmebericht._json_beleg_aus(gelesen["fuehrungsprobe"]),
                     fall=fall,
+                    repo_root=repo_root,
                     suite=suite,
                     erwartetes_system=dict(system),
                 )
@@ -1463,6 +1958,403 @@ def _passende_bestandsbelege(
     if bekannt is not None:
         bekannt[str(ledger_pfad.relative_to(fall))] = ledger_gelesen.sha256
     return hashes, []
+
+
+def abbruch_im_fall(fall: Path) -> Optional[str]:
+    """Ist der Fall abgebrochen? Der Name der A-M5-Datei, die das sagt, oder None.
+
+    STRUKTURELL und fail-closed (ADR-026): Jede ``A-M5-*.json`` unter
+    ``entscheide/``, die nicht nachweislich eine Ablehnung ist, sperrt den
+    Fall — eine Annahme sowieso, eine unlesbare oder gefaelschte Datei auch.
+    Die Signatur wird hier nicht verlangt: Die Sperre ist die sichere
+    Richtung, und wer ``entscheide/`` beschreiben kann, kann den Fall ohnehin
+    unbrauchbar machen. Freigegeben wird nie etwas auf diesem Weg.
+    """
+    verzeichnis = entscheide_verzeichnis(fall)
+    for pfad in sorted(verzeichnis.glob(f"{ABBRUCH_GATE}-*.json")) if verzeichnis.is_dir() else []:
+        try:
+            daten = json.loads(pfad.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return pfad.name
+        if not (isinstance(daten, dict) and not P9Snapshot.validate_payload(daten)
+                and daten.get("entscheid") == "abgelehnt"):
+            return pfad.name
+    return None
+
+
+def fallauftrag_pruefen(
+    fall: Path,
+    *,
+    schluesselring: Mapping[str, bytes],
+    systemstand: Mapping[str, str],
+    ordnung: Optional[dict],
+    linie: Optional[list],
+    linie_pfad: Path,
+    vorbedingungen: Mapping[str, dict],
+    bekannt: Optional[Dict[str, str]] = None,
+) -> Tuple[Optional[dict], Optional[str]]:
+    """Die EINE Stelle (ADR-026): der geltende Fallauftrag — oder warum keiner gilt.
+
+    ``bekannt``: Hashes der Dateien, die dieser Lauf schon gelesen hat; was
+    hier gelesen wird (Eingang, Manifest, die A-M6-Snapshots), kommt dazu —
+    der Snapshot bezeugt dieselben Bytes, die geprueft wurden (T23-01).
+
+    Jeder Abnahmepunkt eines Falls ausser dem Auftrag selbst setzt ihn voraus
+    (A-Q1, A-O1/A-K2/A-T1 im Fall, A-M1 bis A-M5, A-B1, A-B2). Rueckgabe
+    ``(spitze, None)`` oder ``(None, meldung)``. Verlangt wird:
+
+    * eine eindeutige, signierte ANNAHME von A-M6 im Fall (derselbe
+      Kettenleser wie fuer jedes Gate: Schema, Selbstadressierung, Graph,
+      Signatur ueber den Ring);
+    * gebunden an die Lieferung: ``eingang.json`` und ``fall.json`` sind die
+      Bytes, die der Auftrag pinnt (dieselbe Bindung, die A-M4 an A-Q1 haelt)
+      — aendert sich der Eingang, gilt der Auftrag nicht mehr;
+    * gezeichnet von einer Rolle, der die Ordnung A-M6 gibt — die Rollenregel
+      (``models.zeichnung.zeichnende_rolle_fehler``), mit Linie gegen die
+      Ordnung, unter der gezeichnet wurde;
+    * die Linie dieses Aufrufs ist die Linie des Auftrags (ADR-026, Nachtrag
+      Runde G, G13): Sie traegt den Namen, den der Auftrag nennt, und jede
+      Abnahme, die er aus ihr nennt, liegt in der Kette ihres Gates. Neue
+      Abnahmen seit dem Auftrag sind erlaubt; dass der Stand unveraendert
+      blieb, haelt A-M4 ueber die Standabnahme, nicht diese Stelle;
+    * jede Annahme des Falls, auf der dieser Aufruf gruendet
+      (``vorbedingungen``: Gate -> gelesener Snapshot, von jedem gruendenden
+      Leser angemeldet), nennt den GELTENDEN Auftrag (G14). Eine Annahme
+      unter einem abgeloesten Auftrag ist keine Vorbedingung mehr — ihre
+      Mandate und ihre Lieferung waren die eines anderen Auftrags.
+    """
+    bekannt = bekannt if bekannt is not None else {}
+    gelesen: Dict[Path, str] = {}
+    kette, spitzen, fehler = _lade_snapshot_kette(
+        entscheide_verzeichnis(fall), AUFTRAG_GATE, fall, schluesselring, systemstand,
+        gelesen=gelesen)
+    for pfad, sha in gelesen.items():
+        bekannt[str(pfad.relative_to(fall))] = sha
+    ausweg = (f"Ausweg: den Fall beauftragen — Vorlage mit python -m "
+              f"rechner_pipeline.gates.fall_belegen auftrag --fall {fall} ..., ansehen, dann "
+              f"zeichnet der Vorstand: python -m rechner_pipeline.gates.gate_entscheid --fall "
+              f"{fall} --gate {AUFTRAG_GATE} --entscheid angenommen ... (ADR-026)")
+    if fehler:
+        return None, (f"{AUFTRAG_GATE}-Snapshot-Vertrag verletzt: " + "; ".join(fehler[:4]))
+    if not kette:
+        return None, ("der Fall hat keinen Fallauftrag — jeder Abnahmepunkt eines Falls setzt "
+                      f"den gezeichneten Auftrag voraus; ein Fall, den niemand beauftragt hat, "
+                      f"wird nicht gefuehrt. {ausweg}")
+    spitze = kette[spitzen[0]][1] if len(spitzen) == 1 else None
+    if spitze is None or spitze.get("entscheid") != "angenommen":
+        return None, (f"der geltende Fallauftrag ist keine eindeutige Annahme (Spitzen "
+                      f"{[s[:16] for s in spitzen]}) — ohne geltenden Auftrag keine Abnahme. "
+                      f"{ausweg}")
+    for name in ("eingang.json", "fall.json"):
+        if name not in bekannt and (fall / name).is_file():
+            bekannt[name] = lies_gehasht(fall / name).sha256
+    jetzt = {name: bekannt.get(name) for name in ("eingang.json", "fall.json")}
+    abweichend = sorted(name for name, sha in jetzt.items()
+                        if spitze["artefakt_hashes"].get(name) != sha)
+    if abweichend or spitze["auftrag"]["lieferung"]["eingang_sha256"] != jetzt["eingang.json"]:
+        return None, (f"der Fallauftrag {spitze['snapshot_sha256'][:16]}… gilt nicht mehr: "
+                      f"{', '.join(abweichend) or 'eingang.json'} ist nicht die Fassung, die er "
+                      "bindet — die Lieferung hat sich geaendert, beauftragt war eine andere. "
+                      f"{ausweg}")
+    _, zf = zeichnende_rolle_fehler(spitze, AUFTRAG_GATE, ordnung, linie=linie)
+    if zf:
+        return None, (f"der geltende Fallauftrag wurde von einem unberechtigten Schluessel "
+                      f"gezeichnet -- {zf}")
+    linie_meldung = _linie_des_auftrags_fehler(spitze, linie_pfad)
+    if linie_meldung:
+        return None, linie_meldung
+    # Die Trennung der Operatoren gilt zu JEDEM Zeitpunkt, an dem im Fall
+    # gezeichnet wird, nicht nur beim Auftrag (ADR-026, Abschnitt 2; Nachtrag
+    # Pruefrunde I, I09): Gibt ein spaeteres Glied den Schluessel der
+    # Programmleitung einer Rolle der Ordnung, zeichnete ein Schluessel im
+    # selben Fall fachlich ab und braeche als Programmleitung ab. Gehalten
+    # gegen die Ordnung der SPITZE der Linie dieses Aufrufs — fuer jede Annahme
+    # des Falls, den Abbruch eingeschlossen; damit auch "der zeichnende
+    # Schluessel ist nicht der der Programmleitung" (er gehoerte sonst einer
+    # Rolle der Ordnung).
+    pl_fp = spitze["auftrag"]["programmleitung"]["schluessel_sha256"]
+    spitzen_ordnung = _ordnungslinie.ordnung_aus(linie[-1]) if linie else ordnung
+    besetzt = {e.get("schluessel_sha256"): r
+               for r, e in ((spitzen_ordnung or {}).get("rollen") or {}).items()}
+    if pl_fp in besetzt:
+        glied = f"Glied {linie[-1]['nummer']}" if linie else "die Ordnung dieses Aufrufs"
+        return None, (
+            f"der Schluessel der Programmleitung des geltenden Fallauftrags "
+            f"{spitze['snapshot_sha256'][:16]}… ({pl_fp[:16]}…) gehoert unter der Spitze der "
+            f"Linie ({glied}) der Rolle {besetzt[pl_fp]!r} — ein Schluessel zeichnete im selben "
+            "Fall fachlich ab und braeche als Programmleitung ab; die Trennung der Operatoren "
+            "waere nur behauptet (ADR-026, Abschnitt 2). Ausweg: den Fall neu beauftragen mit "
+            "einem eigenen Schluessel der Programmleitung, der in keiner Ordnung steht (python "
+            "-m rechner_pipeline.gates.fall_belegen auftrag --programmleitung-schluessel "
+            "<neu> ..., dann zeichnet der Vorstand A-M6), oder der Vorstand gibt der Rolle mit "
+            "einem neuen Glied einen eigenen Schluessel")
+    geltend = spitze["snapshot_sha256"]
+    abgeloest = [
+        f"{gate} {str(snap.get('snapshot_sha256'))[:16]}… steht auf "
+        + (f"dem Fallauftrag {str(snap['fallauftrag'])[:16]}…" if snap.get("fallauftrag")
+           else "keinem Fallauftrag")
+        for gate, snap in vorbedingungen.items() if snap.get("fallauftrag") != geltend]
+    if abgeloest:
+        gates = ", ".join(sorted({eintrag.split(" ")[0] for eintrag in abgeloest}))
+        return None, (
+            "eine Annahme des Falls, auf der diese Annahme gruendet, steht nicht auf dem "
+            f"geltenden Fallauftrag {geltend[:16]}…: {'; '.join(abgeloest)} — eine Annahme "
+            "unter einem abgeloesten Auftrag ist keine Vorbedingung mehr; ihre Mandate und "
+            "ihre Lieferung waren die eines anderen Auftrags (ADR-026, Nachtrag Runde G). "
+            f"Ausweg: {gates} unter dem geltenden Auftrag neu zeichnen, dann diese Annahme")
+    return spitze, None
+
+
+def _linie_des_auftrags_fehler(spitze: Mapping[str, object], linie_pfad: Path) -> Optional[str]:
+    """Ist ``linie_pfad`` die Linie, die der geltende Auftrag nennt (G13)?
+
+    Gehalten wird die IDENTITAET der Linie: ihr Name und, je Gegenstand, den
+    der Auftrag aus ihr nennt, dass diese Abnahme in der Kette ihres Gates
+    liegt (strukturell: Schema, Selbstadressierung, Graph; die Signatur haelt,
+    wer die Abnahme als Verweis liest). Eine Kopie mit denselben Gliedern der
+    Ordnungslinie, aber ohne die Ketten, ist eine andere Linie. Nennt der
+    Auftrag keine Abnahme, bleibt allein der Name — benannt in ADR-026."""
+    from rechner_pipeline.models.snapshot_kette import pruefe_snapshot_graph
+
+    ziel = spitze["auftrag"]["zielsystem"]  # type: ignore[index]
+    gruende: List[str] = []
+    try:
+        kennung = json.loads((Path(linie_pfad) / _standabnahme.LINIE_MARKER)
+                             .read_text(encoding="utf-8"))
+        name = kennung.get("name") if isinstance(kennung, dict) else None
+    except (OSError, ValueError) as exc:
+        name = None
+        gruende.append(f"{_standabnahme.LINIE_MARKER} unlesbar ({exc})")
+    if not gruende and name != ziel["linie"]:
+        gruende.append(f"der Auftrag nennt die Linie {ziel['linie']!r}, diese heisst {name!r}")
+    for gate, sha in sorted(ziel["abnahmen"].items()):
+        if sha is None:
+            continue
+        kette, kf = _stand._lade_kette(Path(linie_pfad), gate)
+        _, gf = pruefe_snapshot_graph(kette) if not kf else ([], [])
+        if kf or gf or sha not in kette or kette[sha].get("gate") != gate:
+            gruende.append(f"die {gate}-Abnahme {sha[:16]}…, die der Auftrag aus der Linie nennt, "
+                           f"liegt nicht in ihrer {gate}-Kette"
+                           + (f" ({'; '.join((kf or gf)[:2])})" if kf or gf else ""))
+    if not gruende:
+        return None
+    return (f"die Linie {linie_pfad} ist nicht die Linie des Auftrags "
+            f"{str(spitze['snapshot_sha256'])[:16]}…: {'; '.join(gruende)} — der Auftrag bindet "
+            "das Zielsystem, auf dem der Fall laeuft (ADR-026, Nachtrag Runde G). Ausweg: unter "
+            "der Linie zeichnen, die der Auftrag nennt, oder den Fall neu beauftragen")
+
+
+def _lebenslauf_vorlage(
+    gate: str, fall: Path, *, ordnung: Optional[dict], linie_pfad: Optional[Path],
+    linie: Optional[list],
+    systemstand: Mapping[str, str],
+    schluesselring: Mapping[str, bytes],
+    eingang_befund: List[str],
+) -> Tuple[Optional[dict], Optional[str], List[str]]:
+    """Die Vorlage von A-M6 bzw. A-M5 am festen Ort, NACHGERECHNET gegen Fall,
+    Eingang, Ordnung und Linie: ``(inhalt, vorlage_sha256, fehler)``.
+
+    ``eingang_befund``: der Befund der Eingangspruefung dieses Aufrufs
+    (``fall.pruefen``). Der Abbruch traegt ihn woertlich (ADR-026, Nachtrag
+    Runde G, G16); der Auftrag kommt bei einem Befund gar nicht hierher."""
+    from rechner_pipeline.gates import fall_belegen
+
+    relativ = _fallauftrag.AUFTRAG_RELATIV if gate == AUFTRAG_GATE else _fallauftrag.ABBRUCH_RELATIV
+    pfad = fall / relativ
+    kommando = (f"python -m rechner_pipeline.gates.fall_belegen "
+                f"{'auftrag' if gate == AUFTRAG_GATE else 'abbruch'} --fall {fall} ...")
+    if not pfad.is_file():
+        return None, None, [f"die Vorlage {relativ} fehlt — erzeugen mit: {kommando}"]
+    gelesen = lies_gehasht(pfad)
+    try:
+        beleg = gelesen.json()
+    except (OSError, ValueError) as exc:
+        return None, None, [f"{relativ} unlesbar: {exc}"]
+    if gate == AUFTRAG_GATE:
+        fehler = _fallauftrag.auftrag_fehler(beleg)
+        if fehler:
+            return None, None, fehler
+        if ordnung is None:
+            return None, None, ["ohne Zeichnungsordnung ist nicht pruefbar, welche Rollen "
+                                "simuliert handeln und wem welcher Schluessel gehoert"]
+        try:
+            soll = {
+                "fall": fall_belegen.fall_angaben(fall),
+                "lieferung": fall_belegen.lieferung(fall),
+                "zielsystem": fall_belegen.zielsystem(linie_pfad),
+            }
+        except (fall_mod.FallFehler, OSError, ValueError, KeyError) as exc:
+            return None, None, [f"die Vorlage ist nicht nachrechenbar: {exc}"]
+        fehler = [f"{feld}: die Vorlage sagt {beleg[feld]!r}, nachgerechnet {wert!r}"
+                  for feld, wert in soll.items() if beleg[feld] != wert]
+        pl = beleg["programmleitung"]
+        besetzt = {e.get("schluessel_sha256"): r for r, e in ordnung["rollen"].items()}
+        if pl["schluessel_sha256"] in besetzt:
+            fehler.append(f"der Schluessel der Programmleitung gehoert in der Ordnung der Rolle "
+                          f"{besetzt[pl['schluessel_sha256']]!r} — die Trennung der Operatoren "
+                          "waere nur behauptet")
+        soll_mandate = fall_belegen.mandatsrollen(ordnung, pl["schluesselklasse"])
+        if sorted(beleg["mandate"]) != soll_mandate:
+            fehler.append(f"die Vorlage nennt Mandate fuer {sorted(beleg['mandate'])}, simuliert "
+                          f"handeln laut Ordnung {soll_mandate}")
+        return (None, None, fehler) if fehler else (beleg, gelesen.sha256, [])
+    fehler = _fallauftrag.abbruch_fehler(beleg)
+    if fehler:
+        return None, None, fehler
+    try:
+        # Der Auftrag, auf dem der Abbruch steht, haelt main gegen den
+        # geltenden (fallauftrag_pruefen); hier die uebrigen Angaben.
+        soll_abbruch = {
+            "fall": fall.name,
+            "gezeichnet": fall_belegen.gezeichnet(fall),
+            "eingang_befund": list(eingang_befund),
+            "stand": {"eingang_sha256": _sha256_datei(fall / "eingang.json"),
+                      "system": dict(systemstand)},
+        }
+    except (fall_belegen.FallBelegFehler, OSError) as exc:
+        return None, None, [f"die Vorlage ist nicht nachrechenbar: {exc}"]
+    fehler = [f"{feld}: die Vorlage sagt {str(beleg[feld])[:80]!r}, nachgerechnet "
+              f"{str(wert)[:80]!r} — Vorlage neu erzeugen: {kommando}"
+              for feld, wert in soll_abbruch.items() if beleg[feld] != wert]
+    am4, am4_spitzen, am4_fehler = _lade_snapshot_kette(
+        entscheide_verzeichnis(fall), "A-M4", fall, schluesselring, systemstand)
+    if am4_fehler:
+        # Fail-closed: Wer die A-M4-Kette nicht lesen kann, weiss nicht, ob die
+        # Migration abgenommen ist. Gelesen wird MIT Signatur: Strukturell
+        # gelesen gaebe eine untergeschobene Ablehnung den Abbruch nach der
+        # Abnahme frei. Fehlt dem Ring nur ein Schluessel, nennt die Meldung
+        # die Rolle, die gezeichnet hat (ADR-026, Nachtrag Runde G, G15).
+        luecken = _ring_luecken(fall, "A-M4", schluesselring)
+        if luecken:
+            fehler.append(
+                "die A-M4-Kette ist mit dem Ring dieses Aufrufs nicht pruefbar — gezeichnet "
+                f"hat {'; '.join(luecken)}; dieser Schluessel gehoert in den Ring "
+                "(--freigabe-schluessel <datei>, vor den zeichnenden). Ob die Migration "
+                "abgenommen ist, liest das Gate nur mit geprueften Signaturen; liegt eine "
+                "A-M4 im Fall, geht der Abbruch nur mit dem Schluessel ihrer Rolle "
+                "(ADR-026, Nachtrag Runde G)")
+        else:
+            fehler.append("die A-M4-Kette ist nicht lesbar — ob die Migration abgenommen ist, "
+                          "bleibt offen: " + "; ".join(am4_fehler[:2]))
+    elif len(am4_spitzen) == 1 and am4[am4_spitzen[0]][1].get("entscheid") == "angenommen":
+        fehler.append("die Migration ist abgenommen (geltende A-M4-Annahme "
+                      f"{am4_spitzen[0][:16]}…) — ein Abbruch danach widerriefe die Abnahme. "
+                      f"Ausweg: {_AUSWEG_WIDERRUF_AM4}, dann abbrechen")
+    elif any(daten.get("entscheid") == "angenommen" for _, daten in am4.values()):
+        # Nach einer Annahme gibt nur ein GEZEICHNETER Widerruf den Abbruch frei
+        # (ADR-026, Nachtrag Pruefrunde I): Eine Ablehnung ist unsigniert
+        # moeglich (ADR-008, Punkt 6) — als Datei in entscheide/ hingelegt oder
+        # von einem Agenten gezeichnet, schaltete sie sonst die Sperre ab.
+        # Gegen welchen Auftrag der Widerruf nachgerechnet wird (Nachtrag
+        # Pruefrunde J): die geltende, angenommene Spitze der A-M6-Kette, mit
+        # Signatur gelesen — nicht die Behauptung der Vorlage.
+        am6, am6_spitzen, am6_fehler = _lade_snapshot_kette(
+            entscheide_verzeichnis(fall), AUFTRAG_GATE, fall, schluesselring, systemstand)
+        geltender_auftrag = (am6[am6_spitzen[0]][1]
+                             if not am6_fehler and len(am6_spitzen) == 1
+                             and am6[am6_spitzen[0]][1].get("entscheid") == "angenommen"
+                             else None)
+        widerruf = gezeichneter_widerruf_fehler(
+            am4[am4_spitzen[0]][1], "A-M4", ordnung=ordnung, linie=linie,
+            auftrag=geltender_auftrag)
+        if widerruf is not None:
+            fehler.append(
+                f"die Migrationsabnahme ist nicht gezeichnet widerrufen — die Spitze der "
+                f"A-M4-Kette (A-M4-{am4_spitzen[0][:16]}…) {widerruf}; nach einer A-M4-Annahme "
+                "gibt nur eine Ablehnung den Abbruch frei, die eine Rolle mit A-M4 mit ihrem "
+                f"Schluessel gezeichnet hat. Ausweg: {_AUSWEG_WIDERRUF_AM4}, dann abbrechen")
+    return (None, None, fehler) if fehler else (beleg, gelesen.sha256, [])
+
+
+#: Der Ausweg, wenn der Abbruch an einer geltenden oder nur unsigniert
+#: widerrufenen Migrationsabnahme scheitert.
+_AUSWEG_WIDERRUF_AM4 = (
+    "das Aktuariat lehnt A-M4 mit seinem Schluessel ab (gate_entscheid --gate A-M4 "
+    "--entscheid abgelehnt --rolle mensch/aktuariat --zeichnungsordnung <ordnung> "
+    "--freigabe-schluessel <vorstand.key> --freigabe-schluessel <aktuariat.key> ...)")
+
+
+#: Der Ausweg einer verweigerten gezeichneten Ablehnung (ADR-026, Nachtrag
+#: Pruefrunde J): ablehnen geht immer, nur nicht gezeichnet.
+_AUSWEG_UNSIGNIERT = (
+    " — oder unsigniert ablehnen (ohne --zeichnungsordnung bzw. ohne den Schluessel der "
+    "Rolle): das sperrt und gibt nichts frei (ADR-008, Punkt 6; ADR-026, Nachtrag "
+    "Pruefrunde J)")
+
+
+def gezeichneter_widerruf_fehler(
+    spitze: Mapping[str, object], gate: str, *, ordnung: Optional[dict],
+    linie: Optional[list],
+    auftrag: Optional[Mapping[str, object]],
+) -> Optional[str]:
+    """Ist ``spitze`` ein gezeichneter Widerruf einer ``gate``-Annahme?
+    (None = ja; sonst, woran es fehlt.)
+
+    ``auftrag``: der geltende, angenommene A-M6-Snapshot des Falls (oder
+    None). Der Leser rechnet nach, was an der Zeichnung im Fall haengt, statt
+    dem Gate zu glauben (ADR-026, Nachtrag Pruefrunde J): Der Widerruf nennt
+    signiert den geltenden Auftrag; eine simulierte Rolle zeichnete unter dem
+    Mandat, das dieser Auftrag ihr nennt; der zeichnende Schluessel ist nicht
+    der der Programmleitung dieses Auftrags.
+
+    Die EINE Regel fuer jeden Leser, dem eine Ablehnung als Spitze etwas
+    FREIGIBT (ADR-026, Nachtrag Pruefrunde I; gemessen: heute nur der Abbruch
+    nach A-M4). Verlangt werden eine Ablehnung, die eine Freigabe traegt —
+    ihre Signatur hat der Kettenleser ueber den Ring geprueft
+    (``models.freigabe.pruefe_freigabe`` prueft jede getragene Freigabe) —,
+    und eine zeichnende Rolle, die unter dem gepinnten Glied der Linie
+    ``gate`` zeichnen darf: dieselbe Rollenregel wie fuer jede Annahme
+    (``models.zeichnung.zeichnende_rolle_fehler``, samt Abloesung durch
+    spaetere Glieder). Sperren durch eine Ablehnung bleibt ohne Signatur
+    moeglich; das ist die sichere Richtung."""
+    if spitze.get("entscheid") != "abgelehnt":
+        return "ist keine Ablehnung"
+    if not isinstance(spitze.get("freigabe"), dict):
+        return (f"ist eine unsignierte Ablehnung (Rolle {spitze.get('rolle')!r}, ohne "
+                "Freigabe) — sie kann von jedem stammen, der entscheide/ beschreiben kann")
+    _, zf = zeichnende_rolle_fehler(dict(spitze), gate, ordnung, linie=linie)
+    if zf is not None:
+        return f"ist gezeichnet, aber nicht von einer berechtigten Rolle: {zf}"
+    if auftrag is None:
+        return ("ist gezeichnet, aber der Fall hat keinen geltenden Fallauftrag, gegen den "
+                "Mandat und Trennung der Programmleitung nachzurechnen waeren")
+    geltend = str(auftrag.get("snapshot_sha256"))
+    if spitze.get("fallauftrag") != geltend:
+        return (f"nennt den Fallauftrag {str(spitze.get('fallauftrag'))[:16]}…, geltend ist "
+                f"{geltend[:16]}… — ein Widerruf steht auf dem geltenden Auftrag")
+    inhalt: Mapping = auftrag["auftrag"]  # type: ignore[assignment]
+    zeichnung: Mapping = spitze.get("zeichnung") or {}  # type: ignore[assignment]
+    soll_mandat = (inhalt.get("mandate") or {}).get(zeichnung.get("rolle"))
+    if zeichnung.get("schluesselklasse") == "simulation" \
+            and zeichnung.get("mandat_sha256") != soll_mandat:
+        return (f"ist unter dem Mandat {str(zeichnung.get('mandat_sha256'))[:16]}… gezeichnet, "
+                f"der geltende Fallauftrag nennt der Rolle {zeichnung.get('rolle')!r} "
+                f"{str(soll_mandat)[:16]}… — das Mandat ist Teil des Auftrags")
+    pl_fp = (inhalt.get("programmleitung") or {}).get("schluessel_sha256")
+    if spitze["freigabe"].get("schluessel_sha256") == pl_fp:  # type: ignore[union-attr]
+        return (f"ist mit dem Schluessel der Programmleitung des geltenden Fallauftrags "
+                f"({str(pl_fp)[:16]}…) gezeichnet — derselbe Schluessel widerriefe die "
+                "Abnahme und braeche als Programmleitung ab; die Trennung der Operatoren "
+                "waere nur behauptet")
+    return None
+
+
+def _ring_luecken(bereich: Path, gate: str, schluesselring: Mapping[str, bytes]) -> List[str]:
+    """Welche Rolle eine Annahme der Kette ``gate`` gezeichnet hat, deren
+    Schluessel der Ring nicht traegt — strukturell gelesen, NUR fuer die
+    Meldung; entschieden wird ueber den Kettenleser mit Signatur."""
+    kette, _ = _stand._lade_kette(Path(bereich), gate)
+    luecken: List[str] = []
+    for sha, daten in sorted(kette.items()):
+        freigabe = daten.get("freigabe") or {}
+        fp = freigabe.get("schluessel_sha256") if isinstance(freigabe, dict) else None
+        if not isinstance(fp, str) or fp in schluesselring:
+            continue
+        rolle = (daten.get("zeichnung") or {}).get("rolle") or daten.get("rolle")
+        eintrag = f"die Rolle {rolle} (Schluessel {fp[:16]}…, {gate}-{sha[:16]}…)"
+        if eintrag not in luecken:
+            luecken.append(eintrag)
+    return luecken
 
 
 def entscheide_verzeichnis(fall: Path) -> Path:
@@ -1487,7 +2379,8 @@ def _artefakt_hashes(
     sind Inventar des Fallstands und werden hier gehasht, ohne dass der
     Lauf sie verarbeitet; fuer sie gibt es keinen zweiten Lesepfad.
     """
-    kandidaten: List[Path] = [fall / "eingang.json", fall / "fall.json"]
+    kandidaten: List[Path] = [fall / "eingang.json", fall / "fall.json",
+                              fall / _standabnahme.LINIE_MARKER]
     eingang = fall / "eingang"
     if eingang.is_dir():
         kandidaten.extend(sorted(p for p in eingang.iterdir() if p.is_file()))
@@ -1512,6 +2405,13 @@ def _artefakt_hashes(
                 continue
             if pfad.name.startswith("gate_entscheid"):
                 continue
+            # Der Rest eines hart abgebrochenen atomaren Schreibens (auch der
+            # Hardlink-Zwilling eines eingehaengten Snapshots) ist kein
+            # Artefakt und kein Beleg (Angriffsrunde C, RC07): Mit ihm waere
+            # die Wiederholung desselben Entscheids nicht mehr idempotent,
+            # und jeder weitere Snapshot des Falls nennte ihn.
+            if ist_schreibrest(pfad.name):
+                continue
             kandidaten.append(pfad)
     vorhanden = dict(bekannt or {})
     hashes: Dict[str, str] = {}
@@ -1531,6 +2431,13 @@ def main(argv: Optional[List[str]] = None):
         description="P9-Snapshot eines menschlichen Gates schreiben.",
     )
     parser.add_argument("--fall", default=None)
+    parser.add_argument(
+        "--linie", default=None,
+        help="Linienbereich (ADR-025; Pflicht seit dem Nachtrag 2026-10-01). Allein: die "
+             "Abnahme des Zielsystems ausserhalb eines Falls (A-K2, A-O1, A-T1, A-B3). "
+             "Mit --fall: die Linie, deren Ordnungslinie gilt — gezeichnet wird unter "
+             "ihrer Spitze, gelesen unter der Ordnung, unter der eine Abnahme gezeichnet "
+             "wurde.")
     parser.add_argument("--gate", default=None, choices=GUELTIGE_GATES)
     parser.add_argument("--entscheid", default=None,
                         choices=["angenommen", "abgelehnt"])
@@ -1579,12 +2486,18 @@ def main(argv: Optional[List[str]] = None):
             "geprueft; ohne bleibt das bisherige Verhalten."
         ),
     )
-    parser.add_argument("--repo-root", dest="repo_root", default=".")
+    parser.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", default=".")
     parser.add_argument("--diagnostics-dir", dest="diagnostics_dir", default=None)
     add_request_json_arg(parser)
     args = parse_gate_args(parser, argv)
 
-    fall = Path(args.fall).resolve() if args.fall else None
+    # Der Bereich, in dem gezeichnet wird: ein Fall, oder — mit --linie allein —
+    # der Linienbereich der Erstabnahme (ADR-025). Er verhaelt sich wie ein
+    # Fall (entscheide/, abgeleitet/, dieselbe Kette, derselbe Schutz), hat
+    # aber keinen Eingang einer Migration.
+    linie_pfad = Path(args.linie).resolve() if args.linie else None
+    linie_modus = linie_pfad is not None and not args.fall
+    fall = (Path(args.fall).resolve() if args.fall else linie_pfad)
     diagnostics_dir = (
         Path(args.diagnostics_dir) if args.diagnostics_dir
         else (fall / "abgeleitet" / "diagnostics" if fall
@@ -1623,7 +2536,7 @@ def main(argv: Optional[List[str]] = None):
         ))
 
     fehlend = [name for name, wert in (
-        ("--fall", fall), ("--gate", args.gate),
+        ("--fall oder --linie", fall), ("--gate", args.gate),
         ("--entscheid", args.entscheid), ("--entscheider", args.entscheider),
         ("--begruendung", args.begruendung),
     ) if not wert]
@@ -1666,13 +2579,40 @@ def main(argv: Optional[List[str]] = None):
                 "Mandat muss wie die Zeichnungsordnung extern verwahrt werden"
             )
         mandat_sha256 = hashlib.sha256(mandat_pfad.read_bytes()).hexdigest()
-    if not (fall / "eingang.json").is_file():
+    if linie_modus:
+        if _standabnahme.bereich_art(fall) != "linie":
+            return _usage(
+                f"kein Linienbereich: {fall} (anlegen mit: python -m "
+                f"rechner_pipeline.gates.stand_belegen linie --linie {fall})")
+        if args.gate not in _standabnahme.LINIEN_GATES:
+            return _usage(
+                f"{args.gate} ist im Linienbereich nicht zeichenbar — dort nur "
+                f"{', '.join(_standabnahme.LINIEN_GATES)} (ADR-025)")
+    elif not (fall / "eingang.json").is_file():
         return _usage(
             f"kein Fall-Arbeitsbereich: {fall} (anlegen mit: python -m "
             f"rechner_pipeline.fall anlegen --fall {fall}, dann je Quelle "
             f"python -m rechner_pipeline.fall registrieren --fall {fall} "
             "--datei <quelle>)"
         )
+    elif args.gate in _standabnahme.NUR_LINIE:
+        return _usage(
+            f"{args.gate} gehoert keinem Fall — gezeichnet wird er im Linienbereich "
+            "(--linie <linie> ohne --fall, ADR-025)")
+    # Die Linie ist Pflicht (ADR-025, Nachtrag 2026-10-01): Kein Gate wird
+    # ohne die Versionslinie der Ordnung gezeichnet, und keine Vorbedingung
+    # wird ohne sie gelesen. Eine Wurzel, die man weglassen kann, ist keine.
+    if linie_pfad is None:
+        return _usage(
+            "ohne --linie wird nicht gezeichnet: gezeichnet wird nur unter der Spitze der "
+            "Versionslinie der Zeichnungsordnung, und jede Vorbedingung wird gegen den Stand "
+            "der Ordnung gelesen, unter dem sie gezeichnet wurde (ADR-025, Nachtrag "
+            "2026-10-01). Ausweg: Linienbereich anlegen (python -m "
+            "rechner_pipeline.gates.stand_belegen linie --linie linie), die Ordnung eintragen "
+            "(... stand_belegen ordnung --linie linie --ordnung <ordnung> --vorgaenger keiner) "
+            "und --linie linie angeben — Bedienfolge in ADR-025")
+    if _standabnahme.bereich_art(linie_pfad) != "linie":
+        return _usage(f"--linie {linie_pfad}: kein Linienbereich")
 
     def _sperre(code: str, message: str):
         return _finalize(build_result(
@@ -1691,7 +2631,21 @@ def main(argv: Optional[List[str]] = None):
     # (Review T23-01).
     bekannte_hashes: Dict[str, str] = {}
     fall_scope: Optional[str] = None
-    if args.gate in GATES_MIT_PFLICHTBELEGEN:
+    # Was die A-K2-Zeichnung NICHT deckt (ADR-018, Nachtrag 2026-10-01),
+    # aus dem Regressionsbeleg abgeleitet; und je Gegenstand, auf welchem
+    # Weg der Stand abgenommen ist, auf dem A-M4 gruendet.
+    ak2_ausnahmen: Dict[str, str] = {}
+    am4_standabnahmen: Dict[str, object] = {}
+    # Die geparsten Pflichtbelege der EINEN Lesung, aus denen die Sicht-Regel
+    # die Sicht neu erzeugt (gates.sichten; T23-01: kein zweites Lesen).
+    sicht_belege: Dict[str, object] = {}
+    if args.gate in GATES_MIT_PFLICHTBELEGEN and linie_modus:
+        # Der Linienbereich hat keinen Fall-Scope; sein Scope ist die Linie,
+        # seine Kennzeichnung steht an der Stelle von fall.json (ADR-025).
+        marker = lies_gehasht(fall / _standabnahme.LINIE_MARKER)
+        fall_scope, fall_json_sha256 = _standabnahme.LINIE_SCOPE, marker.sha256
+        bekannte_hashes[_standabnahme.LINIE_MARKER] = marker.sha256
+    elif args.gate in GATES_MIT_PFLICHTBELEGEN:
         try:
             fall_scope, fall_json_sha256 = fall_mod.lade_scope_gehasht(fall)
             bekannte_hashes["fall.json"] = fall_json_sha256
@@ -1721,12 +2675,144 @@ def main(argv: Optional[List[str]] = None):
     if zo_fehler:
         return _usage("; ".join(zo_fehler))
 
+    # Die Versionslinie der Zeichnungsordnung (ADR-025; Pflicht seit dem
+    # Nachtrag 2026-10-01): Gezeichnet wird nur unter ihrer Spitze, und wer eine
+    # Abnahme liest, um darauf zu gruenden, haelt sie gegen die Ordnung, unter
+    # der sie gezeichnet wurde. Eine Ablehnung zeichnet nichts und liest nichts,
+    # worauf sie gruendet; sie geht auch auf einer Linie ohne Glied.
+    #
+    # Pruefrunde G (G09): Eine Annahme GRUENDET auf der Linie — sie liest sie
+    # mit dem Ring, und jedes Glied nach dem ersten wird gegen den Schluessel
+    # des Vorstands geprueft (er liegt fuer jede Annahme im Fall ohnehin im
+    # Ring: der Fallauftrag wird damit geprueft, ADR-026; im Linienbereich
+    # wird er Pflicht, sobald die Linie mehr als ein Glied hat). Der Ring wird
+    # hier unabhaengig geladen: Seine Fehler meldet die Stelle, die ihn
+    # spaeter zum Zeichnen laedt; fehlt dadurch der Vorstand, verweigert
+    # der Leser der Linie benannt. Eine Ablehnung liest die Linie nur fuer
+    # ihre Ausgabe (strukturell, benannt) — sie gruendet nichts. Ebenso eine
+    # "Annahme" ganz ohne Freigabeschluessel: Sie entsteht nicht (Sperre
+    # 'freigabe' vor dem Schreiben, unten mit Waechter), die Linie dient nur
+    # den Meldungen davor, die ihre Reihenfolge behalten.
+    # Eine Ablehnung mit dem Schluessel einer Rolle, die das Gate zeichnen
+    # darf, wird GEZEICHNET (ADR-026, Nachtrag Pruefrunde I): Nur ein
+    # gezeichneter Widerruf hebt eine Annahme fuer einen Leser auf, der danach
+    # etwas freigibt (den Abbruch nach A-M4). Eine Ablehnung ohne Schluessel
+    # oder ohne Ordnung bleibt unsigniert und in ihrer Gestalt wie bisher
+    # (ADR-008, Punkt 6: ein Agent darf ablehnen).
+    ablehnung_gezeichnet_von: Optional[str] = None
+    if (args.entscheid == "abgelehnt" and args.freigabe_schluessel
+            and zeichnungsordnung is not None and args.gate not in FALLROLLEN_GATES):
+        _, _, ablehnender = _lade_freigabe_schluessel(args.freigabe_schluessel, fall)
+        kandidat = (_zeichnungsrolle(zeichnungsordnung, ablehnender)
+                    if ablehnender is not None else None)
+        if kandidat is not None and rolle_darf_gate(zeichnungsordnung, kandidat, args.gate):
+            ablehnung_gezeichnet_von = kandidat
+    gezeichnet = args.entscheid == "angenommen" or ablehnung_gezeichnet_von is not None
+    linie_geprueft = False
+    if gezeichnet and args.freigabe_schluessel:
+        linien_ring, _, _ = _lade_freigabe_schluessel(args.freigabe_schluessel, fall)
+        ordnungsglieder, linie_fehler = _ordnungslinie.lade_linie(linie_pfad, ring=linien_ring)
+        linie_geprueft = True
+    else:
+        ordnungsglieder, linie_fehler = (
+            _ordnungslinie.lade_linie_strukturell_zur_anzeige(linie_pfad))
+    if linie_fehler:
+        return _sperre("ordnungslinie", "Entscheid verweigert: die Ordnungslinie ist "
+                       "verletzt: " + "; ".join(linie_fehler[:4]))
+    if not ordnungsglieder and gezeichnet:
+        return _sperre(
+            "ordnungslinie",
+            "Annahme verweigert: die Linie hat noch keine Ordnungslinie — zuerst "
+            "die Ordnung eintragen: python -m rechner_pipeline.gates.stand_belegen "
+            f"ordnung --linie {linie_pfad} --ordnung <ordnung> --vorgaenger keiner "
+            "(ADR-025)")
+
+    # Der Lebenslauf des Falls (ADR-026). Nach dem gezeichneten Abbruch ist im
+    # Fall nichts mehr zu entscheiden — keine Annahme, keine Ablehnung, auch
+    # kein zweiter Abbruch. Und jede Annahme eines Falls ausser dem Auftrag
+    # selbst setzt den geltenden Fallauftrag voraus: EINE Stelle fuer alle
+    # Gates (fallauftrag_pruefen).
+    auftrag_spitze: Optional[dict] = None
+    lebenslauf_inhalt: Optional[dict] = None
+    # Jede Annahme des FALLS, auf der dieser Aufruf gruendet, wird hier
+    # angemeldet (Gate -> gelesener Snapshot); fallauftrag_pruefen haelt ihren
+    # Auftrag gegen den geltenden (ADR-026, Nachtrag Runde G, G14). Abnahmen
+    # der LINIE (Verweis, Weg b) tragen keinen Auftrag und stehen nicht hier.
+    fall_vorbedingungen: Dict[str, dict] = {}
+    # Wer den Bereich betritt, raeumt die Hardlink-Zwillinge eingehaengter
+    # Snapshots (Pruefrunde H, H16) — VOR der Sperre des Abbruchs: Nach einem
+    # Ausfall zwischen Einhaengen und Entfernen der Tempdatei des A-M5-Snapshots
+    # endet jeder weitere Aufruf dort, und der Rest laege sonst fuer immer.
+    raeume_zwillinge(entscheide_verzeichnis(fall))
+    if not linie_modus:
+        abgebrochen = abbruch_im_fall(fall)
+        if abgebrochen is not None:
+            return _sperre(
+                "fallabbruch",
+                f"Entscheid verweigert: der Fall ist abgebrochen ({abgebrochen}) — er endet "
+                "dort, ohne Abnahme; danach ist im Fall nichts mehr zeichenbar (ADR-026). "
+                "Ausweg: ein neuer Fall mit eigenem Auftrag")
+    if args.entscheid == "angenommen" and args.gate in LEBENSLAUF_GATES:
+        # Auftrag und Abbruch stehen vor bzw. neben der A-Box: Sie binden die
+        # Lieferung und ihre Vorlage, nachgerechnet gegen Fall, Ordnung und
+        # Linie. Auf einer beschaedigten Lieferung wird nicht beauftragt; der
+        # Abbruch dagegen geht auch dann — eine verlorene Lieferung ist ein
+        # typischer Grund — und traegt den Befund woertlich (ADR-026, Nachtrag
+        # Runde G, G16). Die Bindung an eingang.json und fall.json haelt fuer
+        # beide fallauftrag_pruefen bzw. die Vorlage.
+        eingangs_fehler = fall_mod.pruefen(fall)
+        if eingangs_fehler and args.gate == AUFTRAG_GATE:
+            return _sperre("eingang", "Annahme verweigert — Eingang verletzt das Register: "
+                           + "; ".join(eingangs_fehler[:5])
+                           + " — auf einer beschaedigten Lieferung wird nicht beauftragt "
+                           "(ADR-026); abbrechen bleibt moeglich")
+        sf = _schluessel_laden()
+        if sf:
+            return _sperre("freigabe", "Annahme verweigert: externe Freigabeschluessel "
+                           "ungueltig: " + "; ".join(sf[:5]))
+        lebenslauf_inhalt, vorlage_sha, vorlage_fehler = _lebenslauf_vorlage(
+            args.gate, fall, ordnung=zeichnungsordnung, linie_pfad=linie_pfad,
+            linie=ordnungsglieder, systemstand=entscheid_systemstand,
+            schluesselring=schluesselring, eingang_befund=eingangs_fehler)
+        if vorlage_fehler:
+            return _sperre("vorbedingung", f"Annahme verweigert: {args.gate} braucht seine "
+                           "Vorlage: " + "; ".join(vorlage_fehler[:5]))
+        rolle_der_vorlage = "fallauftrag" if args.gate == AUFTRAG_GATE else "fallabbruch"
+        pflichtbelege[rolle_der_vorlage] = [str(vorlage_sha)]
+        bekannte_hashes["eingang.json"] = _sha256_datei(fall / "eingang.json")
     # Annahme-Sperre: eine Annahme setzt einen integeren Fall und
     # endgueltige Entscheidungen voraus — sonst wuerde ein ungeloester
     # Quellen-Widerspruch oder der Arbeitsstand eines Agenten still zur
     # abgenommenen Wahrheit (P2/P4). Die A-Box ist dafuer PFLICHT: eine
     # Sperre, die per Dateiloeschung abschaltbar waere, ist keine.
-    if args.entscheid == "angenommen":
+    if args.entscheid == "angenommen" and args.gate == "A-O1":
+        # Eine Version, ein Vokabular (ADR-024, dritter Nachtrag) — EINE
+        # Stelle fuer beide Wege (Linienbereich und Fall). Das Gate rechnet
+        # aus den Ketten der Bereiche und dem lebenden Code; dem Feld
+        # ``vorher`` des Belegs glaubt es dafuer nichts.
+        regel = _stand.tbox_vokabular_fehler([fall] if linie_modus else [fall, linie_pfad])
+        if regel:
+            return _sperre("vorbedingung", "Annahme verweigert: " + "; ".join(regel[:3]))
+    if args.entscheid == "angenommen" and linie_modus:
+        # Der Linienbereich hat weder Eingang noch A-Box: Seine Abnahmen
+        # stuetzen sich allein auf ihre Belege am festen Ort, nachgerechnet
+        # gegen Code bzw. Beleg — derselbe Pruefer wie im Fall.
+        wurzel = Path(args.repo_root).resolve() if args.repo_root else None
+        belegfehler, belegshas, ak2_ausnahmen = _belege_im_fall(
+            args.gate, fall, wurzel, sicht_belege=sicht_belege)
+        if belegfehler:
+            return _sperre("vorbedingung",
+                           f"Annahme verweigert: {args.gate} braucht seine Belege: "
+                           + "; ".join(belegfehler[:5]))
+        for rolle, sha in belegshas.items():
+            pflichtbelege[rolle] = [sha]
+        erwartete_rollen = belegrollen(args.gate, _standabnahme.LINIE_SCOPE)
+        if set(pflichtbelege) != set(erwartete_rollen):
+            return _sperre("vorbedingung",
+                           f"Annahme verweigert: Pflichtbelege fehlen="
+                           f"{sorted(set(erwartete_rollen) - set(pflichtbelege))}")
+        pflichtbelege = {rolle: pflichtbelege[rolle] for rolle in erwartete_rollen}
+    if args.entscheid == "angenommen" and not linie_modus and args.gate not in LEBENSLAUF_GATES:
         import json as _json
 
         from rechner_pipeline.ontologie.abox import (
@@ -1830,86 +2916,50 @@ def main(argv: Optional[List[str]] = None):
             pflichtbelege["pq3_ledger"] = [pq3_gelesen.sha256]
 
         if args.gate == "A-O1":
-            # T-Box-Aenderung (Review T22-02): Der Beleg bindet alte und
-            # neue Version, den Hash des T-Box-Moduls und das
-            # Aenderungsartefakt. Ohne ihn ist A-O1 eine Zeichnung ueber
-            # nichts.
-            aenderung_pfad = fall / "abgeleitet" / "tbox" / "aenderung.json"
-            aenderung_gelesen = (
-                lies_gehasht(aenderung_pfad) if aenderung_pfad.is_file() else None
-            )
-            ak1_fehler = pruefe_tbox_aenderung(
-                aenderung_pfad, fall,
-                text=aenderung_gelesen.text() if aenderung_gelesen else None,
-                repo_root=Path(args.repo_root).resolve() if args.repo_root else None,
-            )
-            if ak1_fehler:
+            # T-Box-Aenderung (Review T22-02; Entscheid 2026-09-16: zweiter
+            # Beleg ist die aktuarielle Stellungnahme). Dieselbe Pruefung
+            # haelt A-M4 beim Lesen der A-O1-Annahme (tbox_belege_pruefen).
+            wurzel = Path(args.repo_root).resolve() if args.repo_root else None
+            tbox_fehler, tbox_shas = tbox_belege_pruefen(fall, wurzel, sicht_belege=sicht_belege)
+            if tbox_fehler:
                 return _sperre(
                     "vorbedingung",
-                    "Annahme verweigert: A-O1 braucht den Beleg der "
-                    f"T-Box-Aenderung ({aenderung_pfad.relative_to(fall)}): "
-                    + "; ".join(ak1_fehler[:5]),
+                    "Annahme verweigert: A-O1 braucht " + "; ".join(tbox_fehler[:5]),
                 )
-            # Zweiter Pflichtbeleg (Entscheid des Maintainers 2026-09-16):
-            # die aktuarielle Stellungnahme. Die Unterschrift gehoert der
-            # Architektur, die fachliche Bewertung dem Aktuariat.
-            stellung_pfad = fall / "abgeleitet" / "tbox" / "stellungnahme.json"
-            stellung_gelesen = (
-                lies_gehasht(stellung_pfad) if stellung_pfad.is_file() else None
-            )
-            stellung_fehler = pruefe_stellungnahme_aktuariat(
-                stellung_pfad, fall,
-                text=stellung_gelesen.text() if stellung_gelesen else None,
-                aenderung=json.loads(aenderung_gelesen.text()),
-            )
-            if stellung_fehler:
-                return _sperre(
-                    "vorbedingung",
-                    "Annahme verweigert: A-O1 braucht die aktuarielle "
-                    f"Stellungnahme ({stellung_pfad.relative_to(fall)}): "
-                    + "; ".join(stellung_fehler[:5]),
-                )
-            pflichtbelege["tbox_aenderung"] = [aenderung_gelesen.sha256]
-            pflichtbelege["stellungnahme_aktuariat"] = [stellung_gelesen.sha256]
+            for rolle, sha in tbox_shas.items():
+                pflichtbelege[rolle] = [sha]
 
         if args.gate == "A-K2":
-            # Kern-Aenderung (Entscheid des Maintainers 2026-09-16): zwei
-            # Belege an festen Orten, wie bei A-O1 — kein CLI-Flag, damit
-            # der Beleg nicht dorthin zeigen kann, wo es gerade passt.
-            kern_pfad = fall / "abgeleitet" / "kern" / "aenderung.json"
-            regr_pfad = fall / "abgeleitet" / "kern" / "regression.json"
-            kern_gelesen = lies_gehasht(kern_pfad) if kern_pfad.is_file() else None
+            # Kernstand (Entscheid des Maintainers 2026-09-16, formell
+            # eingepflegt 2026-10-01): zwei Belege an festen Orten, wie bei
+            # A-O1 — kein CLI-Flag, damit der Beleg nicht dorthin zeigen
+            # kann, wo es gerade passt. Dieselbe Pruefung haelt A-M4 beim
+            # Lesen der A-K2-Annahme (kernstand_belege_pruefen).
             wurzel = Path(args.repo_root).resolve() if args.repo_root else None
-            ak2_fehler = pruefe_kernaenderung(
-                kern_pfad, fall,
-                text=kern_gelesen.text() if kern_gelesen else None,
-                repo_root=wurzel,
-            )
-            if ak2_fehler:
+            kern_fehler, kern_shas, ak2_ausnahmen = kernstand_belege_pruefen(
+                fall, wurzel, sicht_belege=sicht_belege)
+            if kern_fehler:
                 return _sperre(
                     "vorbedingung",
-                    "Annahme verweigert: A-K2 braucht den Beleg der "
-                    f"Kern-Aenderung ({kern_pfad.relative_to(fall)}): "
-                    + "; ".join(ak2_fehler[:5]),
+                    "Annahme verweigert: A-K2 braucht die Belege des Kernstands: "
+                    + "; ".join(kern_fehler[:5])
+                    + f" — Belege erzeugen mit: {_kernstand_kommando(fall, args.repo_root)}",
                 )
-            aenderung_daten = json.loads(kern_gelesen.text())
-            regr_gelesen = lies_gehasht(regr_pfad) if regr_pfad.is_file() else None
-            regr_fehler = pruefe_kernregression(
-                regr_pfad, fall,
-                text=regr_gelesen.text() if regr_gelesen else None,
-                aenderung=aenderung_daten,
-            )
-            if regr_fehler:
-                return _sperre(
-                    "vorbedingung",
-                    "Annahme verweigert: A-K2 braucht den Regressionsbeleg "
-                    f"({regr_pfad.relative_to(fall)}): "
-                    + "; ".join(regr_fehler[:5])
-                    + " -- ohne Regression keine Abnahme einer Kern-Aenderung "
-                    "(Entscheid des Maintainers 2026-09-16)",
-                )
-            pflichtbelege["kernaenderung"] = [kern_gelesen.sha256]
-            pflichtbelege["regression"] = [regr_gelesen.sha256]
+            for rolle, sha in kern_shas.items():
+                pflichtbelege[rolle] = [sha]
+
+        if args.gate == "A-T1":
+            # Tarifwerk (ADR-025): eine Aenderung, die der Fall erzwingt, zeichnet
+            # mensch/aktuariat im Fall (Weg a) — derselbe Beleg und Pruefer wie
+            # in der Linie; dieselbe Pruefung haelt A-M4 beim Lesen.
+            wurzel = Path(args.repo_root).resolve() if args.repo_root else None
+            tw_fehler, tw_shas = tarifwerk_belege_pruefen(fall, wurzel, sicht_belege=sicht_belege)
+            if tw_fehler:
+                return _sperre("vorbedingung",
+                               "Annahme verweigert: A-T1 braucht den Beleg des Tarifwerks: "
+                               + "; ".join(tw_fehler[:5]))
+            for rolle, sha in tw_shas.items():
+                pflichtbelege[rolle] = [sha]
 
         if args.gate == "A-B1":
             # Auslieferung (Entscheid des Maintainers 2026-09-16): Der
@@ -1949,6 +2999,143 @@ def main(argv: Optional[List[str]] = None):
                     "nichts bedeutet)",
                 )
             pflichtbelege["anker"] = [args.ankersatz]
+
+        if args.gate == "A-B2":
+            # Zugangsabnahme (ADR-022, Entscheid des Maintainers 2026-09-30):
+            # Der Betrieb nimmt den Zugang eines abgenommenen Bestands in die
+            # produktive Ablage ab. Drei Pflichtbelege, jeder mit eigener
+            # Aussage — die Zugangsprobe (die Rechnung), der A-M4-Snapshot
+            # (was abgenommen wurde), der Eingang (was eintreten soll). Der
+            # Beleg der Probe liegt an einem FESTEN Ort im Fall, wie bei A-O1
+            # und A-K2: kein Flag, das dorthin zeigt, wo es gerade passt.
+            # Die Annahme RECHNET das Urteil der Probe nach, sie glaubt es
+            # nicht; den Stand der Ablage bindet sie ueber den Beleg, und die
+            # Registrierung haelt ihn gegen die Ablage, in die sie schreibt.
+            from rechner_pipeline.models import zugangsprobe as zp_mod
+
+            probe_pfad = fall / zp_mod.BELEG_RELATIV
+            probe_kommando = (
+                "python -m rechner_pipeline.betrieb.zugangsprobe --stand <ablage> "
+                f"--fall {fall} --stichtag <iso> --schluessel <betriebsschluessel> "
+                "--zeichnungsordnung <ordnung> --freigabe-schluessel <schluessel>")
+            if not probe_pfad.is_file():
+                return _sperre(
+                    "vorbedingung",
+                    f"Annahme verweigert: A-B2 braucht den Beleg der Zugangsprobe "
+                    f"({zp_mod.BELEG_RELATIV} fehlt) — fahren mit: {probe_kommando}",
+                )
+            probe_gelesen = lies_gehasht(probe_pfad)
+            try:
+                probe = probe_gelesen.json()
+            except (OSError, ValueError) as exc:
+                return _sperre("vorbedingung",
+                               f"Annahme verweigert: Zugangsprobe unlesbar: {exc}")
+            probe_fehler = zp_mod.beleg_fehler(probe, ordnung=zeichnungsordnung)
+            if isinstance(probe, dict) and probe.get("fall") != fall.name:
+                probe_fehler.append(
+                    f"die Probe gehoert zum Fall {probe.get('fall')!r}, nicht {fall.name!r}")
+            if probe_fehler:
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: der Beleg der Zugangsprobe verletzt seinen "
+                    "Vertrag: " + "; ".join(probe_fehler[:5])
+                    + f" — Probe neu fahren: {probe_kommando}",
+                )
+            if probe.get("bestanden") is not True:
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: die Zugangsprobe ist nicht bestanden — der "
+                    "Zugang bewirkt in der Ablage nicht, was abgenommen wurde "
+                    "(Ablehnung bleibt moeglich)",
+                )
+            # Die Probe muss auf der GELTENDEN, angenommenen Migrationsabnahme
+            # gelaufen sein — derselbe Kettenleser wie fuer jedes Gate.
+            schluessel_fehler_ab2 = _schluessel_laden()
+            if schluessel_fehler_ab2:
+                return _sperre(
+                    "freigabe",
+                    "Entscheid verweigert: externe Freigabeschluessel ungueltig: "
+                    + "; ".join(schluessel_fehler_ab2[:5]),
+                )
+            am4_kette, am4_spitzen, am4_fehler = _lade_snapshot_kette(
+                entscheide_verzeichnis(fall), "A-M4", fall, schluesselring,
+                entscheid_systemstand)
+            am4_sha = probe["am4_snapshot_sha256"]
+            if am4_fehler or am4_spitzen != [am4_sha] or (
+                    am4_kette[am4_sha][1].get("entscheid") != "angenommen"):
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: die Zugangsprobe lief auf dem A-M4-Snapshot "
+                    f"{am4_sha[:16]}…, geltend und angenommen ist "
+                    f"{[s[:16] for s in am4_spitzen]}"
+                    + (f" (Kette: {'; '.join(am4_fehler[:3])})" if am4_fehler else "")
+                    + f" — die Probe auf der geltenden Migrationsabnahme fahren: {probe_kommando}",
+                )
+            # Das Soll der Probe muss das der GELTENDEN Abnahmen sein (Block
+            # F, Nachbesserung, Pruefer-Befund 1): die Bytes von
+            # aktuartest.json, die der geltende, angenommene A-M1-Snapshot
+            # pinnt (den A-M4 pinnt), und die von migrationssuite.json, die
+            # A-M4 pinnt — im Beleg UND am festen Ort im Fall. Dieselbe
+            # Regel wie Probe und Registrierung (models.zugangsprobe).
+            am4_daten = am4_kette[am4_sha][1]
+            fall_vorbedingungen["A-M4"] = am4_daten
+            am1_kette, am1_spitzen, am1_fehler = _lade_snapshot_kette(
+                entscheide_verzeichnis(fall), "A-M1", fall, schluesselring,
+                entscheid_systemstand)
+            am1_pin = ((am4_daten.get("pflichtbelege") or {}).get("am1_snapshot") or [None])[0]
+            am1_daten = am1_kette[am1_pin][1] if am1_pin in am1_kette else None
+            if am1_daten is not None:
+                fall_vorbedingungen["A-M1"] = am1_daten
+            soll_fehler = zp_mod.soll_bindung_fehler(
+                probe.get("abnahmen"), am4=am4_daten, am1=am1_daten)
+            # Wer A-M4 und A-M1 gezeichnet hat, gegen die Ordnung DIESER
+            # Zeichnung (Entscheid 2026-10-01): dieselbe Regel wie die
+            # Vorbedingungen von A-M4 und wie Registrierung und Probe.
+            for abnahme_gate, abnahme_daten in (("A-M4", am4_daten), ("A-M1", am1_daten)):
+                if abnahme_daten is None:
+                    continue
+                _, rollen_fehler = zeichnende_rolle_fehler(
+                    abnahme_daten, abnahme_gate, zeichnungsordnung, linie=ordnungsglieder)
+                if rollen_fehler:
+                    soll_fehler.append(f"{abnahme_gate}-Snapshot: {rollen_fehler}")
+            if am1_fehler or am1_spitzen != [am1_pin] or (
+                    am1_daten is not None and am1_daten.get("entscheid") != "angenommen"):
+                soll_fehler.append(
+                    f"der A-M1-Snapshot {str(am1_pin)[:16]}…, den A-M4 pinnt, ist nicht die "
+                    f"geltende angenommene Spitze ({[x[:16] for x in am1_spitzen]}"
+                    + (f"; Kette: {'; '.join(am1_fehler[:2])}" if am1_fehler else "") + ")")
+            for rolle, (_, datei) in zp_mod.SOLL_BELEGE.items():
+                gebunden = (probe.get("abnahmen") or {}).get(rolle) or {}
+                try:
+                    jetzt = lies_gehasht(fall / datei).sha256
+                except OSError as exc:
+                    jetzt = f"unlesbar ({exc})"
+                if jetzt != gebunden.get("sha256"):
+                    soll_fehler.append(
+                        f"{datei} am festen Ort ist nicht die gebundene Fassung "
+                        f"({str(jetzt)[:16]}… statt {str(gebunden.get('sha256'))[:16]}…)")
+            if soll_fehler:
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: das Soll der Zugangsprobe ist nicht das der "
+                    "geltenden Abnahmen: " + "; ".join(soll_fehler[:4])
+                    + f" — die abgenommenen Belege wiederherstellen oder die Abnahmen "
+                    f"neu entscheiden, dann die Probe fahren: {probe_kommando}",
+                )
+            pflichtbelege["zugangsprobe"] = [probe_gelesen.sha256]
+            pflichtbelege["am4_snapshot"] = [am4_sha]
+            pflichtbelege["eingang"] = [probe["eingang"]["sha256"]]
+            erwartete_rollen = belegrollen("A-B2", fall_scope or "")
+            if set(pflichtbelege) != set(erwartete_rollen):
+                return _sperre(
+                    "vorbedingung",
+                    "Annahme verweigert: aus dem Fall-Scope abgeleitete "
+                    f"Pflichtbelege unvollstaendig; fehlen="
+                    f"{sorted(set(erwartete_rollen) - set(pflichtbelege))}, fremd="
+                    f"{sorted(set(pflichtbelege) - set(erwartete_rollen))} — A-B2 "
+                    "gibt es nur im Bestands-Scope (ein Tarif-Fall hat keinen Zugang)",
+                )
+            pflichtbelege = {rolle: pflichtbelege[rolle] for rolle in erwartete_rollen}
 
         if args.gate in AKTUARIELLE_ABNAHMEN:
             # Aktuarielle Abnahme (ADR-010): Im Bestands-Scope stuetzt
@@ -2310,10 +3497,11 @@ def main(argv: Optional[List[str]] = None):
                     "--freigabe-schluessel <externe-datei>)",
                 )
             assert aq1_spitze is not None
-            zf = _zeichnungsfehler(
-                zeichnungsordnung, "A-Q1",
-                aq1_spitze.get("freigabe", {}).get("schluessel_sha256", ""),
-            )
+            # Die eine Regel der Leser (models.zeichnung, Entscheid
+            # 2026-10-01): Rolle aus dem Schluessel, Gate erlaubt, und das
+            # Rollenfeld des Snapshots ist genau diese Rolle.
+            _, zf = zeichnende_rolle_fehler(aq1_spitze, "A-Q1", zeichnungsordnung,
+                                            linie=ordnungsglieder)
             if zf:
                 return _sperre(
                     "vorbedingung",
@@ -2321,6 +3509,7 @@ def main(argv: Optional[List[str]] = None):
                     f"von einem unberechtigten Schluessel gezeichnet -- {zf}",
                 )
             pflichtbelege["aq1_snapshot"] = [aq1_spitze["snapshot_sha256"]]
+            fall_vorbedingungen["A-Q1"] = aq1_spitze
 
             # Die aktuariellen Abnahmen gehen A-M4 voraus: A-M1 immer
             # (ADR-010), im Bestands-Scope auch A-M2 und A-M3
@@ -2379,10 +3568,8 @@ def main(argv: Optional[List[str]] = None):
                         "<text> --freigabe-schluessel <externe-datei>)",
                     )
                 assert spitze_a is not None
-                zf = _zeichnungsfehler(
-                    zeichnungsordnung, abnahme_gate,
-                    spitze_a.get("freigabe", {}).get("schluessel_sha256", ""),
-                )
+                _, zf = zeichnende_rolle_fehler(spitze_a, abnahme_gate, zeichnungsordnung,
+                                                linie=ordnungsglieder)
                 if zf:
                     return _sperre(
                         "vorbedingung",
@@ -2392,6 +3579,7 @@ def main(argv: Optional[List[str]] = None):
                     )
                 rolle_a = f"am{abnahme_gate[-1]}_snapshot"
                 pflichtbelege[rolle_a] = [spitze_a["snapshot_sha256"]]
+                fall_vorbedingungen[abnahme_gate] = spitze_a
 
             if fall_scope == "bestand":
                 bestandsbelege, bestands_fehler = _passende_bestandsbelege(
@@ -2415,6 +3603,29 @@ def main(argv: Optional[List[str]] = None):
                 for rolle, beleg_sha256 in bestandsbelege.items():
                     pflichtbelege[rolle] = [beleg_sha256]
 
+            # Der Stand, auf dem der Fall laeuft, ist abgenommen (Entscheid
+            # des Maintainers 2026-10-01, ADR-018 Nachtrag 2026-10-01; ADR-025):
+            # EINE Regel fuer Kernstand (A-K2), T-Box-Stand (A-O1) und Tarifwerk
+            # (A-T1), in jedem Scope — im Fall gezeichnet oder als "keine
+            # Aenderung" gegenueber der Erstabnahme bzw. einem frueheren Fall
+            # belegt.
+            for gegenstand in _standabnahme.AM4_GEGENSTAENDE:
+                meldung, pin, eintrag = standabnahme_pruefen(
+                    gegenstand, fall=fall, repo_root=repo_root,
+                    verzeichnis=verzeichnis_aq1, schluesselring=schluesselring,
+                    systemstand=entscheid_systemstand, ordnung=zeichnungsordnung,
+                    fall_json_sha256=fall_json_sha256, linie=ordnungsglieder,
+                    vorbedingungen=fall_vorbedingungen,
+                    linie_bereich=linie_pfad,
+                )
+                if meldung is not None:
+                    return _sperre(
+                        "vorbedingung",
+                        f"Annahme verweigert: {meldung}",
+                    )
+                pflichtbelege[gegenstand.rolle] = [pin]
+                am4_standabnahmen[gegenstand.rolle] = eintrag
+
             erwartete_rollen = am4_belegrollen(fall_scope or "")
             if set(pflichtbelege) != set(erwartete_rollen):
                 fehlende_rollen = sorted(set(erwartete_rollen) - set(pflichtbelege))
@@ -2429,8 +3640,80 @@ def main(argv: Optional[List[str]] = None):
                 rolle: pflichtbelege[rolle] for rolle in erwartete_rollen
             }
 
+    # Jede ZEICHNUNG eines Falls ausser am Auftrag selbst — Annahme oder
+    # gezeichnete Ablehnung — setzt den geltenden Fallauftrag voraus (ADR-026;
+    # Nachtrag Pruefrunde J: die gezeichnete Ablehnung ist seit Runde I eine
+    # Zeichnung im Fall und geht durch dieselben Pruefungen: Auftrag,
+    # Lieferung, Linie, Trennung der Programmleitung, Mandat). EINE Stelle fuer
+    # alle Gates, nach den gate-eigenen Vorbedingungen (deren Befund ist
+    # genauer) und vor jedem Schreiben. Die Ablehnung des Auftrags selbst (der
+    # Rueckzug) steht nicht unter einem Auftrag, sie ist der Akt auf ihm.
+    verweigert = ("Annahme verweigert" if args.entscheid == "angenommen"
+                  else "Gezeichnete Ablehnung verweigert")
+    ausweg_ablehnung = _AUSWEG_UNSIGNIERT if args.entscheid == "abgelehnt" else ""
+    if gezeichnet and not linie_modus and args.gate != AUFTRAG_GATE:
+        sf = _schluessel_laden()
+        if sf:
+            return _sperre("freigabe", f"{verweigert}: externe Freigabeschluessel "
+                           "ungueltig: " + "; ".join(sf[:5]))
+        if aktiver_schluessel is None:
+            return _sperre(
+                "freigabe",
+                f"{verweigert}: --freigabe-schluessel <externe-datei> ist "
+                "erforderlich; ein frei editierbarer Fall darf seine menschliche "
+                "Freigabe nicht selbst behaupten")
+        if zeichnungsordnung is None:
+            return _sperre(
+                "zeichnung",
+                f"{verweigert}: --zeichnungsordnung fehlt — die zeichnende Rolle wird "
+                "aus dem Freigabeschluessel ueber die Ordnung bestimmt, nicht behauptet "
+                "(ADR-018)")
+        auftrag_spitze, auftrag_meldung = fallauftrag_pruefen(
+            fall, schluesselring=schluesselring, systemstand=entscheid_systemstand,
+            ordnung=zeichnungsordnung, linie=ordnungsglieder, linie_pfad=linie_pfad,
+            vorbedingungen=fall_vorbedingungen, bekannt=bekannte_hashes)
+        if auftrag_meldung is not None:
+            return _sperre("fallauftrag", f"{verweigert}: {auftrag_meldung}{ausweg_ablehnung}")
+        if args.gate == ABBRUCH_GATE and (lebenslauf_inhalt or {}).get(
+                "fallauftrag") != auftrag_spitze["snapshot_sha256"]:
+            return _sperre(
+                "vorbedingung",
+                "Annahme verweigert: die Vorlage des Abbruchs nennt den Fallauftrag "
+                f"{str((lebenslauf_inhalt or {}).get('fallauftrag'))[:16]}…, geltend ist "
+                f"{auftrag_spitze['snapshot_sha256'][:16]}… — Vorlage neu erzeugen (python -m "
+                "rechner_pipeline.gates.fall_belegen abbruch ...)")
+
+    # Gezeichnet wird nur, was der Mensch gesehen haben kann (Runde G, ADR-025
+    # Nachtrag "Beleg und Sicht"): Die Sicht am festen Ort muss byte-gleich die
+    # aus den gepinnten Belegen erzeugte sein — EINE Stelle fuer jedes Gate
+    # mit Sicht (Register gates.sichten), nach allen Vorbedingungen, die die
+    # Pins bestimmen, und vor jedem Schreiben.
+    if args.entscheid == "angenommen":
+        if args.gate in LEBENSLAUF_GATES and lebenslauf_inhalt is not None:
+            sicht_belege["fallauftrag" if args.gate == AUFTRAG_GATE
+                         else "fallabbruch"] = lebenslauf_inhalt
+        # Die Bereiche DIESES Aufrufs (Pruefrunde H, H09): Gegen sie rechnet das
+        # Gate die Vergleichsgrundlage einer Sicht nach — im Fall Fall und die
+        # Linie des Gates, im Linienbereich die Linie.
+        sicht_meldung = _sichten.sicht_fehler(
+            args.gate, fall, pflichtbelege, sicht_belege,
+            vergleichsbereiche=[fall] if linie_modus else [fall, linie_pfad])
+        if sicht_meldung is not None:
+            return _sperre("sicht", f"Annahme verweigert: {sicht_meldung}")
+
     verzeichnis = entscheide_verzeichnis(fall)
     verzeichnis.mkdir(parents=True, exist_ok=True)
+    # Die Reste eines hart abgebrochenen frueheren Laufs dieses Gates
+    # wegraeumen (Angriffsrunde C, RC07) — am Anfang und fuer JEDEN Pfad,
+    # auch 'bereits_vorhanden', der selbst nichts schreibt und dem kein
+    # Schreiber das Aufraeumen abnimmt. Nur das Namensmuster dieses Gates
+    # (.<gate>-*.json.*.tmp); die Reste anderer Gates und fremde
+    # Punktdateien gehoeren anderen Laeufen. Das Ledger-Verzeichnis raeumt
+    # write_gate_ledger fuer sein Ziel. Die Gates eines Falls laufen
+    # nacheinander; ein gleichzeitiger Lauf desselben Gates wuerde hier
+    # dessen Tempdatei treffen.
+    for rest in verzeichnis.glob(f".{args.gate}-*.json.*.tmp"):
+        rest.unlink(missing_ok=True)
     schluessel_fehler = _schluessel_laden()
     if schluessel_fehler:
         return _sperre(
@@ -2453,9 +3736,22 @@ def main(argv: Optional[List[str]] = None):
     # Schluessel und eine Ordnung vorliegen; behauptet ist sie nur bei
     # einer Ablehnung ohne Schluessel (ADR-018).
     rolle = args.rolle
-    if zeichnungsordnung is not None and aktiver_schluessel is not None:
-        bestimmt = _zeichnungsrolle(zeichnungsordnung, aktiver_schluessel)
+    # Woher die zeichnende Rolle ihr Recht hat (ADR-026, dieselbe Regel wie
+    # beim Lesen): fuer die Gates der Fall-Rollen aus dem geltenden
+    # Fallauftrag, fuer jedes andere aus der Ordnung.
+    rechtsordnung: Optional[dict] = zeichnungsordnung
+    if args.gate in FALLROLLEN_GATES and auftrag_spitze is not None:
+        rechtsordnung = _fallauftrag.rechtsordnung(auftrag_spitze["auftrag"])
+    if rechtsordnung is not None and aktiver_schluessel is not None:
+        bestimmt = _zeichnungsrolle(rechtsordnung, aktiver_schluessel)
         if bestimmt is None and args.entscheid == "angenommen":
+            if args.gate in FALLROLLEN_GATES:
+                return _sperre(
+                    "zeichnung",
+                    f"Annahme verweigert: {args.gate} zeichnet die Programmleitung, die der "
+                    "geltende Fallauftrag benennt, mit dem Schluessel, den er ihr gibt — der "
+                    "Freigabeschluessel ist ein anderer; das Recht der Fall-Rolle kommt aus "
+                    "dem Auftrag, nicht aus der Ordnung (ADR-026)")
             return _sperre(
                 "zeichnung",
                 "Annahme verweigert: der Freigabeschluessel gehoert keiner "
@@ -2488,27 +3784,52 @@ def main(argv: Optional[List[str]] = None):
     # ein Aufruf unter anderer Ordnung, Klasse oder anderem Mandat ist kein
     # identischer Entscheid.
     zeichnung: Optional[Dict[str, str]] = None
-    if args.entscheid == "angenommen":
+    # Gezeichnet wird jede Annahme und jede Ablehnung mit dem Schluessel einer
+    # berechtigten Rolle (ADR-026, Nachtrag Pruefrunde I) — mit denselben
+    # Sperren der Rollenbindung (Spitze der Linie, Klasse, Mandat).
+    if gezeichnet:
         if aktiver_schluessel is None:
             return _sperre(
                 "freigabe",
-                "Annahme verweigert: --freigabe-schluessel <externe-datei> "
+                f"{verweigert}: --freigabe-schluessel <externe-datei> "
                 "ist erforderlich; ein frei editierbarer Fall darf seine "
                 "menschliche Freigabe nicht selbst behaupten",
             )
         if zeichnungsordnung is None:
             return _sperre(
                 "zeichnung",
-                "Annahme verweigert: --zeichnungsordnung fehlt — die "
+                f"{verweigert}: --zeichnungsordnung fehlt — die "
                 "zeichnende Rolle wird aus dem Freigabeschluessel ueber die "
                 "Ordnung bestimmt, nicht behauptet (ADR-018)",
             )
-        zf = _zeichnungsfehler(zeichnungsordnung, args.gate, aktiver_schluessel)
+        zf = _zeichnungsfehler(rechtsordnung, args.gate, aktiver_schluessel)
         if zf:
-            return _sperre("zeichnung", f"Annahme verweigert: {zf}")
+            if args.gate in FALLROLLEN_GATES:
+                zf += (f" — {args.gate} zeichnet die Programmleitung, die der geltende "
+                       "Fallauftrag benennt, mit dem Schluessel, den er ihr gibt (ADR-026)")
+            return _sperre("zeichnung", f"{verweigert}: {zf}")
+        glied_sha: Optional[str] = None
+        if not linie_geprueft:
+            # Waechter (Pruefrunde G, G09): Gezeichnet wird nur unter einer Linie,
+            # deren Glieder gegen den Vorstand geprueft sind.
+            return _sperre("ordnungslinie", f"{verweigert}: die Ordnungslinie wurde "
+                           "nicht gegen den Schluessel des Vorstands geprueft (ADR-025)")
+        if ordnungsglieder:
+            spitze_glied = ordnungsglieder[-1]
+            if spitze_glied["ordnung_sha256"] != zeichnungsordnung_sha:
+                return _sperre(
+                    "ordnungslinie",
+                    f"{verweigert}: die Zeichnungsordnung dieses Aufrufs "
+                    f"({str(zeichnungsordnung_sha)[:16]}) ist nicht die Spitze der "
+                    f"Ordnungslinie (Glied {spitze_glied['nummer']}, "
+                    f"{spitze_glied['ordnung_sha256'][:16]}) — gezeichnet wird nur unter "
+                    "der Spitze. Ausweg: die Ordnung in die Linie eintragen (python -m "
+                    "rechner_pipeline.gates.stand_belegen ordnung ...) oder die Ordnung der "
+                    "Spitze verwenden (ADR-025)")
+            glied_sha = spitze_glied["glied_sha256"]
         zeichnung = zeichnung_fuer(
-            zeichnungsordnung, zeichnungsordnung_sha, aktiver_schluessel,
-            mandat_sha256,
+            rechtsordnung, zeichnungsordnung_sha, aktiver_schluessel,
+            mandat_sha256, glied_sha,
         )
         # Simulation ohne Mandat ist keine Besetzung, sondern eine Luecke
         # (ADR-018; Review T22-07): Die Sperre greift VOR der Signatur —
@@ -2519,11 +3840,27 @@ def main(argv: Optional[List[str]] = None):
         ):
             return _sperre(
                 "mandat",
-                f"Annahme verweigert: die Rolle {zeichnung['rolle']!r} "
+                f"{verweigert}: die Rolle {zeichnung['rolle']!r} "
                 "ist mit einem Simulationsschluessel besetzt und handelt ohne "
                 "Mandat — --mandat <datei> ist bei Schluesselklasse simulation "
                 "Pflicht (ADR-018)",
             )
+        # Die Mandate bindet der Fallauftrag (ADR-026): Eine simulierte Rolle
+        # handelt im Fall unter GENAU dem Mandat, das der Auftrag ihr nennt —
+        # bei jeder Zeichnung, der gezeichneten Ablehnung eingeschlossen
+        # (Nachtrag Pruefrunde J; auftrag_spitze ist fuer jede Zeichnung im
+        # Fall gesetzt).
+        if (auftrag_spitze is not None
+                and zeichnung.get("schluesselklasse") == "simulation"
+                and auftrag_spitze["auftrag"]["mandate"].get(zeichnung["rolle"])
+                != zeichnung.get("mandat_sha256")):
+            return _sperre(
+                "mandat",
+                f"{verweigert}: die simulierte Rolle {zeichnung['rolle']!r} handelt "
+                f"unter dem Mandat {str(zeichnung.get('mandat_sha256'))[:16]}…, der Fallauftrag "
+                f"nennt ihr {str(auftrag_spitze['auftrag']['mandate'].get(zeichnung['rolle']))[:16]}"
+                "… — das Mandat ist Teil des Auftrags (ADR-026). Ausweg: unter dem genannten "
+                f"Mandat zeichnen oder den Fall neu beauftragen{ausweg_ablehnung}")
 
     kern_inhalt = {
         "command": "gate_entscheid",
@@ -2554,8 +3891,35 @@ def main(argv: Optional[List[str]] = None):
         kern_inhalt["pflichtbelege"] = pflichtbelege
     if args.gate == "A-M4":
         kern_inhalt["pk1_belege"] = pk1_belege
+        # Je Gegenstand der Weg und die woertliche Anzeige — signiert, damit
+        # "keine Aenderung seit Abnahme ..." im Beleg steht, nicht nur im Ledger.
+        kern_inhalt["standabnahmen"] = am4_standabnahmen
+    if args.gate in P9_GATES_MIT_STAND:
+        # Der Stand, den diese Abnahme abnimmt (ADR-018, Nachtrag
+        # 2026-10-01): A-M4 haelt ihn per == gegen den lebenden — im Fall
+        # wie ueber einen Verweis aus einem spaeteren Fall.
+        abgenommen = _stand.lebender_stand(
+            args.gate, Path(args.repo_root).resolve() if args.repo_root else None, fall)
+        if abgenommen is None:
+            return _sperre("vorbedingung",
+                           f"Entscheid verweigert: der Stand von {args.gate} ist nicht "
+                           "bestimmbar (--repo-root fehlt?)")
+        kern_inhalt["stand"] = abgenommen
+    if args.gate in P9_GATES_MIT_AUSNAHMEN:
+        # Was die Zeichnung NICHT deckt, im signierten Inhalt — woertlich
+        # (ADR-018, Nachtrag 2026-10-01). Eine Ablehnung deckt nichts und
+        # fuehrt deshalb keine.
+        kern_inhalt["ausnahmen"] = ak2_ausnahmen
     if zeichnung is not None:
         kern_inhalt["zeichnung"] = zeichnung
+    if args.entscheid == "angenommen" and args.gate in P9_LEBENSLAUF_FELDER:
+        # Der Inhalt des Auftrags bzw. Abbruchs, signiert (ADR-026): Wer spaeter
+        # liest, wer den Fall fuehrt und unter welchen Mandaten, liest es hier.
+        kern_inhalt[P9_LEBENSLAUF_FELDER[args.gate]] = lebenslauf_inhalt
+    if auftrag_spitze is not None:
+        # Jede Zeichnung im Fall (Annahme oder gezeichnete Ablehnung) nennt
+        # signiert den Auftrag, auf dem sie steht (Nachtrag Pruefrunde J).
+        kern_inhalt["fallauftrag"] = auftrag_spitze["snapshot_sha256"]
     # Idempotenz gegen den GELTENDEN Snapshot: derselbe Entscheid auf
     # demselben Stand — unter derselben Rollenbindung — wird gemeldet,
     # nicht dupliziert. Ein INHALTLICH anderer Entscheid (auch: andere
@@ -2581,7 +3945,7 @@ def main(argv: Optional[List[str]] = None):
         "vorgaenger": vorgaenger,
         "entschieden_am": utc_now(),
     }
-    if args.entscheid == "angenommen":
+    if zeichnung is not None:
         # Die Rollenbindung steht bereits im Snapshot (ueber kern_inhalt) und
         # wird mitsigniert: Wer spaeter prueft, sieht nicht nur DASS
         # gezeichnet wurde, sondern als welche Rolle, unter welcher Ordnung
@@ -2606,8 +3970,7 @@ def main(argv: Optional[List[str]] = None):
         json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     ).encode("utf-8")
     try:
-        with ziel.open("xb") as datei:
-            datei.write(payload)
+        schreibe_exklusiv(ziel, payload)
     except FileExistsError:
         return _usage(f"Snapshot existiert bereits: {ziel} — nie ueberschreiben")
     ergebnis_summary = {
@@ -2621,14 +3984,46 @@ def main(argv: Optional[List[str]] = None):
         "system_commit": snapshot["system"]["commit"][:12],
         "system_dirty": snapshot["system"]["dirty"],
     }
-    if args.entscheid == "angenommen":
+    if "freigabe" in snapshot:
         ergebnis_summary["freigabe_schluessel_sha256"] = snapshot["freigabe"][
             "schluessel_sha256"
         ]
+    # Unter welchem Stand der Ordnung gezeichnet und gelesen wurde (ADR-025) —
+    # gesagt, nicht verschwiegen, auch wenn es keine Linie gab.
+    ergebnis_summary["ordnungslinie"] = (
+        f"Glied {ordnungsglieder[-1]['nummer']} ({ordnungsglieder[-1]['glied_sha256'][:16]})"
+        if ordnungsglieder else "leer — eine Ablehnung zeichnet nichts (ADR-025)")
+    if linie_modus:
+        ergebnis_summary["bereich"] = "linie"
+    if "fallauftrag" in snapshot:
+        ergebnis_summary["fallauftrag"] = snapshot["fallauftrag"]
+    if args.gate == AUFTRAG_GATE and args.entscheid == "angenommen":
+        ergebnis_summary["programmleitung"] = lebenslauf_inhalt["programmleitung"]
+    if args.gate == ABBRUCH_GATE and args.entscheid == "angenommen":
+        ergebnis_summary["anzeige"] = ("dieser Fall endet hier, ohne Abnahme — danach ist im "
+                                       "Fall nichts mehr zeichenbar")
+    if args.gate in P9_GATES_MIT_STAND and "stand" in snapshot:
+        ergebnis_summary["stand"] = snapshot["stand"]
     if args.gate == "A-M4":
         ergebnis_summary["pk1_belege"] = pk1_belege
         ergebnis_summary["fall_scope"] = fall_scope
         ergebnis_summary["pflichtbelege"] = pflichtbelege
+        ergebnis_summary["standabnahmen"] = am4_standabnahmen
+    if args.gate == "A-K2":
+        ergebnis_summary["pflichtbelege"] = pflichtbelege
+        ergebnis_summary["ausnahmen"] = ak2_ausnahmen
+        if ak2_ausnahmen:
+            ergebnis_summary["anzeige"] = [_kernabnahme.ANZEIGE_REGRESSION]
+            ergebnis_summary["deckung"] = _kernabnahme.DECKUNG_UNTER_AUSNAHME
+    if args.gate == "A-B2":
+        # Die Registrierung liest den Snapshot-Hash aus diesem Ledger; die
+        # Belege daneben sagen dem Bediener, WELCHEN Eingang A-B2 abnimmt.
+        ergebnis_summary["pflichtbelege"] = pflichtbelege
+        # Was das Gate NICHT weiss (Block F, Nachbesserung, Pruefer-Befund
+        # 7): Die Betriebszeichnung des Belegs rechnet nur nach, wer den
+        # Betriebsschluessel haelt — das Gate prueft Form und Rolle, die
+        # Registrierung die Signatur. Gesagt wird es, nicht verschwiegen.
+        ergebnis_summary["betriebssignatur"] = BETRIEBSSIGNATUR_NICHT_VERIFIZIERT
     return _finalize(build_result(
         command=ledger_command, gate=f"entscheid.{args.gate}",
         gate_version=GATE_VERSION, exit_code=Exit.OK,

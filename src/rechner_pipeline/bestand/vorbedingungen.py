@@ -37,9 +37,12 @@ from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.bestand.ledger_bindung import (
     HERGELEITET,
     pruefe_ledger_betraege,
+    pruefe_reduktionen_tarifwerk,
     pruefe_scheiben_tarifwerk,
 )
+from rechner_pipeline.kern.vorgangsfolge import ERH, PEX, RED, TKU
 from rechner_pipeline.models.bestand import (
+    REDUKTION_EREIGNISSE,
     LEDGER_NAMES,
     MERKMALE_NAMES,
     SCHEIBEN_NAMES,
@@ -70,6 +73,124 @@ PB1_ROLLEN = frozenset(ROLLEN_DATEIEN) | {"config"}
 #: die gates-Schicht sie nicht abtippen und nicht selbst in die
 #: Vorzeige greifen muss (ADR-017, TOOL_NACH_VORZEIGE_ERLAUBT).
 PB1_ROLLEN_DATEIEN = ROLLEN_DATEIEN
+
+#: Je Vorgangsart der Folge (``kern.vorgangsfolge.RANG``) die Tabellen, die
+#: ihr Vertragsjahr tragen (Pruefrunde H, H02/H04). Jeder dieser Wege geht
+#: durch :func:`vorgangsjahr_fehler` und damit durch die Jahresgrenzen des
+#: Kerns; ein Test haelt die Menge Art mal Weg mit ``==`` gegen das Verhalten.
+VORGANGSJAHR_WEGE: Dict[str, Tuple[str, ...]] = {
+    PEX: ("historie", "ledger"),
+    RED: ("reduktionen", "ledger"),
+    TKU: ("reduktionen", "ledger"),
+    ERH: ("scheiben", "ledger"),
+}
+
+
+class _Dauern:
+    """Versicherungs- und Beitragsdauer eines Vertrags — alles, was die
+    Jahresgrenzen des Kerns vom Modellpunkt lesen (``n``, ``t``). P-B1 prueft
+    die Grenzen auch ohne Config, also ohne Rechnungsgrundlagen; liest der
+    Kern dort einmal mehr, faellt das hier laut auf (AttributeError), nicht
+    still."""
+
+    __slots__ = ("n", "t")
+
+    def __init__(self, n: int, t: int) -> None:
+        self.n, self.t = int(n), int(t)
+
+
+def vorgangsjahr_fehler(
+    portfolio: Any,
+    *,
+    historie: Any = None,
+    ledger: Any = None,
+    reduktionen: Any = None,
+    scheiben: Any = None,
+) -> List[str]:
+    """Die Jahresgrenzen der Vorgaenge auf JEDEM Tabellenweg — die Regel des
+    Kerns (``kern.beitragsreduktion.pruefe_vorgangsjahr``), nicht nachgebaut.
+
+    Pruefrunde H, H02/H04: Eine Beitragsfreistellung am oder nach dem
+    Beitragsende (a >= t) nahmen P-B1, Abschluss, Bericht und Bewertung an;
+    nur der Kern verweigerte sie, und nur, wenn der Vertrag ueber die
+    Vorgangsfolge lief — also nur mit registrierter Herabsetzung oder
+    Teilkuendigung. Die Folge prueft ihre Vorgaenge erst, wenn sie gebaut
+    wird; ein Vertrag ohne Folge lief an der Regel vorbei. Jetzt fragt die
+    Engine, durch die jeder Leser der Tabellen muss, den Kern fuer jede Zeile
+    jeder Art auf jedem Weg (:data:`VORGANGSJAHR_WEGE`), unabhaengig davon, ob
+    der Vertrag weitere Vorgaenge hat und ob eine Config vorliegt.
+
+    Das Vertragsjahr einer Zeile: Historie aus ``status_date`` (vollendete
+    Monate seit Versicherungsbeginn durch 12, wie die Bewertung das PEX-Jahr
+    liest), Ledger ``vertragsjahr`` — ohne die Buchungen, die der Zugang
+    schreibt (``models.bestand.zugangsbuchungen``: die Umbuchung eines
+    beitragsfrei uebernommenen Vertrags traegt das Zugangsjahr, ihr Vorgang
+    steht in der Historie; Pruefrunde I, I10) —, Reduktionstabelle ``reduktion_jahr``
+    (die Art sagt das Verfahren), Scheiben ``erhoehung_jahr``. Nur die
+    Kapitalversicherung kennt diese Vorgaenge; die Form der Zeilen pruefen
+    die Vertraege in ``models.bestand``.
+    """
+    import numpy as _np
+    import pandas as pd
+
+    from rechner_pipeline.bestand.fuehrung import months_between
+    from rechner_pipeline.kern.beitragsreduktion import (
+        BeitragsreduktionFehler,
+        pruefe_vorgangsjahr,
+    )
+    from rechner_pipeline.models.bestand import reduktion_ereignis, zugangsbuchungen
+
+    vertraege: Dict[int, Tuple[_Dauern, Any]] = {}
+    for pid, produkt, n, t, beginn in zip(
+            portfolio["police_id"], portfolio["produkt"], portfolio["duration"],
+            portfolio["premium_duration"], portfolio["insurance_start"]):
+        if str(produkt) == "klv":
+            vertraege[int(pid)] = (_Dauern(n, t), pd.Timestamp(beginn).date())
+
+    zeilen: List[Tuple[str, int, str, int]] = []   # (weg, police, art, jahr)
+    if historie is not None:
+        for pid, code, datum in zip(historie["police_id"], historie["status_code"],
+                                    historie["status_date"]):
+            pid = int(pid)
+            if str(code) in VORGANGSJAHR_WEGE and pid in vertraege:
+                jahr = months_between(vertraege[pid][1], pd.Timestamp(datum).date()) // 12
+                zeilen.append(("historie", pid, str(code), jahr))
+    if ledger is not None:
+        # Geprueft wird das Jahr des VORGANGS, nie das einer Buchung, die einen
+        # bestehenden Zustand in die Fuehrung uebernimmt (Pruefrunde I, I10):
+        # Die Umbuchung eines beitragsfrei uebernommenen Vertrags steht am
+        # Zugangstag und traegt das Vertragsjahr des Zugangs; das Jahr der
+        # Freistellung steht in der Historie und wird dort geprueft.
+        # Die Maske ist ein boolesches FELD, keine Liste (Pruefrunde J, J05): Eine
+        # leere Liste waehlt in pandas SPALTEN — ein Ledger ohne Zeile (der leere
+        # Lauf aus dem Nichts, ADR-020) verlor so seine Spalten und P-B1 meldete
+        # "'police_id'". Ein Ledger ohne Zeile traegt keinen Vorgang.
+        bekannt = ledger[_np.fromiter((int(p) in vertraege for p in ledger["police_id"]),
+                                      dtype=bool, count=len(ledger))]
+        vorgang = ~zugangsbuchungen(bekannt, portfolio) if len(bekannt) else []
+        for pid, ereignis, jahr, ist_vorgang in zip(
+                bekannt["police_id"], bekannt["ereignis"], bekannt["vertragsjahr"], vorgang):
+            if str(ereignis) in VORGANGSJAHR_WEGE and ist_vorgang:
+                zeilen.append(("ledger", int(pid), str(ereignis), int(jahr)))
+    if reduktionen is not None:
+        for pid, jahr, verfahren in zip(reduktionen["police_id"],
+                                        reduktionen["reduktion_jahr"],
+                                        reduktionen["verfahren"]):
+            zeilen.append(("reduktionen", int(pid), reduktion_ereignis(str(verfahren)),
+                           int(jahr)))
+    if scheiben is not None:
+        for pid, jahr in zip(scheiben["police_id"], scheiben["erhoehung_jahr"]):
+            zeilen.append(("scheiben", int(pid), ERH, int(jahr)))
+
+    fehler: List[str] = []
+    for weg, pid, art, jahr in zeilen:
+        if pid not in vertraege or weg not in VORGANGSJAHR_WEGE[art]:
+            continue
+        try:
+            pruefe_vorgangsjahr(vertraege[pid][0], jahr, art)
+        except BeitragsreduktionFehler as exc:
+            fehler.append(f"vorgangsjahr {weg}: police {pid}: {art} — {exc}")
+    return fehler
 
 
 
@@ -114,6 +235,36 @@ def pruefe_pb1_eingaenge(
     return geprueft, fehler, usage
 
 
+def fortschreibung_pruefen(
+    verzeichnis: Path, config: Path,
+) -> Tuple[Optional[_dt.date], List[str]]:
+    """P-B1 auf einem Fortschreibungslauf, wie gates.bestand_validate ihn
+    faehrt: Rollen aus dem Verzeichnis, Horizont aus dem Laufmanifest,
+    jede Datei und die Config an das Manifest gebunden. Rueckgabe
+    (Horizont, Fehler).
+
+    Fuer den A-M4-Konsumenten der Fuehrungsprobe (Angriffsrunde nach T27):
+    Die Probe rechnete die Buchungen der Fortschreibung auf eigenen Wegen
+    nach und liess dabei Nachbarfaelle offen, die P-B1 laengst prueft
+    (RED-Zeilen ausserhalb des Reduktionsjahres, die Hoehe dynamischer
+    Erhoehungen). Und welche Fortschreibung sie pruefte, waehlte der Beleg
+    selbst — auch eine, die am Tag nach dem Stichtag endete.
+    """
+    verzeichnis = Path(verzeichnis)
+    try:
+        manifest = manifest_aus_bytes(lies_manifest_bytes(verzeichnis / MANIFEST_DATEI))
+        horizont = _dt.date.fromisoformat(str(manifest["horizont"]))
+    except (ManifestError, OSError, KeyError, ValueError) as exc:
+        return None, [f"{verzeichnis}: kein lesbares Laufmanifest mit Horizont ({exc}) — "
+                      "die Fortschreibung ist kein belegter Lauf"]
+    eingaben: Dict[str, Path] = {
+        rolle: verzeichnis / datei for rolle, datei in ROLLEN_DATEIEN.items()
+        if (verzeichnis / datei).is_file()}
+    eingaben["config"] = Path(config)
+    _t, _g, fehler, usage = lies_und_pruefe_pb1(eingaben, bis=horizont, manifest=manifest)
+    return horizont, [str(e.get("message")) for e in usage + fehler]
+
+
 def manifest_fuer_nachrechnung(
     portfolio: Path, erwarteter_sha256: Optional[str],
 ) -> Tuple[Optional[Mapping[str, Any]], List[str]]:
@@ -150,8 +301,21 @@ def lies_und_pruefe_pb1(
     *,
     bis: Optional[_dt.date] = None,
     manifest: Optional[Mapping[str, Any]] = None,
+    ohne_plausibilitaet: bool = False,
 ) -> Tuple[Dict[str, Any], Dict[str, int], List[dict], List[dict]]:
     """Pruefen UND die geprueften Tabellen zurueckgeben.
+
+    Ein Ledger mit Herabsetzungen ohne Config ist ein Bedienfehler — fuer
+    jeden Aufrufer. Die fruehere Ausnahme ``ohne_herleitung`` fuer den
+    Bestandsbericht liess ihn verfaelschte Herabsetzungen mit Exit 0
+    rendern, die P-B1 auf denselben Bytes abwies (Angriffsrunde nach T27);
+    sie ist entfallen.
+
+    ``ohne_plausibilitaet=True`` laesst mit Config die Plausibilitaets-
+    baender weg und NUR sie (der Bestandsbericht, Angriffsrunde nach T27):
+    Ein Bericht ueber einen Bestand ausserhalb der Baender ist gewollt;
+    Buchungen, die keine registrierte Herabsetzung erzeugt, oder ein
+    Anteil, den die Config nicht belegt, sind es nicht.
 
     Der CLI-Produzent und A-M4 benutzen bewusst dieselbe Funktion. So ist ein
     frei editierbares, passend neu gehashtes P-B1-Ledger keine Selbstaussage:
@@ -176,6 +340,14 @@ def lies_und_pruefe_pb1(
     "Teile aus verschiedenen Laeufen" und "behaupteter Horizont" keine
     Frage der Plausibilitaet mehr, sondern der Identitaet.
 
+    Ein Manifest, dessen Horizont fehlt oder kein ISO-Datum ist, ist ein
+    Fehler (``code`` ``manifest``, mit Ausweg) — nie ein Lauf ohne
+    Horizont: Der belegte Horizont haelt Herabsetzungen und RED-Buchungen
+    (``validate_reduktionen``, ``validate_ledger``), und die Wache darf
+    nicht an einem unlesbaren Wert still ausfallen (Nachbesserung der
+    Pruefstrecke T27, Runde C). Erst ein FEHLENDES Manifest belegt keinen
+    Horizont.
+
     Rueckgabe: ``(tabellen, geprueft, contract_fehler, usage_fehler)``.
     ``tabellen`` traegt die Rollen, die gelesen werden konnten, und unter
     ``config`` die geparste Config, wenn eine uebergeben wurde.
@@ -193,19 +365,46 @@ def lies_und_pruefe_pb1(
             "message": f"Unbekannte P-B1-Eingangsrollen: {sorted(rollen - erlaubt)}",
         }], [])
 
-    if manifest is not None and bis is not None:
-        belegt = manifest_horizont(manifest)
-        if belegt != bis:
+    # Der Horizont, gegen den Buchungen und Herabsetzungen gehalten werden,
+    # ist der im Laufmanifest BELEGTE — nicht ``bis``: Der Bestandsbericht
+    # und der Abschluss rufen mit einem Bewertungsdatum, das vor dem Ende
+    # des Laufs liegen darf; ein Lauf ohne Manifest belegt keinen Horizont
+    # (Pruefrunde T27, Runde C, RC02).
+    #
+    # Fail-fast (Nachbesserung der Pruefstrecke): Ein Manifest, das einen
+    # Horizont nicht lesbar belegt, ist ein Fehler, kein Lauf ohne Horizont.
+    # Die Funktion nimmt jede ``Mapping``-Form an — ``manifest_aus_bytes``
+    # prueft den Horizont zwar schon, aber wer ein Mapping selbst baut oder
+    # aendert, laeuft daran vorbei; ein stilles ``horizont = None`` schaltete
+    # dann die Horizontwache an Herabsetzung und RED-Buchung aus, bei gruener
+    # Meldung. Mit ``bis`` fiel der Aufruf vorher als rohe KeyError/ValueError
+    # aus der Funktion statt als Befund.
+    horizont: Optional[_dt.date] = None
+    if manifest is not None:
+        try:
+            horizont = manifest_horizont(manifest)
+        except (KeyError, ValueError, TypeError) as exc:
             errors.append({
                 "code": "manifest",
                 "message": (
-                    f"--bis {bis.isoformat()} widerspricht dem Laufmanifest: "
-                    f"der Lauf wurde bis {belegt.isoformat()} simuliert. "
-                    "Der Horizont ist eine Eigenschaft des Laufs, nicht des "
-                    "Aufrufs — --bis auf den belegten Wert setzen oder den "
-                    "Lauf neu fortschreiben"
+                    f"Laufmanifest ohne lesbaren Horizont ({type(exc).__name__}: {exc}) — "
+                    "ohne den belegten Horizont waeren Herabsetzungen und "
+                    "RED-Buchungen hinter dem Laufende ungeprueft. Ausweg: den "
+                    "Lauf neu fortschreiben (bestand.cli_fortschreibung schreibt "
+                    "das Manifest); nicht von Hand ergaenzen"
                 ),
             })
+    if horizont is not None and bis is not None and horizont != bis:
+        errors.append({
+            "code": "manifest",
+            "message": (
+                f"--bis {bis.isoformat()} widerspricht dem Laufmanifest: "
+                f"der Lauf wurde bis {horizont.isoformat()} simuliert. "
+                "Der Horizont ist eine Eigenschaft des Laufs, nicht des "
+                "Aufrufs — --bis auf den belegten Wert setzen oder den "
+                "Lauf neu fortschreiben"
+            ),
+        })
 
     tabellen: Dict[str, Any] = {}
     # SHA-256 der Bytes, die geparst wurden — fuer Konsumenten, die den
@@ -338,7 +537,7 @@ def lies_und_pruefe_pb1(
         geprueft["reduktionen_zeilen"] = int(len(reduktionen))
         try:
             for meldung in validate_reduktionen(
-                portfolio, reduktionen, historie
+                portfolio, reduktionen, historie, horizont=horizont
             ):
                 errors.append({"code": "reduktionen", "message": meldung})
         except Exception as exc:  # noqa: BLE001 — malformed data blockiert
@@ -351,11 +550,24 @@ def lies_und_pruefe_pb1(
         geprueft["ledger_zeilen"] = int(len(ledger))
         try:
             for meldung in validate_ledger(
-                portfolio, ledger, historie=historie, scheiben=scheiben
+                portfolio, ledger, historie=historie, scheiben=scheiben,
+                horizont=horizont,
             ):
                 errors.append({"code": "ledger", "message": meldung})
         except Exception as exc:  # noqa: BLE001 — malformed data blockiert
             errors.append({"code": "ledger", "message": str(exc)})
+
+    if portfolio is not None and not any(e["code"] == "portfolio" for e in errors):
+        # Die Jahresgrenzen der Vorgaenge auf jedem Tabellenweg, delegiert an
+        # den Kern (Pruefrunde H, H02/H04) — ohne Config pruefbar, weil sie
+        # nur die Dauern des Stamms braucht.
+        try:
+            for meldung in vorgangsjahr_fehler(
+                    portfolio, historie=historie, ledger=ledger,
+                    reduktionen=reduktionen, scheiben=scheiben):
+                errors.append({"code": "vorgangsjahr", "message": meldung})
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "vorgangsjahr", "message": str(exc)})
 
     if ledger is not None and scheiben is None:
         try:
@@ -370,6 +582,79 @@ def lies_und_pruefe_pb1(
                 "--scheiben ist erforderlich, sonst sind die Bestandssummen "
                 "systematisch zu niedrig und die Bewegungs-Identitaet "
                 "falsch-positiv verletzt",
+            })
+    if ledger is not None and reduktionen is None:
+        # Dieselbe Wache fuer die Herabsetzung (Angriffsrunde 4 der
+        # Pruefrunde T27): Ohne die Tabelle rechnet P-B1 jeden
+        # herabgesetzten Vertrag ungekuerzt nach und meldet das richtige
+        # Ledger als falsch — ein Bedienfehler, kein Befund (A27-02).
+        try:
+            hat_herabsetzungen = bool(ledger["ereignis"].isin(REDUKTION_EREIGNISSE).any())
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "ledger", "message": str(exc)})
+            hat_herabsetzungen = False
+        if hat_herabsetzungen:
+            usage_errors.append({
+                "code": "missing_arg",
+                "message": "Ledger enthaelt Herabsetzungen oder Teilkuendigungen (RED/TKU) — "
+                "--reduktionen ist erforderlich, sonst rechnet die Wache "
+                "jeden herabgesetzten Vertrag ungekuerzt nach",
+            })
+    if "config" not in eingaben:
+        # Ohne Config werden die Betraege nicht hergeleitet — ein Ledger mit
+        # Herabsetzungen ist dann nicht pruefbar, und PASSED waere eine
+        # Behauptung (Angriffsrunde der Nacht: Auszahlung x10, Auszahlung
+        # weg, Summe halbiert — alles PASSED). Wie ERH ohne --scheiben: ein
+        # Bedienfehler.
+        #
+        # Registriert ist ein Vorgang im Ledger ODER in der Reduktionstabelle
+        # (Pruefrunde G, Fund G05): Die Wache sah nur den Ledger, und ein Lauf,
+        # dessen Tabelle 270 Vorgaenge registriert, deren Buchungen im Ledger
+        # alle fehlen, ging ohne Config gruen durch P-B1 und den Bericht -
+        # dieselben Bytes, die beide mit Config verweigern. Die
+        # Vollstaendigkeit (jeder registrierte Vorgang hat seine Buchungen)
+        # prueft nur die Herleitung, und die braucht die Config.
+        #
+        # Und auch OHNE Ledger (Pruefrunde H, H03/H05): Die Wache stand unter
+        # "ledger is not None"; eine Reduktionstabelle allein ging ohne Config
+        # gruen durch P-B1, obwohl Verfahren und Anteil jeder Zeile eine
+        # Aussage ueber Tarifwerk und Annahmen sind, die nur die Config prueft.
+        red_ohne_config = False
+        if ledger is not None:
+            try:
+                red_ohne_config = bool(ledger["ereignis"].isin(REDUKTION_EREIGNISSE).any())
+            except Exception as exc:  # noqa: BLE001 - malformed data blockiert
+                errors.append({"code": "ledger", "message": str(exc)})
+        registriert = reduktionen is not None and len(reduktionen) > 0
+        if red_ohne_config or registriert:
+            traeger = []
+            if red_ohne_config:
+                traeger.append("Ledger (RED/TKU)")
+            if registriert:
+                traeger.append(f"Reduktionstabelle ({len(reduktionen)} Zeilen)")
+            usage_errors.append({
+                "code": "missing_arg",
+                "message": f"{' und '.join(traeger)} enthaelt Herabsetzungen oder "
+                "Teilkuendigungen (RED/TKU) - --config ist erforderlich, sonst wird "
+                "keine ihrer Buchungen hergeleitet und nicht geprueft, ob jeder "
+                "registrierte Vorgang gebucht ist",
+            })
+    if ledger is not None and schichten is None:
+        # Dieselbe Wache fuer die Korrekturschicht (Angriffsrunde
+        # 2026-09-26): Ein Ledger, der eine absorbierte Schicht bucht, ist
+        # ohne Schicht-Tabelle nicht herleitbar — das ist ein Bedienfehler,
+        # kein Befund gegen den Lauf (vorher: Exit 20, "falsch gebucht").
+        try:
+            hat_schicht = bool((ledger["betrag_art"] == "dDK_absorption").any())
+        except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+            errors.append({"code": "ledger", "message": str(exc)})
+            hat_schicht = False
+        if hat_schicht:
+            usage_errors.append({
+                "code": "missing_arg",
+                "message": "Ledger enthaelt absorbierte Korrekturschichten "
+                "(dDK_absorption) — --schichten und --verankerung sind "
+                "erforderlich, sonst rechnet die Wache ohne Schicht nach",
             })
 
     if (
@@ -420,9 +705,10 @@ def lies_und_pruefe_pb1(
             try:
                 for meldung in config.validate():
                     errors.append({"code": "config", "message": meldung})
-                for meldung in sanity_check(portfolio, config.plausibilitaet):
-                    errors.append({"code": "sanity", "message": meldung})
-                geprueft["sanity_baender"] = len(config.plausibilitaet)
+                if not ohne_plausibilitaet:
+                    for meldung in sanity_check(portfolio, config.plausibilitaet):
+                        errors.append({"code": "sanity", "message": meldung})
+                    geprueft["sanity_baender"] = len(config.plausibilitaet)
             except Exception as exc:  # noqa: BLE001 — malformed data blockiert
                 errors.append({"code": "sanity", "message": str(exc)})
             # Das gamma1 jeder Scheibe gegen das Tarifwerk ihrer Generation
@@ -443,11 +729,17 @@ def lies_und_pruefe_pb1(
             # Betragsidentitaet je Buchung (T20-04): erst mit den
             # Rechnungsgrundlagen der Config ist der Kern herleitbar. Nur
             # auf formal gueltigen Zeilen — sonst meldete jede
-            # Formverletzung zusaetzlich einen Herleitungsfehler.
+            # Formverletzung zusaetzlich einen Herleitungsfehler. Auch auf
+            # einem LEEREN Ledger (Pruefrunde I, I11): Er traegt nicht mehr
+            # Buchungen als ein fehlender; die Herleitung haelt dann die
+            # Tabelle gegen Tarifwerk und Annahmen und meldet jeden
+            # registrierten Vorgang ohne Buchung.
+            hergeleitet = False
             if (
                 ledger is not None
                 and not any(e["code"] in ("ledger", "portfolio", "config") for e in errors)
             ):
+                hergeleitet = True
                 try:
                     for meldung in pruefe_ledger_betraege(
                         portfolio, ledger, config, scheiben=scheiben,
@@ -466,6 +758,25 @@ def lies_und_pruefe_pb1(
                             set(HERGELEITET) | {"INV", "REA"}).sum())
                 except Exception as exc:  # noqa: BLE001 — malformed data blockiert
                     errors.append({"code": "ledger", "message": str(exc)})
+            # Ohne Herleitung (Pruefrunde H, H03/H05; Pruefrunde I, I11): Die
+            # Tabelle registrierter Vorgaenge wird trotzdem gegen Tarifwerk und
+            # Annahmen gehalten — ueber DIESELBE Funktion wie auf dem
+            # Ledger-Weg (dort ruft sie pruefe_ledger_betraege). Die Bindung
+            # haengt an der TABELLE, nicht am Ledger: Sie laeuft hier, wann
+            # immer die Herleitung nicht lief — ohne Ledger, und auch bei einem
+            # Ledger mit Formfehlern. Was dann ungeprueft bleibt, sind die
+            # Buchungen selbst (Betraege, Vollstaendigkeit); die Summary nennt
+            # ihre Zahl, statt "all_passed" darueber zu stellen.
+            if not hergeleitet and reduktionen is not None and len(reduktionen) > 0:
+                geprueft["reduktionen_buchungen_ungeprueft"] = int(len(reduktionen))
+                if not any(e["code"] in ("reduktionen", "portfolio", "config")
+                           for e in errors):
+                    try:
+                        for meldung in pruefe_reduktionen_tarifwerk(
+                                portfolio, reduktionen, config):
+                            errors.append({"code": "reduktionen", "message": meldung})
+                    except Exception as exc:  # noqa: BLE001 — malformed data blockiert
+                        errors.append({"code": "reduktionen", "message": str(exc)})
     if manifest is not None:
         geprueft["manifest_gebunden"] = len(
             [r for r in eingaben if r in tabellen])

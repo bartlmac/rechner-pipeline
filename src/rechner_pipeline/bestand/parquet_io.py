@@ -12,6 +12,7 @@ Knoten: klv, bu
 
 from __future__ import annotations
 
+import glob
 import hashlib
 import io
 import os
@@ -25,6 +26,7 @@ import pyarrow.parquet as pq
 
 from rechner_pipeline.models.bestand import (
     ABSCHLUSS_NAMES,
+    ABSCHLUSS_NAMES_VOR_UMSTELLUNG,
     ABSCHLUSS_SPALTEN,
     LEDGER_NAMES,
     LEDGER_SPALTEN,
@@ -110,6 +112,28 @@ def neue_datei(verzeichnis: Path, name: str) -> Path:
     raise OSError(f"kein freier temporaerer Dateiname neben {verzeichnis / name}")
 
 
+def _raeume_zwillinge(path: Path) -> None:
+    """Hardlink-Zwillinge eines exklusiv geschriebenen Ziels wegraeumen
+    (Runde D, Fund 6).
+
+    Endet ein Prozess zwischen ``os.link`` und ``unlink``, bleibt die
+    Tempdatei als zweiter Name der festgeschriebenen Bytes liegen. Beim
+    naechsten Schreiben DESSELBEN Ziels geht sie — aber nur, wer
+    nachweislich derselbe Inode ist wie das Ziel (``samefile``): Eine
+    andere Tempdatei desselben Musters kann einem gleichzeitigen Schreiber
+    gehoeren, der gerade schreibt; die raeumt der Tageslauf unter seiner
+    Sperre (``betrieb.tageslauf._raeume_schreibreste``).
+    """
+    if not path.is_file():
+        return
+    for rest in path.parent.glob(f".{glob.escape(path.name)}.*.tmp"):
+        try:
+            if os.path.samefile(rest, path) and not rest.is_symlink():
+                rest.unlink(missing_ok=True)
+        except FileNotFoundError:
+            continue
+
+
 def write_portfolio(
     df: pd.DataFrame, path: Path, *, exklusiv: bool = False
 ) -> Path:
@@ -147,6 +171,8 @@ def write_portfolio(
     # ihn niemand mehr lesen kann.
     # Die temporaere Datei traegt den Modus der umask zum Schreibzeitpunkt
     # (neue_datei); os.replace nimmt ihn an den Zielpfad mit.
+    if exklusiv:
+        _raeume_zwillinge(path)
     tmp = neue_datei(path.parent, path.name)
     try:
         pq.write_table(table, tmp, compression="zstd")
@@ -157,7 +183,9 @@ def write_portfolio(
             # os.replace kann das nicht: es ueberschreibt bewusst, auch
             # eine schreibgeschuetzte Datei.
             os.link(tmp, path)
-            tmp.unlink()
+            # missing_ok: ein gleichzeitiger Schreiber desselben Ziels darf
+            # diesen Zwilling schon weggeraeumt haben (_raeume_zwillinge).
+            tmp.unlink(missing_ok=True)
         else:
             os.replace(tmp, path)
     except BaseException:
@@ -173,6 +201,10 @@ def write_portfolio(
 #: ist eine neue Familie ein Eintrag.
 FAMILIEN: Tuple[Tuple[str, ...], ...] = (
     ABSCHLUSS_NAMES,
+    # Die Gestalt vor der Umstellung (ohne Konventionsspalte): ohne diesen
+    # Eintrag fiele eine alte Abschlussdatei in den Stamm-Rueckfall und kaeme
+    # als Teilmenge ohne Bewertungsspalten zurueck.
+    ABSCHLUSS_NAMES_VOR_UMSTELLUNG,
     LEDGER_NAMES,
     SCHEIBEN_NAMES,
     REDUKTIONEN_NAMES,

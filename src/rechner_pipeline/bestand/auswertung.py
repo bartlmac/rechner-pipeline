@@ -8,8 +8,13 @@ the Bestandsbericht. It computes NOTHING actuarial of its own:
 * Deckungskapital: ``kDRx_bpfl`` for premium-paying contracts; after a
   Beitragsfreistellung the paid-up reserve
   :func:`Rechenkern.reserve_beitragsfrei` (``VS_bfr(a0) * kVx_bfr(a)``).
-* Rueckkaufswert: the row's ``RKW`` — premium-paying track only (the sheet
-  defines no surrender rule for paid-up contracts, Stufe 1).
+* Rueckkaufswert: premium-paying, the kernel's monthly reserve; after a
+  Beitragsfreistellung, in the leading convention ``monatsgenau``, the value
+  of the kernel's contract state (``kern.vorgangsfolge.Vertragsstand``):
+  paid-up reserve minus the Stornoabzug of the same tariff rule (Tarifplan
+  KLV 7.2, Entscheid B3; Pruefrunde H, H01). The convention ``jahreszeile``
+  keeps 0.0 for paid-up contracts — the rule its closings were written in
+  (Tarifplan KLV 6).
 * Beitragsfreie Summe: ``VS_bfr`` fixed at the PEX year.
 
 Efficiency follows the documented reuse convention: one
@@ -21,8 +26,10 @@ Knoten: klv, bu
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as _dt
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from types import SimpleNamespace
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import pandas as pd
 
@@ -31,16 +38,27 @@ from rechner_pipeline.bestand.fuehrung import bestand_am, months_between
 from rechner_pipeline.bestand.kernlauf import vertrags_rkw
 from rechner_pipeline.bestand.schichten import schichten_je_police
 from rechner_pipeline.kern.beitragsreduktion import (
-    reduzierte_teile,
-    vertrags_monatsreserve_reduziert,
+    BeitragsreduktionFehler,
+    pruefe_vorgangsjahr,
+)
+from rechner_pipeline.kern.vorgangsfolge import (
+    PEX,
+    UMFANG_ALLE,
+    Vertragsstand,
+    Vorgangsfolge,
+    vorgang,
 )
 from rechner_pipeline.kern.korrekturschicht import (
     absorbierter_wert,
+    schicht_traegt,
     schichtwert_bei,
     zuschlag_bei_pex,
 )
-from rechner_pipeline.kern import ModelPoint, Rechenkern
+from rechner_pipeline.kern import ModelPoint, Rechenkern, vertrags_monatsreserve
 from rechner_pipeline.models.bestand import (
+    FUEHRUNGSKONVENTION,
+    KONVENTION_JE_PRODUKT,
+    KONVENTION_MONATSGENAU,
     STATUS_HISTORIE_SPALTEN,
     bu_model_point_kwargs,
     model_point_kwargs,
@@ -52,17 +70,60 @@ def monate_ta_von(schicht: Tuple[Any, int, str]) -> int:
     return int(schicht[1])
 
 
+def monatsgenau_fuer(konvention: str, produkt: str) -> bool:
+    """Ob die Konvention fuer dieses Produkt unterjaehrig mischt.
+
+    Die Regel steht je Produkt in ``models.bestand.KONVENTION_JE_PRODUKT``;
+    eine unbekannte Konvention ist ein Aufruffehler, kein Rueckfall.
+    """
+    regel = KONVENTION_JE_PRODUKT.get(konvention)
+    if regel is None:
+        raise ValueError(
+            f"Bewertungskonvention {konvention!r} unbekannt (bekannt: "
+            f"{sorted(KONVENTION_JE_PRODUKT)})")
+    return regel[produkt] == KONVENTION_MONATSGENAU
+
+
 def vertragswerte(
-    kern: Rechenkern, months_exp: int, pex_jahr: Optional[int] = None
+    kern: Rechenkern, months_exp: int, pex_jahr: Optional[int] = None,
+    *, monatsgenau: bool,
 ) -> Dict[str, Any]:
     """Aktuarielle Werte eines Vertrags am Stichtag (``months_exp`` volle Monate).
 
     ``pex_jahr`` ist das Vertragsjahr der Beitragsfreistellung (None =
-    beitragspflichtig). Rueckkaufswert nur auf dem beitragspflichtigen Track;
-    fuer beitragsfreie Vertraege ist er 0.0 (im Blatt nicht definiert).
+    beitragspflichtig).
+
+    ``monatsgenau`` (seit 2026-10-01 die Fuehrungskonvention): die
+    unterjaehrige Mischung des Kerns (``monatsreserve``); ein beitragsfreier
+    Vertrag rechnet ueber den Zustand des Kerns (:func:`_beitragsfrei_werte`),
+    mit dem Rueckkaufswert des beitragsfreien Vertrags (B3). Sonst die Zeile
+    des angebrochenen Vertragsjahres, wie der Abschluss vor der Umstellung
+    rechnete, mit Rueckkaufswert 0.0 nach der Freistellung — dieser Zweig
+    bleibt wortgleich, damit alte Abschluesse in ihrer Konvention bit-genau
+    nachgerechnet werden.
     """
     jahr = int(months_exp) // 12
+    if pex_jahr is not None and monatsgenau:
+        # Ein Baustein: Abzug je Vertrag und je Baustein fallen zusammen, und
+        # ohne Teilkuendigung traegt der Umfang nichts — beides steht hier
+        # nur, weil der Zustand des Kerns es ohne Default verlangt.
+        werte = _beitragsfrei_werte(
+            kern, (), int(pex_jahr), None, int(months_exp),
+            {"stoab_je_baustein": False, "tku_umfang": UMFANG_ALLE})
+        return {"jahr": jahr, "status": "PEX",
+                "deckungskapital": werte["deckungskapital"],
+                "rueckkaufswert": werte["rueckkaufswert"],
+                "vs_bfr": werte["vs_bfr"]}
     if pex_jahr is None:
+        if monatsgenau:
+            reserve = kern.monatsreserve(int(months_exp))
+            return {
+                "jahr": jahr,
+                "status": "POL",
+                "deckungskapital": reserve.drx_bpfl,
+                "rueckkaufswert": reserve.rkw,
+                "vs_bfr": 0.0,
+            }
         zeile = kern.zustand_am(months_exp)
         return {
             "jahr": zeile.jahr,
@@ -78,6 +139,52 @@ def vertragswerte(
         "rueckkaufswert": 0.0,
         "vs_bfr": kern.beitragsfreie_summe(pex_jahr),
     }
+
+
+def pruefe_pex_jahr(pid: int, mp: ModelPoint, pex_jahr: int) -> None:
+    """Die Jahresgrenze der Beitragsfreistellung fuer die Bewertung — die
+    Regel des Kerns (``beitragsreduktion.pruefe_vorgangsjahr``, Tarifplan KLV
+    7.3: nur solange Beitraege laufen, 0 < a < t), nicht nachgebaut.
+
+    Pruefrunde H, H02: Ein Vertrag mit Beitragsfreistellung und OHNE
+    Herabsetzung oder Teilkuendigung lief an der Regel vorbei, weil er nicht
+    ueber die Vorgangsfolge gerechnet wurde; die Bewertung wies einen
+    ausfinanzierten Vertrag still als beitragsfrei gestellt aus. Jetzt
+    verweigert sie ihn benannt, in jeder Konvention, auch wenn ein Aufrufer
+    die Bewertung ohne die Pruefung P-B1 ruft.
+    """
+    try:
+        pruefe_vorgangsjahr(mp, int(pex_jahr), PEX)
+    except BeitragsreduktionFehler as exc:
+        raise ValueError(f"police {pid}: {exc}") from exc
+
+
+def _beitragsfrei_werte(
+    grund: Rechenkern,
+    scheiben: Sequence[Tuple[int, Rechenkern]],
+    pex_jahr: int,
+    schicht: Optional[Tuple[Any, int]],
+    monate: int,
+    tarifwerk: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Die Werte eines beitragsfrei gestellten Vertrags OHNE Herabsetzung und
+    Teilkuendigung am Monats-Stichtag — der Zustand des Kerns
+    (``kern.vorgangsfolge``), EINE Rechnung fuer Deckungskapital,
+    Korrekturschicht, beitragsfreie Summe und Rueckkaufswert.
+
+    Pruefrunde H, H01: Die Bewertung rechnete die beitragsfreie Reserve
+    daneben selbst zusammen und fuehrte den Rueckkaufswert mit 0,00, waehrend
+    der Kern fuer denselben Zustand Rueckstellung minus Stornoabzug rechnet
+    (Tarifplan KLV 7.2, Entscheid B3) — zwei Leser, zwei Werte. Die Folge
+    traegt hier keinen Vorgang der Nebentabelle, nur die Scheiben und die
+    Freistellung; die Freistellung geht dabei durch die Jahresgrenze des
+    Kerns (``nach_pex``).
+    """
+    folge = Vorgangsfolge(
+        grund, list(scheiben), [], pex_jahr=int(pex_jahr), schicht=schicht,
+        stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]),
+        tku_umfang=str(tarifwerk["tku_umfang"]))
+    return werte_nach_vorgaengen(folge, int(monate), monatsgenau=True)
 
 
 def beitraege(kern: Rechenkern, jahr: int) -> Dict[str, float]:
@@ -197,7 +304,15 @@ def _scheiben_kerne(
     config: BestandConfig,
     merkmale: Optional[pd.DataFrame] = None,
 ) -> Dict[int, List[Dict[str, Any]]]:
-    """police_id -> Erhoehungsscheiben mit eigenem Rechenkern (Schichtungsprinzip)."""
+    """police_id -> Erhoehungsscheiben mit eigenem Rechenkern (Schichtungsprinzip).
+
+    Jede Zeile geht durch die Jahresgrenze der Erhoehung des Kerns
+    (``kern.rechenkern.pruefe_scheibenjahre``; Pruefrunde I, I12): Hier laufen
+    alle Wege der Bewertung zusammen — auch die Jahreszeile eines beitragsfrei
+    gestellten Vertrags, die keinen Kern-Eingang fuer Scheibenlisten ruft.
+    """
+    from rechner_pipeline.kern.rechenkern import pruefe_scheibenjahre  # noqa: PLC0415
+
     grundlagen = grundlagen_je_police(config, merkmale)
     haupt = stamm.set_index("police_id")
     je_police: Dict[int, List[Dict[str, Any]]] = {}
@@ -231,6 +346,10 @@ def _scheiben_kerne(
         # der Generation rekonstruieren — genau das hatte die Tarifwerk-Regel
         # (gamma1-Bezugsgroesse GrundVS => Scheibe 0) verloren.
         kwargs["gamma1"] = float(s["gamma1"])
+        # Die Grenze liest nur die Dauern der Grundversicherung (n, t).
+        pruefe_scheibenjahre(
+            SimpleNamespace(n=int(h["duration"]), t=int(h["premium_duration"])),
+            ((int(s["erhoehung_jahr"]), None),))
         kern = Rechenkern(ModelPoint(**kwargs))
         je_police.setdefault(pid, []).append(
             {
@@ -242,69 +361,156 @@ def _scheiben_kerne(
     return je_police
 
 
-def werte_reduziert(
-    teile: List[Tuple[int, Any]], months_exp: int, pex_jahr: Optional[int],
+def werte_nach_vorgaengen(
+    folge: Vorgangsfolge, months_exp: int, *, monatsgenau: bool,
 ) -> Dict[str, Any]:
-    """Aktuarielle Werte eines HERABGESETZTEN Vertrags am Stichtag.
+    """Aktuarielle Werte eines Vertrags MIT Vorgaengen am Stichtag.
 
-    Spiegel von :func:`vertragswerte`. Der herabgesetzte Vertrag rechnet
-    ueber seinen geknickten Verlauf, nicht ueber zwei skalierte
-    Vertraege; der Stornoabschlag gilt je Vertrag und wird einmal auf den
-    Gesamtwerten gebildet (``vertrags_monatsreserve_reduziert``). Eine
-    Beitragsfreistellung NACH der Herabsetzung laesst die dort fixierte
-    Summe auf dem beitragsfreien Satz weiterlaufen.
+    Spiegel von :func:`vertragswerte`: der Zustand der Vorgangsfolge am
+    Bewertungsmonat (``kern.vorgangsfolge`` — dieselbe Folge, die Engine,
+    P-B1 und Fuehrungsprobe lesen). WO der Stornoabschlag greift, sagt das
+    Tarifwerk der Generation (T27-12), und ob die Teilkuendigung jeden
+    Baustein trifft, ebenso; beides traegt die Folge.
+
+    Dieselbe Stichtagskonvention wie fuer jeden anderen Vertrag
+    (Kalibrierungsfund N5 und Fund N11 der Pruefrunde T27). Der
+    Bewertungsmonat ist unter ``monatsgenau`` der Stichtag selbst, sonst der
+    letzte Vertragsjahrestag — beide lesen dieselben Kern-Funktionen, die
+    zwischen den Jahrestagen linear mischen und auf ihnen die Jahreszeile
+    treffen. Der Rueckkaufswert eines beitragsfreien Vertrags ist unter
+    ``monatsgenau`` der des Zustands — Rueckstellung minus Stornoabzug nach
+    derselben Tarifregel (Entscheid B3 vom 2026-10-01; Pruefrunde H, H01: bis
+    dahin stand er hier mit null, waehrend die Teilkuendigung ihn rechnete).
+    Unter ``jahreszeile`` bleibt er null: die Regel, in der Abschluesse dieser
+    Konvention geschrieben wurden (Tarifplan KLV 6).
     """
     jahr = int(months_exp) // 12
-    if pex_jahr is None:
-        reserve = vertrags_monatsreserve_reduziert(teile, int(months_exp))
-        return {
-            "jahr": jahr, "status": "POL",
-            "deckungskapital": reserve.drx_bpfl,
-            "rueckkaufswert": reserve.rkw,
-            "vs_bfr": 0.0,
-        }
+    monat = int(months_exp) if monatsgenau else 12 * jahr
+    stand = folge.stand_am(monat)
+    werte = stand.werte(monat)
+    beitragsfrei = werte["status"] == "PEX"
     return {
-        "jahr": jahr, "status": "PEX",
-        "deckungskapital": sum(
-            v.reserve_beitragsfrei(
-                int(pex_jahr) - erh_jahr, int(months_exp) - 12 * erh_jahr)
-            for erh_jahr, v in teile),
-        "rueckkaufswert": 0.0,
-        "vs_bfr": sum(
-            v.beitragsfreie_summe(int(pex_jahr) - erh_jahr)
-            for erh_jahr, v in teile),
+        "jahr": jahr, "status": werte["status"],
+        "deckungskapital": werte["deckungskapital"],
+        "rueckkaufswert": (0.0 if beitragsfrei and not monatsgenau
+                           else werte["rueckkaufswert"]),
+        "korrekturschicht": werte["korrekturschicht"],
+        "vs_bfr": werte["vs_bfr"] if beitragsfrei else 0.0,
+        "leistung": werte["leistung"],
+        "stand": stand,
     }
 
 
-def _reduzierte_vertraege(
+def beitraege_nach_vorgaengen(stand: Vertragsstand, jahr: int) -> Dict[str, float]:
+    """Beitraege eines Vertrags mit Vorgaengen — KOMPONENTENWEISE.
+
+    Jeder Baustein zahlt den Beitrag seines fortgefuehrten Teils (Summe
+    ``c x S_i`` des Zustands, ``Baustein.beitragskern``): Herabsetzungen
+    senken den Faktor c, Teilkuendigungen die wirksame Summe. Die
+    Stueckkosten sind je Baustein fix und werden NICHT mit der Summe
+    skaliert (Pruefrunde T27, Befund 13; Annahme B4). Der Beitrag ist der
+    eines gewoehnlichen Kerns mit dieser Summe — kein zweiter Rechenweg.
+    Nach der Beitragsfreistellung zahlt der Vertrag nichts.
+    """
+    aus = {"bjb": 0.0, "bzb_jahr": 0.0}
+    for erh_jahr, kern in stand.beitragskerne(12 * int(jahr)):
+        bt = beitraege(kern, int(jahr) - int(erh_jahr))
+        aus = {n: aus[n] + bt[n] for n in aus}
+    return aus
+
+
+def pex_jahr_je_police(stamm: pd.DataFrame, historie: Optional[pd.DataFrame]) -> Dict[int, int]:
+    """Das Vertragsjahr der Beitragsfreistellung je Police — aus der
+    Statushistorie (erste PEX-Zeile), wie die Bewertung es am Stichtag aus
+    der Zustandszeile liest."""
+    if historie is None or len(historie) == 0:
+        return {}
+    pex = historie[historie["status_code"] == "PEX"]
+    if len(pex) == 0:
+        return {}
+    beginn = stamm.set_index("police_id")["insurance_start"]
+    aus: Dict[int, int] = {}
+    for pid, datum in zip(pex["police_id"], pex["status_date"]):
+        pid = int(pid)
+        if pid not in beginn.index:
+            continue
+        j = months_between(pd.Timestamp(beginn.loc[pid]).date(),
+                           pd.Timestamp(datum).date()) // 12
+        aus[pid] = min(j, aus.get(pid, j))
+    return aus
+
+
+def _vorgangsfolgen(
     reduktionen: Optional[pd.DataFrame],
     kerne: Dict[int, Rechenkern],
     scheiben_je_police: Dict[int, List[Dict[str, Any]]],
     schicht_je_police: Dict[int, Any],
-) -> Dict[int, List[Tuple[int, Any]]]:
-    """Je herabgesetzter Police ihr geknickter Verlauf, je Schicht.
+    tarifwerk_je_police: Mapping[int, Mapping[str, Any]],
+    pex_je_police: Optional[Mapping[int, int]] = None,
+) -> Dict[int, Vorgangsfolge]:
+    """Je Police mit Vorgaengen ihre Vorgangsfolge.
 
-    Der Kern rekonstruiert den herabgesetzten Vertrag aus Jahr, Anteil
-    und Verfahren; mehr traegt die Tabelle nicht, und mehr braucht es
-    nicht. Die Korrekturschicht geht dabei in die Grundscheibe ein —
-    dieselbe Rechnung wie in der Ereignis-Engine, denn es ist dieselbe
-    Funktion (``reduziere_geschichtet``). Zwei Rechenwege waeren zwei
-    Ergebnisse.
+    Der Kern rekonstruiert den Vertrag aus der FOLGE der Zeilen (Jahr,
+    Anteil, Verfahren), den Scheiben, der Beitragsfreistellung und der
+    Korrekturschicht — dieselbe Klasse wie in der Ereignis-Engine
+    (``kern.vorgangsfolge``). Zwei Rechenwege waeren zwei Ergebnisse. Das
+    Tarifwerk (Abzug je Baustein, Umfang der Teilkuendigung) ist das der
+    Generation der Police, ohne Default (Runde D).
     """
     if reduktionen is None or len(reduktionen) == 0:
         return {}
-    aus: Dict[int, List[Tuple[int, Any]]] = {}
+    je_police: Dict[int, List[Any]] = {}
     for zeile in reduktionen.to_dict("records"):
-        pid = int(zeile["police_id"])
+        je_police.setdefault(int(zeile["police_id"]), []).append(vorgang(
+            int(zeile["reduktion_jahr"]), float(zeile["anteil"]),
+            str(zeile["verfahren"])))
+    aus: Dict[int, Vorgangsfolge] = {}
+    for pid, vorgaenge in sorted(je_police.items()):
         if pid not in kerne:
             continue
-        aus[pid] = reduzierte_teile(
+        tw = tarifwerk_je_police[pid]
+        aus[pid] = Vorgangsfolge(
             kerne[pid],
             [(int(sch["erh_jahr"]), sch["kern"])
              for sch in scheiben_je_police.get(pid, ())],
-            int(zeile["reduktion_jahr"]), float(zeile["anteil"]),
-            str(zeile["verfahren"]), schicht=schicht_je_police.get(pid))
+            vorgaenge,
+            pex_jahr=(pex_je_police or {}).get(pid),
+            schicht=(schicht_je_police[pid][:2] if pid in schicht_je_police else None),
+            stoab_je_baustein=bool(tw["stoab_je_baustein"]),
+            tku_umfang=str(tw["tku_umfang"]))
     return aus
+
+
+def _klv_monatsgenau(
+    grund: Rechenkern,
+    aktive: List[Dict[str, Any]],
+    monate: int,
+    schicht: Optional[Tuple[Any, int, str]],
+    *,
+    stoab_je_baustein: bool,
+) -> Dict[str, Any]:
+    """Bewertungsgroessen eines beitragspflichtigen KLV-Vertrags ohne
+    Herabsetzung und Teilkuendigung, monatsgenau.
+
+    EIN Weg fuer den gewoehnlichen Vertrag und den mit Erhoehungsscheiben: die
+    vertragsweite Monatsreserve des Kerns (``vertrags_monatsreserve`` — ohne
+    Scheiben identisch zu ``Rechenkern.monatsreserve``; Stornoabschlag je
+    Vertrag oder je Baustein nach dem Tarifwerk der Generation). Die
+    Korrekturschicht mischt der Kern ohnehin monatsgenau (``schichtwert_bei``).
+    Der beitragsfreie Vertrag rechnet nicht mehr hier, sondern ueber den
+    Zustand des Kerns (:func:`_beitragsfrei_werte`; Pruefrunde H, H01).
+    """
+    scheiben = [(int(s["erh_jahr"]), s["kern"]) for s in aktive]
+    korr = 0.0
+    reserve = vertrags_monatsreserve(
+        grund, scheiben, int(monate), stoab_je_baustein=stoab_je_baustein)
+    dk, rkw = reserve.drx_bpfl, reserve.rkw
+    if schicht_traegt(schicht, int(monate)):
+        korr = schichtwert_bei(schicht[0], int(schicht[1]), grund.mp, int(monate))
+        dk += korr
+        rkw += korr
+    return {"status": "POL", "deckungskapital": dk, "rueckkaufswert": rkw,
+            "korrekturschicht": korr, "vs_bfr": 0.0}
 
 
 def einzelwerte_am(
@@ -317,8 +523,21 @@ def einzelwerte_am(
     schichten: Optional[pd.DataFrame] = None,
     verankerung: Optional[pd.DataFrame] = None,
     reduktionen: Optional[pd.DataFrame] = None,
+    *,
+    konvention: str = FUEHRUNGSKONVENTION,
 ) -> List[Dict[str, Any]]:
     """Einzelvertragliche Bewertung des in-force-Bestands am Stichtag.
+
+    ``konvention`` (``models.bestand.BEWERTUNGSKONVENTIONEN``) sagt, wie
+    Deckungskapital, Rueckkaufswert und Korrekturschicht am Stichtag aus dem
+    Kern gelesen werden. Die Fuehrung bewertet seit 2026-10-01 monatsgenau
+    (Entscheid des Maintainers): linear zwischen den beiden Vertragsjahres-
+    tagen, die den Stichtag einschliessen, fuer JEDEN Vertragstyp gleich —
+    gewoehnlich, mit Scheiben, beitragsfrei, herabgesetzt, teilgekuendigt,
+    mit Korrekturschicht. Die BU bleibt benannt bei der Jahreszeile
+    (``KONVENTION_JE_PRODUKT``: der Kern fuehrt fuer sie keine unterjaehrige
+    Reserve). ``jahreszeile`` rechnet wortgleich wie vor der Umstellung —
+    nur, um einen alten Abschluss in SEINER Konvention nachzurechnen.
 
     ``schichten``/``verankerung`` (Freischaltung, Schritt 5): die
     Korrekturschicht uebernommener Vertraege geht als eigene Position
@@ -352,6 +571,11 @@ def einzelwerte_am(
     BU-Leistungsbezug), ``bzb_jahr`` (gezahltes Jahresvolumen, KLV) und
     ``bu_leistungsbezug`` (bool).
     """
+    klv_monatsgenau = monatsgenau_fuer(konvention, "klv")
+    if monatsgenau_fuer(konvention, "bu"):  # pragma: no cover - Vertrag in models
+        raise ValueError(
+            f"Konvention {konvention!r} verlangt eine unterjaehrige BU-Reserve — der Kern "
+            "fuehrt keine (kern.produkte.bu kennt nur Vertragsjahre)")
     if historie is None or len(historie) == 0:
         # Eine LEERE Historie ist keine Historie: sie ist ein DataFrame und
         # passierte den Wachposten, der nur auf None sah — derselbe Verlust
@@ -392,8 +616,14 @@ def einzelwerte_am(
     generation_je_police = stamm.set_index("police_id")["tarif_generation"]
     tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
     schicht_je_police = schichten_je_police(stamm, schichten, verankerung)
-    reduziert_je_police = _reduzierte_vertraege(
-        reduktionen, kerne, scheiben_je_police, schicht_je_police)
+    folge_je_police = _vorgangsfolgen(
+        reduktionen, kerne, scheiben_je_police, schicht_je_police,
+        # Das Tarifwerk ist Eigenschaft der Generation der Police (Runde D):
+        # dieselbe Regel wie die Engine beim Ziehen.
+        {int(pid): tarifwerk_je_generation[str(generation_je_police.loc[int(pid)])]
+         for pid in (reduktionen["police_id"] if reduktionen is not None else ())
+         if int(pid) in generation_je_police.index},
+        pex_jahr_je_police(stamm, journal))
 
     scheibe = bestand_am(stamm, journal, stichtag)
     zeilen: List[Dict[str, Any]] = []
@@ -447,47 +677,82 @@ def einzelwerte_am(
         if status == "PEX":
             # Das PEX-Jahr ist Zustand: Vertragsjahr des Statusbeginns.
             pex_jahr = months_between(beginn.date(), status_seit.date()) // 12
-        # Ein herabgesetzter Vertrag rechnet ueber seinen geknickten
-        # Verlauf: EIN Vertrag, alle Schichten darin, Stornoabschlag
-        # einmal vertragsweit. Deshalb ein eigener Zweig statt eines
-        # Zuschlags auf die ungekuerzte Rechnung — und deshalb weder
-        # Scheiben-Schleife noch Schicht-Position darunter: Beides steckt
-        # schon im reduzierten Verlauf.
-        reduziert = reduziert_je_police.get(pid)
-        if (reduziert is not None
-                and int(months_exp) < 12 * reduziert[0][1].reduktion.jahr):
-            # Vor ihrem Jahrestag gilt der ungekuerzte Vertrag. Die
-            # Tabelle steht je POLICE, die Herabsetzung wirkt ab ihrem
-            # DATUM — ein Stichtag davor rechnet den alten Verlauf.
-            reduziert = None
-        if reduziert is not None:
-            werte = werte_reduziert(reduziert, int(months_exp), pex_jahr)
-            zeile["leistung"] = sum(
-                v.reduktion.vs_neu for _, v in reduziert)
+            # Die Jahresgrenze des Kerns, in jeder Konvention und auch ohne
+            # Vorgangsfolge (Pruefrunde H, H02).
+            pruefe_pex_jahr(pid, kerne[pid].mp, pex_jahr)
+        # Ein Vertrag mit Herabsetzungen oder Teilkuendigungen rechnet ueber
+        # seine Vorgangsfolge: EIN Vertrag, alle Bausteine darin, der Zustand
+        # nach allen Vorgaengen bis zum Stichtag. Deshalb ein eigener Zweig
+        # statt eines Zuschlags auf die ungekuerzte Rechnung — und deshalb
+        # weder Scheiben-Schleife noch Schicht-Position darunter: Beides
+        # steckt schon im Zustand.
+        folge = folge_je_police.get(pid)
+        if folge is not None and int(months_exp) < 12 * folge.erstes_jahr:
+            # Vor dem Jahrestag des ersten Vorgangs gilt der ungekuerzte
+            # Vertrag — ein Stichtag davor rechnet den alten Verlauf.
+            folge = None
+        werte = None
+        if folge is not None:
+            werte = werte_nach_vorgaengen(
+                folge, int(months_exp), monatsgenau=klv_monatsgenau)
+        elif pex_jahr is not None and klv_monatsgenau:
+            # Beitragsfrei ohne Herabsetzung und Teilkuendigung: derselbe
+            # Zustand des Kerns, derselbe Zweig (Pruefrunde H, H01) — sonst
+            # rechnete die Bewertung neben dem Kern einen zweiten Weg und wies
+            # den Rueckkaufswert mit 0,00 aus.
+            schicht_pid = schicht_je_police.get(pid)
+            werte = _beitragsfrei_werte(
+                kerne[pid],
+                [(int(s["erh_jahr"]), s["kern"]) for s in scheiben_je_police.get(pid, ())],
+                pex_jahr, None if schicht_pid is None else schicht_pid[:2],
+                int(months_exp),
+                tarifwerk_je_generation[str(generation_je_police.loc[pid])])
+        if werte is not None:
+            if (werte["status"] == "PEX") != (pex_jahr is not None):
+                raise ValueError(
+                    f"police {pid}: die Zustandszeile am {stichtag} sagt "
+                    f"{status!r}, die Vorgangsfolge "
+                    f"{werte['status']!r} — Statushistorie und Folge erzaehlen "
+                    "verschiedene Geschichten")
+            zeile["leistung"] = werte["leistung"]
             if pex_jahr is None:
-                anteil = reduziert[0][1].reduktion.anteil
-                bt = beitraege(kerne[pid], int(months_exp) // 12)
-                for s_ in [x for x in scheiben_je_police.get(pid, ())
-                           if x["erh_datum"].date() <= stichtag]:
-                    bt_s = beitraege(
-                        s_["kern"], int(months_exp) // 12 - s_["erh_jahr"])
-                    bt = {k: bt[k] + bt_s[k] for k in bt}
-                zeile["jahresbeitrag"] = bt["bjb"] * anteil
-                zeile["bzb_jahr"] = bt["bzb_jahr"] * anteil
+                bt = beitraege_nach_vorgaengen(werte["stand"], int(months_exp) // 12)
+                zeile["jahresbeitrag"] = bt["bjb"]
+                zeile["bzb_jahr"] = bt["bzb_jahr"]
             zeile["status"] = werte["status"]
             zeile["deckungskapital"] = werte["deckungskapital"]
-            zeile["rueckkaufswert"] = (
-                0.0 if werte["status"] == "PEX" else werte["rueckkaufswert"])
-            zeile["vs_bfr"] = werte["vs_bfr"] if werte["status"] == "PEX" else 0.0
+            zeile["rueckkaufswert"] = werte["rueckkaufswert"]
+            zeile["korrekturschicht"] = werte["korrekturschicht"]
+            zeile["vs_bfr"] = werte["vs_bfr"]
             zeilen.append(zeile)
             continue
-        werte = vertragswerte(kerne[pid], int(months_exp), pex_jahr)
+        stoab_je_baustein = bool(tarifwerk_je_generation[
+            str(generation_je_police.loc[pid])]["stoab_je_baustein"])
         # Erhoehungsscheiben des Vertrags, die am Stichtag existieren —
         # jede mit ihrem Jahresversatz (PEX-Jahr entsprechend versetzt).
         aktive = [
             s for s in scheiben_je_police.get(pid, ())
             if s["erh_datum"].date() <= stichtag
         ]
+        if klv_monatsgenau:
+            zeile.update(_klv_monatsgenau(
+                kerne[pid], aktive, int(months_exp),
+                schicht_je_police.get(pid), stoab_je_baustein=stoab_je_baustein))
+            # Beitraege und Leistung haengen nicht an der Konvention: derselbe
+            # Weg in derselben Reihenfolge wie unten.
+            jahr = int(months_exp) // 12
+            bt = beitraege(kerne[pid], jahr)
+            zeile["jahresbeitrag"] += bt["bjb"]
+            zeile["bzb_jahr"] += bt["bzb_jahr"]
+            for s in aktive:
+                bt = beitraege(s["kern"], jahr - s["erh_jahr"])
+                zeile["jahresbeitrag"] += bt["bjb"]
+                zeile["bzb_jahr"] += bt["bzb_jahr"]
+                zeile["leistung"] += float(s["kern"].mp.sum_insured)
+            zeilen.append(zeile)
+            continue
+        # --- Jahreszeile: wortgleich wie vor der Umstellung (2026-10-01) ---
+        werte = vertragswerte(kerne[pid], int(months_exp), pex_jahr, monatsgenau=False)
         if pex_jahr is None:
             # Jede Erhoehungsscheibe ist ein eigener Modellpunkt mit
             # eigenem Beitrag — ohne sie waere das Beitragsvolumen so
@@ -640,10 +905,15 @@ def auswertungs_verlauf(
             "bjb": 0.0,
             "bzb_jahr": 0.0,
             "bu_beitrag": 0.0,
+            # Die GEFUEHRTE Versicherungssumme (KLV): nach Herabsetzungen
+            # und Erhoehungen, nicht die Stammspalte.
+            "vs_klv": 0.0,
         }
         for z in zeilen:
             agg["deckungskapital"] += z["deckungskapital"]
             agg["korrekturschicht"] += z["korrekturschicht"]
+            if z["produkt"] == "klv":
+                agg["vs_klv"] += z["leistung"]
             if z["produkt"] == "bu":
                 agg["bu_vertraege"] += 1
                 agg["bu_jahresrente"] += z["leistung"]

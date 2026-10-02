@@ -38,11 +38,19 @@ def test_dockerfile_installiert_wie_die_ci_und_laeuft_unprivilegiert():
 def test_compose_ohne_netz_mit_datenvolume():
     compose = _text("compose.yml")
     assert "network_mode: none" in compose
-    assert "./daten:/daten" in compose
+    assert "source: ./daten" in compose and "target: /daten" in compose
+    # Kein stilles Anlegen einer fehlenden Ablage (Angriffsrunde nach T27).
+    assert "create_host_path: false" in compose
     assert "rechner-pipeline-plv:${IMAGE_TAG" in compose
     assert "PLV_IMAGE_DIGEST" in compose and "PLV_IMAGE_TAG" in compose
+    # Der Betriebsschluessel (Runde C): lesend eingebunden, ausserhalb der
+    # Ablage, und der Lauf bekommt ihn — ohne ihn laeuft kein Tag.
+    assert "target: /schluessel" in compose and "read_only: true" in compose
+    assert '"--schluessel", "/schluessel/betrieb.key"' in compose
+    assert '"--zeichnungsordnung", "/schluessel/zeichnungsordnung.json"' in compose
     beispiel = _text("env.beispiel")
-    for schluessel in ("GHCR_OWNER", "IMAGE_TAG", "IMAGE_DIGEST", "ZEITZONE"):
+    for schluessel in ("GHCR_OWNER", "IMAGE_TAG", "IMAGE_DIGEST", "ZEITZONE",
+                       "BETRIEBSSCHLUESSEL_DIR"):
         assert re.search(rf"^{schluessel}=", beispiel, re.M), schluessel
 
 

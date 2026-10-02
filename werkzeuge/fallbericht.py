@@ -167,6 +167,25 @@ def _fach(d: Dict[str, Any], texte: Dict[str, Any]) -> str:
             f'{_zahl(t["bestanden"])} / {_zahl(t["anzahl"])}',
             _zahl(v.get("max_abs_residuum"), 4) + " €" if v else "—",
         ])
+    stand = a.get("standabnahmen") or []
+    for s in stand:
+        # Der Stand, auf dem der Fall laeuft (ADR-018, Nachtrag 2026-10-01):
+        # woertlich, wie der A-M4-Snapshot ihn fuehrt — "keine Aenderung"
+        # heisst belegt unveraendert, nicht ungeprueft.
+        zeilen.append([f'<b>{_e(s.get("gate"))}</b> {_e(s.get("titel"))}',
+                       "Stand des Falls", _e(s.get("anzeige")), "—"])
+    k = a.get("kernstand") or {}
+    if k and not stand:
+        # A-K2 (ADR-018, Nachtrag 2026-10-01): der Kernstand, auf dem der Fall
+        # rechnet. Die Regression steht woertlich, wie der Beleg sie fuehrt.
+        zeilen.append([
+            "<b>A-K2</b> Kernstand",
+            f'{_zahl(len(k.get("module_geaendert") or []))} von {_zahl(k.get("module"))} '
+            f'Modulen geändert, {_zahl(k.get("commits"))} Commits seit {_e(k.get("von"))} '
+            f'({_e(k.get("von_version"))} → {_e(k.get("nach_version"))})',
+            _e(k.get("regression")),
+            "—",
+        ])
     c = a.get("controlling") or {}
     if c:
         zeilen.append([

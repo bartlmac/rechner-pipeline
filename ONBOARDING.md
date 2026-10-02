@@ -32,7 +32,7 @@ the tool into the Vorzeige as a ratchet.
    (Tarifmeldung DOCX, Tarifrechner XLSM) -> ontology (T-Box/A-Box with
    per-statement provenance and discrepancy objects) -> Tarif-Spez ->
    parametrized kernel -> acceptance against the source calculator, with human
-   gates (A-Q1/A-M1/A-M4/A-K1) and immutable decision snapshots.
+   gates (A-Q1, A-O1, A-K2, A-M1 to A-M4) and immutable decision snapshots.
 
 Read `docs/architektur/migrations-pipeline-v01.md` first, then the role catalog
 `docs/architektur/skill-architektur.md`, then the ADRs in
@@ -53,7 +53,9 @@ features the kernel does not know yet, and the migration is an intensive,
 node-bound CODE extension of the one trunk (small increments, landing
 only with the full suite green including every other case's frozen reference values,
 `integriere-migrationsinkrement`). New products come through the T-Box
-(gate A-K1) — in either case not by translating another workbook.
+(gate A-O1, the T-Box state, signed by `mensch/architektur`); a change to
+the kernel is accepted as the kernel state under A-K2 (signed by
+`mensch/rechenkern`) — in either case not by translating another workbook.
 
 A migration case lives in a **Fall-Arbeitsbereich** (`python -m
 rechner_pipeline.fall`, ADR-002). The artifacts of this workspace belong to
@@ -230,7 +232,10 @@ per source, merge into the A-Box, discrepancies to the human gate A-Q1,
 transformation of the portfolio extract, Spez, acceptance gates, and the
 two-reporting-date migration suite with its HTML acceptance report for
 gate A-M4. The deliveries may contain deliberate errors and source-system
-quirks — finding them IS the demonstration.
+quirks — finding them IS the demonstration. To repeat the second Baldrian
+run (`lieferungen/baldrian-2/`) on the exact commit it was signed on —
+including the receiving company's own portfolio, which is generated, not
+delivered — follow `docs/faelle/baldrian-lauf2-wiederholen.md`.
 
 **Pre-digest a source (gate P-Q1):**
 ```
@@ -329,7 +334,7 @@ Each gate is one command, writes one JSON to stdout plus a
 | P-Q2 | `gates.abox_merge` | fragments merged into the A-Box, with a chain ledger binding it to its sources |
 | P-Q3 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation; the A-Box must carry the current T-Box version |
 | P-K1 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values; writes one content-addressed proof per generation, bound to the A-Box and system state; spec, A-Box and code must speak the same T-Box version |
-| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (A-Q1, A-M1, A-M4, A-K1); accepted decisions require an externally held HMAC key, A-M1 and A-M4 require the per-gate evidence roles for the declared case scope, and A-M4 requires a current signed A-M1 acceptance on the same state, pinned as the evidence role `am1_snapshot` (ADR-010); in scope `bestand` A-M4 also requires the release proof `gates.fuehrungsprobe` as evidence role `fuehrungsprobe` — the proof that the portfolio ledger carries the world the acceptances tested (Freischaltung, dev-docs/freischaltung-uebernommener-bestand.md); A-K1 requires the T-Box change record `abgeleitet/tbox/aenderung.json` (old and new version, hash of the T-Box module, change artefact); a simulated role signs only with a mandate (ADR-018); agents may only reject |
+| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (A-Q1, A-O1, A-K2, A-T1, A-M1 to A-M6, A-B1, A-B2, A-B3); every acceptance in a case requires the case mandate A-M6 signed by the board (`mensch/vorstand`) on the current delivery, and the case abort A-M5 (signed by the programme lead named in the mandate) closes the case for good (ADR-026); every decision names `--linie` (mandatory, ADR-025 addendum 2026-10-01): signed only under the tip of the signing-order version line, preconditions read against the order they were signed under; in a case or — with `--linie` alone — in the line area of the initial acceptance of the target system (ADR-025); accepted decisions require an externally held HMAC key, A-M1 and A-M4 require the per-gate evidence roles for the declared case scope, and A-M4 requires a current signed A-M1 acceptance on the same state, pinned as the evidence role `am1_snapshot` (ADR-010); in scope `bestand` A-M4 also requires the release proof `gates.fuehrungsprobe` as evidence role `fuehrungsprobe` — the proof that the portfolio ledger carries the world the acceptances tested (Freischaltung, dev-docs/freischaltung-uebernommener-bestand.md); A-O1 requires the T-Box change record `abgeleitet/tbox/aenderung.json` (old and new version, hash of the T-Box module, change artefact); A-K2 (signed by `mensch/rechenkern`) accepts the kernel state a case computes on — the change record `abgeleitet/kern/aenderung.json` from `gates.kernstand_belegen` (changes along the kernel modules with the branch commits since the last accepted kernel state, re-derived by the gate) and the regression record, which until its producer exists is the named EXCEPTION "not run, tool not yet built", never a result; A-M4 requires in both scopes that the state the case runs on is accepted — kernel state (A-K2, role `kernstand`) and T-Box state (A-O1, role `tboxstand`) under ONE rule: accepted in the case, or "keine Aenderung seit Abnahme ..." via a reference to the CURRENT acceptance of the line (`gates.stand_belegen verweisen --linie`; signature, role and state re-checked, and the gate holds that it is still the current accepted tip of the line's chain — review round G), or for the T-Box its single-element version line (ADR-018, addendum 2026-10-01); a simulated role signs only with a mandate (ADR-018); agents may only reject |
 | A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | re-derives the actuarial test result from the inside out (per-contract comparison at each contract's own anchor date, no interpolation, no summation — only residual distribution measures) and renders the decision template for the respective gate A-M1, A-M2 or A-M3 (in scope `bestand` all three are mandatory predecessors of A-M4, in scope `tarif` only A-M1); transport-security digests are reported separately |
 | P-B1 | `gates.bestand_validate` | portfolio contract and movement identities |
 | G2 template | `gates.abnahmebericht` | passes only with the transformation specification/result, distinct before/after reports, a gap-free suite, congruent row counts, no transformation finding and no unresolved conflict; for scope `bestand`, also validates and binds P-B1, the suite and HTML report on one state |
@@ -359,10 +364,15 @@ trusting that editable ledger (ADR-009).
 - **Deterministic and SDK-free** in `src/`: no network, no dynamic execution,
   no subprocess; same input -> same output; sorted serialization. There is
   exactly ONE subprocess exception, and it is bounded by a test: the shared
-  P-K1/P9 proof provenance (`gates/_provenienz._git_stand`) records the Git
-  state proved or decided on with three READING git calls (`rev-parse HEAD`,
-  `rev-parse --abbrev-ref HEAD`, `status --porcelain`) — it computes and
-  judges nothing. A pure-Python SHA-256 over the installed package sources
+  P-K1/P9/A-K2 proof provenance (`gates/_provenienz._git_lesen`) runs only
+  READING git commands from a closed list — `rev-parse HEAD`,
+  `rev-parse --abbrev-ref HEAD` and `status --porcelain` record the Git state
+  proved or decided on; since 2026-10-01 `rev-parse --verify`, `merge-base`,
+  `diff --numstat`, `log`, `ls-tree`, `show` and a path-limited `status`
+  record the kernel changes since the last accepted kernel state for A-K2
+  and the tariff-work changes for A-T1 (`gates.tarifwerk_belegen`).
+  Everything after the command is data (commits, paths) and may never start
+  with a dash. It computes and judges nothing. A pure-Python SHA-256 over the installed package sources
   distinguishes different dirty code states. If git is unavailable, its
   fields carry the named value `unbekannt`, never a silent default. Any
   further subprocess import, any

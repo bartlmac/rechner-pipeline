@@ -28,44 +28,44 @@ dahinter sind nachrechenbar (`ontologie.code_karte`), nicht Prosa.
 %% Schichten — erzeugt von ontologie.landkarte
 flowchart TD
     n__init__["__init__<br/>1 Module"]
-    bestand["bestand<br/>22 Module"]
-    betrieb["betrieb<br/>8 Module"]
+    bestand["bestand<br/>23 Module"]
+    betrieb["betrieb<br/>11 Module"]
     fall["fall<br/>1 Module"]
-    gates["gates<br/>18 Module"]
-    kern["kern<br/>12 Module"]
+    gates["gates<br/>23 Module"]
+    kern["kern<br/>13 Module"]
     kommutationskern["kommutationskern<br/>3 Module"]
-    models["models<br/>9 Module"]
+    models["models<br/>18 Module"]
     ontologie["ontologie<br/>16 Module"]
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
-    spez["spez<br/>5 Module"]
-    bestand -- 24 --> kern
-    bestand -- 17 --> models
+    spez["spez<br/>6 Module"]
+    bestand -- 33 --> kern
+    bestand -- 18 --> models
     bestand -- 1 --> qa
-    betrieb -- 21 --> bestand
-    betrieb -- 1 --> kern
-    betrieb -- 12 --> models
+    betrieb -- 30 --> bestand
+    betrieb -- 2 --> kern
+    betrieb -- 32 --> models
     gates -- 14 --> bestand
-    gates -- 9 --> fall
-    gates -- 13 --> kern
-    gates -- 16 --> models
-    gates -- 11 --> ontologie
+    gates -- 12 --> fall
+    gates -- 10 --> kern
+    gates -- 48 --> models
+    gates -- 13 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
-    gates -- 6 --> spez
+    gates -- 13 --> spez
     kommutationskern -- 2 --> kern
     models -- 1 --> gates
     models -- 1 --> kern
     ontologie -- 1 --> kern
     ontologie -- 6 --> models
     qa -- 8 --> kern
-    qa -- 1 --> models
+    qa -- 4 --> models
     quellen -- 1 --> kern
     quellen -- 7 --> models
     quellen -- 4 --> ontologie
     quellen -- 1 --> spez
     spez -- 1 --> kern
-    spez -- 11 --> ontologie
+    spez -- 13 --> ontologie
 ```
 
 ## 2 Fachknoten — die Sicht der Ontologie
@@ -78,22 +78,25 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 ```mermaid
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
-    bu["bu<br/>37 Module"]
-    klv["klv<br/>87 Module"]
+    bu["bu<br/>41 Module"]
+    klv["klv<br/>93 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
-    system_entscheid["system/entscheid<br/>3 Module"]
+    system_entscheid["system/entscheid<br/>17 Module"]
     system_fall["system/fall<br/>1 Module"]
     bu -- 3 --> system_assurance
-    bu -- 5 --> system_entscheid
+    bu -- 19 --> system_entscheid
     klv -- 9 --> system_assurance
-    klv -- 13 --> system_entscheid
-    klv -- 9 --> system_fall
+    klv -- 44 --> system_entscheid
+    klv -- 10 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv
-    system_assurance -- 1 --> system_entscheid
+    system_assurance -- 3 --> system_entscheid
     system_assurance -- 1 --> system_fall
-    system_entscheid -- 1 --> system_assurance
+    system_entscheid -- 3 --> bu
+    system_entscheid -- 12 --> klv
+    system_entscheid -- 11 --> system_assurance
+    system_entscheid -- 2 --> system_fall
 ```
 
 ## 3 Der Zielrechenkern von innen
@@ -116,13 +119,16 @@ flowchart TD
     rechner_pipeline_kern_produkte_klv_py["klv"]
     rechner_pipeline_kern_rechenkern_py["rechenkern"]
     rechner_pipeline_kern_tafeln_py["tafeln"]
+    rechner_pipeline_kern_vorgangsfolge_py["vorgangsfolge"]
     rechner_pipeline_kern_zahlungspfad_py["zahlungspfad"]
     rechner_pipeline_kern_zustandsmodell_py["zustandsmodell"]
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_konventionen_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_model_point_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_rechenkern_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_tafeln_py
+    rechner_pipeline_kern___init___py --> rechner_pipeline_kern_vorgangsfolge_py
     rechner_pipeline_kern___init___py --> rechner_pipeline_kern_zustandsmodell_py
+    rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_konventionen_py
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_korrekturschicht_py
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_produkte_klv_py
     rechner_pipeline_kern_beitragsreduktion_py --> rechner_pipeline_kern_rechenkern_py
@@ -137,10 +143,18 @@ flowchart TD
     rechner_pipeline_kern_produkte_klv_py --> rechner_pipeline_kern_model_point_py
     rechner_pipeline_kern_produkte_klv_py --> rechner_pipeline_kern_tafeln_py
     rechner_pipeline_kern_produkte_klv_py --> rechner_pipeline_kern_zustandsmodell_py
+    rechner_pipeline_kern_rechenkern_py --> rechner_pipeline_kern_beitragsreduktion_py
     rechner_pipeline_kern_rechenkern_py --> rechner_pipeline_kern_model_point_py
     rechner_pipeline_kern_rechenkern_py --> rechner_pipeline_kern_produkte___init___py
     rechner_pipeline_kern_rechenkern_py --> rechner_pipeline_kern_produkte_klv_py
     rechner_pipeline_kern_tafeln_py --> rechner_pipeline_kern_konventionen_py
+    rechner_pipeline_kern_vorgangsfolge_py --> rechner_pipeline_kern_beitragsreduktion_py
+    rechner_pipeline_kern_vorgangsfolge_py --> rechner_pipeline_kern_konventionen_py
+    rechner_pipeline_kern_vorgangsfolge_py --> rechner_pipeline_kern_korrekturschicht_py
+    rechner_pipeline_kern_vorgangsfolge_py --> rechner_pipeline_kern_model_point_py
+    rechner_pipeline_kern_vorgangsfolge_py --> rechner_pipeline_kern_produkte_klv_py
+    rechner_pipeline_kern_vorgangsfolge_py --> rechner_pipeline_kern_rechenkern_py
+    rechner_pipeline_kern_vorgangsfolge_py --> rechner_pipeline_kern_zahlungspfad_py
     rechner_pipeline_kern_zahlungspfad_py --> rechner_pipeline_kern_model_point_py
     rechner_pipeline_kern_zahlungspfad_py --> rechner_pipeline_kern_produkte_klv_py
     rechner_pipeline_kern_zahlungspfad_py --> rechner_pipeline_kern_tafeln_py

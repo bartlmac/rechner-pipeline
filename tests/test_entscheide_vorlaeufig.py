@@ -25,7 +25,7 @@ from rechner_pipeline.ontologie.befuellung import (
     baue_abox,
 )
 
-from tests.zeichnung_fixture import annahme_args
+from tests.zeichnung_fixture import entscheide_args, annahme_args
 
 ZEIT = "2026-08-15T09:00:00+00:00"
 PLAUSIBEL = {
@@ -91,7 +91,7 @@ def test_vorlaeufig_verlangt_akteur_konvention_und_traegt_keinen_schluessel(fall
     assert "--akteur" in capsys.readouterr().err
     assert entscheide.main(basis + ["--akteur", "irgendwer"]) == 2
     assert "Konvention" in capsys.readouterr().err
-    assert entscheide.main(basis + ["--akteur", AKTEUR, *annahme_args(fall)]) == 2
+    assert entscheide.main(basis + ["--akteur", AKTEUR, *entscheide_args(fall)]) == 2
     assert "zeichnet nicht" in capsys.readouterr().err
     [d] = lade(fall).diskrepanzen
     assert d.status == "offen", "nichts davon hat entschieden"
@@ -102,7 +102,7 @@ def test_vorlaeufig_ueberschreibt_keine_endgueltige_entscheidung(fall, capsys):
     assert entscheide.main([
         "--fall", str(fall), "--diskrepanz", d.id, "--wert", "0.025",
         "--entscheider", "Verantwortlicher Aktuar", "--begruendung", "Meldung gilt",
-        *annahme_args(fall),
+        *entscheide_args(fall),
     ]) == 0
     capsys.readouterr()
     rc = entscheide.main([
@@ -127,7 +127,7 @@ def test_endgueltige_entscheidung_ersetzt_die_vorlaeufige_und_blockt_vorher(fall
     assert entscheide.main([
         "--fall", str(fall), "--diskrepanz", d.id, "--wert", "0.025",
         "--entscheider", "Verantwortlicher Aktuar", "--begruendung", "Meldung gilt",
-        *annahme_args(fall),
+        *entscheide_args(fall),
     ]) == 0
     ausgabe = json.loads(capsys.readouterr().out)
     assert ausgabe["verbleibend_vorlaeufig"] == []

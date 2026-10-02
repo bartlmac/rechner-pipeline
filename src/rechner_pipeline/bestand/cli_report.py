@@ -23,6 +23,12 @@ aus der Config — der Referenzstichtag ist eine Eigenschaft des Bestands,
 das Flag uebersteuert ihn nur. ``--scheiben`` ist Pflicht,
 sobald der Ledger dynamische Erhoehungen enthaelt.
 
+Ohne ``--historie``/``--ledger`` ist der Stamm allein nicht der gefuehrte
+Zustand: Liegt neben ihm irgendeine Nebentabelle des Laufs
+(``bestand.manifest.journal_pflichtige_rollen``) oder wird sie ausdruecklich
+genannt, weist der Bericht den Aufruf ab (Exit 2, mit Ausweg) — er wuerde sie
+ueberlesen und den Zustand ohne sie bewerten.
+
 Knoten: klv, bu
 """
 
@@ -34,7 +40,18 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from rechner_pipeline.bestand.manifest import nebentabellen_in
+from rechner_pipeline.bestand.manifest import (
+    NEBENTABELLEN,
+    ROLLEN_DATEIEN,
+    ManifestError,
+    ERZEUGER,
+    journal_pflichtige_rollen,
+    ERZEUGER_MIGRATIONSZUGANG,
+    lies_manifest,
+    manifest_pfad,
+    pruefe_erzeuger,
+    nebentabellen_in,
+)
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.bestand.report import render_html
 from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
@@ -115,6 +132,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Kommagetrennte ISO-Daten; Default: Jahresraster über die Vertragslaufzeiten.",
     )
     parser.add_argument("--titel", default="Bestandsbericht")
+    # Jede Rolle des Erzeugers hat ein Flag, abgeleitet aus der
+    # Rollentabelle wie beim Gate P-B1 — der Bericht fand die
+    # Reduktionstabelle sonst nur ueber die Nachbarschaft einer anderen
+    # Datei (Angriffsrunde der Nacht).
+    vorhanden = {a.dest for a in parser._actions}
+    for rolle, datei in ROLLEN_DATEIEN.items():
+        if rolle not in vorhanden:
+            parser.add_argument(f"--{rolle}", default=None,
+                                help=f"{datei} des Laufs (optional; sonst neben dem Ledger gesucht).")
     ns = parser.parse_args(argv)
 
     portfolio_path = Path(ns.portfolio)
@@ -161,6 +187,35 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"bestand_report: Ungueltiges --bis-Datum: {exc}", file=sys.stderr)
             return 2
     eingaben = {"portfolio": portfolio_path}
+    # Jede Nebentabelle eines Laufs veraendert den gefuehrten Zustand (Runde E,
+    # Klasse geschlossen; Runde D, Fund 4 war der erste Fall): Wer sie neben
+    # dem Stamm findet oder ausdruecklich nennt, hat den gefuehrten Zustand
+    # vor sich, nicht den Stamm allein. Ohne Ledger wuerde der Bericht jeden
+    # herabgesetzten Vertrag UNGEKUERZT bewerten (VS 2.000.000 statt
+    # 1.339.863 im Messfall), jede Erhoehungsscheibe und Korrekturschicht
+    # ueberlesen, und mit Exit 0 rendern. Lesen allein truege die Bewertung
+    # nicht — sie braucht die Buchungen, gegen die P-B1 die Tabellen haelt.
+    # Deshalb abweisen, mit Ausweg. Die Menge kommt aus ROLLEN_DATEIEN
+    # (``journal_pflichtige_rollen``), fuer jedes Portfolio gleich; Ausnahmen
+    # stehen dort mit Grund.
+    if not ns.historie:
+        rollen = journal_pflichtige_rollen()
+        genannt = [ROLLEN_DATEIEN[r] for r in rollen if getattr(ns, r, None)]
+        daneben = [ROLLEN_DATEIEN[r] for r in rollen
+                   if (portfolio_path.parent / ROLLEN_DATEIEN[r]).is_file()
+                   and ROLLEN_DATEIEN[r] not in genannt]
+        if genannt or daneben:
+            print(
+                f"bestand_report: {', '.join(genannt + daneben)} gehoert zu diesem "
+                "Portfolio — der Stamm allein ist nicht der gefuehrte Zustand, der "
+                "Bericht wuerde ihn ohne diese Tabellen bewerten (z. B. "
+                "herabgesetzte Vertraege ungekuerzt). Ausweg: den Lauf angeben "
+                "(--historie, --ledger, --scheiben, --bis auf den Horizont des "
+                "Laufs); fuer einen Stamm ohne Nebentabellen das Portfolio in ein "
+                "eigenes Verzeichnis legen",
+                file=sys.stderr,
+            )
+            return 2
     if ns.historie:
         for name, pfad in (("Historie", ns.historie), ("Ledger", ns.ledger)):
             if not Path(pfad).is_file():
@@ -182,6 +237,21 @@ def main(argv: Optional[List[str]] = None) -> int:
             for rolle, pfad in nebentabellen_in(Path(ns.scheiben).parent).items():
                 if rolle != "merkmale":
                     eingaben[rolle] = pfad
+        # Auch ohne --scheiben: Die Nebentabellen des Laufs liegen neben dem
+        # Ledger (Angriffsrunde 4: nur im --scheiben-Zweig erkannt, sonst
+        # jeder herabgesetzte Vertrag ungekuerzt bewertet).
+        for rolle, pfad in nebentabellen_in(Path(ns.ledger).parent).items():
+            if rolle != "merkmale" and rolle not in eingaben:
+                eingaben[rolle] = pfad
+        # Ausdrueckliche Flags gewinnen gegen die Nachbarschaft.
+        # Merkmale haben ihren eigenen Weg (--merkmale, weiter unten).
+        for rolle in NEBENTABELLEN:
+            wert = getattr(ns, rolle, None)
+            if wert and rolle != "merkmale":
+                if not Path(wert).is_file():
+                    print(f"bestand_report: {rolle} nicht gefunden: {wert}", file=sys.stderr)
+                    return 2
+                eingaben[rolle] = Path(wert)
 
     merkmale = None
     if ns.merkmale:
@@ -190,6 +260,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                   file=sys.stderr)
             return 2
         merkmale = read_portfolio(Path(ns.merkmale))
+        # Auch die Pruefung bekommt sie (Angriffsrunde nach T27): Ohne sie
+        # scheiterte der dokumentierte Berichtsaufruf mit --config an jeder
+        # Zellen-Generation — und der einzige Weg zum Bericht war der ohne
+        # Config, also ohne jede Herleitung.
+        if "ledger" in eingaben:
+            eingaben["merkmale"] = Path(ns.merkmale)
 
     config = None
     if ns.config:
@@ -219,11 +295,43 @@ def main(argv: Optional[List[str]] = None) -> int:
     # 1.075 Stamm/Journal-Widerspruechen passierte ihn mit Exit 0 und
     # einem 977-KB-Bericht (externes Review T18-05). Ein Bericht ist das,
     # was ein Mensch anschaut — er darf nicht still etwas anderes zeigen
-    # als die Fuehrung. Die Config bleibt hier draussen: Plausibilitaets-
-    # baender sind ein Gate-Kriterium, ein Bericht ueber einen Bestand
-    # ausserhalb der Baender ist genau das, was man dann sehen will.
+    # als die Fuehrung. Plausibilitaetsbaender sind ein Gate-Kriterium, ein
+    # Bericht ueber einen Bestand ausserhalb der Baender ist genau das, was
+    # man dann sehen will — sie bleiben draussen, die Config nicht mehr
+    # (Angriffsrunde nach T27): Ohne sie renderte der Bericht verstuemmelte
+    # Herabsetzungen mit Exit 0, deren Kennzahlen den Vertrag ungekuerzt
+    # und deren Nachweisung ihn gekuerzt zeigten.
     # Was geprueft wurde, wird gerendert (kein zweites Lesen, T18-03).
-    tabellen, _, fehler, usage = lies_und_pruefe_pb1(eingaben, bis=bis)
+    if ns.config and "ledger" in eingaben:
+        eingaben["config"] = Path(ns.config)
+    # Das Laufmanifest neben dem Ledger (Runde D, Fund 2): Es belegt den
+    # Horizont des Laufs und die Bytes jeder Rolle. Ohne es rendert der
+    # Bericht eine RED hinter dem Laufende, die P-B1 auf denselben Bytes
+    # abweist. Ein Verzeichnis ohne Manifest belegt keinen Horizont und
+    # bleibt renderbar (wie in P-B1); ein unlesbares Manifest ist ein Fehler.
+    manifest = None
+    if "ledger" in eingaben:
+        manifest_datei = manifest_pfad(Path(ns.ledger).parent)
+        if manifest_datei.is_file():
+            try:
+                manifest = lies_manifest(manifest_datei)
+                # Welche Sorte Lauf der Bericht erwartet, sagt die
+                # Portfolio-Rolle: bestand_gesamt.parquet ist der gefuehrte
+                # Gesamtbestand einer Fortschreibung, bestand.parquet die
+                # Quellsicht eines Migrationszugangs. Jeder Leser nennt
+                # seine Erwartung (Ratsche test_laufmanifest_zwei_erzeuger).
+                erwartet = (ERZEUGER if Path(ns.portfolio).name == "bestand_gesamt.parquet"
+                            else ERZEUGER_MIGRATIONSZUGANG)
+                pruefe_erzeuger(manifest, erwartet)
+            except ManifestError as exc:
+                print(f"bestand_report: {exc}", file=sys.stderr)
+                return 2
+    tabellen, _, fehler, usage = lies_und_pruefe_pb1(
+        eingaben, bis=bis, manifest=manifest, ohne_plausibilitaet=True)
+    if tabellen.get("config") is not None:
+        config = tabellen["config"]
+    if tabellen.get("merkmale") is not None:
+        merkmale = tabellen["merkmale"]
     if fehler or usage:
         for eintrag in (usage + fehler)[:5]:
             print(f"bestand_report: {eintrag['message']}", file=sys.stderr)
@@ -256,6 +364,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             stichtag=stichtag,
             schichten=tabellen.get("schichten"),
             verankerung=tabellen.get("verankerung"),
+            # Ohne die Tabelle bewertet der Bericht jeden herabgesetzten
+            # Vertrag ungekuerzt (Angriffsrunde 2, Fund N12: +32 bis +48 %
+            # Deckungskapital) — gelesen wurde sie schon, weitergereicht nicht.
+            reduktionen=tabellen.get("reduktionen"),
         )
     except ValueError as exc:
         print(f"bestand_report: {exc}", file=sys.stderr)

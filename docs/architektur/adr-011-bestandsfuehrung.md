@@ -230,3 +230,88 @@ geschriebenen Ausgabe — deterministisch wie die Ausgaben selbst.
 * Eine transaktionale Einzel-Buchungs-API fuer den laufenden Betrieb:
   Die Simulation bucht weiterhin im Lauf; `fuehre_fort` ist der
   gemeinsame Trichter, nicht ein Online-Buchungssystem.
+
+## Nachtrag 2026-10-01: Der Abschluss bewertet monatsgenau
+
+Entscheid des Maintainers: "Bisher dachte ich, dass der Monatsabschluss
+die Werte monatlich fortschreibt. Wie wollen wir einen Monatsabschluss
+mit angebrochenen Jahreswerten machen?" Gemessen war: Die eine
+Bewertungsstrecke (`auswertung.einzelwerte_am`) las Deckungskapital,
+Rueckkaufswert und beitragsfreie Reserve aus der Zeile des angebrochenen
+Vertragsjahres (`zustand_am`, beim herabgesetzten Vertrag und nach einer
+Beitragsfreistellung ebenso — dorthin hatten die Funde N5/N11 der
+Pruefrunde T27 die Zweige vereinheitlicht). Der Abschluss zum 1.12. wies
+damit den Stand des letzten Jahrestags aus; am Referenzvertrag Monat 95
+26.060,73 statt 29.934,67, eine Treppe statt einer Fortschreibung.
+
+**Bewertungsstichtag und Konvention.** Bewertet wird am Stichtag des
+Abschlusses (dem Monatsersten nach den gebuchten Vorfaellen des Monats),
+nach den vollen Vertragsmonaten seit Versicherungsbeginn. Zwischen zwei
+Vertragsjahrestagen mischt die Strecke linear, wie der Kern es kann
+(`monatsreserve`, `monatsreserve_beitragsfrei`, `vertrags_monatsreserve`,
+`vertrags_monatsreserve_reduziert`; Tarifplan KLV, Abschnitt 6) — fuer
+jeden Vertragstyp gleich: gewoehnlich, mit Scheiben, beitragsfrei,
+herabgesetzt, teilgekuendigt, mit Korrekturschicht (auch der in die
+beitragsfreie Summe ueberfuehrte Schichtwert, den der Kern nur je Jahr
+fuehrt, folgt derselben Mischung). Ein Beitragsuebertrag ist darin nicht
+enthalten; er ist zurueckgestellt (`dev-docs/offene-punkte.md`,
+Fachlich). Die BU bleibt bei der Jahreszeile: Der Kern fuehrt fuer sie
+keine unterjaehrige Reserve, und eine Mischung in der Bestandsschicht
+waere eine Formel neben dem Kern. Die Konvention wird deshalb je Produkt
+gefuehrt (`models.bestand.KONVENTION_JE_PRODUKT`).
+
+**Die Konvention ist ein Vertrag.** Der Abschluss traegt die Spalte
+`bewertungskonvention` (`jahreszeile` oder `monatsgenau`). Was ein
+gelesener Abschluss ist, sagt EINE Funktion
+(`models.bestand.abschluss_konvention`): der Spaltenwert, oder bei
+fehlender Spalte "Jahreszeile, vor der Umstellung geschrieben" — das
+Fehlen ist eine Aussage ueber den Schreiber, kein Rueckfall. Jeder Leser
+einer Abschlussdatei geht ueber `bestand.abschluss.lies_abschluss`.
+Die 387 festgeschriebenen Abschluesse der Laufzeit bleiben, wie sie sind
+(Abschnitt 6): `pruefe_abschluss` rechnet sie in IHRER Konvention nach —
+die Jahreszeile wortgleich wie vor der Umstellung — und meldet sie
+deckungsgleich, nicht als Abweichung. Wer Abschluesse verschiedener
+Konvention in eine Reihe legt, kennzeichnet den Bruch oder verweigert
+benannt (`models.bestand.konventionsbruch`): An der Naht springt das
+Deckungskapital ohne Geschaeftsvorfall.
+
+**Warum der Abschluss dem Kern folgt.** Die Abnahmen rechneten schon
+monatsgenau (A-M1, Migrationscontrolling); der Betrieb fuehrte als
+einziger die Treppe. Ein Zugang, der in der Abnahme bestaetigt war, stand
+damit im ersten Abschluss mit einem anderen Wert, und kein Vergleich
+konnte sagen, ob das die Konvention oder ein Fehler war.
+
+**Verworfen.**
+
+* Die Treppe beibehalten (Wert des letzten Jahrestags): Sie wies
+  unterjaehrig bis zu 11/12 des Jahreszuwachses zu wenig aus und war nie
+  eine fachliche Entscheidung, sondern ein Erbe der jaehrlichen
+  Fortschreibung.
+* Die Zugangsprobe rechnet den Abnahmewert selbst in die Treppe um, der
+  Abschluss bleibt: Sie haette die falsche Konvention zementiert und ein
+  zweites Rechenwissen neben der Strecke aufgebaut.
+* Den Beitragsuebertrag gleich mit einfuehren: Er ist fachlich noch nicht
+  erarbeitet (Verdienung, Zahlweise, Ausweis); Fortschreibung und Tests
+  laufen ohne ihn, das Thema steht auf der Liste der offenen Punkte.
+
+**Folgen.** Ab dem ersten Abschluss nach der Umstellung stehen die Werte
+unterjaehriger Vertraege hoeher (die Reserve waechst in den meisten
+Jahren); am Jahrestag aendert sich nichts. Die Migrationsabnahme A-M4
+weist zusaetzlich den Fuehrungswert aus — was dieser Abschluss fuer jeden
+Vertrag des Zugangs fuehren wird (`models.fuehrungswert`) —, und die
+Zugangsprobe haelt die Abschlusszeilen des Betriebs dagegen (ADR-022,
+Nachtrag 2026-10-01). Ereignisse wirken weiter am Jahrestag
+(`ereignisse`, `ledger_bindung`, `migrationszugang` rechnen bewusst auf
+dem Jahresgitter); umgestellt ist die Bewertung, nicht das
+Ereignisgitter.
+
+**Nebentabellen ohne Vorgabewert.** Herabsetzung und Teilkuendigung
+hinterlassen weder im Stamm noch in der Historie eine Spur, nur in
+`reduktionen`. `schreibe_abschluss` und `pruefe_abschluss` verlangen deshalb
+jede Nebentabelle (Scheiben, Merkmale, Schichten, Verankerung, Reduktionen)
+ohne Vorgabewert; `None` ist die Aussage "dieser Lauf hat keine". Anlass war
+ein Befund aus dem Raten-Block (2026-10-01): Die In-Prozess-Abschlusstests
+gaben nur die Scheiben mit und bewerteten herabgesetzte und teilgekuendigte
+Vertraege ungekuerzt, waehrend die Produzenten (`cli_abschluss`,
+`tageslauf`) die Tabelle mitgaben. Eine Ratsche haelt jeden Aufruf der
+Bewertungsstrecke in `src` auf alle fuenf Tabellen.

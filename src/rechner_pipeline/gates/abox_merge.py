@@ -38,6 +38,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline.gates._common import (
     hashes_von,
     lies_gehasht,
@@ -114,7 +115,7 @@ def main(argv: Optional[List[str]] = None):
         ),
     )
     parser.add_argument("--fall", default=None)
-    parser.add_argument("--repo-root", dest="repo_root", default=None)
+    parser.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", default=None)
     parser.add_argument("--diagnostics-dir", dest="diagnostics_dir", default=None)
     parser.add_argument(
         "--ueberschreiben", dest="ueberschreiben", action="store_true",

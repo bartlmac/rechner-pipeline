@@ -45,6 +45,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline.gates._common import (
     hashes_von,
     lies_gehasht,
@@ -897,7 +898,7 @@ def _build_parser() -> GateArgumentParser:
         help="Zielpfad des HTML-Berichts (Default: <fall>/abgeleitet/"
         "berichte/aktuartest.html).",
     )
-    parser.add_argument("--repo-root", default=None)
+    parser.add_argument("--repo-root", type=lebendes_repo, default=None)
     parser.add_argument("--diagnostics-dir", default=None)
     add_request_json_arg(parser)
     return parser

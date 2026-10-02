@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from rechner_pipeline.fall import anlegen, registrieren
-from tests.zeichnung_fixture import VA
+from tests.zeichnung_fixture import linie_args, VA
 from rechner_pipeline.ontologie import PFLICHT_PARAMETER
 from rechner_pipeline.ontologie.abox import lade, speichere
 from rechner_pipeline.ontologie.befuellung import (
@@ -77,7 +77,7 @@ def test_p9_annahme_blockt_offene_diskrepanzen_fuer_jedes_gate(
         _frag("rechner.xlsm", "tarifrechner", beta1=0.03),
     ], _register(f), ["test/extraktion@abc1234", "test/extraktion-b@abc1234"], ZEIT)
     speichere(abox, f)                                # Diskrepanz bleibt OFFEN
-    result = main(["--fall", str(f), "--gate", gate,
+    result = main(["--fall", str(f), *linie_args(f), "--gate", gate,
                    "--entscheid", "angenommen", "--rolle", VA, "--entscheider", "X",
                    "--begruendung", "y", "--repo-root", "."])
     assert result.exit_code == 20
@@ -90,7 +90,7 @@ def test_p9_annahme_verlangt_die_abox(tmp_path: Path):
     from rechner_pipeline.gates.gate_entscheid import main
 
     f = _fall(tmp_path)
-    result = main(["--fall", str(f), "--gate", "A-M4",
+    result = main(["--fall", str(f), *linie_args(f), "--gate", "A-M4",
                    "--entscheid", "angenommen", "--rolle", VA, "--entscheider", "X",
                    "--begruendung", "y", "--repo-root", "."])
     assert result.exit_code == 20
@@ -99,7 +99,7 @@ def test_p9_annahme_verlangt_die_abox(tmp_path: Path):
     pfad = f / "abgeleitet" / "abox" / "abox.json"
     pfad.parent.mkdir(parents=True)
     pfad.write_text("{kaputt", encoding="utf-8")
-    result = main(["--fall", str(f), "--gate", "A-M4",
+    result = main(["--fall", str(f), *linie_args(f), "--gate", "A-M4",
                    "--entscheid", "angenommen", "--rolle", VA, "--entscheider", "X",
                    "--begruendung", "y", "--repo-root", "."])
     assert result.exit_code == 20
@@ -130,7 +130,7 @@ def test_p9_manipulierter_eingang_blockt_annahme(tmp_path: Path):
     kopie = f / "eingang" / "rechner.xlsm"
     kopie.chmod(0o644)
     kopie.write_bytes(b"drift")
-    result = main(["--fall", str(f), "--gate", "A-Q1",
+    result = main(["--fall", str(f), *linie_args(f), "--gate", "A-Q1",
                    "--entscheid", "angenommen", "--rolle", VA, "--entscheider", "X",
                    "--begruendung", "y", "--repo-root", "."])
     assert result.exit_code == 20
@@ -147,7 +147,7 @@ def test_p9_idempotenz_und_vorgaenger_kette(tmp_path: Path):
     abox = baue_abox(str(f), [_frag("rechner.xlsm", "tarifrechner")],
                      _register(f), ["test/extraktion@abc1234"], ZEIT)
     speichere(abox, f)
-    argv = ["--fall", str(f), "--gate", "A-Q1", "--entscheid", "abgelehnt",
+    argv = ["--fall", str(f), *linie_args(f), "--gate", "A-Q1", "--entscheid", "abgelehnt",
             "--rolle", VA, "--entscheider", "X",
             "--begruendung", "Zwischenstand", "--repo-root", "."]
     erster = main(argv)
@@ -158,7 +158,7 @@ def test_p9_idempotenz_und_vorgaenger_kette(tmp_path: Path):
     snapshots = list((f / "entscheide").glob("A-Q1-*.json"))
     assert len(snapshots) == 1                 # NICHT zwei Dateien
     # Neuer, anderer Entscheid pinnt den ersten als Vorgaenger:
-    dritter = main(["--fall", str(f), "--gate", "A-Q1",
+    dritter = main(["--fall", str(f), *linie_args(f), "--gate", "A-Q1",
                     "--entscheid", "abgelehnt", "--rolle", VA, "--entscheider", "X",
                     "--begruendung", "Anderer Grund", "--repo-root", "."])
     assert dritter.exit_code == 0

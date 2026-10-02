@@ -51,12 +51,17 @@ def _kopie(lauf: Path, tmp_path: Path) -> Path:
     return ziel
 
 
-def _gate_argv(lauf_dir: Path, diag: Path) -> list:
+def _gate_argv(lauf_dir: Path, diag: Path, config: Path = CONFIG) -> list:
     return [
         "--portfolio", str(lauf_dir / "bestand_gesamt.parquet"),
         "--historie", str(lauf_dir / "historie.parquet"),
         "--ledger", str(lauf_dir / "ledger.parquet"),
         "--scheiben", str(lauf_dir / "scheiben.parquet"),
+        # Bedingte Ausgabe des Laufs; die Config erzeugt seit 2026-10-01
+        # Herabsetzungen und Teilkuendigungen, der Lauf traegt sie also.
+        "--reduktionen", str(lauf_dir / "reduktionen.parquet"),
+        # Mit Herabsetzungen im Ledger verlangt das Gate die Config.
+        "--config", str(config),
         "--bis", HORIZONT.isoformat(),
         # Das Laufmanifest ist Pflicht (Entscheid des Maintainers
         # 2026-09-16): Ein Beleg ohne Manifest sagt nichts darueber, welche
@@ -129,7 +134,7 @@ def _pb1_ledger(lauf_dir: Path, diag: Path) -> tuple:
     # Seit Review T23-04 liegt jede P-B1-Rolle im Fall — auch die Config.
     config = lauf_dir / "bestand-config.toml"
     config.write_bytes(CONFIG.read_bytes())
-    ergebnis = bestand_validate.main(_gate_argv(lauf_dir, diag) + ["--config", str(config)])
+    ergebnis = bestand_validate.main(_gate_argv(lauf_dir, diag, config))
     assert ergebnis.exit_code == 0
     ledger_pfad = diag / "bestand_validate.gate.json"
     eintrag = json.loads(ledger_pfad.read_text(encoding="utf-8"))
@@ -218,6 +223,7 @@ def _engine(lauf_dir: Path):
         "historie": lauf_dir / "historie.parquet",
         "ledger": lauf_dir / "ledger.parquet",
         "scheiben": lauf_dir / "scheiben.parquet",
+        "reduktionen": lauf_dir / "reduktionen.parquet",
         "config": CONFIG,
     }, bis=HORIZONT)
 
@@ -247,7 +253,7 @@ def test_vertauschte_stornobetraege_fallen_auf(lauf, tmp_path):
 
     # Und im Gate: rot, mit Config.
     ergebnis = bestand_validate.main(
-        _gate_argv(lauf_dir, tmp_path / "diag") + ["--config", str(CONFIG)])
+        _gate_argv(lauf_dir, tmp_path / "diag"))
     assert ergebnis.exit_code == 20
     assert any(e["code"] == "ledger" for e in ergebnis.errors)
 

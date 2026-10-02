@@ -131,8 +131,9 @@ def _volles_modell() -> dict:
             "controlling": {"anzahl": 834},
         },
         "kette": {
+            # mit dem Fallauftrag, den jede Annahme nennt (ADR-026)
             "entscheide": [{"gate": g, "strukturell_verifiziert": True}
-                           for g in ("A-M1", "A-M2", "A-M3", "A-M4")],
+                           for g in ("A-M6", "A-Q1", "A-M1", "A-M2", "A-M3", "A-M4")],
             "entscheide_mit_befund": 0,
         },
         "umbau": {"vorhanden": True},
@@ -216,7 +217,7 @@ def test_tarif_scope_verlangt_keine_bestandsabnahmen():
     modell["bestand"] = {}
     modell["transformation"] = {}
     modell["kette"]["entscheide"] = [
-        {"gate": g, "strukturell_verifiziert": True} for g in ("A-M1", "A-M4")]
+        {"gate": g, "strukturell_verifiziert": True} for g in ("A-M6", "A-Q1", "A-M1", "A-M4")]
 
     assert falldaten.luecken(modell) == []
 

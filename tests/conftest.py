@@ -76,6 +76,10 @@ LANGSAM: frozenset = frozenset({
     "test_migrationssuite.py",
     "test_pk1_fixture_e2e.py",
     "test_at_pruefpunkte.py",
+    # 2026-10-01 gemessen: zwei Fortschreibungen der PLV seit 1994 (je rund
+    # 35 s) bzw. ein Tageslauf ueber 21 Monate mit zehnfachem Neugeschaeft.
+    "test_plv_vorgaenge_im_configbestand.py",
+    "test_betrieb_plv_vorgaenge.py",
 })
 
 #: Die Annotation steht irgendwo im Modul-Docstring — auch direkt hinter
@@ -113,6 +117,38 @@ def pytest_configure(config) -> None:
     for name in sorted(namen):
         config.addinivalue_line(
             "markers", f"{name}: abgeleitete Testgruppe (tests/conftest.py)")
+
+
+def pytest_sessionstart(session) -> None:
+    """Den Baumwaechter starten — im Steuerprozess, nicht je xdist-Worker."""
+    if hasattr(session.config, "workerinput"):
+        return
+    from tests.baumwaechter import Baumwaechter
+
+    waechter = Baumwaechter(TESTS.parent)
+    waechter.start()
+    session.config._baumwaechter = waechter
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session, exitstatus) -> None:
+    """Hat sich der Baum waehrend des Laufs veraendert, ist der Lauf rot."""
+    waechter = getattr(session.config, "_baumwaechter", None)
+    if waechter is None:
+        return
+    from tests.baumwaechter import urteil
+
+    waechter.stop()
+    session.exitstatus = urteil(waechter, int(session.exitstatus))
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
+    """Der Waechter sagt in JEDEM Lauf, ob er geprueft hat und was er sah."""
+    waechter = getattr(config, "_baumwaechter", None)
+    if waechter is None:
+        return
+    for zeile in waechter.bericht():
+        terminalreporter.write_line(zeile, red=bool(waechter.funde))
 
 
 def pytest_collection_modifyitems(config, items) -> None:
@@ -167,3 +203,92 @@ def _testschluesselring():
     _ueb._STANDARD_SCHLUESSELRING = TESTRING
     yield
     _ueb._STANDARD_SCHLUESSELRING = vorher
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _testbetriebsschluessel():
+    """Jeder Tageslauf im Testlauf zeichnet und prueft mit dem
+    Test-Betriebsschluessel (tests/freigabe_testschluessel.py) — die Naht
+    ``betrieb.tageslauf._STANDARD_BETRIEBSZEICHNUNG``. Produktiv ist sie
+    None; dort kommen Schluessel und Ordnung aus ``--schluessel`` und
+    ``--zeichnungsordnung``, und ohne sie laeuft kein Tag.
+
+    Schluessel und Ordnung liegen in einem eigenen Temp-Verzeichnis
+    AUSSERHALB des pytest-Basisverzeichnisses: Die Naht wird bei jedem
+    Aufruf mit denselben Regeln geladen wie ein ausdruecklicher Schluessel
+    (nicht in der Ablage, 0600, ein Hardlink), und die Ablagen der Tests
+    liegen unter dem Basisverzeichnis. SESSION-weit aus demselben Grund wie
+    der Freigabe-Testring: Modul-Fixtures fuehren Tage, bevor eine
+    funktionsweite Naht griffe. Tests, die den Zustand ohne Schluessel
+    pruefen, setzen die Naht per monkeypatch auf None."""
+    import json
+    import shutil
+    import tempfile
+
+    from rechner_pipeline.betrieb import tageslauf as _tl
+    from tests.freigabe_testschluessel import BETRIEBSKEY, betriebsordnung
+
+    verzeichnis = Path(tempfile.mkdtemp(prefix="betriebsschluessel-"))
+    schluessel = verzeichnis / "betrieb.key"
+    schluessel.write_bytes(BETRIEBSKEY)
+    schluessel.chmod(0o600)
+    ordnung = verzeichnis / "zeichnungsordnung.json"
+    ordnung.write_text(json.dumps(betriebsordnung(), sort_keys=True), encoding="utf-8")
+    # Die Linie ist Pflicht (ADR-025, Nachtrag 2026-10-01): Der Betrieb liest
+    # jede Abnahme gegen den Stand der Ordnung, unter dem sie gezeichnet
+    # wurde. Die Test-Linie traegt die Ordnung des Betriebs als erstes Glied
+    # (deterministisch, tests/freigabe_testschluessel.suitelinie_glied); die
+    # Naht ``tageslauf._STANDARD_LINIE`` reicht sie jedem Zeichner des Betriebs.
+    from tests.freigabe_testschluessel import suitelinie_anlegen
+
+    linie = suitelinie_anlegen(verzeichnis / "linie")
+    vorher = _tl._STANDARD_BETRIEBSZEICHNUNG
+    vorher_linie = _tl._STANDARD_LINIE
+    _tl._STANDARD_BETRIEBSZEICHNUNG = (schluessel, ordnung)
+    _tl._STANDARD_LINIE = linie
+    yield schluessel, ordnung
+    _tl._STANDARD_BETRIEBSZEICHNUNG = vorher
+    _tl._STANDARD_LINIE = vorher_linie
+    shutil.rmtree(verzeichnis, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _testzugangsabnahme():
+    """Jede Registrierung ohne ausdrueckliche Zugangsabnahme bekommt im
+    Testlauf eine: die Naht ``betrieb.uebernahme._STANDARD_ZUGANGSABNAHME``
+    (tests/zugangsabnahme_testhelfer.py) legt Beleg und A-B2-Snapshot im Fall
+    an, gebunden an den Eingang und den Stand, die die Registrierung ihr
+    reicht (ADR-022). Produktiv ist sie None; dort wird ohne A-B2 nichts
+    registriert. Geprueft wird der Snapshot danach wie jeder andere.
+
+    SESSION-weit aus demselben Grund wie Freigabe-Testring und
+    Betriebsschluessel: Modul-Fixtures registrieren, bevor eine
+    funktionsweite Naht griffe. Tests, deren Gegenstand die Verweigerung
+    ohne A-B2 ist, setzen die Naht per monkeypatch auf None."""
+    from rechner_pipeline.betrieb import uebernahme as _ueb
+    from tests.zugangsabnahme_testhelfer import schreibe_zugangsabnahme
+
+    vorher = _ueb._STANDARD_ZUGANGSABNAHME
+    _ueb._STANDARD_ZUGANGSABNAHME = schreibe_zugangsabnahme
+    yield
+    _ueb._STANDARD_ZUGANGSABNAHME = vorher
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _testanfangsbestand():
+    """Jeder Tageslauf nach dem Aufbaulauf verlangt die Abnahme des
+    Anfangsbestands A-B3 (ADR-025). Im Testlauf legt die Naht
+    ``betrieb.anfangsbestand._STANDARD_ANFANGSBESTAND``
+    (tests/anfangsbestand_testhelfer.py) Beleg (echter Produzent), A-B3-Snapshot
+    im Linienbereich neben der Ablage und Bindung (echtes ``binden``) an,
+    sobald ein Lauf sie verlangt. Produktiv ist sie None; dort laeuft nach dem
+    Aufbaulauf kein Tag ohne A-B3. Tests, deren Gegenstand die Verweigerung
+    ist, setzen die Naht per monkeypatch auf None. SESSION-weit aus demselben
+    Grund wie die anderen Nahte."""
+    from rechner_pipeline.betrieb import anfangsbestand as _anf
+    from tests.anfangsbestand_testhelfer import schreibe_anfangsbestand
+
+    vorher = _anf._STANDARD_ANFANGSBESTAND
+    _anf._STANDARD_ANFANGSBESTAND = schreibe_anfangsbestand
+    yield
+    _anf._STANDARD_ANFANGSBESTAND = vorher

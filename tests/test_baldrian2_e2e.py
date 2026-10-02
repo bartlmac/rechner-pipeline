@@ -75,10 +75,34 @@ ANKER = "baldrian_erwartungswerte_stichtag.json"
 #: Kandidatenmenge der Herabsetzungsstufen (Auskunft 2) und die
 #: dokumentierte Arbeits-Lesart f=0,60 der zwei unbestimmbaren Policen
 #: (mit Falsifizierbarkeits-Auflage, Abschlussbericht Abschnitt 5).
+#:
+#: Die Arbeits-Lesart kommt als REGISTRIERTE Auskunft in den Fall
+#: (Entscheid des Maintainers 2026-09-30: nie als Kommandozeilenparameter
+#: je Police) — so traegt sie Provenienz wie jede Lieferung und ist fuer
+#: die Zeichnung bindbar. ``RED_ANTEILE`` bleibt die Wahrheit fuer die
+#: Kontrollrechnungen dieses Moduls; die Datei wird aus ihr geschrieben.
 ERHOEHUNGSSATZ = "0.05"
 RED_VERFAHREN = "teilkuendigung"
 KANDIDATEN = ("0.50", "0.60", "0.75")
 RED_ANTEILE = ("7000396=0.60", "7000679=0.60")
+#: Die Herabsetzungsdaten der zwei Policen (Spalte DATUM der Auskunft,
+#: wie in den Metadaten der Vorgeschichte).
+RED_DATEN = {"7000396": "01.10.2019", "7000679": "01.05.2021"}
+AUSKUNFT = "baldrian_red_anteile_auskunft.csv"
+AUSKUNFT_BEZUG = "Arbeits-Lesart des Aktuars, Auskunft 2/4"
+
+
+def schreibe_auskunft(ziel: Path) -> Path:
+    """Die Auskunft je Police als CSV (POLNR;GEVO;DATUM;ANTEIL;BEZUG)."""
+    zeilen = ["POLNR;GEVO;DATUM;ANTEIL;BEZUG"]
+    for eintrag in RED_ANTEILE:
+        police, _, anteil = eintrag.partition("=")
+        zeilen.append(
+            f"{police};RED;{RED_DATEN[police]};{anteil};{AUSKUNFT_BEZUG}")
+    ziel.mkdir(parents=True, exist_ok=True)
+    pfad = ziel / AUSKUNFT
+    pfad.write_text("\n".join(zeilen) + "\n", encoding="utf-8")
+    return pfad
 
 ABNAHMEN = (
     ("A-M1", "baldrian_erwartungswerte_stichtag.json"),
@@ -88,23 +112,26 @@ ABNAHMEN = (
 
 
 def _lieferungs_flags() -> list[str]:
-    flags = [
-        "--erhoehungssatz", ERHOEHUNGSSATZ,
-        "--red-verfahren", RED_VERFAHREN,
-        "--scheiben-mit-gamma1",
-    ]
+    """Was der Lauf am Aufruf traegt: die Arbeitsannahme (Kandidaten) und
+    die registrierte Auskunft. Die Tarifregeln (Verfahren, Dynamiksatz,
+    gamma1, Abzug je Baustein, Stichtag des Deckungskapitals) stehen seit
+    dem Nachtrag zu ADR-024 in der Spez der Fixture (``tarifregeln.json``)."""
+    flags = []
     for k in KANDIDATEN:
         flags += ["--red-anteil-kandidat", k]
-    for a in RED_ANTEILE:
-        flags += ["--red-anteil", a]
+    flags += ["--red-anteile-datei", AUSKUNFT]
     return flags
+
+
+#: Fixture-Dateien, die keine Lieferung sind: die eingefrorene Spez, ihre
+#: festgestellten Tarifregeln, Mapping und Policenliste des Schnitts.
+NICHT_LIEFERUNG = ("policen.json", "transformation.spec.json",
+                   "klv-tg2015.spez.json", "tarifregeln.json")
 
 
 def _registriere_alles(fall: Path) -> None:
     for pfad in sorted(FIXTURE.glob("*")):
-        if pfad.suffix in (".csv", ".json") and pfad.name not in (
-                "policen.json", "transformation.spec.json",
-                "klv-tg2015.spez.json"):
+        if pfad.suffix in (".csv", ".json") and pfad.name not in NICHT_LIEFERUNG:
             registrieren(fall, pfad)
 
 
@@ -115,6 +142,7 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     fall = basis / "fall"
     anlegen(fall, scope="bestand")
     _registriere_alles(fall)
+    registrieren(fall, schreibe_auskunft(basis / "auskunft"))
 
     spez_ziel = fall / "abgeleitet" / "spez"
     spez_ziel.mkdir(parents=True, exist_ok=True)
@@ -144,7 +172,6 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--generation-spez", GENERATION,
         "--anfangszustand", "materialisieren",
         "--anker-erwartungswerte", ANKER,
-        "--stoab-je-baustein",
         "--out-dir", str(bestand),
     ] + _lieferungs_flags()) == 0, "Uebernahme in das Zielmodell"
 
@@ -175,7 +202,6 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     assert verankerung_belegen.main([
         "--fall", str(fall), "--repo-root", str(REPO_ROOT),
         "--generation", GENERATION,
-        "--formfunktion", "proportional_zur_basis",
         "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
         "--anker-erwartungswerte", ANKER,
         # Weg D (Entscheid des Maintainers 2026-09-20): Dieser Lauf
@@ -234,7 +260,10 @@ def gefahrener_fall(tmp_path_factory) -> Path:
             "--erwartungswerte", erwartung, "--stichprobe", STICHPROBE,
             "--bestand", str(bestand / "bestand.parquet"),
             "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
-            "--stoab-je-baustein",
+            # Dieselbe Ankerquelle wie Uebernahme und Suite: sonst kann A-M2
+            # (nur Verlaufspunkte) den Zustand von 7000586 nicht ableiten und
+            # verweigert (Pruefer-Befund B1).
+            "--anker-erwartungswerte", ANKER,
             "--schicht", str(schichten),
             "--repo-root", str(REPO_ROOT),
         ] + _lieferungs_flags()) == 0, f"Aktuarieller Test {abnahme}"
@@ -293,11 +322,10 @@ def gefahrener_fall(tmp_path_factory) -> Path:
             "--abzug-1", ABZUG_1, "--abzug-2", ABZUG_2,
             "--gevo-protokoll", PROTOKOLL,
             "--bestand", str(bestand / "bestand.parquet"),
+            "--config", str(config_pfad),
             "--stichtag-1", STICHTAG_1, "--stichtag-2", STICHTAG_2,
             "--zeilen", str(zeilen), "--vorgeschichte", METADATEN,
             "--anker-erwartungswerte", ANKER,
-            "--stoab-je-baustein",
-            "--dk-stichtag", "jahrestag",
             "--schicht", str(schichten),
             "--repo-root", str(REPO_ROOT),
         ] + _lieferungs_flags())
@@ -316,6 +344,14 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     bestand_schluessel = next(
         k for k in ms_eingaben if k.endswith("bestand.parquet"))
     assert ms_beleg["bestand_sha256"] == ms_eingaben[bestand_schluessel]
+    # Der Fuehrungswert (Entscheid 2026-10-01): die Produzentin liefert ihn
+    # fuer jeden Vertrag, gebunden an Bestand und Config dieses Laufs.
+    from rechner_pipeline.models.fuehrungswert import fuehrungswert_fehler
+
+    assert fuehrungswert_fehler(ms_beleg) == []
+    assert ms_beleg["fuehrungswert"]["konvention"] == "monatsgenau"
+    assert ms_beleg["fuehrungswert"]["config_sha256"] == hashlib.sha256(
+        Path(config_pfad).read_bytes()).hexdigest()
     for name in (ABZUG_1, ABZUG_2, PROTOKOLL, METADATEN, ANKER):
         assert any(k.endswith(Path(name).name) for k in ms_eingaben), name
     for rel, summe in ms_eingaben.items():
@@ -360,7 +396,6 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "--vorgeschichte", METADATEN, "--stichtag", STICHTAG_1,
         "--anker-erwartungswerte", ANKER,
         "--schicht", str(schichten),
-        "--stoab-je-baustein",
     ] + _lieferungs_flags()) == 0, "Fuehrungsprobe"
 
     # Und zuletzt die Migrationsabnahme selbst. Dass sie hier fehlte, ist
@@ -401,6 +436,32 @@ def gefahrener_fall(tmp_path_factory) -> Path:
         "A-M4 lehnt den P-B1-Beleg des Migrationszugangs ab", am4.errors)
     assert codes <= {"scope_bindung"}, am4.errors
     return fall
+
+
+def _welt_wie_der_lauf(ueb, ergebnis, **extra):
+    """Eine Fortschreibung so zusammengesetzt wie cli_fortschreibung:
+    Journal und Scheiben der Uebernahme voran, der Endbestand GEFUEHRT
+    (ADR-011). Die fruehere Fassung dieser Tests legte nur die neuen
+    Historienzeilen und keinen Endbestand hin — eine Welt, die kein Lauf
+    erzeugt; seit der Herleitung des Endzustands (Pruefrunde T27, Befund
+    07) sieht die Probe das."""
+    import pandas as pd
+
+    from rechner_pipeline.bestand.ereignisse import mit_zugaengen
+    from rechner_pipeline.bestand.fuehrung import fuehre_fort
+
+    def voran(a, b, sortierung):
+        return pd.concat([a, b], ignore_index=True).sort_values(
+            sortierung, kind="stable").reset_index(drop=True)
+
+    historie = voran(ueb["historie"], ergebnis.historie, ["police_id", "status_id"])
+    return {
+        "ledger": voran(ueb["ledger"], ergebnis.ledger, ["police_id", "status_date"]),
+        "scheiben": voran(ueb["scheiben"], ergebnis.scheiben, ["police_id", "scheiben_id"]),
+        "historie": historie,
+        "bestand": fuehre_fort(mit_zugaengen(ueb["bestand"], ergebnis.zugaenge), historie),
+        **extra,
+    }
 
 
 def _probe_material(gefahrener_fall: Path):
@@ -444,13 +505,19 @@ def _probe_material(gefahrener_fall: Path):
                   and "kVx_MRV" in (x.get("erwartet") or {})), None)
         if e:
             anker[str(v["police_id"])] = (int(e["monate"]), float(e["erwartet"]["kVx_MRV"]))
+    from rechner_pipeline.spez.tarifregeln import tarifregeln_der_spez
+
+    spez = lade_spez(gefahrener_fall, GENERATION)
+    # Die Regeln wie der Lauf: aus der Spez (ADR-024, Nachtrag).
+    regeln = tarifregeln_der_spez(spez)
+    assert regeln.quell_red_verfahren == RED_VERFAHREN
+    assert regeln.erhoehungssatz == float(ERHOEHUNGSSATZ)
     basis = dict(
         config=load_config(gefahrener_fall / "abgeleitet" / "bestand-config.toml"),
-        spez=lade_spez(gefahrener_fall, GENERATION), zeilen=zeilen,
+        spez=spez, zeilen=zeilen,
         vorgeschichte=_lies_csv(gefahrener_fall, METADATEN),
-        tarifwerk={"scheiben_mit_gamma1": True, "stoab_je_baustein": True,
-                   "red_verfahren": RED_VERFAHREN},
-        erhoehungssatz=float(ERHOEHUNGSSATZ),
+        tarifwerk=dict(regeln.tarifwerk), quellverfahren=dict(regeln.quellverfahren),
+        erhoehungssatz=regeln.erhoehungssatz,
         red_anteile={a.split("=")[0]: float(a.split("=")[1]) for a in RED_ANTEILE},
         red_anteile_je_datum={}, red_anteil_kandidaten=tuple(float(k) for k in KANDIDATEN),
         anker=anker, schichtbeleg=schichtbeleg,
@@ -505,6 +572,8 @@ def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
     assert beleg["tarifwerk"] == {
         "scheiben_mit_gamma1": True, "stoab_je_baustein": True,
         "red_verfahren": RED_VERFAHREN,
+        # Der Umfang der Teilkuendigung des uebernommenen Tarifs (Annahme B1).
+        "tku_umfang": "grundversicherung",
     }
     # Der Bestand, den die Suite gehasht hat, ist eine Eingabe der Probe.
     suite = _bericht(gefahrener_fall, "migrationssuite.json")
@@ -537,11 +606,7 @@ def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
         ueb["bestand"], lebhaft, __import__("datetime").date(2040, 1, 1),
         merkmale=ueb["merkmale"], scheiben=ueb["scheiben"],
         schichten=ueb["schichten"], verankerung=ueb["verankerung"])
-    lebhafte_fort = {
-        "ledger": ergebnis.ledger,
-        "scheiben": pd.concat([ueb["scheiben"], ergebnis.scheiben], ignore_index=True),
-        "historie": ergebnis.historie,
-    }
+    lebhafte_fort = _welt_wie_der_lauf(ueb, ergebnis)
     lebhaft_basis = dict(basis, config=lebhaft)
     gut2 = pruefe_fuehrung(uebernahme=ueb, fortschreibung=lebhafte_fort, **lebhaft_basis)
     assert gut2["bestanden"], gut2["befunde"]
@@ -572,9 +637,7 @@ def test_die_fuehrungsprobe_besteht_und_faellt_bei_fremder_welt(
         ueb["bestand"], altes_tarifwerk, __import__("datetime").date(2040, 1, 1),
         merkmale=ueb["merkmale"], scheiben=ueb["scheiben"],
         schichten=ueb["schichten"], verankerung=ueb["verankerung"])
-    alt_fort = {"ledger": alt_ergebnis.ledger,
-                "scheiben": pd.concat([ueb["scheiben"], alt_ergebnis.scheiben], ignore_index=True),
-                "historie": alt_ergebnis.historie}
+    alt_fort = _welt_wie_der_lauf(ueb, alt_ergebnis)
     rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=alt_fort, **lebhaft_basis)
     assert any(b["art"] == "buchung" and b["ereignis"] == "STO" for b in rot["befunde"]), (
         "Storno je Vertrag statt je Baustein muss die Probe rot machen")
@@ -706,14 +769,16 @@ def test_die_uebernahme_materialisiert_den_anfangszustand_der_pruefstrecke(
         for z in csv.DictReader(datei, delimiter=";"):
             vorgeschichte.setdefault(int(z["POLNR"]), []).append(z["GEVO"])
 
-    # Scheiben: jede Serie ohne terminale Beitragsfreistellung ist als
-    # Bausteine im Bestand; PEX-Serien kollabieren (Ein-Punkt-Inversion).
+    # Scheiben: JEDE Erhoehungsserie ist als Bausteine im Bestand — auch die
+    # beitragsfrei gelieferte. Das Tarifwerk der Lieferung zieht den
+    # Stornoabzug je Baustein und kuendigt nur die Grundversicherung; eine
+    # Zusammenfassung zu einem Baustein rechnete Rueckkauf und Teilkuendigung
+    # falsch (Pruefrunde J, J04; vorher kollabierten die PEX-Serien).
     mit_scheiben = set(int(p) for p in scheiben["police_id"])
-    erwartet = {
-        pid for pid, arten in vorgeschichte.items()
-        if "ERH" in arten and "PEX" not in arten
-    }
+    erwartet = {pid for pid, arten in vorgeschichte.items() if "ERH" in arten}
     assert mit_scheiben == erwartet, (sorted(mit_scheiben), sorted(erwartet))
+    pex_serien = {pid for pid in erwartet if "PEX" in vorgeschichte[pid]}
+    assert len(pex_serien) == 6, sorted(pex_serien)
     assert validate_scheiben(stamm, scheiben) == []
     assert (scheiben["gamma1"] > 0.0).all(), "volle Beitragsformel je Baustein"
     haupt = stamm.set_index("police_id")
@@ -721,10 +786,14 @@ def test_die_uebernahme_materialisiert_den_anfangszustand_der_pruefstrecke(
     for pid in sorted(mit_scheiben):
         eigene = scheiben[scheiben["police_id"] == pid]
         gesamt = float(haupt.loc[pid, "sum_insured"]) + float(eigene["sum_insured"].sum())
-        assert abs(gesamt - float(zeilen[pid]["sum_insured"])) <= 0.05, pid
         assert abs(float(zug.loc[pid]) - gesamt) <= 0.005, pid
-        assert float(haupt.loc[pid, "sum_insured"]) < float(zeilen[pid]["sum_insured"])
         assert list(eigene["scheiben_id"]) == list(range(1, len(eigene) + 1))
+        if pid in pex_serien:
+            # Ursprungssummen: groesser als die gelieferte beitragsfreie Summe.
+            assert gesamt > float(zeilen[pid]["sum_insured"]), pid
+            continue
+        assert abs(gesamt - float(zeilen[pid]["sum_insured"])) <= 0.05, pid
+        assert float(haupt.loc[pid, "sum_insured"]) < float(zeilen[pid]["sum_insured"])
     # Der Beleg der Uebernahme.
     beleg = json.loads((bestand / "uebernahme.json").read_text(encoding="utf-8"))
     # Beitragsfrei geliefert: Umbuchung = gelieferte Summe PLUS dem
@@ -746,7 +815,9 @@ def test_die_uebernahme_materialisiert_den_anfangszustand_der_pruefstrecke(
         # durch die der Zuschlag jahrelang unbemerkt fehlte.
         assert abs(float(betrag) - erwartet) <= 5e-7, (pid, betrag, erwartet)
         assert float(haupt.loc[pid, "sum_insured"]) > float(betrag)
-        assert abs(float(zug.loc[pid]) - float(haupt.loc[pid, "sum_insured"])) <= 0.005
+        bausteine = float(scheiben.loc[scheiben["police_id"] == pid, "sum_insured"].sum())
+        assert abs(float(zug.loc[pid]) - float(haupt.loc[pid, "sum_insured"])
+                   - bausteine) <= 0.005
     # Positivkontrolle des Detektors (Auswahl siehe ``schneide.py``): Der
     # Schnitt MUSS alle drei Zuschlagslagen halten — gehobener Cent,
     # gesenkter Cent, Zuschlag unter dem Cent. Ohne sie ist die Zeile oben
@@ -759,12 +830,22 @@ def test_die_uebernahme_materialisiert_den_anfangszustand_der_pruefstrecke(
         lagen["gehoben" if nachher > vorher
               else "gesenkt" if nachher < vorher
               else "unter_cent"].add(pid)
-    assert all(lagen.values()), (
-        "Schnitt ohne alle drei Zuschlagslagen", lagen, sorted(zuschlag.items()))
+    # Pruefrunde J, J04: 7001003 ist eine beitragsfrei gelieferte
+    # Erhoehungsserie; mit ihren Bausteinen (statt der Zusammenfassung) ist
+    # ihr Zuschlag -0,00026 statt -0,005 und senkt den Cent nicht mehr. Die
+    # Lage "gesenkt" hat der Schnitt damit verloren — BENANNTE Luecke, bis
+    # ``schneide.py`` eine neue Pflicht-Police waehlt (das Rezept liest den
+    # Fall-Datenraum). Die beiden uebrigen Lagen bleiben Pflicht, und die
+    # verlorene steht hier woertlich, damit ihr Wiederauftauchen auffaellt.
+    assert lagen["gehoben"] == {7000863} and lagen["unter_cent"] == {7000316, 7001003}, (
+        "Schnitt ohne die erwarteten Zuschlagslagen", lagen, sorted(zuschlag.items()))
+    assert lagen["gesenkt"] == set(), lagen
     assert beleg["anfangszustand"] == "materialisieren"
     assert beleg["tarifwerk"] == {
         "scheiben_mit_gamma1": True, "stoab_je_baustein": True,
         "red_verfahren": RED_VERFAHREN,
+        # Der Umfang der Teilkuendigung des uebernommenen Tarifs (Annahme B1).
+        "tku_umfang": "grundversicherung",
     }
     assert beleg["mit_scheiben"] == len(mit_scheiben)
     assert beleg["scheiben"] == len(scheiben)
@@ -773,7 +854,8 @@ def test_die_uebernahme_materialisiert_den_anfangszustand_der_pruefstrecke(
     # Und der Config-Abschnitt traegt die Schalter, die die Fuehrung liest.
     abschnitt = (bestand / "generation-zellen.toml").read_text(encoding="utf-8")
     for zeile in ("scheiben_mit_gamma1 = true", "stoab_je_baustein = true",
-                  f'red_verfahren = "{RED_VERFAHREN}"'):
+                  f'red_verfahren = "{RED_VERFAHREN}"',
+                  'tku_umfang = "grundversicherung"'):
         assert zeile in abschnitt, zeile
 
 
@@ -928,7 +1010,6 @@ def test_ein_roter_verankerungslauf_hinterlaesst_keine_schichttabelle(
     code = verankerung_belegen.main([
         "--fall", str(kopie), "--repo-root", str(REPO_ROOT),
         "--generation", GENERATION,
-        "--formfunktion", "proportional_zur_basis",
         "--zeilen", str(kopie / "abgeleitet" / "transformation" / "zeilen.json"),
         "--vorgeschichte", METADATEN,
         "--anker-erwartungswerte", ANKER,
@@ -995,3 +1076,135 @@ def test_die_fuehrungsprobe_sieht_jede_veraenderte_stammspalte(
     assert any(feld in str(b) for b in schlecht["befunde"]), (
         f"{feld} faellt, aber der Befund nennt die Spalte nicht: "
         f"{schlecht['befunde'][:2]}")
+
+
+def test_die_fuehrungsprobe_rechnet_jede_herabsetzungsbuchung_nach(gefahrener_fall: Path):
+    """Angriffsrunde der Nacht: Die Fuehrungsprobe sah keine einzige
+    RED-Buchung an — die Auszahlung der Teilkuendigung, eine echte Zahlung
+    an den Kunden, hatte keinen zweiten Rechenweg. Jetzt rechnet die
+    Probe VS_herabsetzung, dDK_absorption, RKW_teilkuendigung und
+    Kappung nach. Mutationsprobe: TKU aus GEPRUEFTE_BUCHUNGEN entfernen
+    -> rot."""
+    import copy
+    import datetime as _dt
+
+    import pandas as pd
+
+    from rechner_pipeline.bestand.config import config_aus_text
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+    from rechner_pipeline.gates.fuehrungsprobe import pruefe_fuehrung
+
+    ueb, _fort, basis = _probe_material(gefahrener_fall)
+    text = (gefahrener_fall / "abgeleitet" / "bestand-config.toml").read_text(encoding="utf-8")
+    anteil = float(RED_ANTEILE[0].split("=")[1])
+    # Der uebernommene Tarif kennt nur die Teilkuendigung, aus ihrer eigenen
+    # Rate (Entscheid des Maintainers 2026-10-01).
+    mit_red = config_aus_text(text + (
+        f"\n[annahmen]\ntk_anteil = {anteil}\n"
+        "[annahmen.teilkuendigung]\na = 0.20\nb = 0.0\n"))
+    assert mit_red.validate() == []
+    erg = fortschreiben(
+        ueb["bestand"], mit_red, _dt.date(2040, 1, 1), merkmale=ueb["merkmale"],
+        scheiben=ueb["scheiben"], schichten=ueb["schichten"], verankerung=ueb["verankerung"])
+    assert len(erg.reduktionen), "keine Herabsetzung in der Welt"
+    fort = _welt_wie_der_lauf(ueb, erg, reduktionen=erg.reduktionen)
+    red_basis = dict(basis, config=mit_red)
+    gut = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **red_basis)
+    assert gut["bestanden"], gut["befunde"][:3]
+    assert gut["buchungen_geprueft"]["TKU"] >= len(erg.reduktionen)
+    kaputt = copy.deepcopy(fort)
+    led = kaputt["ledger"]
+    i = led.index[(led["ereignis"] == "TKU") & (led["betrag_art"] == "RKW_teilkuendigung")][0]
+    led.loc[i, "betrag"] += 1.0
+    rot = pruefe_fuehrung(uebernahme=ueb, fortschreibung=kaputt, **red_basis)
+    assert not rot["bestanden"] and any(b["art"] == "buchung" for b in rot["befunde"])
+
+
+def test_die_fuehrungsprobe_traegt_jede_zweierfolge_des_uebernommenen_tarifs(
+    gefahrener_fall: Path,
+):
+    """Zaehltest in der Welt des Falls (Entscheid des Maintainers
+    2026-10-01: beliebig viele Vorgaenge in jeder Reihenfolge). Der
+    uebernommene Tarif kennt nur die Teilkuendigung (Umfang
+    Grundversicherung, Entscheid B1); mit hohen Raten fuer Teilkuendigung,
+    Beitragsfreistellung und Erhoehung zieht die Engine jede geordnete
+    Zweierfolge aus TKU, PEX und ERH, die das Tarifwerk zulaesst — auch die
+    Teilkuendigung NACH der Freistellung —, und die Fuehrungsprobe rechnet
+    jede Buchung nach. Mutationsproben: die Teilkuendigung nach PEX nicht
+    ziehen -> (PEX, TKU) fehlt -> rot; die Probe auf den ersten Vorgang
+    beschraenken -> Befunde -> rot."""
+    import datetime as _dt
+    from collections import Counter
+
+    from rechner_pipeline.bestand.config import config_aus_text
+    from rechner_pipeline.bestand.ereignisse import fortschreiben
+    from rechner_pipeline.gates.fuehrungsprobe import pruefe_fuehrung
+
+    ueb, _fort, basis = _probe_material(gefahrener_fall)
+    text = (gefahrener_fall / "abgeleitet" / "bestand-config.toml").read_text(encoding="utf-8")
+    lebhaft = config_aus_text(text + (
+        "\n[annahmen]\ntk_anteil = 0.8\nerh_prozent = 0.05\n"
+        "[annahmen.teilkuendigung]\na = 0.5\nb = 0.0\n"
+        "[annahmen.beitragsfreistellung]\na = 0.3\nb = 0.0\n"
+        "[annahmen.erhoehung]\na = 0.3\nb = 0.0\n"))
+    assert lebhaft.validate() == []
+    assert lebhaft.generationen[0].tarifwerk()["tku_umfang"] == "grundversicherung"
+    erg = fortschreiben(
+        ueb["bestand"], lebhaft, _dt.date(2040, 1, 1), merkmale=ueb["merkmale"],
+        scheiben=ueb["scheiben"], schichten=ueb["schichten"], verankerung=ueb["verankerung"])
+    assert set(erg.reduktionen["verfahren"]) == {"teilkuendigung"}
+    led = erg.ledger
+    zeilen = led[((led["ereignis"] == "TKU") & (led["betrag_art"] == "VS_teilkuendigung"))
+                 | (led["ereignis"] == "PEX")
+                 | ((led["ereignis"] == "ERH") & (led["betrag_art"] == "VS_erhoehung"))]
+    rang = {"PEX": 0, "TKU": 2, "ERH": 3}
+    paare = Counter()
+    for _pid, eigene in zeilen.groupby("police_id"):
+        codes = [e for _, e in sorted(zip(eigene["status_date"], eigene["ereignis"]),
+                                      key=lambda z: (z[0], rang[z[1]]))]
+        paare.update(zip(codes, codes[1:]))
+    # Jede Zweierfolge MIT einer Teilkuendigung (die ohne sind nicht Gegenstand;
+    # der kleine Bestand des Falls zieht sie nicht verlaesslich).
+    soll = {("TKU", "TKU"), ("TKU", "PEX"), ("PEX", "TKU"), ("ERH", "TKU"),
+            ("TKU", "ERH")}
+    assert soll <= set(paare), (sorted(soll - set(paare)), paare)
+    assert not {("PEX", "ERH"), ("PEX", "PEX")} & set(paare)
+    fort = _welt_wie_der_lauf(ueb, erg, reduktionen=erg.reduktionen)
+    gut = pruefe_fuehrung(uebernahme=ueb, fortschreibung=fort, **dict(basis, config=lebhaft))
+    assert gut["bestanden"], gut["befunde"][:3]
+    assert gut["buchungen_geprueft"]["TKU"] >= len(erg.reduktionen)
+
+
+def test_der_vor_bericht_laeuft_mit_dem_journal_und_der_stamm_allein_ist_abgewiesen(
+    gefahrener_fall: Path, tmp_path, capsys
+):
+    """Runde E, Nachbesserung (Befund 3): Die echte Verzeichnisform der
+    Uebernahme. ``bestand_uebernehmen`` schreibt ``historie.parquet`` und
+    ``ledger.parquet`` immer neben ``bestand.parquet`` — eine Ausnahme fuer
+    'schichten/verankerung ohne Journal' (frueher in
+    ``bestand.manifest``) konnte in dieser Form nie greifen und ist
+    gestrichen. Gemessen: (1) die Nachbarn sind da, (2) der Stamm allein
+    wird mit genau diesen Dateien abgewiesen, (3) der im Skill
+    ``migrationsfall-durchfuehren`` dokumentierte VOR-Bericht — mit
+    ``--historie``, ``--ledger``, ``--scheiben``, ``--merkmale``, ``--config``
+    — rendert. Mutationsprobe:
+    die Abweisung fuer ``bestand.parquet`` wieder aufweichen -> (2) rot."""
+    bestand = gefahrener_fall / "abgeleitet" / "bestand"
+    for rolle in ("historie", "ledger", "scheiben", "merkmale", "schichten", "verankerung"):
+        assert (bestand / f"{rolle}.parquet").is_file(), rolle
+    assert cli_report.main(["--portfolio", str(bestand / "bestand.parquet"),
+                            "--out", str(tmp_path / "allein.html")]) == 2
+    err = capsys.readouterr().err
+    assert all(f"{r}.parquet" in err for r in ("historie", "ledger", "scheiben")), err
+    assert not (tmp_path / "allein.html").exists()
+    assert cli_report.main([
+        "--portfolio", str(bestand / "bestand.parquet"),
+        "--historie", str(bestand / "historie.parquet"),
+        "--ledger", str(bestand / "ledger.parquet"),
+        "--scheiben", str(bestand / "scheiben.parquet"),
+        "--merkmale", str(bestand / "merkmale.parquet"),
+        "--config", str(gefahrener_fall / "abgeleitet" / "bestand-config.toml"),
+        "--bis", STICHTAG_1,
+        "--out", str(tmp_path / "vor.html"),
+    ]) == 0
+    assert (tmp_path / "vor.html").is_file()

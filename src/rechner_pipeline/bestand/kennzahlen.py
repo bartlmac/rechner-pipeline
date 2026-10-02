@@ -16,6 +16,7 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from rechner_pipeline.bestand.fuehrung import schnitt_am
+from rechner_pipeline.kern.vorgangsfolge import RANG as _RANG_DES_TAGES
 from rechner_pipeline.models.bestand import AKTIVE_STATUS
 
 
@@ -80,7 +81,7 @@ def generationsnamen(df: pd.DataFrame) -> List[str]:
 #: (ZUG/ERH/RED sind GeVos ohne Statuswechsel, daher vorangestellt; die
 #: Herabsetzung steht neben der Erhoehung, weil beide dasselbe tun —
 #: sie aendern Summe und Beitrag, nicht den Zustand).
-EREIGNIS_REIHENFOLGE = ("ZUG", "MIG", "ERH", "RED", "PEX", "INV", "REA",
+EREIGNIS_REIHENFOLGE = ("ZUG", "MIG", "ERH", "RED", "TKU", "PEX", "INV", "REA",
                         "STO", "TOD", "ABL")
 
 #: Klartext je Ereignis-Code (Berichts-Beschriftung).
@@ -94,6 +95,7 @@ EREIGNIS_LABELS = {
     "MIG": "Migrationszugang",
     "ERH": "Dynamische Erhöhung",
     "RED": "Beitragsherabsetzung",
+    "TKU": "Teilkündigung",
     "PEX": "Beitragsfreistellung",
     "INV": "Invalidisierung",
     "REA": "Reaktivierung",
@@ -502,46 +504,94 @@ def bewegungskonto(
                 (s["erhoehung_datum"], float(s["sum_insured"]))
             )
 
-    # Die Herabsetzungen je Police, aufsteigend. Der RED-Ledgerbetrag ist
-    # die NEUE Gesamtsumme (ereignisse: "fortgeführter plus umgewandelter
-    # Teil") — nicht die Differenz. Die zweite RED-Zeile,
-    # ``dDK_absorption``, ist eine Umbuchung im Deckungskapital und keine
-    # Summenbewegung; sie bleibt draußen.
+    # Die Vorgaenge je Police, in der Folge ihrer Wirkung: Wirkungstag, dann
+    # die Reihenfolge des Tages (Herabsetzung vor Teilkuendigung, wie in der
+    # Engine — beliebig viele je Vertrag seit dem Entscheid 2026-10-01). Der
+    # Ledgerbetrag ist die NEUE Gesamtsumme — nicht die Differenz. Die Zeile
+    # ``dDK_absorption`` ist eine Umbuchung im Deckungskapital und keine
+    # Summenbewegung; sie bleibt draussen.
+    #
+    # Eine Teilkuendigung NACH der Beitragsfreistellung (am Tag der
+    # Freistellung oder spaeter; die Freistellung steht am Tag davor) setzt die
+    # BEITRAGSFREIE Summe neu und bewegt den beitragsfreien Bestand
+    # (klv.md 7.2, Entscheid B3 vom 2026-10-01); alle anderen setzen die gefuehrte Summe des
+    # beitragspflichtigen Bestands.
+    pex_tag = {int(p): pd.Timestamp(d) for p, d in zip(
+        pex_zeilen.index, pex_zeilen["status_date"])}
     red_je_police: Dict[int, List] = {}
+    bfr_tku_je_police: Dict[int, List] = {}
     if len(ledger):
-        _red = ledger[(ledger["ereignis"] == "RED")
-                      & (ledger["betrag_art"] == "VS_herabsetzung")]
+        # Beide Vorgaenge, die eine Summe absolut neu setzen: die
+        # Beitragsherabsetzung (RED) und die Teilkuendigung (TKU, ADR-023).
+        _red = ledger[((ledger["ereignis"] == "RED")
+                       & (ledger["betrag_art"] == "VS_herabsetzung"))
+                      | ((ledger["ereignis"] == "TKU")
+                         & (ledger["betrag_art"] == "VS_teilkuendigung"))]
         for r in _red.to_dict("records"):
-            red_je_police.setdefault(int(r["police_id"]), []).append(
-                (pd.Timestamp(r["status_date"]), float(r["betrag"])))
-        for _liste in red_je_police.values():
+            pid = int(r["police_id"])
+            tag = pd.Timestamp(r["status_date"])
+            eintrag = (tag, _RANG_DES_TAGES[str(r["ereignis"])], float(r["betrag"]))
+            if pid in pex_tag and tag >= pex_tag[pid]:
+                bfr_tku_je_police.setdefault(pid, []).append(eintrag)
+            else:
+                red_je_police.setdefault(pid, []).append(eintrag)
+        for _liste in list(red_je_police.values()) + list(bfr_tku_je_police.values()):
             _liste.sort()
+
+    def _gueltig(liste, stichtag, ohne_ab):
+        return [
+            (tag, rang, betrag) for tag, rang, betrag in liste
+            if tag <= stichtag and (ohne_ab is None or (tag, rang) < ohne_ab)
+        ]
 
     def vs_ges(pid: int, stichtag: pd.Timestamp,
                ohne_red_ab: Any = None) -> float:
         """Die geführte Versicherungssumme einer Police am Stichtag.
 
-        Stamm, Erhöhungen — und seit T26-11 die Herabsetzungen. Eine RED
-        setzt die Summe ABSOLUT neu; Erhöhungen davor stecken in ihrem
-        Betrag, Erhöhungen danach kommen obendrauf.
+        Stamm, Erhöhungen — und seit T26-11 die Herabsetzungen und
+        Teilkündigungen. Ein Vorgang setzt die Summe ABSOLUT neu;
+        Erhöhungen davor stecken in seinem Betrag, Erhöhungen danach kommen
+        obendrauf.
 
-        ``ohne_red_ab`` blendet Herabsetzungen ab diesem Tag aus. Damit
-        lässt sich der Wert UNMITTELBAR VOR einer Herabsetzung bilden —
-        die Differenz beider ist ihre Bewegung.
+        ``ohne_red_ab`` (Wirkungstag, Rang des Tages) blendet Vorgänge ab
+        dieser Stelle aus. Damit lässt sich der Wert UNMITTELBAR VOR einem
+        Vorgang bilden — auch vor dem zweiten Vorgang desselben Tages; die
+        Differenz beider ist seine Bewegung.
         """
-        gueltig = [
-            (datum, betrag) for datum, betrag in red_je_police.get(int(pid), ())
-            if datum <= stichtag
-            and (ohne_red_ab is None or datum < pd.Timestamp(ohne_red_ab))
-        ]
+        gueltig = _gueltig(red_je_police.get(int(pid), ()), stichtag, ohne_red_ab)
         if gueltig:
-            ab, summe = max(gueltig)
+            ab, _rang, summe = max(gueltig)
         else:
             ab, summe = None, float(stamm_vs.loc[pid])
+        # Die Engine bucht an einem Jahrestag erst die Vorgaenge, dann
+        # die Erhoehung (die Dynamik laeuft nach einer Herabsetzung
+        # weiter). Eine Erhoehung am Tag des geltenden Vorgangs steckt
+        # also NICHT in dessen Betrag und kommt obendrauf (>=); vorher fiel
+        # sie dauerhaft aus der Kontosumme, bei gueltiger Identitaet.
+        # Fuer den Wert unmittelbar VOR einem Vorgang zaehlen
+        # Erhoehungen ab seinem Tag noch nicht mit.
         for datum, betrag in scheiben_je_police.get(int(pid), ()):
-            if datum <= stichtag and (ab is None or datum > ab):
-                summe += betrag
+            if datum > stichtag:
+                continue
+            if ab is not None and datum < ab:
+                continue
+            if ohne_red_ab is not None and datum >= pd.Timestamp(ohne_red_ab[0]):
+                continue
+            summe += betrag
         return summe
+
+    def bfr_ges(pid: int, stichtag: pd.Timestamp, ohne_ab: Any = None) -> float:
+        """Die beitragsfreie Summe einer Police am Stichtag: die der
+        Freistellung, nach jeder Teilkündigung, die auf sie folgte, deren
+        neue beitragsfreie Summe (``ohne_ab`` wie bei :func:`vs_ges`)."""
+        gueltig = _gueltig(bfr_tku_je_police.get(int(pid), ()), stichtag, ohne_ab)
+        if gueltig:
+            return max(gueltig)[2]
+        return float(pex_summen.loc[pid])
+
+    def red_betrag(pid: int, tag: pd.Timestamp, rang: int, liste) -> float:
+        """Die neue Gesamtsumme, die der Vorgang an diesem Tag bucht."""
+        return next(b for d, r, b in liste[int(pid)] if d == tag and r == rang)
 
     def stand_am(stichtag: _dt.date) -> Dict[str, Dict[str, float]]:
         ts = pd.Timestamp(stichtag)
@@ -555,10 +605,9 @@ def bewegungskonto(
             },
             "bfr": {
                 "stueck": int(len(bfr)),
-                "summe": float(sum(pex_summen.loc[p] for p in bfr["police_id"])),
+                "summe": float(sum(bfr_ges(p, ts) for p in bfr["police_id"])),
             },
         }
-
     # Beginn genau am 1.1.J gehoert per Periodenkonvention (1.1.J-1, 1.1.J]
     # zur Periode J-1 — der Rasterstart rechnet deshalb einen Tag zurueck,
     # sonst erschiene ein 1.1.-Zugang des fruehesten Jahres nie als Zugang.
@@ -604,6 +653,18 @@ def bewegungskonto(
         # Vertrag bleibt POL (ereignisse: "Kein Statuswechsel").
         red = periode[(periode["ereignis"] == "RED")
                       & (periode["betrag_art"] == "VS_herabsetzung")]
+        # Die Teilkuendigung: eigener Vorfall, eigene Position — sie senkt die
+        # Summe um den gekuendigten Anteil (und zahlt ihn aus). Nach der
+        # Beitragsfreistellung senkt sie die beitragsfreie Summe und steht im
+        # beitragsfreien Bestand.
+        tku_alle = periode[(periode["ereignis"] == "TKU")
+                           & (periode["betrag_art"] == "VS_teilkuendigung")]
+        nach_pex = pd.Series(
+            [int(p) in pex_tag and pd.Timestamp(d) >= pex_tag[int(p)]
+             for p, d in zip(tku_alle["police_id"], tku_alle["status_date"])],
+            index=tku_alle.index, dtype=bool)
+        tku = tku_alle[~nach_pex]
+        tku_bfr = tku_alle[nach_pex]
         sto = periode[periode["ereignis"] == "STO"]
         terminal = periode[periode["ereignis"].isin(("TOD", "ABL"))]
         war_bfr = terminal["police_id"].isin(pex_summen.index)
@@ -619,7 +680,17 @@ def bewegungskonto(
             ]
 
         def bfr_liste(zeilen: pd.DataFrame) -> List[float]:
-            return [float(pex_summen.loc[p]) for p in zeilen["police_id"]]
+            return [bfr_ges(p, pd.Timestamp(d))
+                    for p, d in zip(zeilen["police_id"], zeilen["status_date"])]
+
+        def veraenderung(zeilen: pd.DataFrame, art: str, liste, summe_vor) -> Dict[str, float]:
+            """Stueck 0, die neue Summe laut Buchung minus die Summe unmittelbar
+            vor dem Vorgang (auch vor dem zweiten Vorgang desselben Tages)."""
+            rang = _RANG_DES_TAGES[art]
+            return {"stueck": 0, "summe": float(sum(
+                red_betrag(p, pd.Timestamp(d), rang, liste)
+                - summe_vor(p, pd.Timestamp(d), (pd.Timestamp(d), rang))
+                for p, d in zip(zeilen["police_id"], zeilen["status_date"])))}
 
         zeile: Dict[str, Any] = {
             "jahr": int(jahr),
@@ -641,22 +712,18 @@ def bewegungskonto(
                 # unmittelbar davor) — mit Vorzeichen, wie der Kern sie
                 # liefert.
                 #
-                # Das Vorzeichen ist bewusst nicht festgelegt: Am
-                # betriebenen Fixture ist es POSITIV (die neue
-                # Gesamtsumme liegt über der alten, weil der umgewandelte
-                # Teil als beitragsfreie Summe zurückkommt). Ob das
-                # fachlich so gewollt ist, ist eine Frage an das
-                # Aktuariat und steht in dev-docs/befundliste-t26.md; die
-                # Nachweisung führt jedenfalls, was der Kern rechnet,
-                # statt die Änderung wegzulassen (Befund T26-11).
-                "veraenderung_herabsetzung": {
-                    "stueck": 0,
-                    "summe": float(sum(
-                        vs_ges(p, pd.Timestamp(d))
-                        - vs_ges(p, pd.Timestamp(d), ohne_red_ab=d)
-                        for p, d in zip(red["police_id"], red["status_date"])
-                    )),
-                },
+                # Das Vorzeichen ist bewusst nicht festgelegt: Mit einer
+                # realistischen Korrekturschicht senkt jede Herabsetzung
+                # die Summe; ein Fixture mit absichtlich grosser Schicht
+                # hebt sie, weil die Schicht in die Neuberechnung eingeht.
+                # Die Nachweisung führt, was der Kern rechnet, statt die
+                # Änderung wegzulassen (Befund T26-11).
+                "veraenderung_herabsetzung": veraenderung(
+                    red, "RED", red_je_police, vs_ges),
+                # Dieselbe Rechnung fuer die Teilkuendigung (ADR-023): Stueck 0,
+                # die Summe danach minus die Summe davor, mit Vorzeichen.
+                "veraenderung_teilkuendigung": veraenderung(
+                    tku, "TKU", red_je_police, vs_ges),
                 "abgang_storno": posten(sto, vs_liste(sto)),
                 "abgang_tod": posten(tod_bpfl, vs_liste(tod_bpfl)),
                 "abgang_ablauf": posten(abl_bpfl, vs_liste(abl_bpfl)),
@@ -666,12 +733,15 @@ def bewegungskonto(
             "bfr": {
                 "anfang": anfang["bfr"],
                 "zugang_umbuchung": posten(pex, list(pex["betrag"])),
+                # Die Teilkuendigung nach der Beitragsfreistellung: die neue
+                # beitragsfreie Summe minus die davor (klv.md 7.2, B3).
+                "veraenderung_teilkuendigung": veraenderung(
+                    tku_bfr, "TKU", bfr_tku_je_police, bfr_ges),
                 "abgang_tod": posten(tod_bfr, bfr_liste(tod_bfr)),
                 "abgang_ablauf": posten(abl_bfr, bfr_liste(abl_bfr)),
                 "ende": ende["bfr"],
             },
         }
-
         def identitaet(track: Dict[str, Dict[str, float]], zu: List[str], ab: List[str]):
             ok = {}
             for mass in ("stueck", "summe"):
@@ -694,12 +764,13 @@ def bewegungskonto(
             "bpfl": identitaet(
                 zeile["bpfl"],
                 ["zugang_neuzugang", "zugang_erhoehung",
-                 "veraenderung_herabsetzung"],
+                 "veraenderung_herabsetzung", "veraenderung_teilkuendigung"],
                 ["abgang_storno", "abgang_tod", "abgang_ablauf",
                  "umbuchung_beitragsfrei"],
             ),
             "bfr": identitaet(
-                zeile["bfr"], ["zugang_umbuchung"], ["abgang_tod", "abgang_ablauf"]
+                zeile["bfr"], ["zugang_umbuchung", "veraenderung_teilkuendigung"],
+                ["abgang_tod", "abgang_ablauf"]
             ),
         }
         konto.append(zeile)
@@ -778,7 +849,7 @@ def bewegungskennzahlen(journal: pd.DataFrame, stichtag: _dt.date) -> Dict[str, 
     abweichende Definition waere schlimmer als diese Grenze.
     """
     from rechner_pipeline.models.bestand import (
-        LEISTUNG_EREIGNISSE, ZUGANG_EREIGNISSE,
+        LEISTUNG_BEI_ZAHLUNG, LEISTUNG_EREIGNISSE, ZUGANG_EREIGNISSE,
     )
 
     if "buchungsdatum" not in journal.columns:
@@ -794,16 +865,23 @@ def bewegungskennzahlen(journal: pd.DataFrame, stichtag: _dt.date) -> Dict[str, 
         & (sichtbar <= pd.Timestamp(stichtag))
     ]
 
-    def vorfaelle(arten) -> int:
-        auswahl = periode[periode["ereignis"].isin(arten)]
+    def vorfaelle(auswahl: pd.DataFrame) -> int:
         if not len(auswahl):
             return 0
         return int(len(auswahl.drop_duplicates(
             subset=["police_id", "ereignis", "status_date"])))
 
+    # Eine Leistung ist ein Vorfall, der zahlt: die Leistungsereignisse
+    # immer, die bedingten (Teilkuendigung) nur mit ihrer Zahlungszeile —
+    # gezaehlt je Vorfall, nicht je Zeile (T27-15).
+    leistung = periode["ereignis"].isin(LEISTUNG_EREIGNISSE)
+    for ereignis, arten in LEISTUNG_BEI_ZAHLUNG.items():
+        leistung |= ((periode["ereignis"] == ereignis)
+                     & periode["betrag_art"].isin(arten)
+                     & (periode["betrag"] > 0.0))
     return {
-        "zugaenge": vorfaelle(ZUGANG_EREIGNISSE),
-        "leistungen": vorfaelle(LEISTUNG_EREIGNISSE),
+        "zugaenge": vorfaelle(periode[periode["ereignis"].isin(ZUGANG_EREIGNISSE)]),
+        "leistungen": vorfaelle(periode[leistung]),
     }
 
 

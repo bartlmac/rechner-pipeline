@@ -20,7 +20,7 @@ RUN python -m pip install --no-cache-dir -r requirements.txt \
  && python -m pip install --no-cache-dir -e . --no-deps
 
 RUN useradd --create-home --uid 1000 plv \
- && mkdir -p /daten && chown plv:plv /daten
+ && mkdir -p /daten /schluessel && chown plv:plv /daten
 USER plv
 
 # Der Commit, aus dem das Image entstand — landet im Tagesprotokoll
@@ -29,4 +29,6 @@ ENV PLV_IMAGE_REVISION="${GIT_SHA}" \
     PYTHONUNBUFFERED=1
 
 ENTRYPOINT ["python", "-m", "rechner_pipeline.betrieb.tageslauf"]
-CMD ["--stand", "/daten"]
+# Ohne Betriebsschluessel laeuft kein Tag; compose.yml bindet ihn lesend ein.
+CMD ["--stand", "/daten", "--schluessel", "/schluessel/betrieb.key", \
+     "--zeichnungsordnung", "/schluessel/zeichnungsordnung.json"]

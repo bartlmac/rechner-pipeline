@@ -42,6 +42,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline.gates._common import (
     hashes_von,
     lies_gehasht,
@@ -311,7 +312,7 @@ def main(argv: Optional[List[str]] = None):
     )
     parser.add_argument("--fall", default=None)
     parser.add_argument("--generation", default=None, help="z. B. klv/tg2015")
-    parser.add_argument("--repo-root", dest="repo_root", default=None)
+    parser.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", default=None)
     parser.add_argument("--diagnostics-dir", dest="diagnostics_dir", default=None)
     add_request_json_arg(parser)
     args = parse_gate_args(parser, argv)
@@ -622,10 +623,19 @@ def main(argv: Optional[List[str]] = None):
     andere_zellen = sorted(
         z.knoten for z in spez.zellen if z.knoten != zelle.knoten
     )
-    repo_root = (
-        Path(args.repo_root).resolve()
-        if args.repo_root else Path(__file__).resolve().parents[3]
-    )
+    # Ohne --repo-root der Baum des ausgefuehrten Pakets — durch DIESELBE
+    # Pruefung wie das Argument (Pruefrunde I, Nachtrag): Aus ihm kommt der
+    # Systemstand des P-K1-Belegs; ungeprueft lief fremder Bytecode im Paket
+    # durch.
+    import argparse
+
+    try:
+        repo_root = (
+            Path(args.repo_root).resolve()
+            if args.repo_root else lebendes_repo(Path(__file__).resolve().parents[3])
+        )
+    except argparse.ArgumentTypeError as exc:
+        return _usage(f"ohne --repo-root gilt der Baum des ausgefuehrten Pakets: {exc}")
     try:
         verwendeter_systemstand = systemstand(repo_root)
     except Exception as exc:  # Beweisprovenienz ist Teil des P-K1-Contracts

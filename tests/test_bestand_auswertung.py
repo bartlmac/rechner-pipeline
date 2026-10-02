@@ -79,6 +79,13 @@ def _mini_stamm(*vertraege: dict) -> pd.DataFrame:
     return df[[n for n, _ in STAMM_SPALTEN]]
 
 
+def _mische(a_wert: float, b_wert: float, monate: int) -> float:
+    """Die unterjaehrige Mischung, im Test gerechnet (Kontrolle unabhaengig
+    von ``monatsreserve``): linear zwischen den Jahrestagen."""
+    u = (monate % 12) / 12.0
+    return (1.0 - u) * a_wert + u * b_wert
+
+
 def _kern(stamm_row: pd.Series, config) -> Rechenkern:
     generation = {
         g.name: g.generation_fields() for g in config.generationen
@@ -91,11 +98,19 @@ def test_vertragswerte_pol_entsprechen_kernzeile(config):
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 30, "t": 20}
     )
     kern = _kern(stamm.iloc[0], config)
-    werte = vertragswerte(kern, months_exp=125)  # Vertragsjahr 10
+    # Jahreszeile (Konvention vor 2026-10-01, nur noch zum Nachrechnen alter
+    # Abschluesse): die Zeile des angebrochenen Vertragsjahres.
+    werte = vertragswerte(kern, months_exp=125, monatsgenau=False)  # Vertragsjahr 10
     zeile = kern.verlaufszeile(10)
     assert werte["jahr"] == 10 and werte["status"] == "POL"
     assert werte["deckungskapital"] == zeile.drx_bpfl
     assert werte["rueckkaufswert"] == zeile.rkw
+    assert werte["vs_bfr"] == 0.0
+    # Monatsgenau (Fuehrungskonvention): die Mischung der Jahre 10 und 11.
+    werte = vertragswerte(kern, months_exp=125, monatsgenau=True)
+    assert werte["jahr"] == 10 and werte["status"] == "POL"
+    assert werte["deckungskapital"] == pytest.approx(_mische(
+        zeile.drx_bpfl, kern.verlaufszeile(11).drx_bpfl, 125), rel=1e-12)
     assert werte["vs_bfr"] == 0.0
 
 
@@ -104,11 +119,23 @@ def test_vertragswerte_pex_nutzen_beitragsfreie_reserve(config):
         {"police_id": 10000001, "start": dt.date(2010, 6, 1), "x": 45, "n": 30, "t": 20}
     )
     kern = _kern(stamm.iloc[0], config)
-    werte = vertragswerte(kern, months_exp=125, pex_jahr=4)
+    werte = vertragswerte(kern, months_exp=125, pex_jahr=4, monatsgenau=False)
     assert werte["status"] == "PEX"
     assert werte["deckungskapital"] == kern.reserve_beitragsfrei(4, 10)
+    werte = vertragswerte(kern, months_exp=125, pex_jahr=4, monatsgenau=True)
+    assert werte["deckungskapital"] == pytest.approx(kern.beitragsfreie_summe(4) * _mische(
+        kern.verlaufszeile(10).vx_bfr, kern.verlaufszeile(11).vx_bfr, 125), rel=1e-12)
     assert werte["vs_bfr"] == kern.beitragsfreie_summe(4)
-    assert werte["rueckkaufswert"] == 0.0
+    # Rueckkaufswert beitragsfrei (Pruefrunde H, H01; Tarifplan KLV 7.2, B3):
+    # Rueckstellung minus Stornoabzug auf die beitragsfreie Summe, von Hand;
+    # die Jahreszeile fuehrt ihn wie geschrieben mit 0,00 (Tarifplan KLV 6).
+    mp = kern.mp
+    dk, summe = werte["deckungskapital"], werte["vs_bfr"]
+    stoab = min(mp.stoab_max, max(mp.stoab_min, mp.stoab_satz * (summe - dk)))
+    assert werte["rueckkaufswert"] == pytest.approx(max(0.0, dk - stoab), rel=1e-12)
+    assert 0.0 < werte["rueckkaufswert"] < dk
+    assert vertragswerte(kern, months_exp=125, pex_jahr=4,
+                         monatsgenau=False)["rueckkaufswert"] == 0.0
 
 
 def test_auswertungs_verlauf_ohne_historie_summiert_kernwerte(config):
@@ -120,10 +147,12 @@ def test_auswertungs_verlauf_ohne_historie_summiert_kernwerte(config):
     stichtag = dt.date(2020, 1, 1)
     reihe = auswertungs_verlauf(stamm, None, config, [stichtag])
     scheibe = schnitt_am(stamm, stichtag)
-    erwartet_dk = sum(
-        _kern(stamm.iloc[i], config).zustand_am(int(m)).drx_bpfl
-        for i, m in enumerate(scheibe["months_exp"])
-    )
+    erwartet_dk = 0.0
+    for i, m in enumerate(scheibe["months_exp"]):
+        kern = _kern(stamm.iloc[i], config)
+        a = int(m) // 12
+        erwartet_dk += _mische(kern.verlaufszeile(a).drx_bpfl,
+                               kern.verlaufszeile(a + 1).drx_bpfl, int(m))
     assert reihe[0]["vertraege"] == 2
     assert reihe[0]["deckungskapital"] == pytest.approx(erwartet_dk, rel=1e-12)
     assert reihe[0]["deckungskapital_bfr"] == 0.0
@@ -143,8 +172,11 @@ def test_auswertungs_verlauf_pex_pfad_deterministisch(config):
     reihe = auswertungs_verlauf(stamm, historie, cfg, [stichtag])
     kern = _kern(stamm.iloc[0], config)
     assert reihe[0]["vertraege"] == 1
+    # Monat 115 (Jahr 9, sieben Monate weiter): die beitragsfreie Reserve
+    # gemischt zwischen den Jahren 9 und 10.
     assert reihe[0]["deckungskapital"] == pytest.approx(
-        kern.reserve_beitragsfrei(1, 9), rel=1e-12
+        kern.beitragsfreie_summe(1) * _mische(
+            kern.verlaufszeile(9).vx_bfr, kern.verlaufszeile(10).vx_bfr, 115), rel=1e-12
     )
     assert reihe[0]["deckungskapital_bfr"] == reihe[0]["deckungskapital"]
     assert reihe[0]["vs_bfr"] == pytest.approx(kern.beitragsfreie_summe(1), rel=1e-12)
@@ -211,7 +243,12 @@ def test_auswertung_pex_versatz_der_scheiben(config):
             grund.mp, x=47, n=18, t=13, sum_insured=5000.0, gamma1=0.0
         )
     )
-    erwartet_dk = grund.reserve_beitragsfrei(3, 5) + scheiben_kern.reserve_beitragsfrei(1, 3)
+    # Monat 67 (Jahr 5 + 7 Monate), die Scheibe an ihrem versetzten Monat 43.
+    erwartet_dk = (
+        grund.beitragsfreie_summe(3) * _mische(
+            grund.verlaufszeile(5).vx_bfr, grund.verlaufszeile(6).vx_bfr, 67)
+        + scheiben_kern.beitragsfreie_summe(1) * _mische(
+            scheiben_kern.verlaufszeile(3).vx_bfr, scheiben_kern.verlaufszeile(4).vx_bfr, 43))
     erwartet_vs = grund.beitragsfreie_summe(3) + scheiben_kern.beitragsfreie_summe(1)
     assert reihe[0]["deckungskapital"] == pytest.approx(erwartet_dk, rel=1e-12)
     assert reihe[0]["vs_bfr"] == pytest.approx(erwartet_vs, rel=1e-12)
@@ -224,7 +261,11 @@ def test_auswertung_pex_versatz_der_scheiben(config):
     kaputt.loc[0, "entry_age"] = 48
     kaputt.loc[0, "duration"] = 17
     kaputt.loc[0, "premium_duration"] = 12
-    with pytest.raises(ValueError, match="nicht vor der Beitragsfreistellung"):
+    # Seit Pruefrunde H (H01) rechnet der beitragsfreie Vertrag ueber den
+    # Zustand des Kerns; dort verweigert die Folge die Scheibe des PEX-Jahres
+    # (Erhoehung am Tag der Freistellung, nach ihr geordnet).
+    with pytest.raises(ValueError, match="nicht vor der Beitragsfreistellung"
+                       "|nach der Beitragsfreistellung"):
         auswertungs_verlauf(stamm, historie, config, [stichtag], scheiben=kaputt)
 
 

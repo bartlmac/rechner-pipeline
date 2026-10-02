@@ -29,6 +29,22 @@ Rechenkern-Entwicklung. Die Fachdokumente des Beispiel-Rechenkerns
 - [ADR-016: Vorverdichtung liest Text-PDF (pypdf); OCR bleibt draussen](adr-016-pdf-vorverdichtung.md)
 - [ADR-017: Vier Ebenen — Entwickler, KI-Tool, Vorzeige, Vorzeige-Werkzeuge](adr-017-vier-ebenen.md)
 - [ADR-018: Rollenmodell des KI-Tools — Agenten legen vor, Menschen zeichnen, der Schluessel sagt, wer besetzt](adr-018-rollenmodell-und-schluesselklassen.md)
+- [ADR-019: Die Testsuite laeuft parallel (pytest-xdist)](adr-019-parallele-testsuite.md)
+  — `pytest-xdist` exakt gepinnt; der volle Lauf ist `-n 12 --dist loadfile`, eine Testdatei je Arbeiter.
+- [ADR-020: Der Bestand entsteht aus dem Zugangsstrom — kein gezogener Anfangsbestand](adr-020-ein-erzeuger-bestand-aus-dem-zugangsstrom.md)
+  — der Batch-Erzeuger entfaellt; jeder Vertrag entsteht mit seinem Zugang im Journal.
+- [ADR-021: Belegrollen-Vertrag und Freigabesignatur wohnen in `models` — der Betriebseingang liest, was das Gate liest](adr-021-belegrollen-und-freigabe-in-models.md)
+  — Belegrollen und Freigabesignatur an einem Ort, den Gate und Betriebseingang gleich lesen.
+- [ADR-022: Zugangsabnahme A-B2 — der Betrieb nimmt den Migrationszugang mit einer Zugangsprobe ab](adr-022-zugangsabnahme-a-b2.md)
+  — zwei Laeufe auf einer Kopie der Ablage, mit und ohne den Eingang; `mensch/betrieb` zeichnet A-B2 vor der Registrierung.
+- [ADR-023: Herabsetzung und Teilkuendigung sind getrennte Geschaeftsvorfaelle](adr-023-herabsetzung-und-teilkuendigung.md)
+  — `RED` wandelt den freiwerdenden Beitrag in beitragsfreie Summe, die Teilkuendigung (`TKU`) zahlt den gekuendigten Anteil mit seinem Rueckkaufswert aus.
+- [ADR-024: T-Box 0.2.0 — Tarifwerk, Geschaeftsvorfaelle, Zustandsextrakt](adr-024-tbox-020-tarifwerk-gevo-zustandsextrakt.md)
+  — Tarifwerk und Quellverfahren als belegte Aussagen der A-Box; jedes Kommando der Bestandsstrecke rechnet mit den Regeln der Spez.
+- [ADR-025: Erstabnahme des Zielsystems — vier Gegenstaende, vier Rollen, ein Ort ausserhalb des Falls](adr-025-erstabnahme-des-zielsystems.md)
+  — Kernstand, T-Box-Stand, Tarifwerk und Anfangsbestand werden einmal in der Linie abgenommen; ein Fall verweist darauf.
+- [ADR-026: Lebenslauf eines Falls — Fallauftrag und Fallabbruch](adr-026-lebenslauf-eines-falls.md)
+  — ein Fall beginnt mit dem vom Vorstand gezeichneten Auftrag A-M6 und endet mit Abnahme oder dem Abbruch A-M5.
 
 > **Zu den Gate-Namen:** Die Namen in allen aelteren ADRs sind auf die
 > Ordnung aus ADR-012 umgestellt (`G-2` heisst jetzt `A-M4`, `O3` heisst

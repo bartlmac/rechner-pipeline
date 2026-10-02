@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import glob
 import json
 import logging
 import os
@@ -82,6 +83,7 @@ __all__ = [
     "GATE_LEDGER_SUFFIX",
     "GATE_HISTORIE_SUFFIX",
     "begin_gate_ledger_attempt",
+    "ein_ausgabe_benannt",
     "finalize_gate_ledger",
     "write_gate_ledger",
     "force_utf8_stream",
@@ -182,6 +184,118 @@ HUMAN_REVIEW_EXIT_CODES: Dict[str, int] = {
 # _common.py lives at <repo>/src/rechner_pipeline/toolbox/_common.py, so the repo
 # root is four parents up. Computed once; callers may override per-call.
 REPO_ROOT: Path = Path(__file__).resolve().parents[3]
+
+
+def ist_schreibrest(name: str) -> bool:
+    """Ist ``name`` der Rest eines abgebrochenen atomaren Schreibens?
+
+    Die atomaren Schreiber dieses Pakets (:func:`schreibe_exklusiv`,
+    ``write_gate_ledger``) legen ihre Daten unter ``.<ziel>.<zufall>.tmp``
+    daneben und haengen sie erst danach ein. Ein hartes Prozessende dazwischen
+    hinterlaesst diese Datei — oder, nach dem Einhaengen per ``os.link``, den
+    Hardlink-Zwilling des Belegs. Sie ist nie ein Beleg (Angriffsrunde C,
+    RC07): Wer Artefakte eines Falls aufzaehlt, ueberspringt sie.
+    """
+    return name.startswith(".") and name.endswith(".tmp")
+
+
+def raeume_schreibreste(ziel: Path) -> None:
+    """Die liegengebliebenen Reste des Schreibens von ``ziel`` entfernen.
+
+    Nur die Reste DIESES Ziels (``.<ziel.name>.*.tmp``); fremde Punktdateien
+    und die Reste anderer Ziele bleiben. Ein Rest ist kein Beleg
+    (:func:`ist_schreibrest`) und darf nicht fuer immer neben ihm liegen —
+    ``entscheide/`` darf niemand von Hand bereinigen.
+    """
+    for rest in ziel.parent.glob(f".{glob.escape(ziel.name)}.*.tmp"):
+        with contextlib.suppress(FileNotFoundError):
+            rest.unlink()
+
+
+def raeume_zwillinge(verzeichnis: Path) -> List[str]:
+    """Die Hardlink-Zwillinge eingehaengter Belege in ``verzeichnis`` entfernen
+    — der benannte Einstieg fuer jeden Aufruf, der einen Bereich BETRITT oder
+    ein Ziel als "liegt schon" erkennt, ohne es neu zu schreiben.
+
+    Pruefrunde H (H16): :func:`schreibe_exklusiv` haengt per ``os.link`` ein
+    und entfernt danach die Tempdatei. Ein Prozessende genau dazwischen laesst
+    unter ``.<ziel>.<zufall>.tmp`` einen zweiten, beschreibbaren Namen
+    derselben Bytes liegen. Die Zusage "der naechste Aufruf fuer dasselbe Ziel
+    raeumt ihn weg" galt nur, wenn die Wiederholung das Ziel neu schreibt; an
+    vier Stellen tut sie das nicht (``linie.json``, ein Glied der
+    Ordnungslinie, das T-Box-Archiv, der Snapshot des Fallabbruchs — danach
+    ist im Fall nichts mehr zeichenbar). Diese Stelle raeumt deshalb, was
+    sicher ein Rest ist: einen Punktnamen (:func:`ist_schreibrest`), der
+    DASSELBE Inode traegt wie sein eingehaengtes Ziel. Das ist zu jedem
+    Zeitpunkt unschaedlich, auch neben einem laufenden Schreiber: Ein Zwilling
+    ist erst nach dem Einhaengen einer, und dann ist der Beleg vollstaendig
+    veroeffentlicht. Reste OHNE eingehaengtes Ziel (Ausfall vor ``os.link``)
+    raeumt weiter der naechste Schreiber desselben Ziels
+    (:func:`raeume_schreibreste`). Rueckgabe: die Namen der entfernten Reste.
+    """
+    entfernt: List[str] = []
+    verzeichnis = Path(verzeichnis)
+    if not verzeichnis.is_dir():
+        return entfernt
+    for rest in sorted(verzeichnis.iterdir()):
+        name = rest.name
+        if not ist_schreibrest(name) or name.count(".") < 3:
+            continue
+        ziel = verzeichnis / name[1:].rsplit(".", 2)[0]
+        with contextlib.suppress(OSError):
+            if not rest.is_symlink() and ziel.is_file() and not ziel.is_symlink() \
+                    and os.path.samefile(rest, ziel):
+                rest.unlink()
+                entfernt.append(name)
+    return entfernt
+
+
+def schreibe_exklusiv(ziel: Path, daten: bytes) -> None:
+    """``daten`` genau einmal unter ``ziel`` veroeffentlichen — ganz oder gar nicht.
+
+    Ein inhaltsadressierter Beleg (P9-Snapshot, P-K1-Beleg) wurde mit
+    exklusivem Oeffnen (Modus xb) direkt unter seinem endgueltigen Namen geschrieben. Ein
+    Abbruch mitten im Schreiben (Prozessende, volle Platte) liess einen
+    Stumpf zurueck, der jeden weiteren Entscheid des Gates und die
+    Registrierung des Falls dauerhaft sperrte — und ``entscheide/`` darf
+    niemand von Hand bereinigen (Angriffsrunde nach T27). Jetzt: daneben
+    vollstaendig schreiben, auf die Platte bringen, dann per ``os.link``
+    exklusiv einhaengen, wie ``schreibe_abschluss``. Existiert das Ziel,
+    wirft das ``FileExistsError``; ein Rest daneben traegt einen
+    Punktnamen (:func:`ist_schreibrest`), den kein Leser als Beleg aufnimmt
+    — und der naechste Aufruf fuer dasselbe Ziel raeumt ihn weg
+    (:func:`raeume_schreibreste`). Nicht fuer gleichzeitige Schreiber
+    desselben Ziels gebaut: Ein Aufraeumen wuerde deren Tempdatei treffen;
+    die Gates laufen je Fall nacheinander.
+    """
+    import secrets
+
+    # Reste eines frueheren, hart abgebrochenen Schreibens dieses Ziels
+    # (Angriffsrunde C, RC07): vor dem eigenen Schreiben, damit auch der
+    # Aufruf, der am Ende FileExistsError meldet, den Hardlink-Zwilling
+    # eines laengst eingehaengten Belegs wegraeumt.
+    raeume_schreibreste(ziel)
+    # Eine je Aufruf eindeutige Datei daneben, Modus nach der umask des
+    # Schreibzeitpunkts (dieselbe Figur wie bestand.parquet_io.neue_datei,
+    # T18-07; nicht importiert — die Kante vom Werkzeug in die Vorzeige
+    # waere eine Architekturentscheidung, ADR-017).
+    for _ in range(100):
+        tmp = ziel.parent / f".{ziel.name}.{secrets.token_hex(8)}.tmp"
+        try:
+            os.close(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666))
+            break
+        except FileExistsError:
+            continue
+    else:
+        raise OSError(f"kein freier temporaerer Dateiname neben {ziel}")
+    try:
+        with open(tmp, "wb") as datei:
+            datei.write(daten)
+            datei.flush()
+            os.fsync(datei.fileno())
+        os.link(tmp, ziel)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def repo_root() -> Path:
@@ -884,7 +998,23 @@ def parse_gate_args(
             contract=parser.gate_contract,
             namespace=args,
         ) from exc
-    return merge_request_into_args(args, request)
+    unbesetzt = {k for k, v in vars(args).items() if v is None}
+    args = merge_request_into_args(args, request)
+    # Was das Request-Objekt fuellt, geht durch denselben ``type`` wie ein
+    # Schalter (Pruefrunde G, G12: ``--repo-root`` loest ueber EINE Stelle
+    # auf) — sonst waere der Request ein Weg an der Pruefung vorbei.
+    for action in parser._actions:
+        wert = getattr(args, action.dest, None)
+        if action.dest in unbesetzt and isinstance(wert, str) and callable(action.type):
+            try:
+                setattr(args, action.dest, action.type(wert))
+            except (argparse.ArgumentTypeError, TypeError, ValueError) as exc:
+                raise GateArgumentError(
+                    f"ungueltiges --request-json: {action.dest}: {exc}",
+                    contract=parser.gate_contract,
+                    namespace=args,
+                ) from exc
+    return args
 
 
 # --------------------------------------------------------------------------- #
@@ -1217,6 +1347,9 @@ def write_gate_ledger(
     diag_dir.mkdir(parents=True, exist_ok=True)
     out_path = diag_dir / f"{result.command}{GATE_LEDGER_SUFFIX}"
     payload = json.dumps(entry.to_dict(), ensure_ascii=False, indent=2) + "\n"
+    # Reste eines hart abgebrochenen frueheren Schreibens dieses Ledgers
+    # (Angriffsrunde C, RC07): der Punktname nennt genau dieses Ziel.
+    raeume_schreibreste(out_path)
     fd, temp_name = tempfile.mkstemp(
         prefix=f".{out_path.name}.", suffix=".tmp", dir=diag_dir
     )
@@ -1351,6 +1484,48 @@ def _ledger_write_failure(
         metrics=result.metrics,
         diagnostics_path=result.diagnostics_path,
     )
+
+
+def ein_ausgabe_benannt(
+    *, command: str, gate_version: str, gate: Optional[str] = None
+) -> Callable[[Callable[..., "ToolboxResult"]], Callable[..., "ToolboxResult"]]:
+    """Ein Ein-/Ausgabefehler eines Produzenten ist ein benanntes Ergebnis.
+
+    Derselbe Weg wie :func:`_ledger_write_failure` fuer den Gate-Beleg: Exit
+    INTERNAL, ein Fehlerobjekt mit Code, Typ und Meldung — kein Traceback,
+    keine Ausnahme durch :func:`run_command` (Runde G, Linse betrieb-ausfall:
+    ENOSPC an einer Sicht endete mit Exit 50 und Traceback). Der Dekorator
+    sitzt am ``main`` jedes Produzenten eines Abnahmebelegs; jeder Pfad des
+    Kommandos geht durch ihn. Was der Abbruch hinterlaesst, ist nie
+    zeichenbar: Das Gate haelt Beleg und Sicht gemeinsam
+    (``gates.sichten``), und derselbe Aufruf liefert danach den Zustand
+    des ungestoerten Laufs.
+    """
+    import functools
+
+    def dekorator(main: Callable[..., "ToolboxResult"]) -> Callable[..., "ToolboxResult"]:
+        @functools.wraps(main)
+        def benannt(*args: Any, **kwargs: Any) -> "ToolboxResult":
+            try:
+                return main(*args, **kwargs)
+            except OSError as exc:
+                return build_result(
+                    command=command, gate=gate, gate_version=gate_version,
+                    exit_code=Exit.INTERNAL,
+                    errors=[{
+                        "code": "ein_ausgabe",
+                        "type": type(exc).__name__,
+                        "message": (
+                            f"Ein-/Ausgabefehler: {exc} — der Lauf ist nicht zu Ende "
+                            "geschrieben; was am festen Ort liegt, zeichnet kein Gate, "
+                            "solange Beleg und Sicht nicht zusammengehoeren. Ausweg: die "
+                            "Ursache beheben (Platz, Rechte) und denselben Aufruf "
+                            "wiederholen"),
+                    }],
+                )
+        return benannt
+
+    return dekorator
 
 
 def begin_gate_ledger_attempt(

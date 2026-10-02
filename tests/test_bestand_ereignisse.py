@@ -258,16 +258,24 @@ def test_statushistorie_validiert_gegen_stamm(portfolio, config):
 
 def test_tod_nach_pex_zahlt_beitragsfreie_summe(portfolio, config):
     """Statistische Abdeckung im Beispielbestand: jeder Tod nach PEX zahlt
-    exakt die bei PEX fixierte beitragsfreie Summe."""
+    exakt die bei PEX fixierte beitragsfreie Summe — oder, wenn danach eine
+    Teilkuendigung die beitragsfreie Summe gekuerzt hat (klv.md 7.2, seit
+    2026-10-01), die zuletzt gebuchte beitragsfreie Summe."""
     _, ledger, *_ = fortschreiben(portfolio, config, dt.date(2045, 1, 1))
-    pex = ledger[ledger["ereignis"] == "PEX"].set_index("police_id")["betrag"]
+    pex = ledger[ledger["ereignis"] == "PEX"].set_index("police_id")
+    tku = ledger[(ledger["ereignis"] == "TKU") & (ledger["betrag_art"] == "VS_teilkuendigung")]
     tod_nach_pex = ledger[
         (ledger["ereignis"].isin(["TOD", "ABL"]))
         & (ledger["police_id"].isin(pex.index))
     ]
     assert len(tod_nach_pex) > 0  # der Beispielbestand deckt den Pfad ab
     for _, zeile in tod_nach_pex.iterrows():
-        assert zeile["betrag"] == pex.loc[zeile["police_id"]]
+        pid = zeile["police_id"]
+        danach = tku[(tku["police_id"] == pid)
+                     & (tku["status_date"] >= pex.loc[pid, "status_date"])
+                     & (tku["status_date"] < zeile["status_date"])]
+        soll = danach["betrag"].iloc[-1] if len(danach) else pex.loc[pid, "betrag"]
+        assert zeile["betrag"] == soll
 
 
 def test_zeitscheibe_laesst_terminale_vertraege_fallen(config):
@@ -391,10 +399,14 @@ def test_abgangsbetraege_summieren_ueber_scheiben(portfolio, config, beispiel_la
         return grund, s_kerne
 
     mit_scheiben = set(scheiben["police_id"])
+    # Die Kontrollrechnung gilt dem nicht herabgesetzten Vertrag: Nach einer
+    # Herabsetzung oder Teilkuendigung (die Config erzeugt beide seit
+    # 2026-10-01) rechnet der Vertrag ueber seinen geknickten Verlauf.
+    reduziert = set(ledger.loc[ledger["ereignis"].isin(["RED", "TKU"]), "police_id"])
     geprueft = {"STO": 0, "PEX": 0}
     for zeile in ledger[ledger["ereignis"].isin(["STO", "PEX"])].to_dict("records"):
         pid = int(zeile["police_id"])
-        if pid not in mit_scheiben or geprueft[zeile["ereignis"]] >= 3:
+        if pid not in mit_scheiben or pid in reduziert or geprueft[zeile["ereignis"]] >= 3:
             continue
         a = int(zeile["vertragsjahr"])
         grund, s_kerne = kerne(pid)
@@ -404,7 +416,7 @@ def test_abgangsbetraege_summieren_ueber_scheiben(portfolio, config, beispiel_la
         if zeile["ereignis"] == "STO":
             from rechner_pipeline.bestand.ereignisse import vertrags_rkw
 
-            erwartet = vertrags_rkw(grund, relevante, a)
+            erwartet = vertrags_rkw(grund, relevante, a, stoab_je_baustein=False)
         else:
             erwartet = grund.beitragsfreie_summe(a) + sum(
                 k.beitragsfreie_summe(a - j) for j, k in relevante

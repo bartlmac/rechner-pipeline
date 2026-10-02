@@ -19,7 +19,7 @@ from typing import Any
 from rechner_pipeline.fall import anlegen, registrieren
 from rechner_pipeline.gates.extract import main as extract
 from rechner_pipeline.ontologie.abox import speichere
-from rechner_pipeline.ontologie.aussage import Provenienz, belegt
+from rechner_pipeline.ontologie.aussage import Provenienz, belegt, nicht_belegt
 from rechner_pipeline.ontologie.tbox import (
     ABox,
     BEKANNTE_PARAMETER,
@@ -50,6 +50,9 @@ class O3Fixture:
     fundstelle_parameter: str
     fundstelle_ratzu: str
     erwartung: dict[str, Any]
+    #: Tarifregeln fuer den Scope bestand (``tarifwerk``, ``quellverfahren``,
+    #: ``fundstelle``; ``None`` je Merkmal = erhoben, nicht belegt).
+    tarifregeln: dict[str, Any]
 
 
 def lade_pk1_fixture() -> O3Fixture:
@@ -102,6 +105,7 @@ def lade_pk1_fixture() -> O3Fixture:
         fundstelle_parameter=str(provenienz["fundstelle_parameter"]),
         fundstelle_ratzu=str(provenienz["fundstelle_ratzu"]),
         erwartung=dict(erwartung),
+        tarifregeln=dict(roh["tarifregeln"]),
     )
 
 
@@ -109,6 +113,8 @@ def _generation(
     generation: str,
     quelle: Quelle,
     fixture: O3Fixture,
+    *,
+    mit_tarifregeln: bool = False,
 ) -> Tarifgeneration:
     parameter = {}
     for feld, wert in sorted(fixture.parameter.items()):
@@ -126,6 +132,20 @@ def _generation(
         )
         parameter[feld] = belegt(wert, [provenienz])
 
+    # Die Tarifregeln einer Bestandsmigration (ADR-024, Nachtrag: im Scope
+    # bestand Pflicht in P-Q3) — belegt mit Provenienz wie jeder Parameter,
+    # ``None`` als ausdruecklich nicht belegt (erhoben).
+    bloecke: dict[str, dict] = {"tarifwerk": {}, "quellverfahren": {}}
+    if mit_tarifregeln:
+        regel_provenienz = Provenienz(
+            quelle_datei=quelle.datei, quelle_sha256=quelle.sha256,
+            fundstelle=str(fixture.tarifregeln["fundstelle"]),
+            akteur=fixture.akteur, erhoben_am=fixture.erhoben_am)
+        for block in bloecke:
+            for merkmal, wert in sorted(fixture.tarifregeln[block].items()):
+                bloecke[block][merkmal] = (
+                    nicht_belegt() if wert is None else belegt(wert, [regel_provenienz]))
+
     name = generation.rsplit("/", 1)[-1].upper()
     return Tarifgeneration(
         id=generation,
@@ -133,6 +153,8 @@ def _generation(
         familie="klv",
         quellen=[quelle],
         zellen=[Parametrierungszelle(id="zelle:-", parameter=parameter)],
+        tarifwerk=bloecke["tarifwerk"],
+        quellverfahren=bloecke["quellverfahren"],
     )
 
 
@@ -182,7 +204,8 @@ def bereite_pk1_fall(
     abox = ABox(
         fall=fixture.fall,
         generationen=[
-            _generation(generation, quelle, fixture)
+            _generation(generation, quelle, fixture,
+                        mit_tarifregeln=(scope == "bestand"))
             for generation in generationen
         ],
     )

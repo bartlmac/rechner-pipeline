@@ -33,48 +33,23 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field
 
-#: Ziel-Pflichtfelder eines transformierten Bestandsabzugs — die
-#: Vertragsseite des Kern-Contracts plus Abgleichswerte. Bewusst NICHT
-#: die Generation-Felder (Zins, Kosten): die kommen aus der Spez des
-#: Migrationsfalls, nie aus dem Abzug.
-#:
-#: ``sex`` ist PFLICHT, weil der Kern es zwingend fuehrt: es steht in
-#: ``models/bestand.CONTRACT_FIELDS``, ``model_point_kwargs`` liest
-#: ``row["sex"]`` ohne Default, und der ModelPoint hat kein Default-
-#: Geschlecht. Ein transformierter Vertrag ohne Geschlecht ist also nicht
-#: rechenbar — als optionales Feld wuerde die Luecke erst im Kern
-#: auffallen (KeyError), nicht in der Spec-Pruefung. Dass eine
-#: Tarifgeneration unisex rechnet, aendert daran nichts: Unisex macht das
-#: Geschlecht tarif-wirkungslos, nicht entbehrlich — der Bestand fuehrt es
-#: weiter fuer Nachweisung, Folgebewertung und spaetere geschlechts-
-#: abhaengige Generationen. Fehlt der Lieferung eine Geschlechtsspalte,
-#: ist das ein Befund fuer den Menschen (A-Q1), keine stille Auslassung.
-ZIEL_PFLICHT: Tuple[str, ...] = (
-    "police_id", "beginn", "entry_age", "sex", "duration",
-    "premium_duration", "sum_insured", "zahlweise", "status", "tarifart",
+from rechner_pipeline.ontologie.tbox import (
+    GESCHLECHTER,
+    VERTRAG_OPTIONAL,
+    VERTRAG_PFLICHT,
 )
-#: Zulaessige Zielwerte des Geschlechts. Spiegel von
-#: ``models/bestand.SEX_VALUES``: die Schichtenkarte laesst die Ontologie
-#: nicht auf ``models`` zugreifen, deshalb hier als eigene Konstante — die
-#: Gleichheit mit der SSOT ist test-gebunden
-#: (tests/test_transformation_und_abgleich.py). Notwendig, weil der Kern
-#: jedes Nicht-"M" still zur Frauentafel aufloest
-#: (``kern/tafeln._tafel_key``): ein durchgereichtes "W" waere kein
-#: Fehler, sondern ein stiller Default (P2).
-SEX_ZIELWERTE: Tuple[str, ...] = ("M", "F")
 
-#: Optionale Zielfelder (Abgleichswerte und Herkunfts-Extras).
-#:
-#: ``monate_ta``/``dk_ta`` sind die Verankerungsattribute
-#: (Grundsatzdokumentation 9.12): der letzte exakte Rechenpunkt des
-#: Quellsystems (in vollen Vertragsmonaten seit Beginn) und der dort
-#: gelieferte Deckungskapitalwert. Nur zusammen sinnvoll — ``gates.
-#: bestand_uebernehmen`` verlangt beide oder keins je Zeile.
-ZIEL_OPTIONAL: Tuple[str, ...] = (
-    "vertragsjahre_am_stichtag", "brutto_jahresbeitrag",
-    "brutto_zahlbeitrag", "deckungskapital", "geburtsdatum",
-    "monate_ta", "dk_ta",
-)
+#: Die Zielfelder eines transformierten Bestandsabzugs und die Zielwerte
+#: des Geschlechts sind VOKABULAR des Zielsystems und stehen deshalb in der
+#: T-Box (seit 0.2.0; bis dahin hier, ausserhalb der T-Box und ausserhalb
+#: ihrer Version — eine Aenderung haette keine Hebung und kein A-O1
+#: verlangt). Die Namen bleiben fuer die Aufrufer dieselben; Begruendungen
+#: je Feld: ``ontologie.tbox.VERTRAG_PFLICHT``/``VERTRAG_OPTIONAL``/
+#: ``GESCHLECHTER``. Die Gleichheit mit ``models.bestand.SEX_VALUES`` ist
+#: test-gebunden (tests/test_transformation_und_abgleich.py).
+ZIEL_PFLICHT: Tuple[str, ...] = VERTRAG_PFLICHT
+SEX_ZIELWERTE: Tuple[str, ...] = GESCHLECHTER
+ZIEL_OPTIONAL: Tuple[str, ...] = VERTRAG_OPTIONAL
 
 
 def _parse_datum(wert: str) -> _dt.date:

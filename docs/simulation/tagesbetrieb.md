@@ -237,10 +237,71 @@ Laufzeitumgebung (Abschnitt 8.2; "Betrieb neu aufsetzen" ist als Routine
 noch zu bauen). Was nie geht: den Betrieb still weiterfahren, während
 der Fall etwas anderes bezeugt.
 
+### 6.2 Der Zugang in drei Schritten: Probe, Abnahme, Registrierung
+
+Die Abnahmen A-M1 bis A-M4 und die Führungsprobe urteilen im Fall, mit
+der Config des Falls. Was die Registrierung in der produktiven Ablage
+bewirkt, sah bis zum Entscheid des Maintainers vom 2026-09-30 niemand; der
+erste Monatsabschluss danach war die erste Gelegenheit, und dann stand er
+schon fest (ADR-022). Seitdem hat der Zugang drei Schritte:
+
+1. **Zugangsprobe** (`betrieb.zugangsprobe`): zwei Kopien der Ablage, unter
+   der Lauf-Sperre gezogen; in die eine wird der Eingang registriert,
+   dann fahren beide deterministisch vom geführten Tag über den
+   Zugangsstichtag bis zum nächsten Monatsabschluss (oder weiter). Die
+   Differenz der Abschlüsse „mit" minus „ohne" muss exakt der abgenommene
+   Bestand sein — am Stichtag Anzahl, Versicherungssumme (Übernahme) und
+   Jahresbeitrag (Migrationssuite) je Summe und je Vertrag über den
+   ganzen Zugang, am Folgetermin die Anzahl in Kraft; dazu die Zugänge,
+   die Zugangsbuchungen gegen den Ledger der Übernahme, das Bewegungskonto
+   der Differenz und die Gleichheit von allem, was nicht den Zugang
+   betrifft. Deckungskapital, Rückkaufswert und Korrekturschicht werden
+   seit 2026-10-01 je Vertrag gegen den **Führungswert** der
+   Migrationssuite gehalten: den Wert, den der Monatsabschluss in der Welt
+   der Abnahme für den Vertrag führen wird, über dieselbe
+   Bewertungsstrecke gerechnet und von A-M4 mit abgenommen — am
+   Zugangsstichtag und am Folgestichtag (dort ohne Verträge mit einem
+   gebuchten Vorfall im Fenster, die namentlich ausgenommen sind). Vorher
+   stand das Deckungskapital „nicht vergleichbar" im Beleg, weil der
+   Abschluss den Wert des letzten Jahrestags führte und die Abnahmen die
+   Monatsreserve rechneten (ADR-022, Nachtrag 2026-10-01).
+   Das Soll stammt nur aus den Bytes, die die geltenden Abnahmen A-M1 und
+   A-M4 pinnen; der Code-Stand der Probe (Image, Paket-Hash, Kern) wird
+   gegen die letzte grüne Protokollzeile gehalten. Der Beleg trägt die
+   Betriebszeichnung und bindet den geführten Stand der Ablage, den
+   Eingang und die Abnahmen.
+2. **Zugangsabnahme A-B2** (`gates.gate_entscheid --gate A-B2`): gezeichnet
+   von `mensch/betrieb`, vorbereitet von `agent/betrieb`, der nur ablehnen
+   kann. Pflichtbelege sind die Probe, der A-M4-Snapshot und der Eingang;
+   das Urteil der Probe wird nachgerechnet.
+3. **Registrierung** (`betrieb.uebernahme`): nur mit angenommener A-B2, die
+   genau den Eingang bindet, den sie schreibt, und den geführten Stand,
+   auf dem sie ihn schreibt. Die geprüfte Abnahme liegt als
+   `zugangsabnahme.json` neben dem Eingang. Registrierung und Probe halten
+   jede Abnahme, auf der der Zugang steht (A-M1, A-M4, A-B2), gegen die
+   Zeichnungsordnung des Betriebs: Der Schlüssel, der sie signiert hat,
+   muss einer Rolle gehören, die dieses Gate zeichnen darf, und der
+   Snapshot muss genau diese Rolle tragen. Dieselbe Regel hält das Gate
+   A-B2 für A-M4 und A-M1 (ADR-022, Nachtrag 2026-10-01). Maßgeblich ist
+   die Ordnung zum Zeitpunkt der Registrierung; der Eintritt prüft die
+   Rollen nicht neu.
+
+Der **geführte Stand** ist die letzte grüne Protokollzeile, das Manifest
+des Stands und die Config — ein roter Lauf bewegt ihn nicht, ein grüner
+schon. Der Tageslauf hält die Abnahme beim **Eintritt** gegen ihn: beim
+ersten grünen Lauf, der den Eingang aufnimmt, geführt oder wartend (ein
+Zugang mit künftigem Stichtag tritt mit seiner Aufnahme als wartender
+Eingang ein; die Zeile nennt seinen Hash). Tritt ein wartender Eingang an
+seinem Stichtag tatsächlich in die Bücher, hält der Tageslauf zusätzlich
+fest, was sich durch den Betrieb nicht ändert: Config, Kern-Version und
+Code-Stand müssen die der Probe sein. Danach fragt kein Lauf mehr — der
+Stand läuft dann weiter, weil der Eingang geführt wird.
+
 ## 7 Der Tageslauf
 
 Ein Kommando, `python -m rechner_pipeline.betrieb.tageslauf --stand
-<daten> --heute <datum>`, idempotent und deterministisch. Ohne `--heute`
+<daten> --heute <datum> --schluessel <betriebsschlüssel>
+--zeichnungsordnung <ordnung>`, idempotent und deterministisch. Ohne `--heute`
 gilt der Kalendertag des Aufrufs; in Tests und beim Nachholen wird er
 gesetzt.
 
@@ -287,10 +348,59 @@ gesetzt.
 
    Für die Wache P-B1 und die Tagesseite gilt das Gegenteil: Sie berichten
    über *heute* und arbeiten deshalb auf der heute gebuchten Sicht.
+
+   **Bewertung zum Monatsersten heißt auch: monatsgenau** (Entscheid des
+   Maintainers 2026-10-01, ADR-011 Nachtrag). Deckungskapital,
+   Rückkaufswert und Korrekturschicht stehen im Abschluss mit dem Wert am
+   Bewertungsstichtag, nicht mit dem des letzten Vertragsjahrestags:
+   Zwischen zwei Jahrestagen mischt die Bewertung linear, wie der Kern es
+   kann (Tarifplan KLV, Abschnitt 6, „Bewertung am Monatsstichtag"), für
+   jeden Vertragstyp gleich. Ein Beitragsübertrag ist nicht enthalten; er
+   ist zurückgestellt (`dev-docs/offene-punkte.md`). Die BU bleibt bei der
+   Jahreszeile, weil der Kern für sie keine unterjährige Reserve führt.
+   Jeder Abschluss nennt seine Konvention (Spalte `bewertungskonvention`);
+   die vor der Umstellung festgeschriebenen tragen die Spalte nicht, gelten
+   als „Jahreszeile, vor der Umstellung geschrieben" und werden in dieser
+   Konvention nachgerechnet, nie umgeschrieben. Wer Abschlüsse über die
+   Umstellung hinweg in eine Reihe legt, kennzeichnet den Bruch.
+
+   Verworfen wurde, die Treppe zu behalten: Der Abschluss zum 1.12. wies
+   bis zu 11/12 des Jahreszuwachses zu wenig aus, und die Konvention war
+   nie entschieden, sondern ein Erbe der jährlichen Fortschreibung. Ebenso
+   verworfen, die Zugangsprobe den Abnahmewert in die Treppe umrechnen zu
+   lassen — das hätte die falsche Konvention zementiert.
 7. **Tagesprotokoll**: eine JSON-Zeile je Lauf (Datum, Neugeschäft,
    Buchungen je Art, Bestandszahlen, P-B1-Urteil, Manifest-Hash,
    Kern-Version, Image-Digest). Das Protokoll ist der Nachweis, dass das
    Unternehmen jeden Tag geführt wurde.
+
+   **Gezeichnete Zeilen (Schema 3, ADR-018 Nachtrag 2026-09-30).** Jede
+   Zeile ist mit dem Betriebsschlüssel gezeichnet (Rolle
+   `betrieb/tageslauf`, Schlüsselklasse `betrieb`, HMAC nach
+   `models.anker`). Schlüssel und Zeichnungsordnung liegen beim Menschen
+   außerhalb der Ablage, wie die Rollenschlüssel der Abnahmen; ohne sie
+   läuft kein Tag. Vor jedem Anfügen, bei jedem Lauf und bei jedem Export
+   wird die ganze Kette geprüft: Verkettung, steigendes Schema (eine
+   herabgestufte Zeile ist ein Kettenbruch), Zeichnung, Rolle gegen die
+   Ordnung. Der Nachweis verlangt genau eine grüne Zeile je geführtem Tag
+   und rechnet die Angaben der letzten grünen Zeile nach, statt ihnen zu
+   glauben: Bestandszahlen aus dem Stand, Monatskennzahlen aus
+   Abschlussdatei und Journal, Übernahmeangaben aus `eingang.json`,
+   Config-Hash, Kern-Version und Eingänge aus dem Manifest. Jeder jemals
+   bezeugte Eingang und jeder bezeugte Abschluss muss unverändert in der
+   Ablage liegen. `eingang.json` selbst zeichnet die Registrierung mit
+   demselben Schlüssel.
+
+   **Aufschaltung.** Eine Ablage, die vor dem Betriebsschlüssel geführt
+   wurde, wird nicht neu aufgesetzt: Beim ersten Lauf nach dem Umstieg
+   schaltet der Mensch sie EINMAL ausdrücklich auf (`--aufschalten`), und
+   die erste gezeichnete Zeile pinnt den ungezeichneten Vorlauf
+   (`vorlauf`: Zahl und SHA-256 der rohen Zeilen); eine spätere Änderung
+   darin bricht den Pin. Ohne den Schalter verweigern Lauf, Export und
+   Neuaufsetzen ein Protokoll ohne gezeichnete Zeile — es könnte ebenso
+   ein ohne Schlüssel herabgestuftes sein; auf ein gezeichnetes Protokoll
+   verweigert der Schalter selbst. Ungezeichnete Eingänge bleiben geführt,
+   solange eine gezeichnete Zeile oder der gepinnte Vorlauf sie bezeugt.
 
 Der Zeitpunkt 23:00 Uhr ist eine Betriebsentscheidung: spät genug, dass
 der Tag vorbei ist, früh genug, dass der Stand vor Mitternacht steht.
@@ -304,7 +414,7 @@ Die Simulation kennt keine Uhrzeit, nur den Kalendertag.
 | `journal/tagesjournal.parquet`, `journal/protokoll.jsonl` | nur-anfügbar | 0444 je Tagesabschnitt nicht praktikabel; Schutz über Prüfsumme im Protokoll |
 | `abschluesse/` | Monatsabschlüsse | 0444, genau einmal (ADR-011) |
 | `berichte/` | Tages- und Monatsberichte (HTML) | erzeugt, jederzeit neu renderbar |
-| `uebernahme/<fall>/` | Eingang je Migration | unantastbar wie ein Fall-Eingang |
+| `uebernahme/<fall>/` | Eingang je Migration, mit seiner Zugangsabnahme (`zugangsabnahme.json`, Abschnitt 6.2) | unantastbar wie ein Fall-Eingang |
 | `configs/` | die Config der PLV, versioniert im Repo, hier als Kopie mit Hash im Protokoll | |
 
 ## 8 Laufzeitumgebung und Deployment
@@ -496,16 +606,35 @@ Findet sich nach der Abnahme, dass der Betrieb den übernommenen Bestand
 in einer anderen Welt führt als die Abnahmen (Abschnitt 6.1, Betriebsfund
 vom 2026-09-07), wird der Fall auf dem Entwicklerweg korrigiert und der
 Betrieb aus der neuen Übernahme neu aufgesetzt. Dafür gibt es eine
-Routine, die nichts löscht:
+Routine, die nichts Bestehendes löscht:
 
 ```
 python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
-    --fall faelle/<fall> --stichtag 2026-01-01 [--config configs/bestand_gesamt.toml]
+    --fall faelle/<fall> --stichtag 2026-01-01 [--config configs/bestand_gesamt.toml] \
+    --freigabe-schluessel <schlüssel-mensch-aktuariat> \
+    --freigabe-schluessel <schlüssel-mensch-betrieb> \
+    --betriebsschluessel <betriebsschlüssel> --zeichnungsordnung <ordnung> \
+    --linie ~/apps/plv/linie
 ```
 
-Sie prüft, bevor sie etwas bewegt (keine Lauf-Sperre; die Tarifwerk-
-Schalter der Config stimmen mit dem Übernahmebeleg des Falls überein),
-baut die neue Ablage vollständig neben der alten auf (Config, Übernahme-
+(Zwei Freigabeschlüssel, weil die Registrierung des neuen Eingangs die
+Signaturen von A-M1/A-M4 und von A-B2 prüft. Die Linie ist Pflicht
+(ADR-025, Nachtrag 2026-10-01): Jede Abnahme wird gegen den Stand der
+Zeichnungsordnung gelesen, unter dem sie gezeichnet wurde; ohne `--linie`
+gründet kein Kommando des Betriebs auf einer Abnahme. Der Nachtlauf selbst
+braucht sie nicht — er gründet auf keinem Snapshot und hält seinen
+Schlüssel gegen die gezeichnete Bindung des Anfangsbestands.)
+
+Sie prüft, bevor sie etwas anlegt (keine Lauf-Sperre; die Tarifwerk-
+Schalter der Config stimmen mit dem Übernahmebeleg des Falls überein; eine
+Zugangsabnahme A-B2 liegt vor — gerechnet auf einer leeren Ablage mit der
+neuen Config, denn das ist der geführte Stand der neuen Ablage, Abschnitt
+6.2, `--zugangsabnahme`; A-M4 und A-B2 samt Rolle und Schlüsselklasse
+gegen die Ordnung, Tabellen und Beleg gegen die Abnahme). Was sich nur
+gegen die neue Ablage prüfen lässt, scheitert nach dem Anlegen; dann
+entfernt sie ihre eigene, nie veröffentlichte Vorbereitung wieder — eine
+Verweigerung hinterlässt nichts neben der Ablage. Danach
+baut sie die neue Ablage vollständig neben der alten auf (Config, Übernahme-
 Eingang mit Stamm, Journal, Ledger, Merkmalen, Bausteinen, Korrektur-
 schicht, Verankerung und Übernahmebeleg, dazu `neuaufsetzen.json` als
 Provenienz), archiviert die alte Ablage durch eine Umbenennung
@@ -532,6 +661,52 @@ Der Übernahme-Eingang trägt seit dieser Routine auch die Bausteine
 Übernahmebeleg (`uebernahme.json`); der Tageslauf reicht sie in die
 Fortschreibung, die damit nach dem Tarifwerk der Generation rechnet,
 dieselbe Welt wie die Führungsprobe vor A-M4.
+
+**Reihenfolge beim Aufsetzen: die Abnahme des Anfangsbestands vor dem
+ersten produktiven Lauf** (ADR-025). Der erste Tageslauf einer neuen
+Ablage ist ihr Aufbaulauf; er baut den Anfangsbestand und läuft ohne
+Abnahme. Bevor der nächste Lauf — der erste produktive — läuft, nimmt die
+Betriebsverantwortung (`mensch/betrieb`) diesen Anfangsbestand ab:
+`betrieb.anfangsbestand belegen` (Tabellen, Config, Code-Stand, ein neu
+gefahrener P-B1-Befund, Kennzahlen und die Abweichung zum zuletzt
+abgenommenen Anfangsbestand der archivierten Ablage), `A-B3` im
+Linienbereich der Erstabnahme zeichnen, `betrieb.anfangsbestand binden`.
+Ohne die Bindung hält jeder weitere Lauf an (Exit 2, Ausweg in der
+Meldung). Die Reihenfolge ist also: Linie bereitstellen (ihre Spitze ist
+die Ordnung, unter der gezeichnet wird), Fallauftrag und Abnahmen im Fall
+(ADR-026), Zugangsprobe auf leerer Ablage, A-B2, Neuaufsetzen (es
+archiviert die alte Ablage selbst), Aufbaulauf, Abnahme des
+Anfangsbestands, Export, Timer. `binden` löst dabei unter der Linie auf,
+welcher Schlüssel die Ablage führt; ein Wechsel des Betriebsschlüssels
+braucht deshalb ein Glied der Linie und eine neue Bindung.
+
+### 8.6 Eine neue Config gilt von Beginn der Simulation an
+
+Die Laufzeitumgebung führt eine **eigene Kopie** der Config
+(`daten/configs/bestand.toml`); eine Änderung im Repository berührt sie
+nicht. Wird die Kopie nachgezogen — etwa mit den Annahmen für
+Beitragsherabsetzung und Teilkündigung vom 2026-10-01
+([Erfahrungsannahmen](erfahrungsannahmen.md), Abschnitt 4) —, gilt das
+für die ganze Geschichte: Jeder Tageslauf rechnet den Stand vom
+Betriebsbeginn an neu, die neuen Raten wirken also ab 1994, und die
+Vorgänge fallen auch in Jahre, deren Monatsabschlüsse schon
+festgeschrieben sind und deren Buchungen im Journal stehen. Eine
+bestehende Ablage reproduziert danach nicht mehr.
+
+Deshalb hält der Tageslauf an, sobald die Config einer geführten Ablage
+eine andere ist als die, mit der der letzte grüne Tag gerechnet wurde
+(Config-Hash der Protokollzeile): Exit 2, Stand und Journal bleiben, eine rote Protokollzeile nennt
+beide Hashes und den Ausweg. Das gilt für jede Änderung, auch eine ohne
+Wirkung — ob sie wirkt, wüsste der Lauf erst nach dem Rechnen. Die
+Ablage wird **neu aufgesetzt**, nicht nachträglich umgerechnet
+(Abschnitt 8.5, mit `--config <neue Config>`): Zugangsprobe und A-B2 auf
+einer leeren Ablage mit der neuen Config, Neuaufsetzen, Erstbefüllung,
+Stands-Paket neu exportieren. Die Folgen: Die alte Ablage mit Journal,
+Protokollkette, Abschlüssen und Berichten liegt vollständig im Archiv;
+die neue Protokollkette beginnt neu, ein neues Ankerverzeichnis gehört
+dazu, und die Zahlen der Vorzeigeseite ändern sich mit dem nächsten
+Paket. Wer stattdessen beim alten Stand bleiben will, setzt die Kopie auf
+die Config zurück, mit der das Protokoll gerechnet hat.
 
 ## 9 Umsetzung in Blöcken
 
@@ -575,7 +750,9 @@ in die Ebenen der Schichtenkarte, und die blieb konfliktfrei.
   Tage, 95 Prozent unter 60 Tagen).
 - Bewertungsstichtag des Monatsabschlusses: Erster des Folgemonats
   (Konvention Monatserster) oder Monatsultimo als Datum der Datei; das
-  Konzept nimmt den Ersten des Folgemonats.
+  Konzept nimmt den Ersten des Folgemonats. Die Bewertung an diesem
+  Stichtag ist seit 2026-10-01 entschieden: monatsgenau, ohne
+  Beitragsübertrag (Abschnitt 7, Punkt 6).
 - Getrennter Ausweis des übernommenen Teilbestands: dauerhaft oder bis
   zum ersten Jahresabschluss nach der Übernahme.
 - Ob die öffentliche Seite Monatsstände oder auch Tagesstände zeigt.

@@ -131,7 +131,7 @@ def test_rollen_skills_tragen_ihre_haerte_grenzen() -> None:
 # Agentenrollen des KI-Tools (ADR-018, Schritt 2)
 # --------------------------------------------------------------------------- #
 
-AGENTENROLLEN = ("aktuariat", "architektur", "rechenkern", "programmleitung")
+AGENTENROLLEN = ("aktuariat", "architektur", "rechenkern", "programmleitung", "betrieb")
 
 
 def test_agentenrollen_sind_in_beiden_baeumen_byte_identisch() -> None:
@@ -164,3 +164,44 @@ def test_jede_agentenrolle_nennt_kennung_gegenstueck_und_zeichnungsverbot() -> N
                 continue
             if "-" in skill:
                 assert skill in skills, f"{name}: Skill {skill!r} gibt es nicht"
+
+
+def _bericht_aufrufe(text: str) -> list[str]:
+    """Jeder Aufruf von ``bestand.cli_report`` im Text, als ein Befehl: die
+    Fortsetzungszeilen (Zeilenende ``\\``) zusammengezogen, bei einem Aufruf in
+    einer Zeile nur der Rest der Zeile bis zum Ende des Codespans."""
+    aufrufe = []
+    zeilen = text.splitlines()
+    for i, zeile in enumerate(zeilen):
+        if "bestand.cli_report" not in zeile:
+            continue
+        befehl = zeile
+        while befehl.rstrip().endswith("\\") and i + 1 < len(zeilen):
+            i += 1
+            befehl = befehl.rstrip()[:-1] + " " + zeilen[i]
+        aufrufe.append(befehl)
+    return aufrufe
+
+
+def test_skill_bericht_aufrufe_nennen_den_lauf_des_stamms() -> None:
+    """Runde E, Nachbesserung (Befund 3): ``cli_report`` weist einen Stamm
+    ohne ``--historie``/``--ledger`` ab, sobald eine Nebentabelle daneben
+    liegt — und neben dem Stamm der Uebernahme (``bestand.parquet``) liegen
+    Historie und Ledger immer. Ein dokumentierter Aufruf ohne Journal waere
+    ein Aufruf, der im echten Verzeichnis mit Exit 2 endet. Mechanik: jeder
+    Aufruf in einem Skill traegt beide Flags. Mutationsprobe: die Flags aus
+    dem VOR-Bericht streichen -> rot."""
+    gesehen = 0
+    for skill in sorted((REPO_ROOT / ".claude" / "skills").glob("*/SKILL.md")):
+        for befehl in _bericht_aufrufe(skill.read_text(encoding="utf-8")):
+            gesehen += 1
+            assert "--historie" in befehl and "--ledger" in befehl, (skill.parent.name, befehl)
+    assert gesehen >= 2          # Positivkontrolle: der Scanner findet die Aufrufe
+
+
+def test_skill_bericht_scanner_findet_einen_aufruf_ohne_journal() -> None:
+    ohne = "python -m rechner_pipeline.bestand.cli_report --portfolio <bestand>.parquet --out x.html"
+    mit = ("python -m rechner_pipeline.bestand.cli_report \\\n    --portfolio a.parquet \\\n"
+           "    --historie h.parquet \\\n    --ledger l.parquet \\\n    --out x.html")
+    assert [("--historie" in b and "--ledger" in b) for b in _bericht_aufrufe(ohne)] == [False]
+    assert [("--historie" in b and "--ledger" in b) for b in _bericht_aufrufe(mit)] == [True]

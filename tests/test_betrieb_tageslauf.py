@@ -22,6 +22,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from tests.freigabe_testschluessel import betriebsargs
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
+
 from rechner_pipeline.bestand.manifest import lies_manifest
 from rechner_pipeline.bestand.parquet_io import read_portfolio
 from rechner_pipeline.betrieb import tageslauf as tl
@@ -212,25 +215,36 @@ def test_derselbe_tag_noch_einmal_ist_ein_benannter_noop(gefuehrt):
     assert (ablage.stand / "laufmanifest.json").read_bytes() == manifest_vorher
     assert ablage.protokoll_pfad.read_bytes() == protokoll_vorher
     assert gefuehrter_tag(ablage) == dt.date(2026, 2, 4)
-    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-02-04"]) == EXIT_OK
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-02-04", *betriebsargs()]) == EXIT_OK
     assert ablage.protokoll_pfad.read_bytes() == protokoll_vorher
     # Rueckwaerts bleibt ein Fehler (Exit 2 ueber main):
     with pytest.raises(TageslaufError, match="rueckwaerts"):
         tageslauf(ablage, dt.date(2026, 1, 15))
-    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-15"]) == EXIT_USAGE
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-15", *betriebsargs()]) == EXIT_USAGE
     assert len(lies_protokoll(ablage.protokoll_pfad)) == 3
 
 
-def test_rote_wache_uebernimmt_den_stand_nicht(gefuehrt, tmp_path):
+def test_rote_wache_uebernimmt_den_stand_nicht(gefuehrt, tmp_path, monkeypatch):
     """Mutationsprobe: Wache entfernt oder Stand vor der Wache uebernommen
     — dann fuehrte der Stand den 5.2. mit einem Bestand ausserhalb der
-    Plausibilitaetsbaender, und der Exit waere 0."""
+    Plausibilitaetsbaender, und der Exit waere 0.
+
+    Bis 2026-10-01 kam der rote Befund aus einer verengten Config. Eine
+    geaenderte Config erreicht die Wache seitdem nicht mehr (der Lauf haelt
+    vorher an, ``test_betrieb_plv_vorgaenge``); der Befund kommt deshalb an
+    der Naht der Wache dazu — die echte P-B1-Engine laeuft trotzdem, und
+    Gegenstand ist, was der Lauf mit einem roten Urteil tut."""
     quelle, _ = gefuehrt
     ablage = Ablage(tmp_path / "rot")
     shutil.copytree(quelle.wurzel, ablage.wurzel)
-    text = ablage.config_pfad.read_text(encoding="utf-8")
-    text = text.replace("entry_age = [18, 64]", "entry_age = [18, 19]", 1)
-    ablage.config_pfad.write_text(text, encoding="utf-8")
+    echte_wache = tl._wache
+
+    def rote_wache(arbeit, config_pfad, heute):
+        tabellen, geprueft, befunde = echte_wache(arbeit, config_pfad, heute)
+        return tabellen, geprueft, befunde + [
+            {"code": "sanity", "message": "entry_age ausserhalb des Bandes [18, 19]"}]
+
+    monkeypatch.setattr(tl, "_wache", rote_wache)
     code, zeile = tageslauf(ablage, dt.date(2026, 2, 5))
     assert code == EXIT_WACHE_ROT
     assert zeile["uebernommen"] is False and zeile["pb1"]["urteil"] == "rot"
@@ -243,7 +257,7 @@ def test_rote_wache_uebernimmt_den_stand_nicht(gefuehrt, tmp_path):
     pd.testing.assert_frame_equal(
         read_portfolio(ablage.tagesjournal_pfad), read_portfolio(quelle.tagesjournal_pfad))
     # Nach der Korrektur laeuft derselbe Tag gruen durch:
-    ablage.config_pfad.write_text(quelle.config_pfad.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(tl, "_wache", echte_wache)
     code, zeile = tageslauf(ablage, dt.date(2026, 2, 5))
     assert code == EXIT_OK and zeile["gefuehrt_vorher"] == "2026-02-04"
     assert gefuehrter_tag(ablage) == dt.date(2026, 2, 5)
@@ -282,18 +296,18 @@ def test_erstbefuellung_verlangt_config_und_betriebsbeginn(tmp_path):
 def test_cli(gefuehrt, tmp_path, capsys):
     ablage = _ablage(tmp_path / "cli")
     assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-06",
-                    "--image-digest", "sha256:abc"]) == EXIT_OK
+                    "--image-digest", "sha256:abc", *betriebsargs()]) == EXIT_OK
     assert "2026-01-06 gefuehrt" in capsys.readouterr().err
     erste = lies_protokoll(ablage.protokoll_pfad)[0]
     assert erste["image_digest"] == "sha256:abc"
     # Was die Umgebung nicht liefert, ist ein benannter Zustand, kein leeres Feld:
     assert erste["image_revision"] == "nicht erfasst" and erste["image_tag"] == "nicht erfasst"
-    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "kein-datum"]) == EXIT_USAGE
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "kein-datum", *betriebsargs()]) == EXIT_USAGE
     # Derselbe Tag noch einmal: benannter No-op, keine zweite Protokollzeile.
-    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-06"]) == EXIT_OK
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-06", *betriebsargs()]) == EXIT_OK
     assert "bereits gefuehrt, nichts zu tun" in capsys.readouterr().err
     assert len(lies_protokoll(ablage.protokoll_pfad)) == 1
-    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-05"]) == EXIT_USAGE
+    assert tl.main(["--stand", str(ablage.wurzel), "--heute", "2026-01-05", *betriebsargs()]) == EXIT_USAGE
     assert "rueckwaerts" in capsys.readouterr().err
 
 
@@ -426,7 +440,7 @@ def test_jede_protokollzeile_nennt_den_hash_ihrer_vorgaengerin(gefuehrt):
     ablage, _ = gefuehrt
     roh = [z for z in ablage.protokoll_pfad.read_text(encoding="utf-8").splitlines() if z.strip()]
     zeilen = [json.loads(z) for z in roh]
-    assert zeilen[0]["schema_version"] == 2 and zeilen[0]["vorgaenger_sha256"] == ""
+    assert zeilen[0]["schema_version"] == 3 and zeilen[0]["vorgaenger_sha256"] == ""
     for vorher, jetzt in zip(roh, zeilen[1:]):
         assert jetzt["vorgaenger_sha256"] == tl._zeilen_hash(vorher)
 
@@ -620,7 +634,7 @@ def _gealterte_uebernahme(ablage: Ablage, fall_wurzel: Path,
     dasselbe (leeres Nummernband -> gleiche Zielnummern). Rueckgabe: das
     Eingangsverzeichnis mit den umnummerierten Tabellen des Zielsystems."""
     from rechner_pipeline.betrieb import uebernahme as ueb
-    from tests.test_betrieb_uebernahme import _pb1_ledger, am4_snapshot
+    from tests.test_betrieb_uebernahme import _pb1_ledger, am4_snapshot, fuehrungsbeleg
 
     fall = fall_wurzel / name
     (fall / "abgeleitet" / "diagnostics").mkdir(parents=True)
@@ -629,13 +643,16 @@ def _gealterte_uebernahme(ablage: Ablage, fall_wurzel: Path,
         json.dumps({"name": name, "schema_version": 1}), encoding="utf-8")
     _gealterter_zugangsstand(fall / "abgeleitet" / "bestand")
     ledger_sha = _pb1_ledger(fall)
-    daten = am4_snapshot(name, pb1_ledger_sha=ledger_sha)
+    from tests.test_betrieb_uebernahme import lege_auftrag
+
+    lege_auftrag(fall)   # der Auftrag, den A-M4 nennt (Pruefrunde I, I07)
+    daten = am4_snapshot(name, pb1_ledger_sha=ledger_sha, fuehrungsprobe_sha=fuehrungsbeleg(fall))
     (fall / "entscheide" / f"A-M4-{daten['snapshot_sha256']}.json").write_text(
         json.dumps(daten, ensure_ascii=False), encoding="utf-8")
     (fall / "abgeleitet" / "diagnostics" / "gate_entscheid_am4.gate.json").write_text(
         json.dumps({"summary": {"snapshot_sha256": daten["snapshot_sha256"]}}),
         encoding="utf-8")
-    return ueb.eingang_anlegen(ablage.wurzel, fall, BETRIEBSBEGINN)
+    return ueb.eingang_anlegen(_mit_config(ablage.wurzel), fall, BETRIEBSBEGINN)
 
 
 def test_ein_abschluss_ist_dieselbe_datei_ob_am_stichtag_oder_nachgeholt(tmp_path, monkeypatch):
@@ -1055,7 +1072,7 @@ def _injiziere(monkeypatch, naht: str):
 
         monkeypatch.setattr(tl, "_bericht", _kaputt)
     elif naht == "protokoll-teilweise":
-        def _kaputt(pfad, zeile):
+        def _kaputt(pfad, zeile, _zeichner=None, **_k):
             # Der Anfang der Zeile steht, der Rest nicht — der Teilwrite,
             # den ein Absturz hinterlaesst. Ohne Zeilenumbruch: Die Zeile
             # ist nie eine geworden.

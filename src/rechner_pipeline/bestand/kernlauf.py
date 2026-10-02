@@ -36,7 +36,7 @@ def vertrags_rkw(
     scheiben: List[Tuple[int, Rechenkern]],
     jahr: int,
     *,
-    stoab_je_baustein: bool = False,
+    stoab_je_baustein: bool,
 ) -> float:
     """Rueckkaufswert des Vertrags ueber Grund- und Erhoehungsscheiben.
 
@@ -64,6 +64,11 @@ def vertrags_rkw(
     Wohnt hier, weil Simulation UND Bewertung den Wert brauchen — beide
     ueber den Kern, keine ueber die jeweils andere (ADR-011).
     """
+    from rechner_pipeline.kern.rechenkern import pruefe_scheibenjahre
+
+    # Dieselbe Jahresgrenze wie jeder Kern-Eingang (Pruefrunde I, I12): der
+    # vertragsweite Zweig unten rechnet ohne den Kern-Eingang.
+    pruefe_scheibenjahre(grund.mp, scheiben)
     if stoab_je_baustein:
         from rechner_pipeline.kern import vertrags_monatsreserve
 

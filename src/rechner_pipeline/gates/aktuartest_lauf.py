@@ -48,6 +48,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.bestand.parquet_io import (
     read_portfolio,
@@ -56,7 +57,6 @@ from rechner_pipeline.bestand.parquet_io import (
 from rechner_pipeline.gates._common import Eingangsbindung, lies_gehasht
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.models.bestand import model_point_kwargs
-from rechner_pipeline.kern.beitragsreduktion import PROSPEKTIV, VERFAHREN
 from rechner_pipeline.qa.aktuarieller_test import (
     Pruefpunkt,
     Vertragspruefung,
@@ -68,6 +68,13 @@ from rechner_pipeline.kern.korrekturschicht import (
 )
 from rechner_pipeline.qa.stichprobe import Stichprobe
 from rechner_pipeline.qa.testprofil import vorlage
+from rechner_pipeline.spez.tarifregeln import (
+    TarifregelnFehler,
+    verweigere_entfallene_schalter,
+)
+# Die eine Stelle, an der die Kommandos der Bestandsstrecke ihre Regeln
+# beziehen: Scope des Falls und Spez (Pruefrunde G).
+from rechner_pipeline.gates.migrationssuite_lauf import tarifregeln_des_falls
 from rechner_pipeline.spez.validierung import (
     lade_spez,
     lade_spez_aus_bytes,
@@ -132,10 +139,18 @@ def baue_auftraege(
     plausibilitaet: Optional[Dict[str, Dict[str, str]]] = None,
     scheiben_mit_gamma1: bool = False,
     stoab_je_baustein: bool = False,
+    tku_umfang: Optional[str] = None,
     red_anteil_kandidaten: Tuple[float, ...] = (),
     summen_je_police: Optional[Dict[str, float]] = None,
+    unbestimmt: Any = (),
 ) -> Tuple[List[Vertragspruefung], List[str], List[str]]:
     """Aus Lieferung und Bestand die Pruefauftraege je Vertrag.
+
+    ``tku_umfang`` ist der Umfang der Teilkuendigung aus dem Tarifwerk der
+    Spez und geht in jeden Auftrag. Vorher kam er hier nie an: Die Engine
+    leitete ihn je Vertrag aus dem Verfahren ab, und ``--tku-umfang`` wirkte
+    nur auf den Anfangszustand, nicht auf die Teilkuendigung im
+    Pruefzeitraum (gefunden beim Nachzug ADR-024).
 
     ``summen_je_police`` (police -> gelieferte Versicherungssumme aus den
     transformierten Zeilen) ist die Grundlage des Modellpunkts, wo kein
@@ -152,11 +167,13 @@ def baue_auftraege(
     ist, rechnet die Schicht ohnehin in kein Urteil. OHNE Ersetzung
     bleibt der harte Engine-Waechter (kein stilles Weglassen).
 
-    ``zustandslos`` sind Policen mit Vorgeschichte, aber ohne
-    ableitbaren Anfangszustand: eine AUSGEWIESENE Pruefluecke, kein
-    Abbruch (etabliertes Verhalten der ersten Lieferung — die Police
-    faellt sichtbar rot, statt dass ein geratener Zustand still
-    richtig aussieht). Ein Plausibilitaets-Antrag wird diesen Policen
+    ``zustandslos`` sind Policen, deren Anfangszustand NICHT ableitbar ist
+    (``unbestimmt``, aus den Zustandswarnungen — nicht aus einer Heuristik
+    ueber den Historientyp: Eine Teilkuendigung der Vorgeschichte ist
+    BESTIMMT zustandslos, f x S, und war hier faelschlich "nicht ableitbar,
+    erwartbar rot" bei gruenem Urteil, Fall I der Kalibrierung zum
+    Pruefer-Befund B1). Seit B1 verweigert der Lauf solche Policen vorher
+    (``verweigere_unbestimmte``); die Menge ist dann leer. Ein Plausibilitaets-Antrag wird diesen Policen
     NICHT gewaehrt, sondern ausgewiesen verworfen: Ihr Systemwert
     rechnet mangels Zustand die Stammwelt, ein Korridor darum urteilt
     nichts, und die Kandidaten-Regeln brauchen den
@@ -168,6 +185,7 @@ def baue_auftraege(
     auftraege: List[Vertragspruefung] = []
     schicht_ausgelassen: List[str] = []
     zustandslos: List[str] = []
+    unbestimmt = set(unbestimmt)
 
     for eintrag in lieferung["vertraege"]:
         police = str(eintrag["police_id"])
@@ -214,11 +232,7 @@ def baue_auftraege(
         historientyp = str(eintrag.get("historientyp", "unbekannt"))
         beitragsfrei = eintrag.get(
             "beitragsfrei_seit_jahr", zustand.get("beitragsfrei_seit_jahr"))
-        ohne_zustand = (
-            historientyp not in ("ohne_vorgeschichte", "unbekannt")
-            and not zustand.get("scheiben")
-            and zustand.get("reduktion") is None
-            and beitragsfrei is None)
+        ohne_zustand = police in unbestimmt
         if ohne_zustand:
             zustandslos.append(police)
         gewaehrt = dict((plausibilitaet or {}).get(police, {}))
@@ -260,6 +274,7 @@ def baue_auftraege(
             plausibilitaet=gewaehrt,
             scheiben_mit_gamma1=scheiben_mit_gamma1,
             stoab_je_baustein=stoab_je_baustein,
+            tku_umfang=tku_umfang,
             **_schicht_felder(_schicht_fuer(
                 police, zustand, (schichten or {}).get(police),
                 gewaehrt, schicht_ausgelassen)),
@@ -319,7 +334,7 @@ def _schicht_felder(eintrag: Any) -> Dict[str, Any]:
 
 def _schichten(
     fall: Path, name: Optional[str], repo_root: Optional[Path] = None,
-    bindung=None,
+    bindung=None, auskunft: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Die Korrekturschicht je Police aus einer BINDBAREN Quelle.
 
@@ -352,6 +367,19 @@ def _schichten(
     ``conv`` traegt seinen eigenen Verankerungszeitpunkt ``monate_t0``
     (Vertragsmonate am Migrationsstichtag — je Vertrag verschieden,
     obwohl der Kalendertag derselbe ist).
+
+    ``auskunft`` ist der Belegblock (``{name, sha256, bezug}``) der
+    Herabsetzungs-Auskunft, die DIESER Lauf gelesen hat, oder ``None``,
+    wenn er keine nennt. Block F, Nachbesserung: Die Schicht ist auf der
+    Anfangslage verankert, die die Auskunft des Erzeugers bestimmt hat;
+    rechnet der Lauf auf der Anfangslage einer ANDEREN Auskunft (oder ohne),
+    vergleicht er gelieferte Werte mit einer Welt, auf der die Schicht nie
+    verankert wurde — beide Belege einzeln gruen. Bei einem abgeleiteten
+    Beleg muessen deshalb die SHA-256 der Auskunft des Belegs und des
+    Laufs uebereinstimmen; ``keine Auskunft`` auf beiden Seiten gilt als
+    gleich. Jeder Aufrufer unter ``gates/`` uebergibt ``auskunft=``
+    ausdruecklich (Ratsche in ``tests/test_auskunft_registriert_klasse.py``);
+    das Vorgabe-``None`` verweigert im Zweifel, statt still durchzulassen.
     """
     if not name:
         return {}
@@ -396,6 +424,80 @@ def _schichten(
                     f"Schichtbeleg-Eingabe {rel} wurde veraendert "
                     "(SHA-256 weicht ab) — Beleg neu erzeugen, nicht "
                     "weiterverwenden")
+        # Die Auskunft zu den Herabsetzungsanteilen (Entscheid des
+        # Maintainers 2026-09-30): Sie ist eine registrierte Datei, und der
+        # Beleg nennt sie mit Name und Hash. Dieser Lauf rechnet die
+        # Aussage nach, statt ihr zu glauben — sie muss mit den Eingaben
+        # uebereinstimmen, die oben gegen die Platte geprueft wurden. Ein
+        # Beleg im alten Schema (Anteile als getippte Liste) ist nicht
+        # bindbar und wird nicht angenommen.
+        parameter = prov.get("parameter")
+        parameter = parameter if isinstance(parameter, dict) else {}
+        if "red_anteile" in parameter:
+            raise SystemExit(
+                f"Schichtbeleg {name!r} nennt Herabsetzungsanteile als "
+                "Einzelparameter (red_anteile) — fuer die Zeichnung nicht "
+                "bindbar; die Auskunft als registrierte Datei fuehren "
+                "(--red-anteile-datei) und den Beleg neu erzeugen "
+                "(gates.verankerung_belegen)")
+        datei = parameter.get("red_anteile_datei")
+        if datei is not None:
+            gebunden = None
+            if isinstance(datei, dict):
+                gebunden = (prov.get("eingaben") or {}).get(
+                    Eingangsbindung(fall).schluessel(
+                        fall_mod.verzeichnisse(fall)["eingang"]
+                        / str(datei.get("name", ""))))
+            if gebunden is None or gebunden != datei.get("sha256"):
+                raise SystemExit(
+                    f"Schichtbeleg {name!r}: red_anteile_datei "
+                    f"({datei!r}) steht nicht mit diesem Hash unter den "
+                    "Eingaben des Belegs — die Aussage ueber die Auskunft "
+                    "ist nicht nachrechenbar; Beleg neu erzeugen "
+                    "(gates.verankerung_belegen)")
+        # Formfehler (Block F, Nachbesserung): Was der Erzeuger aus dem
+        # Eingang gelesen hat, ohne dass der Parameterblock es als
+        # Vorgeschichte, Anker oder Auskunft benennt, ist eine Auskunft, die
+        # der Block verschweigt — der Beleg widerspricht sich selbst, und der
+        # Abgleich unten saehe nur ``keine Auskunft``.
+        schluessel = Eingangsbindung(fall).schluessel
+        eingang = fall_mod.verzeichnisse(fall)["eingang"]
+        erklaert = {
+            schluessel(eingang / str(erklaerer))
+            for erklaerer in (
+                parameter.get("vorgeschichte"),
+                parameter.get("anker_erwartungswerte"),
+                datei.get("name") if isinstance(datei, dict) else None)
+            if erklaerer}
+        praefix = schluessel(eingang) + "/"
+        unerklaert = sorted(
+            k for k in (prov.get("eingaben") or {})
+            if k.startswith(praefix) and k not in erklaert)
+        if unerklaert:
+            raise SystemExit(
+                f"Schichtbeleg {name!r}: Formfehler — die Eingaben nennen "
+                f"{unerklaert}, der Parameterblock fuehrt sie weder als "
+                "vorgeschichte, anker_erwartungswerte noch als "
+                "red_anteile_datei; der Beleg widerspricht sich selbst — "
+                "neu erzeugen (gates.verankerung_belegen)")
+        # Welt-Gleichheit: dieselbe Auskunft wie der Lauf.
+        beleg_sha = datei["sha256"] if isinstance(datei, dict) else None
+        lauf_sha = auskunft["sha256"] if auskunft else None
+        if beleg_sha != lauf_sha:
+            def _wer(block, sha):
+                return (f"{block.get('name')!r} (SHA-256 {sha[:12]}...)"
+                        if block else "keine Auskunft")
+
+            raise SystemExit(
+                f"Schichtbeleg {name!r} wurde mit der Auskunft "
+                f"{_wer(datei if isinstance(datei, dict) else None, beleg_sha)}"
+                f" erzeugt, dieser Lauf liest {_wer(auskunft, lauf_sha)} — "
+                "zwei Welten: die Schicht ist auf einer anderen Anfangslage "
+                "verankert als der, auf der dieser Lauf rechnet. Dieselbe "
+                "Auskunft an beiden Kommandos nennen (--red-anteile-datei), "
+                "oder den Schichtbeleg mit der Auskunft dieses Laufs neu "
+                "erzeugen (gates.verankerung_belegen --red-anteile-datei "
+                "...)")
         # Der Beleg wird auf sein EIGENES URTEIL geprueft, bevor er
         # fachlich verwendet wird (Befund T26-06). Vorher las der Consumer
         # Systemstand und Eingabenhashes nach und reduzierte dann direkt
@@ -559,16 +661,23 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "vor dem Stichtag (POLNR;GEVO;DATUM) — traegt die "
                         "Anfangszustaende (Alt-Scheiben, Alt-Absetzung) je "
                         "Police der Stichprobe")
+    p.add_argument("--anker-erwartungswerte", dest="anker_quelle",
+                   default=None, metavar="REGISTRIERTE_DATEI",
+                   help="REGISTRIERTE Erwartungswerte am Verankerungszeitpunkt "
+                        "— dieselbe Quelle, aus der Uebernahme, Verankerung und "
+                        "Migrationssuite den Zustand einer Absetzung "
+                        "kalibrieren, deren Beitragsgleichung entfaellt. Ohne "
+                        "sie dienen die Uebernahme-Punkte der hier geprueften "
+                        "Lieferung als Anker; eine Lieferung ohne solche Punkte "
+                        "(A-M2, A-M3) kann den Zustand dann nicht ableiten, und "
+                        "der Lauf verweigert (Pruefer-Befund B1)")
     p.add_argument("--red-anteile-datei", dest="red_anteile_datei",
                    default=None, metavar="REGISTRIERTE_DATEI",
-                   help="REGISTRIERTE Nachlieferung der fortgefuehrten "
-                        "Beitragsanteile (POLNR;GEVO;DATUM;ANTEIL) — fuer "
-                        "die Zeichnung bindbar, anders als --red-anteil")
-    p.add_argument("--red-anteil", dest="red_anteile", action="append",
-                   default=[], metavar="POLNR=ANTEIL",
-                   help="nachgelieferter fortgefuehrter Beitragsanteil einer "
-                        "Alt-Absetzung, deren Beitragsgleichung entfaellt "
-                        "(wiederholbar)")
+                   help="REGISTRIERTE Auskunft der Quelle zu den "
+                        "fortgefuehrten Beitragsanteilen (POLNR;GEVO;DATUM;"
+                        "ANTEIL, optional BEZUG) — fuer die Zeichnung "
+                        "bindbar und der einzige Weg, sie zu nennen; wirkt "
+                        "mit --vorgeschichte")
     p.add_argument("--plausibilitaet-beleg", dest="plausibilitaet_beleg",
                    default=None, metavar="REGISTRIERTE_DATEI",
                    help="REGISTRIERTE Auskunft der abgebenden Gesellschaft, "
@@ -589,39 +698,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--red-anteil-kandidat", dest="red_anteil_kandidaten",
                    action="append", type=float, default=[],
                    metavar="ANTEIL",
-                   help="BELEGTER Tarif-Kandidat des Herabsetzungsanteils "
-                        "(wiederholbar), wenn der exakte Anteil bei der "
-                        "Quelle endgueltig nicht feststellbar ist. Die "
-                        "Plausibilitaetsregeln rechnen dann den Korridor "
-                        "ueber die Kandidatenmenge statt um einen "
+                   help="ARBEITSANNAHME des Laufs: Kandidat des "
+                        "Herabsetzungsanteils (wiederholbar), wenn der exakte "
+                        "Anteil bei der Quelle endgueltig nicht feststellbar "
+                        "ist. Die Plausibilitaetsregeln rechnen dann den "
+                        "Korridor ueber die Kandidatenmenge statt um einen "
                         "Punktwert; gilt fuer alle Vertraege mit "
-                        "Herabsetzungs-Anfangszustand.")
-    p.add_argument("--erhoehungssatz", dest="erhoehungssatz", type=float,
-                   default=None, metavar="SATZ",
-                   help="BELEGTER Dynamiksatz der Alt-Erhoehungen (Tarifwerk: "
-                        "S' = e * S^ges); ohne ihn wird je Vertrag aus dem "
-                        "Jahresbeitrag zerlegt")
-    p.add_argument(
-        "--scheiben-mit-gamma1", dest="scheiben_mit_gamma1",
-        action="store_true",
-        help="Erhoehungsscheiben rechnen die VOLLE Beitragsformel "
-             "(mit gamma1) — Tarifwerks-Eigenschaft der Lieferung laut "
-             "ihren Dokumenten (Lieferung 2: eigenstaendiger Baustein "
-             "mit eigener Wertermittlung); ohne Flag gilt die "
-             "GrundVS-Regel der ersten Lieferung.")
-    p.add_argument(
-        "--stoab-je-baustein", dest="stoab_je_baustein",
-        action="store_true",
-        help="Stornoabschlag-Grenzen greifen JE BAUSTEIN (Grund und "
-             "jede Erhoehungsscheibe einzeln, RKW = Summe der "
-             "Baustein-Rueckkaufswerte) — Tarifwerks-Eigenschaft der "
-             "Lieferung laut Bedingungswerk Ziffer 4; ohne Flag gelten "
-             "die Grenzen je Vertrag (PLV-Regel, Tarifplan 6).")
-    p.add_argument("--red-verfahren", dest="red_verfahren",
-                   default=PROSPEKTIV, choices=sorted(VERFAHREN),
-                   help="Verfahren der Beitragsherabsetzung (Eigenschaft "
-                        "des Migrationsfalls; Vorgabe: Zielverfahren "
-                        "prospektiv)")
+                        "Herabsetzungs-Anfangszustand. Die Regeln des Tarifs "
+                        "(Tarifwerk, Quellverfahren, Dynamiksatz) stehen in "
+                        "der Spez, nicht hier.")
     p.add_argument(
         "--schicht", dest="schicht", default=None,
         help="REGISTRIERTE Quelle mit der Korrekturschicht je Police "
@@ -630,9 +715,10 @@ def main(argv: Optional[List[str]] = None) -> int:
              "bleibt historienfrei. Ohne Angabe rechnet der Test ohne "
              "Schicht; das Residuum am Verankerungspunkt bleibt dann eine "
              "Restgroesse statt einer getragenen.")
-    p.add_argument("--repo-root", dest="repo_root", default=".")
+    p.add_argument("--repo-root", type=lebendes_repo, dest="repo_root", default=".")
     p.add_argument("--out", default=None,
                    help="Zielpfad (Vorgabe: <fall>/abgeleitet/berichte/...)")
+    verweigere_entfallene_schalter(p)
     args = p.parse_args(argv)
 
     fall = Path(args.fall).resolve()
@@ -647,8 +733,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     bindung = Eingangsbindung(fall)
     lieferung = _lies_registriert(fall, args.erwartungswerte, bindung)
     beleg = _lies_registriert(fall, args.stichprobe, bindung)
-    spez = lade_spez_aus_bytes(
-        bindung.binde(spez_pfad(fall, args.generation)).roh)
+    # Die Tarifregeln der Generation aus der Spez — dieselbe Fassung, mit
+    # der Uebernahme, Verankerung, Suite und Fuehrungsprobe rechnen. Laden
+    # und Regeln in EINEM Fang (Pruefrunde H): Auch der Lader verweigert
+    # benannt (Version, Regelwert); ein Traceback waere ein Fehler ohne Ausweg.
+    try:
+        spez = lade_spez_aus_bytes(
+            bindung.binde(spez_pfad(fall, args.generation)).roh)
+        regeln = tarifregeln_des_falls(fall, spez)
+    except ValueError as exc:
+        print(f"aktuartest_lauf: {exc}", file=sys.stderr)
+        return 2
     bestand = read_portfolio_aus_bytes(bindung.binde(Path(args.bestand)).roh)
 
     gemeldet = lieferung.get("test")
@@ -695,38 +790,44 @@ def main(argv: Optional[List[str]] = None) -> int:
             delimiter=";"))
 
     anfangszustaende = None
+    zustandswarnungen: List[str] = []
+    # Der Belegblock der Auskunft DIESES Laufs (None ohne Auskunft): die
+    # Schicht wird gegen ihn gehalten (Welt-Gleichheit, ``_schichten``).
+    auskunft_beleg: Optional[Dict[str, Any]] = None
+    if args.red_anteile_datei is not None and args.vorgeschichte is None:
+        print("--red-anteile-datei wirkt nur mit --vorgeschichte (die "
+              "Anteile gehoeren zu den Ereignissen der Vorgeschichte) — "
+              "ohne sie wuerde die Auskunft weder gelesen noch gebunden",
+              file=sys.stderr)
+        return 2
     if args.vorgeschichte is not None:
         from rechner_pipeline.gates.migrationssuite_lauf import (
             VORGABE,
             anfangszustaende_je_police,
+            verweigere_unbestimmte,
+            lies_auskuenfte,
         )
 
         red_anteile: Dict[str, float] = {}
         red_anteile_je_datum: Dict[str, Dict[str, float]] = {}
         if args.red_anteile_datei is not None:
-            _red_roh = bindung.binde(fall_mod.eingang_datei(
-                fall, args.red_anteile_datei)).text()
-            for zeile in csv.DictReader(_io.StringIO(_red_roh),
-                                        delimiter=";"):
-                if zeile.get("GEVO") == "RED" and zeile.get("ANTEIL"):
-                    red_anteile[str(zeile["POLNR"])] = float(
-                        zeile["ANTEIL"])
-                    if zeile.get("DATUM"):
-                        red_anteile_je_datum.setdefault(
-                                str(zeile["POLNR"]), {})[
-                                    str(zeile["DATUM"])] = float(
-                                        zeile["ANTEIL"])
-        for eintrag in args.red_anteile:
-            police, _, wert = eintrag.partition("=")
-            if not police or not wert:
-                print(f"--red-anteil {eintrag!r}: erwartet POLNR=ANTEIL",
-                      file=sys.stderr)
-                return 2
-            red_anteile[police.strip()] = float(wert)
+            auskuenfte = lies_auskuenfte(
+                fall, args.red_anteile_datei, bindung, vorgeschichte,
+                dict(VORGABE))
+            red_anteile = dict(auskuenfte.anteile)
+            red_anteile_je_datum = {
+                pol: dict(d) for pol, d in auskuenfte.je_datum.items()}
+            auskunft_beleg = auskuenfte.beleg
         # Ankerwerte fuer den Rueckfallweg: der gelieferte Wert am
         # Verankerungszeitpunkt je Vertrag der Stichprobe.
         anker: Dict[str, Any] = {}
-        for eintrag in lieferung["vertraege"]:
+        anker_lieferung = lieferung
+        if args.anker_quelle is not None:
+            # Dieselbe registrierte Ankerquelle wie die uebrigen Kommandos —
+            # der Zustand einer Police ist in jeder Abnahme derselbe.
+            anker_lieferung = bindung.binde(
+                fall_mod.eingang_datei(fall, args.anker_quelle)).json()
+        for eintrag in anker_lieferung["vertraege"]:
             punkte = eintrag.get("punkte") or []
             erster = next(
                 (p for p in punkte if p.get("anlass") == "uebernahme"), None)
@@ -737,15 +838,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         anfangszustaende, zustandswarnungen = anfangszustaende_je_police(
             spez, zeilen if args.zeilen is not None else [],
             vorgeschichte, bestand, spalten=dict(VORGABE),
-            red_verfahren=args.red_verfahren, red_anteile=red_anteile,
+            red_verfahren=regeln.quell_red_verfahren, red_anteile=red_anteile,
             red_anteile_je_datum=red_anteile_je_datum,
             auspraegungen=auspraegungen,
-            erhoehungssatz=args.erhoehungssatz, anker=anker,
+            erhoehungssatz=regeln.erhoehungssatz, anker=anker,
             red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
-            scheiben_mit_gamma1=args.scheiben_mit_gamma1)
-        for w in zustandswarnungen:
-            print(f"WARNUNG Anfangszustand nicht ableitbar: {w}",
-                  file=sys.stderr)
+            scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
+            tku_umfang=regeln.tku_umfang,
+            stoab_je_baustein=regeln.stoab_je_baustein)
 
     # Ersetzter Wertvergleich: NUR aus einer registrierten Quelle. Ein
     # Kommandozeilen-Text waere fuer die Zeichnung nicht bindbar — die
@@ -788,13 +888,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         }
 
     schichten = _schichten(fall, args.schicht, bindung=bindung,
-                           repo_root=Path(args.repo_root).resolve())
+                           repo_root=Path(args.repo_root).resolve(),
+                           auskunft=auskunft_beleg)
+    # Pruefer-Befund B1: ein Vertrag ohne ableitbaren Anfangszustand wird
+    # verweigert — NACH der Bindung des Schichtbelegs, damit ein Lauf mit
+    # fremder Auskunft deren eigenen Befund behaelt.
+    from rechner_pipeline.gates.migrationssuite_lauf import verweigere_unbestimmte
+
+    verweigere_unbestimmte(zustandswarnungen)
     auftraege, schicht_ausgelassen, zustandslos = baue_auftraege(
         lieferung, bestand, spez, auspraegungen_je_police=auspraegungen,
         anfangszustaende=anfangszustaende, plausibilitaet=plausibilitaet,
         schichten=schichten,
-        scheiben_mit_gamma1=args.scheiben_mit_gamma1,
-        stoab_je_baustein=args.stoab_je_baustein,
+        scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
+        stoab_je_baustein=regeln.stoab_je_baustein,
+        tku_umfang=regeln.tku_umfang,
         red_anteil_kandidaten=tuple(args.red_anteil_kandidaten),
         summen_je_police=summen_je_police)
     for police in schicht_ausgelassen:
@@ -820,25 +928,47 @@ def main(argv: Optional[List[str]] = None) -> int:
         auftraege, stichprobe, profil,
         transportsicherung={"lieferung": args.erwartungswerte},
         system=systemstand(Path(args.repo_root).resolve()),
-        red_verfahren=args.red_verfahren,
+        red_verfahren=regeln.quell_red_verfahren,
     )
-    # Der Beleg nennt, worueber geurteilt wurde.
+    # Der Beleg nennt, worueber geurteilt wurde — und mit welchen Regeln.
     ergebnis["eingaben"] = bindung.als_beleg()
+    ergebnis["tarifregeln"] = regeln.als_beleg()
+    # Block F, Nachbesserung: die Auskunft, auf deren Anfangslage gerechnet
+    # wurde, mit Name, SHA-256 und Bezug je Police (``null``, wenn keine).
+    ergebnis["red_anteile_datei"] = auskunft_beleg
     if schicht_ausgelassen:
         # Ausgewiesene Auslassung gehoert in den Beleg, nicht nur nach
         # stderr — A-M1 liest das Ergebnis, nicht das Terminal.
         ergebnis["schicht_ausgelassen"] = sorted(schicht_ausgelassen)
-    if zustandslos:
-        ergebnis["anfangszustand_nicht_ableitbar"] = {
-            "policen": zustandslos,
-            "hinweis": (
-                "Vorgeschichte vorhanden, Anfangszustand nicht ableitbar "
-                "(siehe Zustandswarnungen des Laufs) — der Wertvergleich "
-                "dieser Policen rechnet die Stammwelt und faellt "
-                "erwartbar rot; Ursache beheben (z. B. Herabsetzungs-"
-                "Anteile je Ereignis nachliefern: POLNR;GEVO;DATUM;"
-                "ANTEIL), nicht Toleranzen weiten."),
-        }
+    # Pflichtschicht (Pruefer-Befund B1, Bauauflage): Jede Police, deren
+    # Anfangszustand nicht die eigene Ableitung, sondern die registrierte
+    # Auskunft traegt, ist PFLICHTZIEHUNG dieser Abnahme — nicht Kandidat des
+    # Zufalls. Der Beleg nennt je Police, wodurch sie gedeckt ist; fehlt eine
+    # in der Stichprobe, ist die Abnahme nicht bestanden (Mengenbefund). A-M4
+    # haelt die Menge gegen die der Uebernahme (``gates.abnahmebericht``).
+    # Das ersetzt das fruehere Feld "anfangszustand_nicht_ableitbar ...
+    # erwartbar rot", das bestimmte Zustaende falsch etikettierte (Fall I).
+    from rechner_pipeline.gates.migrationssuite_lauf import deckungsbeleg
+
+    pflicht = deckungsbeleg(anfangszustaende or {}, auskunft_beleg)
+    if args.abnahme == "A-M3":
+        # A-M3 prueft Geschaeftsvorfaelle: Pflicht sind die gedeckten
+        # Policen, zu denen die Lieferung einen Vorfall des Pruefzeitraums
+        # traegt — eine Police ohne Vorfall hat dort nichts zu pruefen.
+        mit_vorfall = {str(e["police_id"]) for e in lieferung["vertraege"]}
+        pflicht = {p: v for p, v in pflicht.items() if p in mit_vorfall}
+    ergebnis["pflichtschicht"] = pflicht
+    gezogen = {str(p) for p in stichprobe.police_ids}
+    fehlt = sorted(p for p in pflicht if p not in gezogen)
+    if fehlt:
+        ergebnis["pflichtschicht_fehlt"] = fehlt
+        ergebnis.setdefault("mengenbefunde", []).append(
+            f"Pflichtschicht nicht gezogen: {len(fehlt)} Police(n), deren "
+            f"Anfangszustand die Auskunft traegt, fehlen in der Stichprobe "
+            f"(z. B. {fehlt[:5]}) — sie sind Pflichtziehung, kein Kandidat des "
+            "Zufalls; Ausweg: die Stichprobe um diese Policen ergaenzen und "
+            "ihre Erwartungswerte liefern lassen")
+        ergebnis["test_bestanden"] = False
     if plaus_verweigert:
         # Eigenes Feld statt Unterpunkt der Zustandslos-Prueflueke:
         # Der Antrag entfaellt auch fuer Policen mit VOLLSTAENDIG

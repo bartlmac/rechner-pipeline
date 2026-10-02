@@ -42,6 +42,7 @@ from rechner_pipeline.betrieb.tageslauf import (
 )
 from tests.test_betrieb_neuaufsetzen import _fall_mit_nebentabellen
 from tests.test_betrieb_uebernahme import STICHTAG, PLV
+from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -78,8 +79,11 @@ def test_ein_zugang_mitten_im_betrieb_wird_gefuehrt(tmp_path):
     zurueckstellen -> dieser Lauf bricht mit TageslaufError ab."""
     fall = _fall_mit_nebentabellen(tmp_path)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)               # Zugang 2026-01-01
+    # Erst die Config, dann der Eingang: Die Zugangsabnahme bindet den Stand
+    # der Ablage samt Config (ADR-022); eine danach getauschte Config ist ein
+    # anderer Stand, und der Eingang traete nicht ein.
     ablage = _ablage_ab(stand, dt.date(2025, 1, 1))          # gefuehrt seit 2025
+    ueb.eingang_anlegen(stand, fall, STICHTAG)               # Zugang 2026-01-01
     code, zeile = tageslauf(ablage, dt.date(2026, 1, 9))
     assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
     assert zeile["pb1"]["urteil"] == "gruen"
@@ -99,24 +103,32 @@ def test_ein_zugang_mitten_im_betrieb_wird_gefuehrt(tmp_path):
     assert zeile["uebernahmen"][0]["stichtag"] == STICHTAG.isoformat()
 
 
-@pytest.mark.parametrize("betriebsbeginn, heute", [
-    (dt.date(2026, 6, 1), dt.date(2026, 6, 2)),   # Zugang vor dem ersten gefuehrten Tag
-    (dt.date(2025, 1, 1), dt.date(2025, 6, 1)),   # Zugang nach heute
-])
-def test_ein_zugang_ausserhalb_der_gefuehrten_zeit_wird_verweigert(
-    tmp_path, betriebsbeginn, heute
-):
-    """Vor dem ersten gefuehrten Tag gibt es keine Buecher, in die ein Bestand
-    eintreten koennte; nach heute ist nichts geschehen, was zu buchen waere.
-    Der Lauf bricht ab, ohne einen Stand zu uebernehmen."""
+def test_ein_zugang_vor_dem_ersten_gefuehrten_tag_wird_verweigert(tmp_path):
+    """Vor dem ersten gefuehrten Tag gibt es keine Buecher, in die ein
+    Bestand eintreten koennte. Der Lauf bricht ab, ohne einen Stand zu
+    uebernehmen."""
     fall = _fall_mit_nebentabellen(tmp_path)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
-    ablage = _ablage_ab(stand, betriebsbeginn)
-    code, zeile = tageslauf(ablage, heute)
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
+    ablage = _ablage_ab(stand, dt.date(2026, 6, 1))
+    code, zeile = tageslauf(ablage, dt.date(2026, 6, 2))
     assert code != EXIT_OK and zeile["uebernommen"] is False
-    assert "ausserhalb der gefuehrten Zeit" in zeile["fehler"]
+    assert "vor dem Betriebsbeginn" in zeile["fehler"]
     assert not ablage.stand.exists()
+
+
+def test_ein_zugang_nach_heute_ruht_bis_zu_seinem_stichtag(tmp_path):
+    """Nach heute ist nichts geschehen, was zu buchen waere — der Eingang
+    wartet, der eigene Betrieb laeuft (Angriffsrunde nach T27: vorher war
+    jeder Lauf bis zum Stichtag rot)."""
+    fall = _fall_mit_nebentabellen(tmp_path)
+    stand = tmp_path / "daten"
+    ablage = _ablage_ab(stand, dt.date(2025, 1, 1))   # Config vor Eingang (ADR-022)
+    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    code, zeile = tageslauf(ablage, dt.date(2025, 6, 1))
+    assert code == EXIT_OK, zeile.get("fehler")
+    assert zeile["uebernahmen"] == []
+    assert [u["fall"] for u in zeile["wartende_uebernahmen"]] == [fall.name]
 
 
 # --------------------------------------------------------------------------- #
@@ -243,10 +255,11 @@ def test_ein_zugang_vor_dem_juengsten_abschluss_wird_verweigert(tmp_path):
     assert abschluesse[-1] == "abschluss_2026-03-01.parquet"
 
     fall = _fall_mit_nebentabellen(tmp_path)                  # Stichtag 2026-01-01
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
-    code, zeile = tageslauf(ablage, dt.date(2026, 3, 4))
-    assert code != EXIT_OK and zeile["uebernommen"] is False
-    assert "festgeschriebenen Monatsabschluss" in zeile["fehler"]
+    # Seit der Angriffsrunde Betrieb weist schon die Registrierung ab: ein
+    # Eingang, den der Betrieb nie annimmt, entsteht nicht.
+    with pytest.raises(ueb.UebernahmeError, match="festgeschriebenen Monatsabschluss"):
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
+    assert tageslauf(ablage, dt.date(2026, 3, 4))[0] == EXIT_OK
 
 
 def test_ein_zugang_in_der_offenen_zeit_wird_gefuehrt(tmp_path):
@@ -259,7 +272,7 @@ def test_ein_zugang_in_der_offenen_zeit_wird_gefuehrt(tmp_path):
     assert juengster == "abschluss_2025-12-01"               # vor dem Zugang
 
     fall = _fall_mit_nebentabellen(tmp_path)                  # Stichtag 2026-01-01
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
+    ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
     code, zeile = tageslauf(ablage, dt.date(2026, 1, 9))
     assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
     stamm = read_portfolio(ablage.stand / "bestand_gesamt.parquet")
@@ -295,10 +308,8 @@ def test_ein_zugang_genau_am_juengsten_abschluss_wird_verweigert(tmp_path):
     assert (ablage.abschluesse / "abschluss_2026-01-01.parquet").is_file()
 
     fall = _fall_mit_nebentabellen(tmp_path)                  # Stichtag 2026-01-01
-    ueb.eingang_anlegen(stand, fall, STICHTAG)
-    code, zeile = tageslauf(ablage, dt.date(2026, 1, 2))
-    assert code != EXIT_OK and zeile["uebernommen"] is False
-    assert "festgeschriebenen Monatsabschluss 2026-01-01" in zeile["fehler"]
+    with pytest.raises(ueb.UebernahmeError, match="festgeschriebenen Monatsabschluss 2026-01-01"):
+        ueb.eingang_anlegen(_mit_config(stand), fall, STICHTAG)
 
 
 def test_eine_bestehende_fall_config_bleibt_lesbar(tmp_path):
@@ -352,9 +363,9 @@ def test_jede_stichtagssicht_traegt_ein_bewegungskonto(tmp_path):
 
     fall = _fall_mit_nebentabellen(tmp_path)
     stand = tmp_path / "daten"
-    ueb.eingang_anlegen(stand, fall, STICHTAG)                # Zugang 2026-01-01
     betriebsbeginn = dt.date(2025, 1, 1)
     ablage = _ablage_ab(stand, betriebsbeginn)               # gefuehrt seit 2025
+    ueb.eingang_anlegen(stand, fall, STICHTAG)               # Zugang 2026-01-01 (Config vor Eingang, ADR-022)
     heute = dt.date(2026, 1, 9)
     assert tageslauf(ablage, heute)[0] == EXIT_OK
 

@@ -19,8 +19,10 @@ from typing import Any, Dict
 from rechner_pipeline.ontologie.aussage import Aussage, Zustand
 from rechner_pipeline.ontologie.tbox import (
     ABox,
+    GENERATIONS_BLOECKE,
     PFLICHT_PARAMETER,
     Tarifgeneration,
+    tarifregeln_luecken,
 )
 
 
@@ -62,7 +64,7 @@ def coverage_generation(gen: Tarifgeneration) -> Dict[str, Any]:
             zaehler[aussage.zustand.value] += 1
         zellen[zelle.id] = felder
     pflicht_gesamt = len(PFLICHT_PARAMETER) * len(gen.zellen)
-    return {
+    bericht: Dict[str, Any] = {
         "generation": gen.id,
         "pflichtfelder": len(PFLICHT_PARAMETER),
         "zellen": zellen,
@@ -74,6 +76,37 @@ def coverage_generation(gen: Tarifgeneration) -> Dict[str, Any]:
         ),
         "vollstaendig": zaehler[Zustand.BELEGT.value] == pflicht_gesamt,
     }
+    # Generationsweite Bloecke (T-Box 0.2.0): je Merkmal der Zustand, und
+    # "fehlt_in_extraktion", wenn keine Quelle das Merkmal auch nur nannte.
+    # AUSGEWIESEN; ``vollstaendig`` bleibt der Pflichtumfang der Parameter.
+    # Fuer eine Bestandsmigration sind die Bloecke Pflicht — das Urteil steht
+    # unter ``tarifregeln_bestand`` und blockiert P-Q3 im Scope ``bestand``
+    # (die Coverage kennt den Scope nicht, das Gate schon). Ein nicht
+    # erhobenes Tarifwerk ist damit sichtbar statt still durch die Vorgabe
+    # des eigenen Geschaefts ersetzt.
+    belegt: Dict[str, Dict[str, Any]] = {}
+    erhoben: Dict[str, Any] = {}
+    for block, bereiche in GENERATIONS_BLOECKE.items():
+        belegt[block] = {m: a.wert for m, a in gen.block(block).items()
+                         if a.zustand is Zustand.BELEGT}
+        erhoben[block] = set(gen.block(block))
+        aussagen = gen.block(block)
+        eintraege = {}
+        for merkmal in bereiche:
+            aussage = aussagen.get(merkmal)
+            eintraege[merkmal] = (
+                {"zustand": "fehlt_in_extraktion", "quellen": "-"}
+                if aussage is None else
+                {"zustand": aussage.zustand.value,
+                 "quellen": _quellenlage(aussage, arten_je_datei)}
+            )
+        bericht[block] = eintraege
+        bericht[f"{block}_vollstaendig"] = all(
+            e["zustand"] == Zustand.BELEGT.value for e in eintraege.values())
+    luecken = tarifregeln_luecken(belegt, erhoben)
+    bericht["tarifregeln_bestand"] = {
+        "vollstaendig": not luecken, "luecken": luecken}
+    return bericht
 
 
 def coverage_bericht(abox: ABox) -> Dict[str, Any]:
@@ -86,4 +119,10 @@ def coverage_bericht(abox: ABox) -> Dict[str, Any]:
             1 for d in abox.diskrepanzen if d.status == "offen"
         ),
         "vollstaendig": all(b["vollstaendig"] for b in berichte),
+        **{
+            f"{block}_vollstaendig": all(b[f"{block}_vollstaendig"] for b in berichte)
+            for block in GENERATIONS_BLOECKE
+        },
+        "tarifregeln_bestand_vollstaendig": all(
+            b["tarifregeln_bestand"]["vollstaendig"] for b in berichte),
     }

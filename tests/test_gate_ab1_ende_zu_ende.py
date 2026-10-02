@@ -62,7 +62,9 @@ def _ab1(fall: Path, anker: Path, satz: str, *extra: str):
         "--entscheider", "Betriebsverantwortung",
         "--begruendung", "Stand geht nach aussen.",
         "--anker", str(anker), "--ankersatz", satz,
-        "--repo-root", str(REPO_ROOT), *annahme_args(fall), *extra,
+        "--repo-root", str(REPO_ROOT),
+        # A-B1 zeichnet mensch/betrieb (ADR-018), nicht die Rolle des Falls.
+        *annahme_args(fall, rolle="mensch/betrieb", gates=["A-B1"]), *extra,
     ])
 
 

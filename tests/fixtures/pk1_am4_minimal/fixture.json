@@ -39,5 +39,21 @@
     "datei": "pk1_am4_anonymisiert.xlsm",
     "sha256": "6d55285ce8ec960038e981ea3c1c84b42a69dfac3c0a55c73c536299466d2287"
   },
-  "schema_version": 1
+  "schema_version": 1,
+  "tarifregeln": {
+    "anmerkung": "Nur fuer Faelle im Scope bestand (P-Q3, ADR-024 Nachtrag). Festgestellte Regeln des anonymisierten Testfalls; das Bedingungswerk ist nicht Teil der Fixture, die Fundstelle nennt deshalb die Feststellung. Der Testtarif kennt keine planmaessige Erhoehung: erhoehungssatz ist erhoben und ausdruecklich nicht belegt (null).",
+    "fundstelle": "Feststellung des Testfalls zum Bedingungswerk (Fixture)",
+    "quellverfahren": {
+      "dk_stichtag": "kalendertag",
+      "erhoehungssatz": null,
+      "formfunktion": "proportional_zur_basis",
+      "red_verfahren": "prospektiv"
+    },
+    "tarifwerk": {
+      "red_verfahren": "prospektiv",
+      "scheiben_mit_gamma1": false,
+      "stoab_je_baustein": false,
+      "tku_umfang": "alle_bausteine"
+    }
+  }
 }

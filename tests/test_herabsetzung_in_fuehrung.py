@@ -136,33 +136,60 @@ def test_die_tabelle_haelt_ihren_eigenen_vertrag_ein(welt):
 
 
 def test_jede_herabsetzung_bucht_summe_und_absorbierte_schicht(welt):
-    """Zwei Zeilen je Vorfall: die neue Gesamtsumme und der Schichtbetrag,
-    der in die Neuberechnung eingegangen ist. Ohne die zweite faellt die
-    Spalte korrekturschicht des Abschlusses ab hier auf null, und niemand
-    saehe, wohin der Betrag ging."""
+    """Zwei Zeilen beim ERSTEN Vorgang einer Police: die neue Gesamtsumme und
+    der Schichtbetrag, der in die Neuberechnung eingegangen ist. Ohne die
+    zweite faellt die Spalte korrekturschicht des Abschlusses ab hier auf
+    null, und niemand saehe, wohin der Betrag ging. Jeder weitere Vorgang
+    (beliebig viele seit 2026-10-01) bucht nur die Summe — die Schicht ist
+    aufgegangen. Mutationsprobe: die Schicht beim zweiten Vorgang noch einmal
+    aufnehmen -> rot."""
     stamm, _s, _v, _ohne, mit = welt
     felder = _config(True).generationen[0].generation_fields()
     haupt = stamm.set_index("police_id")
     red = mit.ledger[mit.ledger["ereignis"] == "RED"]
-    for zeile in mit.reduktionen.to_dict("records"):
+    erste = mit.reduktionen.groupby("police_id", sort=False).head(1).index
+    weitere = 0
+    for i, zeile in mit.reduktionen.iterrows():
         pid, jahr = int(zeile["police_id"]), int(zeile["reduktion_jahr"])
         zeilen = red[(red["police_id"] == pid) & (red["vertragsjahr"] == jahr)]
         arten = dict(zip(zeilen["betrag_art"], zeilen["betrag"]))
+        if i not in erste:
+            assert set(arten) == {"VS_herabsetzung"}, (pid, jahr, arten)
+            weitere += 1
+            continue
         assert set(arten) == {"VS_herabsetzung", "dDK_absorption"}
         mp = ModelPoint(**model_point_kwargs(haupt.loc[pid], felder))
         erwartet = schichtwert_bei(_parameter(), MONATE_TA, mp, 12 * jahr)
         assert erwartet > 0.0
         assert arten["dDK_absorption"] == pytest.approx(erwartet, rel=1e-12)
+    assert weitere > 0, "keine Police mit zweitem Vorgang — die Aussage bliebe ungesehen"
 
 
 def test_die_bewertung_ist_an_der_naht_wertstetig(welt):
     """Die fachliche Zusage, gegen eine unabhaengige Groesse gemessen:
-    Das Deckungskapital des herabgesetzten Vertrags am Jahrestag ist genau
-    das des ungekuerzten EINSCHLIESSLICH Schicht."""
+    Das Deckungskapital des herabgesetzten Vertrags am Jahrestag ist das des
+    ungekuerzten EINSCHLIESSLICH Schicht — bis auf den Abschlusskostenrest.
+
+    Seit F1 (b) (Entscheid 2026-09-30) wird auf dem Rueckkaufs-Track
+    umgewandelt: Dieser ist an der Naht stetig, die Rueckstellung springt
+    um den Anteil (1-f) des Abschlusskostenrests, der mit der Herabsetzung
+    abgeschrieben wird (klv.md 7.1). Der Rest ist nur bei Bausteinen in der
+    Zillmerdauer von null verschieden — hier die Erhoehungsscheiben der
+    Policen 900005 und 900006. Soll, unabhaengig aus den Verlaufszeilen der
+    Bausteine: Differenz = (1-f) x Summe (V^MRV - V^bpfl).
+    Mutationsprobe: auf V^bpfl umwandeln -> Differenz null, der Test
+    (Positivkontrolle unten) rot."""
+    from rechner_pipeline.bestand.auswertung import _scheiben_kerne
+
     stamm, sch, ver, _ohne, mit = welt
     cfg = _config(True)
+    haupt = stamm.set_index("police_id")
+    felder = cfg.generationen[0].generation_fields()
+    scheiben = _scheiben_kerne(stamm, mit.scheiben, cfg)
     geprueft = 0
-    for zeile in mit.reduktionen.to_dict("records"):
+    mit_rest = 0
+    # Die Naht zum ungekuerzten Vertrag ist der ERSTE Vorgang je Police.
+    for zeile in mit.reduktionen.groupby("police_id", sort=False).head(1).to_dict("records"):
         pid, jahr = int(zeile["police_id"]), int(zeile["reduktion_jahr"])
         stichtag = _dt.date(2015 + jahr, 1, 1)
         gemeinsam = dict(scheiben=mit.scheiben, schichten=sch, verankerung=ver)
@@ -173,8 +200,14 @@ def test_die_bewertung_ist_an_der_naht_wertstetig(welt):
             stamm, mit.historie, cfg, stichtag, **gemeinsam)}[pid]
         if a["status"] != "POL":
             continue
+        bausteine = [(0, Rechenkern(ModelPoint(**model_point_kwargs(haupt.loc[pid], felder))))]
+        bausteine += [(s["erh_jahr"], s["kern"]) for s in scheiben.get(pid, ())
+                      if s["erh_jahr"] < jahr]
+        rest = sum(k.verlaufszeile(jahr - e).vx_mrv - k.verlaufszeile(jahr - e).drx_bpfl
+                   for e, k in bausteine)
         assert a["deckungskapital"] == pytest.approx(
-            b["deckungskapital"], rel=1e-12)
+            b["deckungskapital"] + (1.0 - ANTEIL) * rest, rel=1e-12, abs=1e-6)
+        mit_rest += rest > 1.0
         # Der ungekuerzte Wert ENTHAELT die Schicht; der herabgesetzte
         # weist keine mehr aus — sie ist in seiner Basis aufgegangen.
         assert b["korrekturschicht"] > 0.0
@@ -185,6 +218,9 @@ def test_die_bewertung_ist_an_der_naht_wertstetig(welt):
         assert a["leistung"] > b["leistung"]
         geprueft += 1
     assert geprueft >= 1
+    # Positivkontrolle: ohne einen Baustein in der Zillmerdauer waere der
+    # Rest null und die Regel nicht unterscheidbar.
+    assert mit_rest >= 1
 
 
 def test_ohne_die_tabelle_bewertet_die_fuehrung_den_falschen_vertrag(welt):
@@ -341,24 +377,29 @@ def test_jede_erzeugerrolle_braucht_einen_spaltenvertrag(monkeypatch, tmp_path):
 
 
 def test_in_den_stand_kommt_nur_eine_gebuchte_herabsetzung():
-    """Der Tagesbetrieb schneidet auf den Buchungsstand. Eine Herabsetzung
-    gehoert in den Stand, wenn ihre RED-Zeile darin steht — abgeleitet aus
-    dem Ledger, nicht als zweite Regel auf dem Reduktionsdatum."""
+    """Der Tagesbetrieb schneidet auf den Buchungsstand. Ein Vorgang gehoert
+    in den Stand, wenn SEINE Zeile darin steht (Police, Wirkungstag, Code) —
+    abgeleitet aus dem Ledger, nicht als zweite Regel auf dem
+    Reduktionsdatum. Seit es beliebig viele Vorgaenge je Police gibt, je
+    Vorgang, nicht je Police: Die zweite Herabsetzung der Police 1, noch nicht
+    gebucht, bleibt draussen. Mutationsprobe: wieder je Police schneiden ->
+    rot."""
     from rechner_pipeline.betrieb.tageslauf import _gebuchte_reduktionen
 
     reduktionen = pd.DataFrame({
-        "police_id": [1, 2],
-        "reduktion_jahr": [5, 6],
-        "reduktion_datum": [pd.Timestamp("2020-01-01"),
+        "police_id": [1, 1, 2],
+        "reduktion_jahr": [5, 7, 6],
+        "reduktion_datum": [pd.Timestamp("2020-01-01"), pd.Timestamp("2022-01-01"),
                             pd.Timestamp("2021-01-01")],
-        "anteil": [0.6, 0.6],
-        "verfahren": ["prospektiv", "prospektiv"],
+        "anteil": [0.6, 0.6, 0.6],
+        "verfahren": ["prospektiv", "prospektiv", "prospektiv"],
     })
     ledger = pd.DataFrame({
         "police_id": [1, 2], "ereignis": ["RED", "STO"],
+        "status_date": [pd.Timestamp("2020-01-01"), pd.Timestamp("2021-01-01")],
     })
     gebucht = _gebuchte_reduktionen(reduktionen, ledger)
-    assert list(gebucht["police_id"]) == [1]
+    assert list(zip(gebucht["police_id"], gebucht["reduktion_jahr"])) == [(1, 5)]
     # Ohne Tabelle bleibt es dabei.
     assert _gebuchte_reduktionen(None, ledger) is None
 
@@ -421,10 +462,10 @@ def test_die_herabsetzung_ist_eine_summenbewegung_ohne_stueck(welt):
     assert all(h["stueck"] == 0 for h in herab), (
         "eine Herabsetzung nimmt keinen Vertrag aus dem Bestand")
     # Das VORZEICHEN wird hier bewusst nicht festgeschrieben: Am
-    # Fixture ist es positiv, und ob eine "Herabsetzung" die
-    # Versicherungssumme heben darf, ist eine fachliche Frage (siehe
-    # dev-docs/befundliste-t26.md). Der Test bindet, DASS die Aenderung
-    # gefuehrt wird — nicht, in welche Richtung sie faellt.
+    # Fixture ist es positiv, weil dessen Korrekturschicht absichtlich
+    # gross ist (mit realistischer Schicht senkt die Herabsetzung, siehe
+    # test_herabsetzung_realistisch_t2611). Der Test bindet, DASS die
+    # Aenderung gefuehrt wird — nicht, in welche Richtung sie faellt.
     for zeile in konto:
         for track, oks in zeile["identitaet"].items():
             assert all(oks.values()), (zeile["jahr"], track, oks)
