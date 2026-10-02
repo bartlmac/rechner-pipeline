@@ -21,8 +21,8 @@
 # Jeder Schritt haelt beim ersten Fehler an und schreibt nach <welt>/zugang.log.
 # Zwischen Probe und Aufbaulauf darf sich das Paket nicht bewegen (Config,
 # Kernversion und Fingerabdruck des Pakets werden beim ersten Lauf, der den
-# Eingang fuehrt, gegen die Probe gehalten). Probe und Aufbaulauf rechnen je
-# einige Minuten bis eine Viertelstunde.
+# Eingang fuehrt, gegen die Probe gehalten). Mit dem Bestand der Vorfuehrung
+# rechnet die Probe rund 20 Minuten, der Aufbaulauf rund 11.
 
 HIER="$(cd "$(dirname "$0")" && pwd)"
 WELT="${1:-}"; PHASE="${2:-}"; AUFRUF_ENTSCHEIDER="${ENTSCHEIDER:-}"

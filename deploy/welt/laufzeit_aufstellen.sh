@@ -15,8 +15,8 @@
 # (welt_aufstellen.sh) und faehrt danach das Paket auf diesem Baum nach
 # (fall_nachfahren.sh).
 #
-# Wiederholbar: Steht die Welt schon (die vier Erstabnahmen liegen in der
-# Linie), faehrt derselbe Aufruf nur noch das Paket weiter, hinter dem letzten
+# Wiederholbar: Steht die Welt schon (welt_aufstellen.sh hat "WELT STEHT"
+# protokolliert), faehrt derselbe Aufruf nur noch das Paket weiter, hinter dem letzten
 # erledigten Schritt. Ein Verzeichnis, das keine aufgestellte Welt ist, fasst
 # das Skript nicht an — nach einem abgebrochenen Aufstellen beginnt ein neuer
 # Versuch unter einem anderen Namen der Welt.
@@ -51,10 +51,10 @@ VORBAUM="$WELT/baum-vor"
 [ -z "$(git -C "$BAUM" status --porcelain)" ] || halt "der Codebaum $BAUM ist nicht sauber"
 case "$WELT/" in "$BAUM"/*) halt "die Welt liegt nicht im Codebaum" ;; esac
 
-# Eine Welt steht, wenn ihre Linie die vier Erstabnahmen traegt.
-steht() {
-  [ "$(ls "$WELT/linie/entscheide" 2>/dev/null | sed -n 's/-[0-9a-f]\{64\}\.json$//p' | sort -u | tr '\n' ' ')" = "A-B3 A-K2 A-O1 A-T1 " ]
-}
+# Eine Welt steht, wenn welt_aufstellen.sh sein letztes Wort geschrieben hat:
+# Die vier Erstabnahmen allein genuegen nicht — nach der letzten wird noch der
+# Anfangsbestand gebunden.
+steht() { grep -q '^WELT STEHT: ' "$WELT/aufstellen.log" 2>/dev/null; }
 
 if steht; then
   echo "Die Welt $WELT steht schon — das Paket wird weitergefahren."

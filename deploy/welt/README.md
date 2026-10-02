@@ -149,8 +149,8 @@ deploy/welt/zugang.sh <welt> binden
 | `binden` | den Anfangsbestand binden, danach ein Tageslauf | |
 
 Am Ende steht `ZUGANG STEHT: ...` mit der Zahl der Abschluesse; das Protokoll
-liegt unter `<welt>/zugang.log`. Die Probe und der Aufbaulauf rechnen je
-einige Minuten bis eine Viertelstunde. Zwischen Probe und Aufbaulauf darf
+liegt unter `<welt>/zugang.log`. Mit dem Bestand der Vorfuehrung rechnet die
+Probe rund 20 Minuten, der Aufbaulauf rund 11. Zwischen Probe und Aufbaulauf darf
 sich der Codebaum nicht bewegen: Der erste Lauf, der den Eingang fuehrt, haelt
 Config, Kernversion und Fingerabdruck des Pakets gegen die Probe.
 

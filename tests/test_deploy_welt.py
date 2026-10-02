@@ -1196,11 +1196,13 @@ def test_je_welt_ein_eigenes_schluesselverzeichnis(tmp_path, baum, system):
         assert _einstellung(tmp_path / name, "VORSTAND_KEY") == str(ort / "vorstand.key")
 
 
-@pytest.mark.parametrize("fall", ["ohne_stand", "fremder_commit", "kein_vorfahr", "verzeichnis_liegt"])
+@pytest.mark.parametrize("fall", ["ohne_stand", "fremder_commit", "kein_vorfahr", "verzeichnis_liegt",
+                                  "aufstellen_abgebrochen"])
 def test_laufzeit_aufstellen_haelt_bevor_es_etwas_anlegt(tmp_path, baum, system, fall):
     skript, spur, vor = system
     welt = tmp_path / "laufzeit"
-    stand = {"ohne_stand": None, "fremder_commit": "c" * 40, "kein_vorfahr": None, "verzeichnis_liegt": vor}[fall]
+    stand = {"ohne_stand": None, "fremder_commit": "c" * 40, "kein_vorfahr": None, "verzeichnis_liegt": vor,
+             "aufstellen_abgebrochen": vor}[fall]
     if fall == "kein_vorfahr":      # ein Commit neben der Geschichte des Baums
         _git(baum, "checkout", "--quiet", "-b", "seitenzweig", vor)
         (baum / "seite.txt").write_text("x\n")
@@ -1211,17 +1213,25 @@ def test_laufzeit_aufstellen_haelt_bevor_es_etwas_anlegt(tmp_path, baum, system,
     if fall == "verzeichnis_liegt":
         welt.mkdir()
         (welt / "notiz.txt").write_text("keine Welt\n")
+    if fall == "aufstellen_abgebrochen":
+        # Alle vier Erstabnahmen liegen, aber das Aufstellen endete davor, den
+        # Anfangsbestand zu binden: Das Protokoll traegt sein letztes Wort nicht.
+        for gate in ("A-K2", "A-O1", "A-T1", "A-B3"):
+            _annahme(welt / "linie", gate, "a", "2026-10-05T14:00:00+00:00", vor)
+        (welt / "aufstellen.log").write_text("### ... A-B3 zeichnen (als mensch/betrieb)\n")
+    vorher = sorted(str(d.relative_to(welt)) for d in welt.rglob("*")) if welt.exists() else None
     paket = _paket(tmp_path, REZEPT_LAUFZEIT, stand=stand)
     lauf = _laufzeit(welt, paket, baum, tmp_path, skript)
     assert lauf.returncode == 2, lauf.text
     assert {"ohne_stand": "nennt den Stand nicht", "fremder_commit": "kennt dieser Codebaum nicht",
-            "kein_vorfahr": "kein Vorfahr", "verzeichnis_liegt": "keine aufgestellte Welt"}[fall] in lauf.text
+            "kein_vorfahr": "kein Vorfahr", "verzeichnis_liegt": "keine aufgestellte Welt",
+            "aufstellen_abgebrochen": "keine aufgestellte Welt"}[fall] in lauf.text
     assert not spur.exists() and not (baum / "faelle").exists()
     assert not (tmp_path / "schluessel-laufzeit").exists()
-    if fall == "verzeichnis_liegt":
-        assert [d.name for d in welt.iterdir()] == ["notiz.txt"]
-    else:
+    if vorher is None:
         assert not welt.exists()
+    else:                           # was lag, liegt unveraendert
+        assert sorted(str(d.relative_to(welt)) for d in welt.rglob("*")) == vorher
 
 
 def _systemkommandos(text: str, name: str) -> list[Kommando]:
