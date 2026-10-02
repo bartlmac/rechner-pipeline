@@ -20,6 +20,9 @@ Test deshalb halten kann —, ist Mechanik:
   nichts doppelt (auch nach Haltepunkt oder Fehler nicht), legt nie ueber eine
   andere Datei, nimmt nur ein Paket, das seinen Pruefsummen entspricht, und
   haelt an, wenn ein Ergebnis andere Bytes traegt als festgehalten.
+* ``paket_bauen.sh`` baut aus einem gefuehrten Fall ein Paket, das
+  ``fall_nachfahren.sh`` annimmt: Rezept und Paket gehoeren zusammen,
+  Zeichnungen kommen nie hinein, nichts wird ueberschrieben.
 * Jedes Systemkommando, das ein Skript faehrt, nimmt der Parser seines Moduls
   an (dieselbe Pruefung wie fuer die Dokumente,
   ``tests/test_dokumentierte_kommandos.py``): Ein Skript, das einen entfallenen
@@ -384,7 +387,8 @@ def test_ohne_aufgestellte_welt_startet_kein_fall(tmp_path, welt, baum):
     assert not (welt / "fall.conf").exists()
 
 
-@pytest.mark.parametrize("skript", ["welt_aufstellen.sh", "fall_starten.sh", "fall_zeichnen.sh", "fall_nachfahren.sh"])
+@pytest.mark.parametrize("skript", ["welt_aufstellen.sh", "fall_starten.sh", "fall_zeichnen.sh", "fall_nachfahren.sh",
+                                    "paket_bauen.sh"])
 def test_shell_skripte_sind_syntaktisch_gueltig(skript):
     lauf = subprocess.run(["bash", "-n", str(WELT_SKRIPTE / skript)], capture_output=True, text=True)
     assert lauf.returncode == 0, lauf.stderr
@@ -563,6 +567,130 @@ def test_eine_welt_faehrt_ein_paket_nach_und_wechselt_den_fall_nur_auf_wunsch(tm
 
 
 # --------------------------------------------------------------------------- #
+# paket_bauen.sh: aus einem gefuehrten Fall ein Paket
+# --------------------------------------------------------------------------- #
+
+REZEPT_PAKET = """schritt "Fall anlegen" mkdir -p faelle/gefuehrt/abgeleitet/berichte
+einlegen abgeleitet/abox
+einlegen abgeleitet/transformation/abzug.spec.json
+schritt "Ergebnis" bash -c 'printf ergebnis > faelle/gefuehrt/abgeleitet/berichte/bericht.html'
+erwarte abgeleitet/berichte/bericht.html
+"""
+
+
+@pytest.fixture
+def gefuehrt(tmp_path, welt, baum):
+    """Ein Fall, wie er nach einem Lauf liegt: Lieferung und eine Nachlieferung
+    im Eingang, Erarbeitetes, ein Ergebnis und eine Zeichnung."""
+    fall = baum / "faelle" / "gefuehrt"
+    for rel, inhalt in {
+        "eingang/LIEFERSCHEIN.md": "Lieferschein", "eingang/abzug.csv": "POLNR;X",
+        "eingang/auskunft-1.md": "Auskunft der Quelle",
+        "abgeleitet/abox/abox.json": "{}", "abgeleitet/abox/fragmente/a.json": "a",
+        "abgeleitet/transformation/abzug.spec.json": "spec",
+        "abgeleitet/berichte/bericht.html": "ergebnis",
+        "abgeleitet/diagnostics/x.gate.json": "beleg mit zeit",
+        "entscheide/A-M6-" + "a" * 64 + ".json": "zeichnung",
+    }.items():
+        (fall / rel).parent.mkdir(parents=True, exist_ok=True)
+        (fall / rel).write_text(inhalt)
+    (welt / "fall.conf").write_text('FALLNAME=gefuehrt\nLIEFERUNG=lieferungen/x\n'
+                                    'LIEFERDATEIEN="LIEFERSCHEIN.md abzug.csv"\nSTICHTAG=2026-01-01\n')
+    (tmp_path / "rezept.sh").write_text(REZEPT_PAKET)
+    (tmp_path / "erarbeitet.txt").write_text("# was erarbeitet wurde\nabgeleitet/abox\n\nabgeleitet/transformation/abzug.spec.json\n")
+    (tmp_path / "erwartung.txt").write_text("abgeleitet/berichte/bericht.html\n")
+    return fall
+
+
+def _bauen(welt, ziel, tmp_path, baum, **listen) -> subprocess.CompletedProcess:
+    args = [str(welt), str(ziel), "--rezept", str(listen.get("rezept", tmp_path / "rezept.sh"))]
+    for schalter in ("erarbeitet", "erwartung"):
+        wert = listen.get(schalter, tmp_path / f"{schalter}.txt")
+        if wert is not None:
+            args += [f"--{schalter}", str(wert)]
+    lauf = _lauf("paket_bauen.sh", *args, baum=baum)
+    lauf.text = (lauf.stdout + lauf.stderr).decode()  # type: ignore[attr-defined]
+    return lauf
+
+
+def test_das_paket_traegt_erarbeitetes_nachlieferung_und_erwartung_aber_keine_zeichnung(tmp_path, welt, baum, gefuehrt):
+    ziel = tmp_path / "paket"
+    lauf = _bauen(welt, ziel, tmp_path, baum)
+    assert lauf.returncode == 0, lauf.text
+    dateien = sorted(str(p.relative_to(ziel)) for p in ziel.rglob("*") if p.is_file())
+    assert dateien == ["ERWARTUNG", "SHA256SUMS", "erarbeitet/abgeleitet/abox/abox.json",
+                       "erarbeitet/abgeleitet/abox/fragmente/a.json",
+                       "erarbeitet/abgeleitet/transformation/abzug.spec.json", "fall.conf",
+                       "nachlieferung/auskunft-1.md", "rezept.sh"]
+    assert (ziel / "ERWARTUNG").read_text() == hashlib.sha256(b"ergebnis").hexdigest() + "  abgeleitet/berichte/bericht.html\n"
+    summen = dict(reversed(z.split("  ", 1)) for z in (ziel / "SHA256SUMS").read_text().splitlines())
+    assert sorted(summen) == [d for d in dateien if d != "SHA256SUMS"]
+    for rel, summe in summen.items():
+        assert hashlib.sha256((ziel / rel).read_bytes()).hexdigest() == summe, rel
+    assert not Path(str(ziel) + ".im-bau").exists()
+
+
+def test_ein_gebautes_paket_laesst_sich_in_einer_anderen_welt_nachfahren(tmp_path, welt, baum, gefuehrt):
+    ziel = tmp_path / "paket"
+    assert _bauen(welt, ziel, tmp_path, baum).returncode == 0
+    # Eine zweite Welt und ein zweiter Baum: nichts vom ersten Lauf liegt dort.
+    zweiter = tmp_path / "zweiter"
+    zweiter.mkdir()
+    baum2 = zweiter / "baum"
+    (baum2 / "src" / "rechner_pipeline").mkdir(parents=True)
+    (baum2 / "src" / "rechner_pipeline" / "__init__.py").write_text("")
+    _git(baum2, "init", "--quiet", "--initial-branch=main")
+    _git(baum2, "add", "-A")
+    _git(baum2, "commit", "--quiet", "-m", "stand")
+    welt2 = zweiter / "welt"
+    assert _lauf("welt_aufstellen.sh", str(welt2), "schluessel", baum=baum2,
+                 SCHLUESSEL=str(zweiter / "schluessel")).returncode == 0
+    lauf = _nachfahren(welt2, ziel, baum2)
+    assert lauf.returncode == 0, lauf.text
+    fall2 = baum2 / "faelle" / "gefuehrt"
+    assert (fall2 / "abgeleitet" / "abox" / "fragmente" / "a.json").read_text() == "a"
+    assert (fall2 / "abgeleitet" / "berichte" / "bericht.html").read_text() == "ergebnis"
+    assert not (fall2 / "entscheide").exists()
+
+
+@pytest.mark.parametrize("eingriff,meldung", [
+    ("zeichnung", "Zeichnungen gehoeren nie ins Paket"),
+    ("ausbruch", "ohne .."),
+    ("einlegen_fehlt", "die Liste --erarbeitet nennt es nicht"),
+    ("erwarte_fehlt", "die Liste --erwartung nennt es nicht"),
+    ("registriere_fehlt", "keine solche Nachlieferung"),
+    ("datei_fehlt", "liegt nicht im Fall"),
+])
+def test_rezept_und_paket_gehoeren_zusammen_sonst_entsteht_keins(tmp_path, welt, baum, gefuehrt, eingriff, meldung):
+    ziel = tmp_path / "paket"
+    listen = {}
+    if eingriff == "zeichnung":
+        (tmp_path / "erarbeitet.txt").write_text("abgeleitet/abox\nentscheide/A-M6-" + "a" * 64 + ".json\n")
+    elif eingriff == "ausbruch":
+        (tmp_path / "erwartung.txt").write_text("../../etwas\n")
+    elif eingriff == "einlegen_fehlt":
+        (tmp_path / "erarbeitet.txt").write_text("abgeleitet/abox\n")
+    elif eingriff == "erwarte_fehlt":
+        listen["erwartung"] = None
+    elif eingriff == "registriere_fehlt":
+        (tmp_path / "rezept.sh").write_text(REZEPT_PAKET + "registriere auskunft-9.md\n")
+    elif eingriff == "datei_fehlt":
+        (tmp_path / "erarbeitet.txt").write_text("abgeleitet/abox\nabgeleitet/transformation/abzug.spec.json\nabgeleitet/gibtsnicht.json\n")
+    lauf = _bauen(welt, ziel, tmp_path, baum, **listen)
+    assert lauf.returncode != 0 and meldung in lauf.text, lauf.text
+    assert not ziel.exists()
+
+
+def test_ein_paket_wird_nie_ueberschrieben(tmp_path, welt, baum, gefuehrt):
+    ziel = tmp_path / "paket"
+    ziel.mkdir()
+    (ziel / "alt.txt").write_text("das fruehere Paket")
+    lauf = _bauen(welt, ziel, tmp_path, baum)
+    assert lauf.returncode == 2 and "nie ueberschrieben" in lauf.text
+    assert sorted(p.name for p in ziel.iterdir()) == ["alt.txt"]
+
+
+# --------------------------------------------------------------------------- #
 # Die Systemkommandos in den Skripten
 # --------------------------------------------------------------------------- #
 
@@ -595,6 +723,7 @@ def _systemkommandos(text: str, name: str) -> list[Kommando]:
             # Mandate je Rolle, die Rolle einer Ablehnung, durchgereichte Argumente.
             rest = rest.replace('"${mandate[@]}"', "--mandat <rolle>=<datei>")
             rest = rest.replace('"${ZUSATZ[@]}"', "").replace('"$@"', "")
+            rest = re.sub(r'"\$\{@:\d+\}"', "", rest)      # weitere, durchgereichte Argumente
             rest = re.sub(r"(?<![\w\"])\$R(?![\w])", "--freigabe-schluessel <schluessel>", rest)
             rest = re.sub(r"\$\{?(\w+)\}?", lambda m: f"<{m.group(1)}>", rest)
             aus.append(Kommando(name, nr, " ".join(f"python -m {treffer.group(1)}{rest}".split())))
@@ -615,7 +744,7 @@ def test_der_detektor_sieht_jedes_kommando_und_faellt_was_falsch_ist():
     # Die Menge, mit == gehalten: Ein Kommando, das die Extraktion nicht mehr
     # sieht, faellt hier auf statt still aus der Pruefung.
     assert {name: len(ks) for name, ks in SKRIPT_KOMMANDOS.items()} == {
-        "welt_aufstellen.sh": 10, "fall_starten.sh": 4, "fall_zeichnen.sh": 1, "fall_nachfahren.sh": 1}
+        "welt_aufstellen.sh": 10, "fall_starten.sh": 4, "fall_zeichnen.sh": 1, "fall_nachfahren.sh": 3}
     module = {k.modul for ks in SKRIPT_KOMMANDOS.values() for k in ks}
     assert {"rechner_pipeline.betrieb.tageslauf", "rechner_pipeline.gates.gate_entscheid",
             "rechner_pipeline.gates.fall_belegen", "rechner_pipeline.fall"} <= module

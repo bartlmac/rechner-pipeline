@@ -19,6 +19,7 @@ Protokoll in der Welt. Sie rechnen und pruefen nichts selbst.
 | `fall_starten.sh` | Fall anlegen, Lieferung registrieren, Vorlage des Fallauftrags |
 | `fall_zeichnen.sh` | ein Gate des Falls zeichnen, mit dem Ring, den das Gate braucht |
 | `fall_nachfahren.sh` | einen festgehaltenen Fall (ein Paket) ohne Agenten nachfahren, bis zum Ende oder bis zu einem Haltepunkt |
+| `paket_bauen.sh` | aus einem gefuehrten Fall das Paket zum Nachfahren bauen |
 | `fall-baldrian-klv-tg2015.conf` | der Fall der Vorfuehrung: Lieferung, Stichtag, Auftrag |
 | `einstellungen.beispiel.conf` | Vorlage der Einstellungen fuer eine Welt mit vorhandenen Schluesseln |
 | `mandat.vorlage.txt` | Vorlage des Mandats der simulierten Rollen |
@@ -156,6 +157,8 @@ mit `\`); eine andere Zeile verweigert das Skript, bevor es beginnt:
 | `registriere <pfad>` | `nachlieferung/<pfad>` im Fall registrieren |
 | `einlegen <pfad>` | `erarbeitet/<pfad>` in den Fall legen, nie ueber eine andere Datei hinweg |
 | `schritt "<name>" <kommando ...>` | ein Kommando fahren; ein Exit ungleich null haelt an |
+| `entscheide <diskrepanz> <wert> "<begruendung>" [--beleg <pfad>]` | eine Diskrepanz der Quellen endgueltig aufloesen, als Aktuariat |
+| `entscheide_alle <quelle> "<begruendung>"` | alle vorlaeufig aufgeloesten Diskrepanzen zur Lesart dieser Quelle entscheiden |
 | `zeichne <gate> "<begruendung>"` | das Gate annehmen, mit dem Ring der Welt |
 | `haltepunkt <name>` | hier endet ein Lauf mit `--bis <name>` |
 | `erwarte <pfad im fall>` | die Datei gegen `ERWARTUNG` halten; andere Bytes halten an |
@@ -168,6 +171,11 @@ und `$(ring <gate>)` fuer Kommandos, die den Ring eines Gates brauchen.
   (`<welt>/nachfahren.stand`). Derselbe Aufruf faehrt hinter dem letzten
   erledigten Schritt weiter — nach einem Haltepunkt ebenso wie nach einem
   behobenen Fehler. Protokoll: `<welt>/nachfahren.log`.
+- **Entscheidungen werden neu getroffen, nicht mitgebracht.** Die Aufloesung
+  einer Diskrepanz traegt in der A-Box die Zeichnung ihrer Rolle. Eine
+  mitgebrachte A-Box truege die Schluessel des festgehaltenen Laufs; deshalb
+  legt das Rezept die Fragmente ein, laesst zusammenfuehren und entscheidet
+  mit `entscheide` unter den Schluesseln der Welt.
 - **Verglichen werden Ergebnisse, nicht Zeichnungen.** `erwarte` haelt
   Bytes gegen den festgehaltenen Fall; Snapshots und Belege tragen die
   Schluessel und Zeiten des Laufs und sind deshalb nie gleich.
@@ -176,6 +184,27 @@ und `$(ring <gate>)` fuer Kommandos, die den Ring eines Gates brauchen.
   (`<welt>/fall-frueher-<name>.conf`) und macht den nachgefahrenen Fall zum
   Fall der Welt; der fruehere Fall bleibt liegen. Eine Welt faehrt EIN Paket
   nach.
+
+### Das Paket bauen
+
+```
+deploy/welt/paket_bauen.sh <welt> <ziel> --rezept <rezept.sh> \
+    [--erarbeitet <liste>] [--erwartung <liste>]
+```
+
+Aus dem Fall der Welt entsteht das Verzeichnis `<ziel>`: die Falldatei, das
+Rezept, je Zeile der Liste `--erarbeitet` eine Datei oder ein Verzeichnis
+des Falls, jede Datei des Eingangs, die nicht zur Lieferung der Falldatei
+gehoert (die Nachlieferungen), je Zeile der Liste `--erwartung` die
+Pruefsumme der Datei im Fall, und die Pruefsummen des Pakets. Die Listen
+nennen Pfade relativ zum Fall, eine je Zeile.
+
+Was erarbeitet ist und welche Ergebnisse byteweise gleich sein muessen,
+entscheidet, wer das Rezept schreibt. Das Skript haelt Rezept und Paket
+zusammen: Jedes `einlegen`, `registriere` und `erwarte` des Rezepts muss im
+Paket seine Datei bzw. seinen Eintrag haben, sonst entsteht kein Paket.
+Zeichnungen (`entscheide/`) nimmt es nie auf, und ein vorhandenes Paket
+ueberschreibt es nie.
 
 ## Grenzen
 

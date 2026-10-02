@@ -23,6 +23,10 @@
 #   registriere <pfad>                  nachlieferung/<pfad> im Fall registrieren
 #   einlegen <pfad>                     erarbeitet/<pfad> in den Fall legen (nie ueber anderes hinweg)
 #   schritt "<name>" <kommando ...>     ein Kommando fahren; Exit != 0 haelt an
+#   entscheide <diskrepanz> <wert> "<begruendung>" [--beleg <pfad>]
+#                                       eine Diskrepanz der Quellen endgueltig aufloesen (als Aktuariat)
+#   entscheide_alle <quelle> "<begruendung>"
+#                                       alle vorlaeufig aufgeloesten zur Lesart dieser Quelle entscheiden
 #   zeichne <gate> "<begruendung>"      das Gate annehmen, mit dem Ring der Welt
 #   haltepunkt <name>                   hier endet ein Lauf mit --bis <name>
 #   erwarte <pfad im fall>              die Datei gegen ERWARTUNG halten; Abweichung haelt an
@@ -41,7 +45,7 @@
 
 HIER="$(cd "$(dirname "$0")" && pwd)"
 WELT="${1:-}"; PAKET="${2:-}"
-[ -n "$WELT" ] && [ -n "$PAKET" ] || { sed -n '2,42p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[ -n "$WELT" ] && [ -n "$PAKET" ] || { sed -n '2,46p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 shift 2
 HALT_BEI=""; WECHSELN=0
 while [ $# -gt 0 ]; do
@@ -55,7 +59,7 @@ WELT="$(realpath -m "$WELT")"; PAKET="$(realpath -m "$PAKET")"
 BAUM="$(realpath -m "${BAUM:-$HIER/../..}")"
 PY="${PYTHON:-$BAUM/.venv/bin/python}"
 EINST="$WELT/einstellungen.conf"; STANDDATEI="$WELT/nachfahren.stand"; LOG="$WELT/nachfahren.log"
-HELFER="anlegen vorlage registriere einlegen schritt zeichne haltepunkt erwarte"
+HELFER="anlegen vorlage registriere einlegen schritt entscheide entscheide_alle zeichne haltepunkt erwarte"
 
 halt() { echo "HALT: $*"; exit 2; }
 [ -f "$EINST" ] || halt "$EINST fehlt — erst die Welt aufstellen (welt_aufstellen.sh)"
@@ -160,6 +164,26 @@ lege_ein() {  # Datei oder Verzeichnis; nie ueber eine ANDERE Datei hinweg
     echo "im Fall liegt schon eine andere Datei: $nach"; return 1
   fi
   mkdir -p "$(dirname "$nach")" && cp -p "$von" "$nach"
+}
+
+# Eine Diskrepanz wird beim Nachfahren NEU entschieden, mit dem Schluessel der
+# Welt: Die Entscheidung in der A-Box traegt die Zeichnung ihrer Rolle, und
+# eine mitgebrachte A-Box truege die Schluessel des festgehaltenen Laufs.
+entscheide() {
+  local diskrepanz="${1:-}" wert="${2:-}" grund="${3:-}"; erledigt "Diskrepanz $diskrepanz entscheiden" && return 0
+  [ -n "$diskrepanz" ] && [ -n "$grund" ] || bruch "entscheide: Diskrepanz, Wert und Begruendung angeben"
+  fahre "Diskrepanz $diskrepanz entscheiden" "$PY" -m rechner_pipeline.ontologie.entscheide --fall "$F" \
+      --entscheider "$ENTSCHEIDER, als mensch/aktuariat" --zeichnungsordnung "$ORDNUNG" \
+      --freigabe-schluessel "$AKTUARIAT_KEY" --mandat "$MANDAT_FALL" \
+      --diskrepanz "$diskrepanz" --wert "$wert" --begruendung "$grund" "${@:4}"
+}
+entscheide_alle() {
+  local quelle="${1:-}" grund="${2:-}"; erledigt "vorlaeufige Entscheide zur Lesart von $quelle" && return 0
+  [ -n "$quelle" ] && [ -n "$grund" ] || bruch "entscheide_alle: Quelle und Begruendung angeben"
+  fahre "vorlaeufige Entscheide zur Lesart von $quelle" "$PY" -m rechner_pipeline.ontologie.entscheide --fall "$F" \
+      --entscheider "$ENTSCHEIDER, als mensch/aktuariat" --zeichnungsordnung "$ORDNUNG" \
+      --freigabe-schluessel "$AKTUARIAT_KEY" --mandat "$MANDAT_FALL" \
+      --alle-vorlaeufigen --quelle "$quelle" --begruendung "$grund"
 }
 
 zeichne() {
