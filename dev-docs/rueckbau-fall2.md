@@ -140,9 +140,22 @@ Generation in der Config. Zwei Wege:
    Provenienz-Kommentar) und ob ein neu gebauter Kernzweig zeichengleich
    ausfaellt. Weicht etwas ab, zeigt es diese Probe; massgeblich ist dann,
    dass die ausgesetzten Tests wieder laufen.
-2. Rueckfall, wenn die Vorfuehrung nicht warten kann: `git revert
-   <rueckbau-commit>` stellt Code, Tafeln, Config und Tests in einem Schritt
-   her.
+2. Rueckfall, wenn die Vorfuehrung nicht warten kann: den Rueckbau-Commit
+   zuruecknehmen. Gemessen am 2026-10-02 in einem eigenen Arbeitsbaum auf
+   diesem Stand — es ist nicht ein Schritt, es sind drei:
+   a) `git revert --no-commit <rueckbau-commit>` haelt an genau einem
+      Konflikt: Diese Datei wurde nach dem Rueckbau geaendert. `git add
+      dev-docs/rueckbau-fall2.md` behaelt sie. Danach sind `src`, `configs`
+      und `tests` gleich dem Stand vor dem Rueckbau (bis auf den Test der
+      Werkzeuge, der spaeter dazukam).
+   b) Das Versionsprotokoll geht nur vorwaerts: Der Revert setzte die
+      Kern-Version auf die Nummer vor dem Rueckbau zurueck. Stattdessen
+      bleibt der Eintrag des Rueckbaus stehen, und die Wiederherstellung
+      bekommt die naechste Version mit eigenem Eintrag (`kern/__init__.py`).
+   c) Volle Suite, dann committen. Gemessen auf diesem Weg: 4950 passed,
+      2 skipped, Baumwaechter ohne Befund, Exit 0.
+   (Berichtigt: Bis zum 2026-10-02 stand hier "in einem Schritt"; das war
+   nicht gemessen.)
 
 In beiden Faellen wird `tests/rueckbau_fall2_ausgesetzt.txt` geloescht; die
 ausgesetzten Tests laufen dann wieder, und die Zahl in
@@ -152,10 +165,15 @@ dem Revert).
 ## Nicht Teil dieses Commits
 
 - Die Laufzeit: In der produktiven Ablage ist der Zugang des zweiten Laufs
-  registriert; sie bleibt unberuehrt, bis die neue sie abloest. Die zweite
-  Laufzeit des Zielbilds ist nicht aufgestellt. Die Werkzeuge nehmen den Ort
-  der Ablage als Argument (`tageslauf --stand`, `uebernahme --stand`); ob sich
-  eine frische Ablage ohne Fall auf diesem Stand aufstellen laesst und einen
-  Zugang zum Stichtag des Falls annimmt, ist nicht geprueft. Ein Storno eines
-  Zugangs in einer laufenden Ablage gibt es nicht.
+  registriert; sie bleibt unberuehrt, bis die neue sie abloest. Die Werkzeuge
+  nehmen den Ort der Ablage als Argument (`tageslauf --stand`, `uebernahme
+  --stand`). Gemessen am 2026-10-02: Eine frische Ablage ohne den
+  uebernommenen Bestand laesst sich auf diesem Stand aufstellen und bis zum
+  Tag vor dem Stichtag des Falls fuehren (11.506 Tage, 1.696 Vertraege, 378
+  Monatsabschluesse), mit eigener Linie und den vier Erstabnahmen (ADR-025).
+  Nicht geprueft: der Zugang zum Stichtag des Falls in voller Groesse. Er
+  braucht die Generation des Falls in der Config; nach dem Handbuch
+  (`deploy/plv/README.md`) und `betrieb/neuaufsetzen.py` heisst eine
+  geaenderte Config eine neu gerechnete Ablage — gelesen, nicht gefahren. Ein
+  Storno eines Zugangs in einer laufenden Ablage gibt es nicht.
 - Der Tarifplan und die Fachdokumente: nicht zurueckgebaut (siehe oben).
