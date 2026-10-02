@@ -113,6 +113,21 @@ und unter welchen Bedingungen (Spielleiter-Bereiche, Rollen samt
 Zeichnungsordnung, Abbruchkriterien); wie die Simulation gehört sie zum
 Gesamtbild, aber nicht zum System.
 
+**Was im Repository liegt — und was bewusst nicht.** Hier liegen der Code
+des KI-Systems, die Definition der Vorzeigeobjekte (die PLV, die
+Lieferungen, der Fall der Vorführung) und die Routinen, mit denen daraus
+eine vollständige Laufzeit entsteht: `deploy/welt/` stellt eine Welt auf
+(Ablage, Linie, Erstabnahmen, auf Wunsch eigene Schlüssel) und startet
+einen Fall darin, `deploy/plv/` liefert Image und Bedienfolgen des
+Tagesbetriebs, `deploy/workshop/` die Installation auf einem Rechner ohne
+Zugang zu diesem Repository. Die Beispielumgebung selbst liegt nicht hier:
+der Rechner, auf dem die PLV Tag für Tag läuft, ihre Schlüssel und ihre
+Ablage, die Infrastruktur um den Webauftritt. Sie ist kein Bestandteil des
+Systems, sondern eine seiner Instanzen — aus dem Stand dieses Repositorys
+neu aufstellbar und mit jeder anderen Instanz vergleichbar: Dieselbe Welt,
+zweimal aufgestellt, trägt in ihrer Ablage dieselben Bytes, gleich mit
+welchen Schlüsseln gezeichnet wird.
+
 
 ## Architektur
 
