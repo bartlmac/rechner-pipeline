@@ -277,7 +277,18 @@ from rechner_pipeline.kern.vorgangsfolge import (
 #: zurueckgebauten Faehigkeiten sind ausgesetzt, nicht geloescht
 #: (``tests/rueckbau_fall2_ausgesetzt.txt``); die Umkehrung dieses Standes ist
 #: die Kern-Aenderung von Fall 3.
-__version__ = "3.21.0"
+#: 3.22.0 = Umkehrung des Rueckbaus (Fall 3, Entwicklermandat des Maintainers,
+#: 2026-10-02; Gate A-K2): Der Kern rechnet die drei Ausgestaltungen wieder,
+#: die ein Tarifwerk der Spez belegen darf: die volle Beitragsformel je
+#: Erhoehungsbaustein (``scheiben_mit_gamma1``), den Stornoabzug je Baustein
+#: (``stoab_je_baustein``) und die Teilkuendigung nur der Grundversicherung
+#: (``tku_umfang = grundversicherung``). Es sind Faehigkeiten, keine Annahmen:
+#: keine Voreinstellung im Kern, die Wahl kommt allein aus der Spez des Falls
+#: (jeder Aufrufer nennt sie, Kern 3.20.0). ``rechenkern.faehigkeit_fehlt``
+#: entfaellt, weil keine Regel mehr verweigert wird. Fuer die eigenen
+#: Generationen (Regelwerte ``False``) aendert sich kein Wert; alle
+#: Charakterisierungs-Referenzwerte sind unveraendert.
+__version__ = "3.22.0"
 
 __all__ = [
     "ModelPoint",

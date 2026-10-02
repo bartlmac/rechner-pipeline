@@ -110,7 +110,6 @@ from rechner_pipeline.kern.korrekturschicht import (
 )
 from rechner_pipeline.kern.rechenkern import (
     Rechenkern,
-    faehigkeit_fehlt,
     pruefe_scheibenjahre,
     vertrags_monatsreserve,
 )
@@ -617,7 +616,28 @@ def reduziere_geschichtet(
     if verfahren == PROSPEKTIV:
         nach_abzug = [1.0] * len(teile)
     elif stoab_je_baustein:
-        raise faehigkeit_fehlt("stoab_je_baustein", True)
+        # Abzug je Baustein (Bedingungswerk Ziffer 4): Jeder Baustein traegt
+        # seinen eigenen Abzug und wandelt genau SEINEN Rueckkaufswert um,
+        # ``max(0, V^MRV_i - StoAb_i)`` — dieselbe Groesse, die sein Storno am
+        # selben Tag zahlt, und dieselbe Bildung wie beim ungeteilten Vertrag
+        # (``reduziere``: ``_abzugsfaktor``). Die Summe ist (1-f) x
+        # ``gesamt.rkw`` (die Summe der auf null begrenzten Baustein-Werte),
+        # und ein Baustein mit negativem Rueckkaufs-Track wandelt nichts um
+        # (Floor je Schicht). Runde F, Nachbesserung 2: Vorher bekam jede
+        # Schicht denselben Faktor ``gesamt.rkw / sum max(0, V^MRV_i)`` — die
+        # Summe stimmte, die Werte je Schicht nicht: Der Baustein mit dem
+        # kleineren Abzug wandelte mehr um als seinen eigenen Rueckkaufswert,
+        # der mit dem groesseren weniger (Messfall: Abzug 0,005 / 50 / 200,
+        # Zillmerdauer 5, f = 0,5, Herabsetzung Jahr 2, V^MRV Grund 2.605,86 /
+        # Scheibe 275,25, Abzug 200,00 / 101,41: umgewandelt Grund 1.166,62
+        # statt 1.202,93, Scheibe 123,23 statt 86,92 — Summe 1.289,85 gleich).
+        # Der Auftrag sagt "verteilt nach dem geklemmten
+        # Baustein-RKW"; der gemeinsame Faktor tat es nur ohne verschiedene
+        # Abzuege (Tarifplan klv.md 7.1 steht nicht dagegen).
+        nach_abzug = [
+            _abzugsfaktor(k.verlaufszeile(jahr - e).vx_mrv,
+                          k.verlaufszeile(jahr - e).stoab)
+            for e, k in teile]
     else:
         # Abzug je Vertrag (Tarifplan 6): einmal auf den Gesamtwerten
         # gebildet, ``gesamt.rkw`` = max(0, sum V^MRV - StoAb). Umgewandelt wird
@@ -789,14 +809,28 @@ def vertrags_monatsreserve_reduziert(
     mp = grund.mp
     a = monate // 12
     if stoab_je_baustein:
-        raise faehigkeit_fehlt("stoab_je_baustein", True)
-    if a > mp.n or grund.produkt.ist_flex_phase(a):
-        stoab = 0.0
+        stoab = rkw = 0.0
+        for vertrag, versetzt, reserve in stuecke:
+            mp_k = vertrag.kern.mp
+            a_k = versetzt // 12
+            if a_k > mp_k.n or vertrag.kern.produkt.ist_flex_phase(a_k):
+                teil_stoab = 0.0
+            else:
+                teil_stoab = min(
+                    mp_k.stoab_max,
+                    max(mp_k.stoab_min,
+                        mp_k.stoab_satz
+                        * (vertrag.reduktion.vs_neu - reserve.drx_bpfl)))
+            stoab += teil_stoab
+            rkw += max(0.0, reserve.vx_mrv - teil_stoab)
     else:
-        vs = sum(v.reduktion.vs_neu for _, v in teile)
-        stoab = min(mp.stoab_max,
-                    max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
-    rkw = max(0.0, mrv - stoab)
+        if a > mp.n or grund.produkt.ist_flex_phase(a):
+            stoab = 0.0
+        else:
+            vs = sum(v.reduktion.vs_neu for _, v in teile)
+            stoab = min(mp.stoab_max,
+                        max(mp.stoab_min, mp.stoab_satz * (vs - dr)))
+        rkw = max(0.0, mrv - stoab)
     return Monatsreserve(
         monate=monate, jahr=a, monatsanteil=(monate % 12) / 12.0,
         drx_bpfl=dr, vx_mrv=mrv, stoab=stoab, rkw=rkw,

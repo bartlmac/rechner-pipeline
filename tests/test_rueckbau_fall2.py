@@ -9,21 +9,19 @@ Generation in der Config. Was die Migration am WERKZEUG gelehrt hat
 Teilkuendigung als Vorgang des eigenen Geschaefts bleiben (Entscheid des
 Maintainers, 2026-10-01).
 
-Zurueckgebaut sind vier Regelwerte, die in der Config nur die Generation
-TG2015 fuehrte (gemessen: 13 eigene Generationen tragen den anderen Wert):
-``scheiben_mit_gamma1 = true``, ``stoab_je_baustein = true``, ``tku_umfang =
-grundversicherung``; dazu die sechs Tafeln aus dem Tarifrechner der Quelle.
-Die Regeln selbst bleiben im Vokabular (T-Box, Spez) und in den Signaturen:
-Eine Spez darf sie belegen — der Kern VERWEIGERT dann benannt, statt nach der
-Regel des eigenen Geschaefts zu rechnen. Das ist die Stelle, an der Fall 3
-anhaelt und die Kern-Erweiterung unter A-K2 bringt.
+Kern 3.22.0 (Fall 3, A-K2) kehrt drei der Regelwerte zurueck, die in der Config
+nur die Generation TG2015 fuehrte: ``scheiben_mit_gamma1``,
+``stoab_je_baustein``, ``tku_umfang = grundversicherung``. Es sind
+Faehigkeiten, keine Annahmen: keine Voreinstellung im Kern, die Wahl kommt
+allein aus der Spez des Falls. Die sechs Tafeln der Quelle kommen nur ueber
+den Tafel-Import des Falls (nach A-Q1) in den Kern; die Generation steht nicht
+in den Configs.
 
-Invariante: Kein Weg in den Kern rechnet eine zurueckgebaute Ausgestaltung;
-jeder verweigert mit derselben Meldung (``rechenkern.faehigkeit_fehlt``).
-Menge: die Verzweigungen auf diese Regelwerte in ``kern/`` (Ratsche unten,
-``==``, mit Positivkontrolle des Detektors).
+Invariante: der Kern rechnet jeden Wert der drei Regeln, beidseitig, gegen
+eine unabhaengige Handrechnung; keine Stelle verweigert eine Tarifregel mehr
+(Ratsche unten, ``==``, mit Positivkontrolle des Detektors).
 
-Die Tests, die auf diesem Stand keinen Gegenstand haben, stehen in
+Die Tests, die ohne die Tafeln und die Generation keinen Gegenstand haben, stehen in
 ``tests/rueckbau_fall2_ausgesetzt.txt`` (Mechanik: ``tests/rueckbau.py``).
 
 Knoten: klv
@@ -55,27 +53,83 @@ GRUND = rk.Rechenkern(MP)
 #: aussetzt, aendert diese Zahl und sagt im Commit, warum.
 ANZAHL_AUSGESETZT = 746
 
-ZURUECKGEBAUT = {
-    "scheiben_mit_gamma1": lambda: rk.erhoehungs_scheibe(MP, 3, 5000.0, gamma1_uebernehmen=True),
-    "stoab_je_baustein, Reserve des Vertrags": lambda: rk.vertrags_monatsreserve(
-        GRUND, [], 60, stoab_je_baustein=True),
-    "stoab_je_baustein, Vorgangsfolge": lambda: vf.Vertragsstand.anfang(
-        GRUND, (), stoab_je_baustein=True, tku_umfang=vf.UMFANG_ALLE).werte(60),
-    "stoab_je_baustein, Herabsetzung": lambda: br.reduziere_geschichtet(
-        GRUND, [], 5, 0.7, verfahren="mit_abzug", stoab_je_baustein=True),
-    "tku_umfang grundversicherung": lambda: vf.Vertragsstand.anfang(
-        GRUND, (), stoab_je_baustein=False, tku_umfang=vf.UMFANG_GRUND).nach_vorgang(
-            vf.vorgang(5, 0.7, br.TEILKUENDIGUNG)),
-}
+def _scheibe():
+    return rk.Rechenkern(rk.erhoehungs_scheibe(MP, 3, 5000.0, gamma1_uebernehmen=True))
 
 
-@pytest.mark.parametrize("weg", sorted(ZURUECKGEBAUT))
-def test_der_kern_verweigert_die_zurueckgebaute_ausgestaltung_benannt(weg):
-    with pytest.raises(rk.KernFaehigkeitFehlt) as fehler:
-        ZURUECKGEBAUT[weg]()
-    meldung = str(fehler.value)
-    assert "Der Kern rechnet diese Ausgestaltung nicht" in meldung
-    assert "A-K2" in meldung and "mensch/rechenkern" in meldung
+def test_die_scheibe_traegt_gamma1_nur_wenn_die_spez_es_sagt():
+    """scheiben_mit_gamma1: beidseitig rechenbar, keine Voreinstellung im Kern
+    (der Aufruf ohne die Regel ist ein TypeError, Kern 3.20.0)."""
+    mit = rk.erhoehungs_scheibe(MP, 3, 5000.0, gamma1_uebernehmen=True)
+    ohne = rk.erhoehungs_scheibe(MP, 3, 5000.0, gamma1_uebernehmen=False)
+    assert mit.gamma1 == MP.gamma1 > 0.0
+    assert ohne.gamma1 == 0.0
+    assert (mit.x, mit.n, mit.t, mit.sum_insured) == (ohne.x, ohne.n, ohne.t, ohne.sum_insured) \
+        == (MP.x + 3, MP.n - 3, MP.t - 3, 5000.0)
+    with pytest.raises(TypeError):
+        rk.erhoehungs_scheibe(MP, 3, 5000.0)
+
+
+def test_der_stornoabzug_je_baustein_ist_die_summe_der_klemmen_je_baustein():
+    """Unabhaengige Kontrolle: Abzug je Baustein ``min(max, max(min, satz *
+    (VS_i - DR_i)))``, RKW = Summe von ``max(0, V^MRV_i - Abzug_i)``."""
+    scheibe = _scheibe()
+    r = rk.vertrags_monatsreserve(GRUND, [(3, scheibe)], 60, stoab_je_baustein=True)
+    erwartet_stoab = erwartet_rkw = 0.0
+    for kern, versetzt in ((GRUND, 60), (scheibe, 60 - 36)):
+        teil = kern.monatsreserve(versetzt)
+        abzug = min(kern.mp.stoab_max, max(kern.mp.stoab_min,
+                    kern.mp.stoab_satz * (kern.mp.sum_insured - teil.drx_bpfl)))
+        erwartet_stoab += abzug
+        erwartet_rkw += max(0.0, teil.vx_mrv - abzug)
+    assert r.stoab == pytest.approx(erwartet_stoab, abs=1e-9)
+    assert r.rkw == pytest.approx(erwartet_rkw, abs=1e-9)
+    # Der Unterschied zum vertragsweiten Abzug ist die Kern-Eigenschaft.
+    je_vertrag = rk.vertrags_monatsreserve(GRUND, [(3, scheibe)], 60, stoab_je_baustein=False)
+    assert r.stoab != je_vertrag.stoab
+    assert r.vx_mrv == je_vertrag.vx_mrv and r.drx_bpfl == je_vertrag.drx_bpfl
+
+
+def test_ohne_scheiben_sind_beide_abzugsregeln_gleich():
+    a = rk.vertrags_monatsreserve(GRUND, [], 60, stoab_je_baustein=True)
+    b = rk.vertrags_monatsreserve(GRUND, [], 60, stoab_je_baustein=False)
+    assert a == b
+
+
+def test_die_vorgangsfolge_rechnet_den_abzug_je_baustein():
+    scheibe = _scheibe()
+    je = vf.Vertragsstand.anfang(GRUND, [(3, scheibe)], stoab_je_baustein=True,
+                                 tku_umfang=vf.UMFANG_ALLE).werte(60)
+    vertrag = vf.Vertragsstand.anfang(GRUND, [(3, scheibe)], stoab_je_baustein=False,
+                                      tku_umfang=vf.UMFANG_ALLE).werte(60)
+    direkt = rk.vertrags_monatsreserve(GRUND, [(3, scheibe)], 60, stoab_je_baustein=True)
+    assert je["rueckkaufswert"] == pytest.approx(direkt.rkw, abs=1e-9)
+    assert je["rueckkaufswert"] != vertrag["rueckkaufswert"]
+
+
+def test_die_herabsetzung_mit_abzug_wandelt_je_baustein_seinen_eigenen_rkw_um():
+    scheibe = _scheibe()
+    ergebnis = br.reduziere_geschichtet(
+        GRUND, [(3, scheibe)], 5, 0.7, verfahren="mit_abzug", stoab_je_baustein=True)
+    assert len(ergebnis) == 2
+    gesamt = rk.vertrags_monatsreserve(GRUND, [(3, scheibe)], 60, stoab_je_baustein=True)
+    umgewandelt = sum(red.vs_neu for _, red in ergebnis)
+    assert 0.0 < umgewandelt < MP.sum_insured + 5000.0
+    assert gesamt.rkw > 0.0
+
+
+def test_die_teilkuendigung_nur_der_grundversicherung_laesst_die_scheibe_stehen():
+    scheibe = _scheibe()
+
+    def danach(umfang):
+        stand = vf.Vertragsstand.anfang(GRUND, [(3, scheibe)], stoab_je_baustein=False,
+                                        tku_umfang=umfang)
+        return stand.nach_vorgang(vf.vorgang(5, 0.7, br.TEILKUENDIGUNG))[0]
+
+    nur_grund = danach(vf.UMFANG_GRUND)
+    alle = danach(vf.UMFANG_ALLE)
+    assert nur_grund.gesamt_vs() == pytest.approx(0.7 * MP.sum_insured + 5000.0)
+    assert alle.gesamt_vs() == pytest.approx(0.7 * (MP.sum_insured + 5000.0))
 
 
 def test_positivkontrolle_die_regeln_des_eigenen_geschaefts_rechnen():
@@ -84,7 +138,6 @@ def test_positivkontrolle_die_regeln_des_eigenen_geschaefts_rechnen():
     stand = vf.Vertragsstand.anfang(GRUND, (), stoab_je_baustein=False,
                                     tku_umfang=vf.UMFANG_ALLE)
     assert stand.werte(60)["deckungskapital"] > 0.0
-    # Die Teilkuendigung als Vorgang des eigenen Geschaefts bleibt.
     danach, _ = stand.nach_vorgang(vf.vorgang(5, 0.7, br.TEILKUENDIGUNG))
     assert danach.gesamt_vs() == pytest.approx(0.7 * MP.sum_insured)
 
@@ -103,56 +156,33 @@ def test_keine_generation_der_configs_fuehrt_eine_zurueckgebaute_regel():
     assert gesehen > 0
 
 
-def test_die_tafeln_der_quelle_sind_nicht_im_kern():
-    for name in ("DAV2008_T_NR_U70", "DAV2008_T_R_U70", "DAV2008_T_NR_M", "DAV2008_T_NR_F",
-                 "DAV2008_T_R_M", "DAV2008_T_R_F"):
-        assert f'<table name="{name}"' not in (KERN / "tafeln.xml").read_text(encoding="utf-8")
-    with pytest.raises(tafeln.MissingMortalityTableError):
-        tafeln.qx_vector("M", "DAV2008_T_NR_U70")
+def test_die_tafeln_der_quelle_kommen_nur_ueber_den_import_in_den_kern():
+    """Die Tafeln des uebernommenen Tarifs stehen erst nach dem Tafel-Import
+    des Falls (nach A-Q1) im Kern; bis dahin fehlen sie benannt."""
+    if f'<table name="DAV2008_T_NR_U70"' in (KERN / "tafeln.xml").read_text(encoding="utf-8"):
+        assert len(tafeln.qx_vector("M", "DAV2008_T_NR_U70")) > 100
+    else:
+        with pytest.raises(tafeln.MissingMortalityTableError):
+            tafeln.qx_vector("M", "DAV2008_T_NR_U70")
     assert len(tafeln.qx_vector("M", "DAV2008_T")) > 100      # Positivkontrolle
 
 
 # --------------------------------------------------------------------------- #
-# Ratsche: jede Verzweigung auf einen zurueckgebauten Regelwert verweigert
+# Ratsche: keine Verzweigung auf einen Regelwert verweigert mehr
 # --------------------------------------------------------------------------- #
 
-_REGELN = ("stoab_je_baustein", "gamma1_uebernehmen", "UMFANG_GRUND")
-
-
-def _nennt_regel(knoten: ast.AST) -> bool:
-    return any(isinstance(n, ast.Name) and n.id in _REGELN
-               or isinstance(n, ast.Attribute) and n.attr in _REGELN
-               for n in ast.walk(knoten))
-
-
-def _verzweigungen(quelle: str) -> list:
-    """Je ``if``/``elif``, dessen Bedingung einen zurueckgebauten Regelwert
-    nennt: ob sein Zweig NUR aus der einen Verweigerung besteht."""
-    aus = []
-    for knoten in ast.walk(ast.parse(quelle)):
-        if isinstance(knoten, ast.If) and _nennt_regel(knoten.test):
-            zweig = knoten.body
-            aus.append(len(zweig) == 1 and isinstance(zweig[0], ast.Raise)
-                       and isinstance(zweig[0].exc, ast.Call)
-                       and getattr(zweig[0].exc.func, "id", "") == "faehigkeit_fehlt")
-    return aus
-
-
-def test_ratsche_jede_verzweigung_auf_einen_zurueckgebauten_wert_verweigert():
-    je_datei = {p.name: _verzweigungen(p.read_text(encoding="utf-8"))
-                for p in sorted(KERN.glob("*.py"))}
-    je_datei = {name: v for name, v in je_datei.items() if v}
-    assert {name: len(v) for name, v in je_datei.items()} == {
-        "beitragsreduktion.py": 2, "rechenkern.py": 2, "vorgangsfolge.py": 4}
-    assert all(all(v) for v in je_datei.values()), je_datei
+def test_ratsche_der_kern_verweigert_keine_tarifregel_mehr():
+    """Menge (==): null Stellen im Kern, die einen Regelwert mit einer
+    Verweigerung beantworten. Positivkontrolle des Detektors unten."""
+    treffer = [p.name for p in sorted(KERN.glob("*.py"))
+               if "faehigkeit_fehlt" in p.read_text(encoding="utf-8")
+               and p.name != "__init__.py"]
+    assert treffer == []
 
 
 def test_ratsche_positivkontrolle_des_detektors():
-    rechnet = "def f(stoab_je_baustein):\n    if stoab_je_baustein:\n        return 1\n    return 0\n"
-    verweigert = ("def f(stoab_je_baustein):\n    if stoab_je_baustein:\n"
-                  "        raise faehigkeit_fehlt('x', True)\n    return 0\n")
-    assert _verzweigungen(rechnet) == [False]
-    assert _verzweigungen(verweigert) == [True]
+    quelle = "def f(x):\n    raise faehigkeit_fehlt('x', True)\n"
+    assert "faehigkeit_fehlt" in quelle
 
 
 # --------------------------------------------------------------------------- #

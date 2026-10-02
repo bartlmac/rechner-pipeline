@@ -177,3 +177,37 @@ dem Revert).
   geaenderte Config eine neu gerechnete Ablage — gelesen, nicht gefahren. Ein
   Storno eines Zugangs in einer laufenden Ablage gibt es nicht.
 - Der Tarifplan und die Fachdokumente: nicht zurueckgebaut (siehe oben).
+
+## Kern 3.22.0: die Umkehrung im Fall 3 (2026-10-02)
+
+Fall 3 braucht die drei zurueckgebauten Ausgestaltungen, weil das Bedingungswerk
+des uebernommenen Tarifs sie belegt (Ziffer 3 und 4: Erhoehung als eigener
+Baustein mit voller Beitragsformel, Stornoabzug je Baustein, Rueckkaufswert als
+Summe; Teilkuendigung nur der Grundversicherung). Entwicklermandat des
+Maintainers (Punkt 9 des Fallmandats), Abnahme unter A-K2 (`mensch/rechenkern`).
+
+Gebaut ist die Umkehrung der Kern-Anteile von `cfaef32` (`rechenkern`,
+`vorgangsfolge`, `beitragsreduktion`; Zeilen wie zuvor, bitgleiche Rechnung der
+frueheren Faehigkeit 3.2.0, 3.3.0, 3.7.0, 3.15.0, 3.17.0). `faehigkeit_fehlt`
+und `KernFaehigkeitFehlt` entfallen: keine Regel wird mehr verweigert.
+
+Entscheide und verworfene Alternativen:
+
+- Faehigkeit statt Annahme: Der Kern hat keine Voreinstellung; jeder Aufrufer
+  nennt die Regel aus der Spez (Kern 3.20.0 bleibt). Verworfen: gamma1 der
+  Scheibe als neue Voreinstellung — `scheiben_mit_gamma1` ist gelesen mit
+  Konfidenz 0,7 und noch nicht bestaetigt (A-Q1); eine Voreinstellung nahme die
+  Entscheidung vorweg.
+- Umkehrung des Kern-Codes statt Neubau: Die Rechnung ist durch die
+  Pruefrunden des zweiten Laufs gelaufen. Verworfen: Neubau nach AVB — er
+  hielte dieselbe Formel, ohne die Pruefhistorie.
+- Config und ausgesetzte Tests: Die Generation TG2015 kommt NICHT in die
+  Config zurueck, die Liste der 746 ausgesetzten Tests bleibt. Verworfen:
+  `git revert cfaef32` im Ganzen — er brachte Generation und Tafeln am Fall
+  vorbei zurueck, und Fall 3 soll die Uebernahme neu belegen.
+- Tafeln: Nur ueber `quellen.tafel_import` des Falls (nach A-Q1, Spez), nicht
+  aus dem Rueckbau-Commit kopiert. Gemessener Dry-run auf einer Kopie: 6
+  Tafeln, 0 Konflikte, 4 Kreuzproben wertgleich.
+- Tests: Die Verweigerungstests von `tests/test_rueckbau_fall2.py` sind
+  Charakterisierungen der Rechnung (unabhaengige Handrechnung je Merkmal,
+  beidseitig); die Ratsche haelt `==` null Verweigerungen.
