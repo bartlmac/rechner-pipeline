@@ -265,6 +265,12 @@ Baums auf dem Commit); der Codebaum selbst wird nicht bewegt. Der Commit muss
 ein Vorfahr des Baums sein — ein Paket aus einer anderen Geschichte des
 Repositorys haelt das Skript an, bevor es etwas anlegt.
 
+Die Schluessel der Welt liegen dabei unter `~/.plv-schluessel/<name der
+welt>` (anders nur mit `SCHLUESSEL=...`): je Welt ein eigenes Verzeichnis.
+Bricht das Aufstellen ab, beginnt ein neuer Versuch einfach unter einem
+anderen Namen der Welt; die angefangene bleibt liegen, bis jemand sie
+ansieht und entfernt.
+
 Derselbe Aufruf ist wiederholbar: Steht die Welt schon, faehrt er nur das
 Paket weiter, hinter dem letzten erledigten Schritt. So wird aus dem Stand
 des Repositorys und einem Paket eine Laufzeit mit uebernommenem Bestand —

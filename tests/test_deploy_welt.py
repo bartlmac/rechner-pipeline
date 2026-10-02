@@ -1139,9 +1139,11 @@ esac
     return skript, spur, vor
 
 
-def _laufzeit(welt: Path, paket: Path, baum: Path, tmp_path: Path, skript: Path, *args: str) -> subprocess.CompletedProcess:
+def _laufzeit(welt: Path, paket: Path, baum: Path, tmp_path: Path, skript: Path, *args: str,
+              **umgebung: str) -> subprocess.CompletedProcess:
+    umgebung.setdefault("SCHLUESSEL", str(tmp_path / "schluessel-laufzeit"))
     lauf = _lauf("laufzeit_aufstellen.sh", str(welt), str(paket), *args, baum=baum, PYTHON=str(skript),
-                 SCHLUESSEL=str(tmp_path / "schluessel-laufzeit"))
+                 **{k: v for k, v in umgebung.items() if v})
     lauf.text = (lauf.stdout + lauf.stderr).decode()  # type: ignore[attr-defined]
     return lauf
 
@@ -1177,6 +1179,21 @@ def test_die_welt_entsteht_auf_dem_stand_vor_dem_fall_und_der_fall_laeuft_auf_de
     assert "steht schon" in zweiter.text and "NACHGEFAHREN" in zweiter.text
     assert spur.read_text().splitlines() == aufrufe          # nichts wurde neu aufgestellt
     assert (baum / "faelle" / "probe" / "spur").read_text() == "# Config nach dem Fall\nzwei\n"
+
+
+def test_je_welt_ein_eigenes_schluesselverzeichnis(tmp_path, baum, system):
+    # Ohne Angabe liegen die Schluessel unter ~/.plv-schluessel/<name der welt>.
+    # Ein zweiter Versuch unter anderem Namen scheitert so nicht daran, dass
+    # das Schluesselverzeichnis des ersten schon eine Ordnung traegt.
+    skript, spur, vor = system
+    heim = baum.parent / "heim"
+    paket = _paket(tmp_path, REZEPT_LAUFZEIT, stand=vor)
+    for name in ("erste", "zweite"):
+        lauf = _laufzeit(tmp_path / name, paket, baum, tmp_path, skript, "--bis", "mitte", SCHLUESSEL="")
+        assert lauf.returncode == 0, (name, lauf.text)
+        ort = heim / ".plv-schluessel" / name
+        assert sorted(p.name for p in ort.glob("*.key")) == sorted(f"{r}.key" for r in ROLLEN)
+        assert _einstellung(tmp_path / name, "VORSTAND_KEY") == str(ort / "vorstand.key")
 
 
 @pytest.mark.parametrize("fall", ["ohne_stand", "fremder_commit", "kein_vorfahr", "verzeichnis_liegt"])

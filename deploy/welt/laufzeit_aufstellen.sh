@@ -18,11 +18,16 @@
 # Wiederholbar: Steht die Welt schon (die vier Erstabnahmen liegen in der
 # Linie), faehrt derselbe Aufruf nur noch das Paket weiter, hinter dem letzten
 # erledigten Schritt. Ein Verzeichnis, das keine aufgestellte Welt ist, fasst
-# das Skript nicht an.
+# das Skript nicht an — nach einem abgebrochenen Aufstellen beginnt ein neuer
+# Versuch unter einem anderen Namen der Welt.
 #
-# Umgebung wie bei welt_aufstellen.sh: SCHLUESSEL, MANDATGEBER, ENTSCHEIDER
-# (nur beim Aufstellen), BAUM, PYTHON. Das Aufstellen rechnet einige Minuten,
-# der Zugang eines Falls (Probe und Aufbaulauf) rund eine halbe Stunde.
+# Die Schluessel der Welt liegen, wenn SCHLUESSEL nichts anderes nennt, unter
+# ~/.plv-schluessel/<name der welt>: je Welt ein eigenes Verzeichnis, damit
+# ein zweiter Versuch und eine zweite Welt einander nicht im Weg stehen.
+#
+# Umgebung sonst wie bei welt_aufstellen.sh: MANDATGEBER, ENTSCHEIDER (nur
+# beim Aufstellen), BAUM, PYTHON. Das Aufstellen rechnet einige Minuten, der
+# Zugang eines Falls (Probe und Aufbaulauf) rund eine halbe Stunde.
 
 HIER="$(cd "$(dirname "$0")" && pwd)"
 WELT="${1:-}"; PAKET="${2:-}"
@@ -65,7 +70,8 @@ else
   git clone --quiet --no-checkout "$BAUM" "$VORBAUM" && git -C "$VORBAUM" checkout --quiet -b vor-dem-fall "$VOR" \
     || halt "der Baum auf dem Stand vor dem Fall liess sich nicht anlegen ($VORBAUM)"
   echo "Stand vor dem Fall: ${VOR:0:12} als eigener Baum unter $VORBAUM"
-  BAUM="$VORBAUM" PYTHON="$PY" bash "$HIER/welt_aufstellen.sh" "$WELT" || exit 1
+  BAUM="$VORBAUM" PYTHON="$PY" SCHLUESSEL="${SCHLUESSEL:-$HOME/.plv-schluessel/$(basename "$WELT")}" \
+    bash "$HIER/welt_aufstellen.sh" "$WELT" || exit 1
 fi
 
 echo "Stand des Falls: $(git -C "$BAUM" rev-parse --short=12 HEAD) ($BAUM)"
