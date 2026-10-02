@@ -1,0 +1,21 @@
+MANDAT zur simulierten Zeichnung (ADR-018)
+
+Bereich:         die Welt @WELT@ (Linie und Ablage) und die Faelle, die in
+                 ihr gefuehrt werden
+Modus:           Vorfuehrung und Uebung. Alles in dieser Welt ist Simulation:
+                 Die Unternehmen sind erfunden, die Vertraege synthetisch.
+                 Jede Zeichnung weist das aus (Schluesselklasse simulation,
+                 dieses Mandat).
+Rollen:          mensch/vorstand, mensch/programmleitung, mensch/aktuariat,
+                 mensch/architektur, mensch/rechenkern, mensch/betrieb
+Gates:           in der Linie A-K2, A-O1, A-T1 und A-B3 (die Erstabnahmen);
+                 im Fall A-M6, A-Q1, A-M1 bis A-M5, A-B1 und A-B2
+Systemstand:     @STAND@ beim Aufstellen der Welt; jede Zeichnung nennt ihren
+                 Stand selbst
+Mandatgeber:     @MANDATGEBER@
+Erteilt am:      @DATUM@
+
+Wer in dieser Welt arbeitet, zeichnet in den genannten Rollen mit den
+Schluesseln, die beim Aufstellen der Welt auf diesem Rechner erzeugt wurden.
+Die Schluessel gelten nur hier. Keine Zeichnung dieser Welt gilt ausserhalb
+von ihr.

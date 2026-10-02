@@ -157,7 +157,10 @@ sys.exit(0 if pathlib.Path(rechner_pipeline.__file__).resolve().is_relative_to(p
       n="$(nproc 2>/dev/null || echo 4)"; [ "$n" -gt 12 ] && n=12
       echo "  volle Suite (-n $n, einige Minuten) ..."
       ausgabe="$(cd "$b" && "$py" -m pytest -q -rs -n "$n" --dist loadfile -p no:cacheprovider 2>&1)"
-      if [ $? -eq 0 ]; then zeile ok "Suite: $(printf '%s\n' "$ausgabe" | grep -E ' passed' | tail -1)"; else
+      if [ $? -eq 0 ]; then
+        zeile ok "Suite: $(printf '%s\n' "$ausgabe" | grep -E ' passed' | tail -1)"
+        printf '%s\n' "$ausgabe" | grep -E '^SKIPPED' | sed 's/^/        /'
+      else
         printf '%s\n' "$ausgabe" | tail -15 | sed 's/^/        /'; nein "die Suite ist nicht gruen"; fi
     elif [ -n "$tests" ]; then
       # shellcheck disable=SC2086

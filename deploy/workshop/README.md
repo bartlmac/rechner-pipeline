@@ -33,10 +33,11 @@ Im Abbild liegen:
 
 Im Abbild liegen NICHT:
 
-- **Schluessel.** Jeder Rechner erzeugt seine eigenen; kein Schluessel
-  reist.
+- **Schluessel.** Jeder Rechner erzeugt seine eigenen
+  (`deploy/welt/welt_aufstellen.sh`); kein Schluessel reist.
 - **Welt und Faelle** (Linie, Ablage, Falldaten). Sie entstehen auf dem
-  Rechner, auf dem gearbeitet wird.
+  Rechner, auf dem gearbeitet wird — mit den Skripten unter `deploy/welt/`
+  (`deploy/welt/README.md`).
 - **Unveroeffentlichte Arbeit**, es sei denn, der Bau wurde ausdruecklich
   so aufgerufen (`--unveroeffentlicht`).
 - Ein Agenten-Werkzeug (Claude Code, Codex). Wer agentisch arbeitet,

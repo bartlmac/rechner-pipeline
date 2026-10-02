@@ -416,7 +416,7 @@ python -m pytest                     # volle Suite
 
 Referenzumgebung ist Linux mit Python 3.11 und exakt diesen Pins. Wer nicht auf Linux arbeitet, fährt die Suite im Container, der genau diese Umgebung ist (`deploy/dev/Dockerfile`, Devcontainer in `.devcontainer/`; Anleitung in `ONBOARDING.md`, Abschnitt 2). Der Code wird nicht auf weitere Betriebssysteme gehärtet.
 
-Für einen Rechner ohne Zugang zu diesem Repository — eine Vorführung, ein Workshop — gibt es die Installation in einer Datei: `deploy/workshop/` baut ein Abbild mit System, Pins und Code-Bäumen und richtet es unter Windows als eigene WSL-Distribution ein (`deploy/workshop/README.md`).
+Für einen Rechner ohne Zugang zu diesem Repository — eine Vorführung, ein Workshop — gibt es die Installation in einer Datei: `deploy/workshop/` baut ein Abbild mit System, Pins und Code-Bäumen und richtet es unter Windows als eigene WSL-Distribution ein (`deploy/workshop/README.md`). Was neben dem Code nötig ist, damit die PLV läuft und ein Fall geführt werden kann — Ablage, Linie, Erstabnahmen, auf Wunsch eigene Schlüssel —, stellt `deploy/welt/` auf (`deploy/welt/README.md`).
 
 Das ist der eine Installationsweg, derselbe wie in der CI: Die
 Pin-Dateien tragen die direkten Abhängigkeiten UND ihre vollständige

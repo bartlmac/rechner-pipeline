@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "nach_version": "0.2.0",
+  "verfasser_rolle": "mensch/aktuariat",
+  "felder": [
+    {
+      "name": "tarifwerk.scheiben_mit_gamma1",
+      "wirkung": "tariflich",
+      "begruendung": "Legt fest, ob eine Erhoehungsscheibe die laufenden Kosten gamma1 in ihrem Beitrag traegt. Das aendert Beitrag und Reserve jeder Scheibe. Das eigene Geschaeft fuehrt den Wert false (Tarifplan KLV 6); entfiele das Merkmal, rechnete jede uebernommene Generation still nach der Regel des eigenen Geschaefts."
+    },
+    {
+      "name": "tarifwerk.stoab_je_baustein",
+      "wirkung": "tariflich",
+      "begruendung": "Legt fest, ob Mindest- und Hoechstbetrag des Stornoabzugs je Vertrag oder je Baustein gelten. Das aendert Rueckkaufswert und Auszahlung bei Storno und Teilkuendigung, sobald ein Vertrag Erhoehungsscheiben traegt."
+    },
+    {
+      "name": "tarifwerk.red_verfahren",
+      "wirkung": "tariflich",
+      "begruendung": "Das Verfahren der Beitragsherabsetzung (prospektiv, mit Abzug, Teilkuendigung) bestimmt die beitragsfreie Summe bzw. die Auszahlung nach einer Herabsetzung. Es ist eine Zusage des Bedingungswerks der Generation."
+    },
+    {
+      "name": "tarifwerk.tku_umfang",
+      "wirkung": "tariflich",
+      "begruendung": "Sagt, welche Bausteine eine Teilkuendigung kuerzt (alle oder nur die Grundversicherung). Das bestimmt Auszahlung und verbleibende Summe."
+    },
+    {
+      "name": "quellverfahren.red_verfahren",
+      "wirkung": "bewertungsrelevant",
+      "begruendung": "Die Lesart einer gelieferten Absetzung der Vorgeschichte (Herabsetzung oder Teilkuendigung). Aus ihr entsteht der Anfangszustand eines uebernommenen Vertrags; falsch gelesen, steht der Vertrag mit einer anderen Bausteinstruktur in der Fuehrung."
+    },
+    {
+      "name": "quellverfahren.erhoehungssatz",
+      "wirkung": "bewertungsrelevant",
+      "begruendung": "Der Dynamiksatz der Quelle. Aus ihm werden die Erhoehungen der Vorgeschichte in Bausteine zerlegt; Reserve und Rueckkaufswert je Baustein haengen daran, sobald eine Tarifregel je Baustein greift. Er muss erhoben sein (belegt oder ausdruecklich nicht belegt)."
+    },
+    {
+      "name": "quellverfahren.dk_stichtag",
+      "wirkung": "bewertungsrelevant",
+      "begruendung": "Der Zeitpunkt, zu dem die Lieferung ihr Deckungskapital fuehrt (Kalendertag oder letzter Vertragsjahrestag). Auf dem falschen Zeitpunkt erscheint Reservezuwachs als Residuum der Uebernahme."
+    },
+    {
+      "name": "quellverfahren.formfunktion und quellverfahren.fenster",
+      "wirkung": "bewertungsrelevant",
+      "begruendung": "Die Ausgestaltung der Korrekturschicht einer migrierten Generation. Sie bestimmt, wie ein Residuum der Uebernahme ueber die Laufzeit gefuehrt und abgebaut wird, und damit das Deckungskapital des uebernommenen Vertrags an jedem Stichtag."
+    },
+    {
+      "name": "migration.zustandsextrakt (verankerung, scheiben, reduktionen, merkmale)",
+      "wirkung": "bewertungsrelevant",
+      "begruendung": "Die Ergebnisse der Vorgeschichte eines uebernommenen Vertrags als Vertragsattribute. Aus ihnen entsteht der Zustand, auf dem der Kern bewertet; fehlt eines, ist der Vertrag nur als Grundvertrag rechenbar."
+    },
+    {
+      "name": "migration.rechnende_vorgaenge, migration.zustaende_ta, migration.verankerungszustaende",
+      "wirkung": "bewertungsrelevant",
+      "begruendung": "Welche Vorgaenge der Vorgeschichte in die Rekonstruktion eingehen und in welchem Zustand ein Vertrag verankert wird. Ein nicht genannter Vorgang wuerde uebergangen."
+    },
+    {
+      "name": "vertrag.pflicht",
+      "wirkung": "tariflich",
+      "begruendung": "Die Pflichtfelder eines gelieferten Vertrags (Beginn, Eintrittsalter, Geschlecht, Dauern, Summe, Zahlweise, Status, Tarifart) bestimmen Beitrag und Leistung des Modellpunkts. Ohne eines von ihnen ist der Vertrag nicht rechenbar."
+    },
+    {
+      "name": "vertrag.optional",
+      "wirkung": "bewertungsrelevant",
+      "begruendung": "Gelieferte Kontroll- und Verankerungswerte (Deckungskapital, Beitrag, Verankerungszeitpunkt). Sie gehen in Abgleich und Verankerung ein, nicht in den Tarif."
+    },
+    {
+      "name": "rechnungsgrundlagen.je_familie",
+      "wirkung": "tariflich",
+      "begruendung": "Zins, Tafel und Kostenparameter je Produktfamilie sind die Rechnungsgrundlagen des Tarifs; die T-Box benennt, welche eine Zelle tragen muss."
+    },
+    {
+      "name": "geschaeftsvorfaelle.katalog und geschaeftsvorfaelle.absetzung",
+      "wirkung": "ohne-wirkung",
+      "begruendung": "Spiegel des Katalogs der Bestandsfuehrung (Codes und Betragsarten). Die T-Box benennt die Vorgaenge, sie rechnet sie nicht; kein Beitrag und keine Bewertung aendert sich durch den Eintrag."
+    },
+    {
+      "name": "produktfamilien (bu als Vokabular)",
+      "wirkung": "ohne-wirkung",
+      "begruendung": "Die Berufsunfaehigkeit ist als Vokabular gefuehrt, damit der Katalog der Geschaeftsvorfaelle vollstaendig ist. Eine A-Box der Familie bu ist nicht zulaessig; keine Rechnung aendert sich."
+    },
+    {
+      "name": "abox_schema, fragment_schema, bestand_pflicht, bestand_erhoben",
+      "wirkung": "ohne-wirkung",
+      "begruendung": "Struktur der Belege: Tarifwerk und Quellverfahren stehen als generationsweite Bloecke in A-Box und Fragment und sind im Fall mit Bestand Pflicht bzw. zu erheben. Die fachliche Wirkung tragen die Merkmale oben; die Struktur selbst aendert keinen Wert."
+    }
+  ]
+}
