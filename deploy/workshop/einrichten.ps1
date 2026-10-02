@@ -85,8 +85,14 @@ if (-not (Test-Path $wsl)) {
 # Ueber cmd und nur der Exit-Code: Windows PowerShell 5.1 macht aus der
 # umgeleiteten Fehlerausgabe eines nativen Programms einen abbrechenden
 # Fehler, auch wenn das Programm selbst erfolgreich war.
-& cmd.exe /c "$wsl --status >nul 2>&1"
+# Bereit ist WSL, wenn eine der beiden Auskuenfte gelingt: --version kennt nur
+# das vollstaendig installierte WSL, --status auch ein aelteres.
+& cmd.exe /c "$wsl --version >nul 2>&1"
 $wslBereit = ($LASTEXITCODE -eq 0)
+if (-not $wslBereit) {
+    & cmd.exe /c "$wsl --status >nul 2>&1"
+    $wslBereit = ($LASTEXITCODE -eq 0)
+}
 
 if (-not $wslBereit) {
     if (-not $istAdmin) {
@@ -168,6 +174,13 @@ if (Test-Distribution $Name) {
     if ($LASTEXITCODE -ne 0) { Halt "Die bestehende Distribution liess sich nicht entfernen (Exit $LASTEXITCODE)" }
 }
 if (-not (Test-Path $Ziel)) { New-Item -ItemType Directory -Path $Ziel | Out-Null }
+# Die Platte der Distribution waechst mit der Arbeit; unter 10 GB frei wird
+# nicht begonnen.
+$laufwerk = Get-PSDrive -Name ((Resolve-Path $Ziel).Drive.Name)
+if ($laufwerk.Free -lt 10GB) {
+    Halt ("Auf Laufwerk " + $laufwerk.Name + ": sind nur " + [math]::Round($laufwerk.Free / 1GB, 1) +
+          " GB frei; die Umgebung braucht mindestens 10 GB (anderes Ziel: -Ziel <verzeichnis>)")
+}
 & $wsl --import $Name $Ziel $Abbild --version 2
 if ($LASTEXITCODE -ne 0) {
     Halt "Der Import scheiterte (Exit $LASTEXITCODE). Meldet Windows einen Fehler zur Virtualisierung: in der Firmware einschalten und 'wsl --update' fahren."
