@@ -86,6 +86,45 @@ def test_abbild_nimmt_nur_veroeffentlichte_marken_und_baut_ohne_netz():
     assert re.search(r'\[ -e "\$ZIEL" \] && halt', bauen)
 
 
+def _paket(tmp_path: Path, name: str = "fall-x") -> Path:
+    paket = tmp_path / name
+    paket.mkdir()
+    (paket / "fall.conf").write_text("FALLNAME=x\n")
+    (paket / "rezept.sh").write_text('schritt "x" true\n')
+    subprocess.run("sha256sum fall.conf rezept.sh > SHA256SUMS", shell=True, cwd=paket, check=True)
+    return paket
+
+
+def _abbild(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["bash", str(WORKSHOP / "abbild_bauen.sh"), *args], capture_output=True, text=True)
+
+
+@pytest.mark.parametrize("eingriff,meldung", [
+    ("ohne_summen", "SHA256SUMS fehlt"),
+    ("veraendert", "stimmt nicht mit seinen Pruefsummen ueberein"),
+    ("name", "Name des Verzeichnisses"),
+])
+def test_ein_paket_reist_nur_mit_wenn_es_seinen_pruefsummen_entspricht(tmp_path, eingriff, meldung):
+    """Das Paket wird geprueft, bevor irgendetwas gebaut wird (und bevor das
+    Skript nach docker fragt): Ein veraendertes Paket kaeme sonst auf jeden
+    Rechner, der das Abbild importiert."""
+    paket = _paket(tmp_path, "fall x" if eingriff == "name" else "fall-x")
+    if eingriff == "ohne_summen":
+        (paket / "SHA256SUMS").unlink()
+    if eingriff == "veraendert":
+        (paket / "rezept.sh").write_text('schritt "anders" true\n')
+    lauf = _abbild("--marke", "HEAD", "--paket", str(paket))
+    assert lauf.returncode == 2 and meldung in lauf.stderr, lauf.stderr
+
+
+def test_ein_gueltiges_paket_haelt_den_bau_nicht_an(tmp_path):
+    # Positivkontrolle der Pruefung darueber: Mit einem Paket, das stimmt,
+    # endet der Aufruf erst an der Marke (oder daran, dass docker fehlt).
+    lauf = _abbild("--marke", "diese-marke-gibt-es-nicht", "--paket", str(_paket(tmp_path)))
+    assert lauf.returncode == 2
+    assert "Paket" not in lauf.stderr and ("gibt es in" in lauf.stderr or "docker fehlt" in lauf.stderr), lauf.stderr
+
+
 def test_das_image_traegt_weder_repository_noch_fall():
     workshop = _text("Dockerfile")
     kopiert = re.findall(r"^COPY (.+)$", workshop, re.M)

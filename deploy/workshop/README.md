@@ -30,14 +30,19 @@ Im Abbild liegen:
   eigenes `.venv`; das Paket kommt aus genau diesem Baum.
 - Von der Geschichte des Repositorys nur die der genannten Marken. `origin`
   nennt die oeffentliche Adresse, wird aber nie gebraucht.
+- Auf Wunsch ein **Paket**: ein festgehaltener Fall zum Nachfahren, unter
+  `~/pakete/<name>` — neben den Baeumen, nicht darin. Aus Baum und Paket
+  stellt ein Aufruf auf dem Zielrechner die Laufzeit auf (siehe unten).
 
 Im Abbild liegen NICHT:
 
 - **Schluessel.** Jeder Rechner erzeugt seine eigenen
   (`deploy/welt/welt_aufstellen.sh`); kein Schluessel reist.
-- **Welt und Faelle** (Linie, Ablage, Falldaten). Sie entstehen auf dem
-  Rechner, auf dem gearbeitet wird — mit den Skripten unter `deploy/welt/`
-  (`deploy/welt/README.md`).
+- **Welt und gefuehrte Faelle** (Linie, Ablage, Falldaten, Zeichnungen).
+  Sie entstehen auf dem Rechner, auf dem gearbeitet wird — mit den Skripten
+  unter `deploy/welt/` (`deploy/welt/README.md`). Ein Paket ist kein
+  gefuehrter Fall: Es traegt, was erarbeitet und nachgeliefert wurde, aber
+  keine Zeichnung und keinen Schluessel.
 - **Unveroeffentlichte Arbeit**, es sei denn, der Bau wurde ausdruecklich
   so aufgerufen (`--unveroeffentlicht`).
 - Ein Agenten-Werkzeug (Claude Code, Codex). Wer agentisch arbeitet,
@@ -50,7 +55,7 @@ Im Abbild liegen NICHT:
 Vom Repo-Wurzelverzeichnis, auf einem Linux-Rechner mit Docker:
 
 ```
-deploy/workshop/abbild_bauen.sh --marke <tag|zweig> [--basis <tag|zweig>]
+deploy/workshop/abbild_bauen.sh --marke <tag|zweig> [--basis <tag|zweig>] [--paket <verzeichnis>]
 ```
 
 Das Ergebnis liegt unter `runs/workshop/` (nicht versioniert):
@@ -66,6 +71,10 @@ oder die Freigabe, von der die Zielrechner sie holen.
   traegt dann unveroeffentlichte Arbeit und gehoert nicht auf fremde Rechner,
   solange das niemand so entschieden hat.
 - Ein vorhandenes Abbild wird nie ueberschrieben.
+- Ein Paket (`--paket`) reist nur mit, wenn es seinen Pruefsummen
+  entspricht; geprueft wird vor dem Bau und noch einmal im Abbild. Ein Paket
+  traegt die Aufloesung seines Falls — wer denselben Fall auf dem Zielrechner
+  mit Agenten fuehren laesst, baut das Abbild ohne.
 
 ## Einen Windows-Rechner einrichten
 
@@ -104,6 +113,24 @@ Gibt es die Distribution schon, haelt das Skript an. `-Ersetzen` entfernt
 sie **samt allem, was darin liegt** (Faelle, Schluessel, eigene Arbeit) und
 importiert neu. Entfernen ohne neuen Import: `wsl --unregister
 PLV-Arbeitsumgebung`.
+
+## Die Laufzeit aufstellen
+
+Liegt ein Paket im Abbild, entsteht auf dem eingerichteten Rechner die
+Laufzeit mit dem uebernommenen Bestand in einem Aufruf — mit eigenen
+Schluesseln, ohne Netz, ohne Agenten:
+
+```
+cd ~/rechner-pipeline
+deploy/welt/laufzeit_aufstellen.sh ~/plv-welt ~/pakete/<name>
+```
+
+Das rechnet rund eine Dreiviertelstunde (Welt aufstellen, Fall nachfahren,
+Zugang). Mit `--bis <haltepunkt>` endet der Lauf an einer Stelle des Falls,
+etwa vor einer Abnahme; derselbe Aufruf ohne `--bis` faehrt spaeter weiter.
+Welche Haltepunkte es gibt, steht im Rezept des Pakets
+(`grep haltepunkt ~/pakete/<name>/rezept.sh`). Einzelheiten:
+`deploy/welt/README.md`.
 
 ## Selbstpruefung
 
@@ -145,6 +172,8 @@ Nachziehen liegen.
 - Gleiche Ergebnisse folgen aus dem gleichen System, nicht aus einer
   Zusicherung. Die Selbstpruefung haelt die Referenzwerte des Rechenkerns;
   dass ein ganzer Fall auf einem eingerichteten Rechner dieselben Bytes
-  ergibt wie in der Beispielumgebung, belegt sie nicht.
+  ergibt wie in der Beispielumgebung, belegt sie nicht. Das belegt erst das
+  Nachfahren eines Pakets: Es haelt an, sobald ein Ergebnis andere Bytes
+  traegt als im festgehaltenen Fall (die Erwartung des Pakets).
 - Die Umgebung ist fuer Vorfuehrung und Uebung gedacht. Der Tagesbetrieb
   laeuft aus dem Laufzeit-Image (`deploy/plv/`).
