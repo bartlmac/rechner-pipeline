@@ -7,16 +7,35 @@ Rueckbau ist EIN Commit auf dem heutigen Stand, kein Zuruecksetzen der
 Historie: Alles, was seit dem Lauf vom September gebaut und repariert wurde,
 bleibt. Auftrag und Zuschnitt: Maintainer, 2026-10-01.
 
-## Dieser Zweig wird nie nach main gemergt
+## Dieser Stand ist die Basis; nach main kommt er nur zusammen mit dem Fall
 
-Er ist der Vorher-Zustand einer Uebernahme; ihr Nachher ist der Hauptzweig.
-Der Hauptzweig ist das Zielsystem, das die Uebernahme durchgefuehrt HAT — dort
-die Faehigkeiten zu entfernen, hiesse eine geleistete Migration zu vergessen.
-Der Zweig ist deshalb keine Altlast, die auf ihren Merge wartet, sondern ein
-Pruefstein: Fuehrt Fall 3 dieselbe Lieferung auf diesem Stand richtig durch,
-einschliesslich der Kern-Erweiterung unter A-K2, dann ist sein Endzustand am
-Hauptzweig zu messen (Kern, Tafeln, Config, die wieder laufenden Tests). Ob
-er ihn trifft, ist nicht vorab gemessen; es ist das, was Fall 3 zeigt.
+Berichtigt am 2026-10-02 (Entscheid des Maintainers). Die erste Fassung
+dieses Abschnitts sagte, der Zweig werde nie nach main gemergt, weil main das
+System sei, das die Uebernahme geleistet HAT. Das behandelte die Historie der
+PLV als Aufzeichnung. Sie ist eine Erzaehlung: Die PLV ist ein fiktives
+Unternehmen, und ihre Geschichte wird mit jeder Verbesserung des Systems neu
+geschrieben. Eine alte Migration auf main, die sich dort nicht zurueckbauen
+laesst, ist nicht der gewollte Zustand.
+
+Das Zielbild:
+
+- Es gibt einen stabilen Stand "PLV ohne Migrationen": die Lieferungen und die
+  allgemeinen Faehigkeiten des Systems, aber kein Code einer Migration. Dieser
+  Zweig ist seine erste Fassung.
+- Fuer einen Fall wird aus diesem Stand eine eigene Laufzeit neben der
+  produktiven aufgestellt, die den uebernommenen Bestand nicht kennt. In ihr
+  laeuft die Migration, mit Pruefungen, Abnahmen und Zugang.
+- Erst danach kommt der Merge nach main: der Code des Falls samt neuer
+  allgemeiner und fallspezifischer Tests, und die neue Laufzeit loest die
+  produktive ab. Der Rueckbau kommt nie allein nach main; main ohne den Fall
+  rechnete Vertraege nicht mehr, die in der produktiven Laufzeit registriert
+  sind.
+- Ein besserer Fall wiederholt den Weg. Eine weitere Tranche kann auf dem
+  aktuellen Stand starten, oder eine fruehere wird zurueckgerollt und beide
+  laufen nacheinander.
+
+Gebaut ist davon dieser Stand. Die zweite Laufzeit und die Abloesung sind
+nicht gebaut und nicht gefahren.
 
 ## Was zurueckgebaut ist
 
@@ -77,17 +96,35 @@ Sammeln ab (Mechanik: `tests/rueckbau.py`).
 
 Die Liste ist aus einem Lauf der ganzen Suite auf dem zurueckgebauten Stand
 erzeugt: jeder Test, der dort rot wird. Gemessen am 2026-10-02 auf dem Stand
-nach der vierten Pruefrunde: 746 von 4965 Tests in 58 Dateien. Nach dem Grund
-ihres Scheiterns: 567 brauchen eine der sechs Tafeln (sie bauen ihre Welt auf
-dem uebernommenen Tarif), 132 erreichen eine benannte Verweigerung des Kerns,
-5 nennen die Generation TG2015, 42 scheitern am Exit-Code eines Kommandos
-oder an einem Vergleich mit Config und Tarifplan, ohne den Grund im Text zu
-tragen (nicht einzeln nachverfolgt). Es laufen 4217 Tests, 2 sind wie auf
-dem Hauptzweig uebersprungen (Regie-Dateien).
+nach der vierten Pruefrunde: 746 von 4965 Tests in 58 Dateien. Es laufen 4217
+Tests, 2 sind wie auf dem Hauptzweig uebersprungen (Regie-Dateien).
 
-Folge, die man kennen muss: Auf diesem Zweig ist ein Teil der allgemeinen
-Mechanik (Registrierung, Zugangsprobe, Buchungsklassen) schwaecher bewacht als
-auf dem Hauptzweig, solange die Liste besteht.
+Woran sie ZUERST scheitern (kein Mass fuer das, was sie brauchen): 567 an
+einer der sechs Tafeln, 132 an der benannten Verweigerung des Kerns, 5 an der
+Generation TG2015, 42 am Exit-Code eines Kommandos oder an einem Vergleich mit
+Config und Tarifplan. 494 scheitern schon im Aufbau ihrer Welt, 325 davon
+ueber eine einzige Fixture (`gefahrener_fall` in `tests/test_baldrian2_e2e.py`,
+der gefahrene Lauf 2 als Welt fuer 17 Testdateien). Das ist ein Histogramm
+erster Hindernisse: Gibt man die Tafeln zurueck, treffen dieselben Tests als
+Naechstes die Verweigerung des Kerns (gemessen an drei Modulen: 145 von 189).
+Eine Kostenschaetzung traegt es nicht.
+
+Die Liste ist eine Zwischenloesung mit einer Bedingung, keiner Frist. Sie
+endet, wenn ihre zwei Aufgaben erledigt sind (Vorgabe des Maintainers,
+2026-10-02):
+
+1. Tests, die eine zurueckgebaute Faehigkeit ausueben, werden GELOESCHT und
+   waehrend der Fallverarbeitung neu geschrieben. Das gehoert zur Entwicklung
+   des Zielsystems durch einen Fall.
+2. Allgemeine Tests, die nur an der Welt des uebernommenen Tarifs haengen,
+   werden von ihm UNABHAENGIG gemacht: Sie bekommen eine Welt aus einer
+   eigenen synthetischen Lieferung, die zum Tarifwerk des eigenen Geschaefts
+   passt. Dieselbe Klasse wie die Faehigkeiten, die bleiben.
+
+Nicht gebaut: die Zuordnung je Eintrag der Liste zu einer der zwei Aufgaben,
+und die Welt fuer die zweite. Bis dahin ist auf diesem Stand ein Teil der
+allgemeinen Mechanik (Registrierung, Zugangsprobe, Buchungsklassen) schwaecher
+bewacht als auf dem Hauptzweig.
 
 ## Der Weg zurueck (Fall 3)
 
@@ -114,9 +151,11 @@ dem Revert).
 
 ## Nicht Teil dieses Commits
 
-- Die Laufzeit: Der Zugang des zweiten Laufs ist dort registriert. Das
-  Neuaufsetzen verlangt einen Fall (`--fall`); der Rueckbau in der Laufzeit
-  und der Eintritt von Fall 3 sind deshalb ein Schritt (die alte Ablage wird
-  archiviert, nichts geloescht). Ein Storno eines Zugangs in der laufenden
-  Ablage als eigenes Verfahren gibt es nicht.
+- Die Laufzeit: In der produktiven Ablage ist der Zugang des zweiten Laufs
+  registriert; sie bleibt unberuehrt, bis die neue sie abloest. Die zweite
+  Laufzeit des Zielbilds ist nicht aufgestellt. Die Werkzeuge nehmen den Ort
+  der Ablage als Argument (`tageslauf --stand`, `uebernahme --stand`); ob sich
+  eine frische Ablage ohne Fall auf diesem Stand aufstellen laesst und einen
+  Zugang zum Stichtag des Falls annimmt, ist nicht geprueft. Ein Storno eines
+  Zugangs in einer laufenden Ablage gibt es nicht.
 - Der Tarifplan und die Fachdokumente: nicht zurueckgebaut (siehe oben).
