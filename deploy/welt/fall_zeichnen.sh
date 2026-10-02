@@ -19,7 +19,7 @@
 
 HIER="$(cd "$(dirname "$0")" && pwd)"
 WELT="${1:-}"; AUFRUF_ENTSCHEIDER="${ENTSCHEIDER:-}"
-[ -n "$WELT" ] && [ -n "${2:-}" ] || { sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[ -n "$WELT" ] && [ -n "${2:-}" ] || { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 2; }
 WELT="$(realpath -m "$WELT")"
 BAUM="$(realpath -m "${BAUM:-$HIER/../..}")"
 PY="${PYTHON:-$BAUM/.venv/bin/python}"

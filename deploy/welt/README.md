@@ -18,8 +18,11 @@ Protokoll in der Welt. Sie rechnen und pruefen nichts selbst.
 | `welt_aufstellen.sh` | Schluessel und Ordnung (fuer eine Welt mit eigenen Schluesseln), Ablage, Linie, Erstabnahmen |
 | `fall_starten.sh` | Fall anlegen, Lieferung registrieren, Vorlage des Fallauftrags |
 | `fall_zeichnen.sh` | ein Gate des Falls zeichnen, mit dem Ring, den das Gate braucht |
+| `zugang.sh` | den abgenommenen Bestand des Falls in die Ablage der Welt bringen: Probe, Neuaufsetzen, Aufbaulauf, Anfangsbestand |
 | `fall_nachfahren.sh` | einen festgehaltenen Fall (ein Paket) ohne Agenten nachfahren, bis zum Ende oder bis zu einem Haltepunkt |
 | `paket_bauen.sh` | aus einem gefuehrten Fall das Paket zum Nachfahren bauen |
+| `laufzeit_aufstellen.sh` | Welt und festgehaltenen Fall in einem Aufruf: die Welt auf dem Stand vor dem Fall, der Fall auf dem Stand danach |
+| `abgenommen.py` | der Commit, auf dem eine Linie ein Gate angenommen hat (gelesen von den Skripten) |
 | `fall-baldrian-klv-tg2015.conf` | der Fall der Vorfuehrung: Lieferung, Stichtag, Auftrag |
 | `einstellungen.beispiel.conf` | Vorlage der Einstellungen fuer eine Welt mit vorhandenen Schluesseln |
 | `mandat.vorlage.txt` | Vorlage des Mandats der simulierten Rollen |
@@ -119,6 +122,37 @@ brauchen (`ontologie.entscheide`, die Kommandos des Zugangs). Was vor einer
 Zeichnung vorliegen muss, sagt der Skill `migrationsfall-durchfuehren`; das
 Gate prueft es und nennt, was fehlt.
 
+## Der Zugang in die Ablage
+
+Nach der Migrationsabnahme (A-M4) kommt der uebernommene Bestand in die
+Ablage der Welt (ADR-022; die Bedienfolge und ihre Begruendung stehen in
+`deploy/plv/README.md`, "Reihenfolge des Hochziehens"):
+
+```
+deploy/welt/zugang.sh <welt> probe
+deploy/welt/fall_zeichnen.sh <welt> A-B2 angenommen "<begruendung>"
+deploy/welt/zugang.sh <welt> aufsetzen
+deploy/welt/zugang.sh <welt> aufbau [<heute>]
+deploy/welt/zugang.sh <welt> belegen
+deploy/welt/zugang.sh <welt> ab3 "<begruendung>"
+deploy/welt/zugang.sh <welt> binden
+```
+
+| Phase | Was geschieht | Vor dem naechsten Schritt lesen |
+|---|---|---|
+| `probe` | Zugangsprobe auf einer leeren Ablage mit der Config des Falls: zwei Laeufe vom Betriebsbeginn ueber den Stichtag, mit und ohne Zugang | `faelle/<name>/abgeleitet/berichte/zugangsprobe.json`, dann A-B2 zeichnen |
+| `aufsetzen` | die Ablage der Welt neu aufsetzen; die bisherige wird zu `<welt>/daten.archiv-<zeit>` und bleibt der Vergleichsstand ohne den uebernommenen Bestand | |
+| `aufbau` | Aufbaulauf vom Betriebsbeginn bis `<heute>` (ohne Angabe: der heutige Tag) | |
+| `belegen` | den Anfangsbestand der neuen Ablage belegen | `<welt>/linie/abgeleitet/anfangsbestand/beleg.md` |
+| `ab3` | A-B3 in der Linie zeichnen, als Betrieb | |
+| `binden` | den Anfangsbestand binden, danach ein Tageslauf | |
+
+Am Ende steht `ZUGANG STEHT: ...` mit der Zahl der Abschluesse; das Protokoll
+liegt unter `<welt>/zugang.log`. Die Probe und der Aufbaulauf rechnen je
+einige Minuten bis eine Viertelstunde. Zwischen Probe und Aufbaulauf darf
+sich der Codebaum nicht bewegen: Der erste Lauf, der den Eingang fuehrt, haelt
+Config, Kernversion und Fingerabdruck des Pakets gegen die Probe.
+
 ## Einen festgehaltenen Fall nachfahren
 
 Ein Fall, der einmal gefuehrt wurde, laesst sich ohne Agenten wiederholen:
@@ -141,6 +175,7 @@ Das **Paket** ist ein Verzeichnis:
 | `erarbeitet/` | was im Fall erarbeitet wurde und kein Kommando neu erzeugt, unter demselben Pfad wie im Fall |
 | `nachlieferung/` | was die Quelle im Lauf des Falls nachgeliefert hat |
 | `ERWARTUNG` | `<sha256>  <pfad im fall>` je Ergebnis, das byteweise gleich sein muss |
+| `STAND` | `VOR=<commit>`: der Stand des Codebaums, auf dem die Linie des festgehaltenen Falls abgenommen war |
 | `SHA256SUMS` | Pruefsummen aller Dateien des Pakets |
 
 Im Paket liegen keine Schluessel und keine Zeichnungen. Das Skript faehrt
@@ -160,12 +195,15 @@ mit `\`); eine andere Zeile verweigert das Skript, bevor es beginnt:
 | `entscheide <diskrepanz> <wert> "<begruendung>" [--beleg <pfad>]` | eine Diskrepanz der Quellen endgueltig aufloesen, als Aktuariat |
 | `entscheide_alle <quelle> "<begruendung>"` | alle vorlaeufig aufgeloesten Diskrepanzen zur Lesart dieser Quelle entscheiden |
 | `zeichne <gate> "<begruendung>"` | das Gate annehmen, mit dem Ring der Welt |
+| `zugang <phase> [argument]` | eine Phase des Zugangs fahren (`zugang.sh`): `probe`, `aufsetzen`, `aufbau [<heute>]`, `belegen`, `ab3 "<begruendung>"`, `binden` |
 | `haltepunkt <name>` | hier endet ein Lauf mit `--bis <name>` |
 | `erwarte <pfad im fall>` | die Datei gegen `ERWARTUNG` halten; andere Bytes halten an |
 
 In den Kommandos stehen `$PY` (der Interpreter), `$F` (`faelle/<name>`),
-`$A` (`$F/abgeleitet`), `$WELT`, `$LINIE`, `$ORDNUNG`, `$STICHTAG`, `$PAKET`
-und `$(ring <gate>)` fuer Kommandos, die den Ring eines Gates brauchen.
+`$A` (`$F/abgeleitet`), `$WELT`, `$LINIE`, `$ORDNUNG`, `$STICHTAG`, `$PAKET`,
+`$(ring <gate>)` fuer Kommandos, die den Ring eines Gates brauchen, und
+`$(abgenommen <gate>)` fuer den Commit, auf dem die Linie der Welt das Gate
+zuletzt angenommen hat.
 
 - **Nichts laeuft doppelt.** Ein Lauf merkt sich, wie weit er kam
   (`<welt>/nachfahren.stand`). Derselbe Aufruf faehrt hinter dem letzten
@@ -179,25 +217,67 @@ und `$(ring <gate>)` fuer Kommandos, die den Ring eines Gates brauchen.
 - **Verglichen werden Ergebnisse, nicht Zeichnungen.** `erwarte` haelt
   Bytes gegen den festgehaltenen Fall; Snapshots und Belege tragen die
   Schluessel und Zeiten des Laufs und sind deshalb nie gleich.
+- **Eine Zeichnung beim Nachfahren uebernimmt ein Urteil, sie faellt keins.**
+  Das traegt nur, wenn der Gegenstand derselbe ist. Wo das Rezept ein Gate
+  zeichnet, haelt es deshalb vorher den Gegenstand gegen den festgehaltenen
+  Fall: mit `erwarte` (Spez, Tabellen, Abnahmebericht) oder mit einem
+  Schritt, der Fingerabdruecke vergleicht (Kern, Tarifwerk). Weicht der
+  Gegenstand ab, haelt der Lauf — dann urteilt ein Mensch.
+- **Das Rezept nennt keinen Commit.** Ein Beleg, der die Aenderung des
+  Zielsystems gegen den abgenommenen Stand zeigt (`kernstand_belegen`,
+  `tarifwerk_belegen`), bekommt sein `--von` aus der Linie der Welt:
+  `--von "$(abgenommen A-K2)"`. So laesst sich ein Fall in jeder Welt
+  nachfahren, deren Linie auf dem Stand vor dem Fall abgenommen wurde.
+- **Zwei Staende des Codebaums.** Hat der Fall das Zielsystem geaendert
+  (Kern, Tafeln, Config), wird die Welt auf dem Stand VOR dem Fall
+  aufgestellt und der Fall auf dem Stand DANACH nachgefahren. Die Aenderung
+  selbst baut das Rezept nicht — sie liegt als Commits im Codebaum, das
+  Rezept belegt und zeichnet sie.
 - **Der Fall der Welt.** Fuehrt die Welt schon einen anderen Fall, haelt
   das Skript an. `--wechseln` legt dessen Falldatei beiseite
   (`<welt>/fall-frueher-<name>.conf`) und macht den nachgefahrenen Fall zum
   Fall der Welt; der fruehere Fall bleibt liegen. Eine Welt faehrt EIN Paket
   nach.
 
+### Welt und Fall in einem Aufruf
+
+```
+deploy/welt/laufzeit_aufstellen.sh <welt> <paket> [--bis <haltepunkt>]
+```
+
+Stellt die Welt auf dem Stand auf, den das Paket nennt (`STAND`), und faehrt
+danach das Paket auf dem Stand dieses Baums nach. Der Stand vor dem Fall
+liegt dabei als eigener Baum in der Welt (`<welt>/baum-vor`, ein Klon dieses
+Baums auf dem Commit); der Codebaum selbst wird nicht bewegt. Der Commit muss
+ein Vorfahr des Baums sein — ein Paket aus einer anderen Geschichte des
+Repositorys haelt das Skript an, bevor es etwas anlegt.
+
+Derselbe Aufruf ist wiederholbar: Steht die Welt schon, faehrt er nur das
+Paket weiter, hinter dem letzten erledigten Schritt. So wird aus dem Stand
+des Repositorys und einem Paket eine Laufzeit mit uebernommenem Bestand —
+oder, mit `--bis`, eine Welt an der Stelle des Falls, an der eine Uebung
+beginnen soll.
+
 ### Das Paket bauen
 
 ```
 deploy/welt/paket_bauen.sh <welt> <ziel> --rezept <rezept.sh> \
-    [--erarbeitet <liste>] [--erwartung <liste>]
+    [--erarbeitet <liste>] [--erwartung <liste>] [--linie <linie>]
 ```
 
 Aus dem Fall der Welt entsteht das Verzeichnis `<ziel>`: die Falldatei, das
 Rezept, je Zeile der Liste `--erarbeitet` eine Datei oder ein Verzeichnis
 des Falls, jede Datei des Eingangs, die nicht zur Lieferung der Falldatei
 gehoert (die Nachlieferungen), je Zeile der Liste `--erwartung` die
-Pruefsumme der Datei im Fall, und die Pruefsummen des Pakets. Die Listen
-nennen Pfade relativ zum Fall, eine je Zeile.
+Pruefsumme der Datei im Fall, der Stand vor dem Fall und die Pruefsummen des
+Pakets. Die Listen nennen Pfade relativ zum Fall, eine je Zeile.
+
+Den Stand vor dem Fall liest das Skript aus der Linie der Welt (`<welt>/linie`
+oder `--linie`): der Commit, auf dem die Linie den Kern angenommen hat, auf
+den der Fallauftrag den Fall gestellt hat. Er wird gelesen, nie angegeben;
+eine Linie ohne solche Annahme ergibt kein Paket, eine Welt ohne Linie ein
+Paket ohne `STAND` (das sich nachfahren, aber nicht in einem Aufruf
+aufstellen laesst).
 
 Was erarbeitet ist und welche Ergebnisse byteweise gleich sein muessen,
 entscheidet, wer das Rezept schreibt. Das Skript haelt Rezept und Paket
@@ -206,15 +286,27 @@ Paket seine Datei bzw. seinen Eintrag haben, sonst entsteht kein Paket.
 Zeichnungen (`entscheide/`) nimmt es nie auf, und ein vorhandenes Paket
 ueberschreibt es nie.
 
+Was als Erwartung taugt: Ergebnisse, die nur vom Inhalt abhaengen — Tabellen,
+uebersetzte Zeilen, die Spez, Berichte. Belege, die Zweig und Commit des
+Codebaums nennen (die Ergebnisse der Tests, der Suite, der Fuehrungsprobe),
+sind nur auf dem festgehaltenen Stand selbst byte-gleich, nicht auf einem
+Stand mit demselben Inhalt unter anderem Namen; und was Zeiten, Schluessel,
+Entscheider oder Pfade des Rechners traegt, ist es nie.
+
 ## Grenzen
 
-- Die Skripte fuehren bis zur Zeichnung im Fall. Der Zugang des abgenommenen
-  Bestands in die Ablage (Probe, A-B2, Neuaufsetzen, A-B3) ist hier nicht
-  gefasst; seine Bedienfolge steht in `deploy/plv/README.md`.
+- Die Skripte fuehren einen Fall von der Lieferung bis zum gebundenen
+  Anfangsbestand der Ablage. Die Veroeffentlichung eines Stands (A-B1) und
+  ein Glied der Ordnungslinie sind hier nicht gefasst.
 - Eine Welt fuehrt einen Fall zur Zeit. Ein zweiter bekommt eine zweite
   Welt — oder loest den ersten ab, wenn er nachgefahren wird (`--wechseln`).
 - Das Skript zum Nachfahren faehrt ein Paket. Ein Paket fuer den Fall der
-  Vorfuehrung ist nicht Teil dieses Stands.
+  Vorfuehrung ist nicht Teil dieses Stands: Es traegt die Aufloesung des
+  Falls und liegt deshalb nicht im Codebaum, auf dem derselbe Fall mit
+  Agenten gefuehrt wird.
+- Ein Rezept ist an EIN Paket gebunden: Wird es geaendert, gilt der Stand
+  eines begonnenen Laufs nicht mehr, und das neue Paket braucht eine neue
+  Welt.
 - Mandat und Stellungnahme sind Vorlagen der Vorfuehrung. Wer eine Welt fuer
   einen anderen Zweck aufstellt, schreibt beide selbst und nennt sie in den
   Einstellungen.

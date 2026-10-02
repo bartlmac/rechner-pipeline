@@ -41,7 +41,7 @@
 
 HIER="$(cd "$(dirname "$0")" && pwd)"
 WELT="${1:-}"; PHASE="${2:-alles}"
-[ -n "$WELT" ] || { sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[ -n "$WELT" ] || { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 2; }
 WELT="$(realpath -m "$WELT")"
 BAUM="$(realpath -m "${BAUM:-$HIER/../..}")"
 PY="${PYTHON:-$BAUM/.venv/bin/python}"

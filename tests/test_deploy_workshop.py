@@ -111,6 +111,20 @@ def test_shell_skripte_sind_syntaktisch_gueltig(skript):
     assert lauf.returncode == 0, lauf.stderr
 
 
+def test_ohne_argument_zeigt_plv_einrichten_genau_seinen_kopf():
+    """Die Hilfe ist der Kommentarkopf des Skripts, ganz und ohne eine Zeile
+    Code — nicht ein von Hand gezaehlter Zeilenbereich, der beim naechsten
+    Absatz im Kopf nicht mitwandert (dieselbe Regel wie in deploy/welt)."""
+    kopf = []
+    for zeile in EINRICHTEN.read_text(encoding="utf-8").splitlines()[1:]:
+        if not zeile.startswith("#"):
+            break
+        kopf.append(re.sub(r"^# ?", "", zeile))
+    lauf = subprocess.run(["bash", str(EINRICHTEN)], capture_output=True, text=True)
+    assert lauf.returncode == 2 and len(kopf) > 5
+    assert lauf.stdout.splitlines() == kopf
+
+
 # --------------------------------------------------------------------------- #
 # plv-einrichten stand: anlegen, nachziehen, anhalten
 # --------------------------------------------------------------------------- #

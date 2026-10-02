@@ -26,7 +26,7 @@ set -u
 halt() { echo "HALT: $*" >&2; exit 2; }
 
 aufruf() {
-  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+  awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
   exit 2
 }
 

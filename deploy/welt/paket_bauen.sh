@@ -2,7 +2,7 @@
 # Aus einem gefuehrten Fall ein Paket zum Nachfahren bauen (fall_nachfahren.sh).
 #
 #   deploy/welt/paket_bauen.sh <welt> <ziel> --rezept <rezept.sh>
-#        [--erarbeitet <liste>] [--erwartung <liste>]
+#        [--erarbeitet <liste>] [--erwartung <liste>] [--linie <linie>]
 #
 # Gelesen wird der Fall der Welt (<welt>/fall.conf); geschrieben wird allein
 # das neue Verzeichnis <ziel>:
@@ -14,6 +14,11 @@
 #   nachlieferung/   jede Datei des Eingangs, die NICHT zur Lieferung der
 #                    Falldatei gehoert — was die Quelle im Lauf nachgeliefert hat
 #   ERWARTUNG        je Zeile der Liste die Pruefsumme der Datei im Fall
+#   STAND            VOR=<commit>: der Stand des Codebaums, auf dem die Linie
+#                    des Falls ihren Kern abgenommen hat — auf ihm stellt
+#                    laufzeit_aufstellen.sh die Welt auf, bevor es nachfaehrt.
+#                    Gelesen aus der Linie der Welt (<welt>/linie oder
+#                    --linie); ohne Linie entsteht die Datei nicht.
 #   SHA256SUMS       Pruefsummen aller Dateien des Pakets
 #
 # Welche Dateien "erarbeitet" sind und welche Ergebnisse byteweise gleich sein
@@ -27,21 +32,29 @@
 
 HIER="$(cd "$(dirname "$0")" && pwd)"
 WELT="${1:-}"; ZIEL="${2:-}"
-[ -n "$WELT" ] && [ -n "$ZIEL" ] || { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[ -n "$WELT" ] && [ -n "$ZIEL" ] || { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 2; }
 shift 2
-REZEPT=""; L_ERARBEITET=""; L_ERWARTUNG=""
+REZEPT=""; L_ERARBEITET=""; L_ERWARTUNG=""; LINIE_ORT=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --rezept)     REZEPT="${2:-}";       shift 2 ;;
     --erarbeitet) L_ERARBEITET="${2:-}"; shift 2 ;;
     --erwartung)  L_ERWARTUNG="${2:-}";  shift 2 ;;
+    --linie)      LINIE_ORT="${2:-}";    shift 2 ;;
     *) echo "HALT: unbekanntes Argument $1"; exit 2 ;;
   esac
 done
 halt() { echo "HALT: $*"; exit 2; }
 WELT="$(realpath -m "$WELT")"; ZIEL="$(realpath -m "$ZIEL")"
 BAUM="$(realpath -m "${BAUM:-$HIER/../..}")"
+PY="${PYTHON:-$BAUM/.venv/bin/python}"
 [ -f "$WELT/fall.conf" ] || halt "$WELT/fall.conf fehlt — die Welt fuehrt keinen Fall"
+if [ -n "$LINIE_ORT" ]; then
+  LINIE_ORT="$(realpath -m "$LINIE_ORT")"
+  [ -d "$LINIE_ORT/entscheide" ] || halt "--linie $LINIE_ORT: keine Linie (entscheide/ fehlt)"
+elif [ -d "$WELT/linie/entscheide" ]; then
+  LINIE_ORT="$WELT/linie"
+fi
 [ -f "$REZEPT" ] || halt "--rezept <rezept.sh> angeben"
 for l in "$L_ERARBEITET" "$L_ERWARTUNG"; do [ -z "$l" ] || [ -f "$l" ] || halt "Liste $l nicht gefunden"; done
 [ ! -e "$ZIEL" ] || halt "$ZIEL liegt schon — ein Paket wird nie ueberschrieben"
@@ -94,6 +107,18 @@ if [ -n "$L_ERWARTUNG" ]; then
   done < <(zeilen "$L_ERWARTUNG")
 fi
 
+# Der Stand vor dem Fall: der Commit, auf dem die Linie den Kern angenommen
+# hat, auf den der Auftrag den Fall gestellt hat (ohne Fallauftrag: die
+# juengste Annahme der Linie). Eine Linie ohne solche Annahme ist ein Fehler,
+# keine fehlende Angabe.
+if [ -n "$LINIE_ORT" ]; then
+  [ -x "$PY" ] || abbruch "Interpreter $PY fehlt — er liest den Stand aus der Linie (PYTHON setzen)"
+  auftrag=(); [ -f "$FALL/abgeleitet/auftrag/fallauftrag.json" ] && auftrag=("$FALL/abgeleitet/auftrag/fallauftrag.json")
+  vor="$("$PY" "$HIER/abgenommen.py" "$LINIE_ORT/entscheide" A-K2 "${auftrag[@]}")" || abbruch "die Linie $LINIE_ORT nennt keinen abgenommenen Kernstand"
+  [[ "$vor" =~ ^[0-9a-f]{40}$ ]] || abbruch "die Linie $LINIE_ORT nennt keinen Commit: $vor"
+  printf 'VOR=%s\n' "$vor" > "$TMP/STAND" || abbruch "STAND nicht schreibbar"
+fi
+
 # Rezept und Paket gehoeren zusammen.
 rezept="$(sed -e ':a' -e '/\\$/N; s/\\\n/ /; ta' "$TMP/rezept.sh" | grep -v -E '^[[:space:]]*(#|$)')"
 while read -r helfer arg _; do
@@ -107,4 +132,4 @@ done <<< "$rezept"
 ( cd "$TMP" && find . -type f ! -name SHA256SUMS | sed 's#^\./##' | LC_ALL=C sort | while IFS= read -r d; do sha256sum "$d"; done > SHA256SUMS ) || abbruch "Pruefsummen nicht schreibbar"
 mv "$TMP" "$ZIEL" || abbruch "das Paket liess sich nicht nach $ZIEL legen"
 
-echo "Paket: $ZIEL — Fall $FALLNAME, $(find "$ZIEL/erarbeitet" -type f | wc -l) erarbeitete Datei(en), $(find "$ZIEL/nachlieferung" -type f | wc -l) Nachlieferung(en), $(wc -l < "$ZIEL/ERWARTUNG") Erwartung(en), Pruefsumme $(sha256sum "$ZIEL/SHA256SUMS" | cut -c1-12)"
+echo "Paket: $ZIEL — Fall $FALLNAME, $(find "$ZIEL/erarbeitet" -type f | wc -l) erarbeitete Datei(en), $(find "$ZIEL/nachlieferung" -type f | wc -l) Nachlieferung(en), $(wc -l < "$ZIEL/ERWARTUNG") Erwartung(en), Stand vor dem Fall $( [ -f "$ZIEL/STAND" ] && sed -n 's/^VOR=\(.\{12\}\).*/\1/p' "$ZIEL/STAND" || echo "nicht genannt" ), Pruefsumme $(sha256sum "$ZIEL/SHA256SUMS" | cut -c1-12)"

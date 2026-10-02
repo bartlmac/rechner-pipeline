@@ -28,13 +28,18 @@
 #   entscheide_alle <quelle> "<begruendung>"
 #                                       alle vorlaeufig aufgeloesten zur Lesart dieser Quelle entscheiden
 #   zeichne <gate> "<begruendung>"      das Gate annehmen, mit dem Ring der Welt
+#   zugang <phase> [argument]           eine Phase des Zugangs in die Ablage der Welt fahren (zugang.sh):
+#                                       probe, aufsetzen, aufbau [<heute>], belegen, ab3 "<begruendung>", binden
 #   haltepunkt <name>                   hier endet ein Lauf mit --bis <name>
 #   erwarte <pfad im fall>              die Datei gegen ERWARTUNG halten; Abweichung haelt an
 #
 # In den Kommandos verfuegbar: $PY (Interpreter), $F (faelle/<name>, relativ
 # zum Codebaum, in dem das Rezept laeuft), $A ($F/abgeleitet), $WELT, $LINIE,
-# $ORDNUNG, $STICHTAG, $PAKET und $(ring <gate>) fuer Kommandos, die den Ring
-# eines Gates brauchen.
+# $ORDNUNG, $STICHTAG, $PAKET, $(ring <gate>) fuer Kommandos, die den Ring
+# eines Gates brauchen, und $(abgenommen <gate>) fuer den Commit, auf dem die
+# Linie der Welt das Gate zuletzt angenommen hat — das --von eines Belegs, der
+# die Aenderung gegen den abgenommenen Stand zeigt. Ein Rezept nennt so keinen
+# Commit der Welt, in der es festgehalten wurde.
 #
 # Ein Lauf merkt sich, wie weit er kam (<welt>/nachfahren.stand). Ein zweiter
 # Aufruf faehrt hinter dem letzten erledigten Schritt weiter: nach einem
@@ -45,7 +50,7 @@
 
 HIER="$(cd "$(dirname "$0")" && pwd)"
 WELT="${1:-}"; PAKET="${2:-}"
-[ -n "$WELT" ] && [ -n "$PAKET" ] || { sed -n '2,46p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[ -n "$WELT" ] && [ -n "$PAKET" ] || { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 2; }
 shift 2
 HALT_BEI=""; WECHSELN=0
 while [ $# -gt 0 ]; do
@@ -59,7 +64,7 @@ WELT="$(realpath -m "$WELT")"; PAKET="$(realpath -m "$PAKET")"
 BAUM="$(realpath -m "${BAUM:-$HIER/../..}")"
 PY="${PYTHON:-$BAUM/.venv/bin/python}"
 EINST="$WELT/einstellungen.conf"; STANDDATEI="$WELT/nachfahren.stand"; LOG="$WELT/nachfahren.log"
-HELFER="anlegen vorlage registriere einlegen schritt entscheide entscheide_alle zeichne haltepunkt erwarte"
+HELFER="anlegen vorlage registriere einlegen schritt entscheide entscheide_alle zeichne zugang haltepunkt erwarte"
 
 halt() { echo "HALT: $*"; exit 2; }
 [ -f "$EINST" ] || halt "$EINST fehlt — erst die Welt aufstellen (welt_aufstellen.sh)"
@@ -192,7 +197,15 @@ zeichne() {
   fahre "$gate zeichnen" bash "$HIER/fall_zeichnen.sh" "$WELT" "$gate" angenommen "$grund"
 }
 
+zugang() {
+  local phase="${1:-}"; erledigt "Zugang: $phase" && return 0
+  [ -n "$phase" ] || bruch "zugang: Phase fehlt"
+  fahre "Zugang: $phase" bash "$HIER/zugang.sh" "$WELT" "$@"
+}
+
 ring() { bash "$HIER/fall_zeichnen.sh" "$WELT" ring "$1"; }
+
+abgenommen() { "$PY" "$HIER/abgenommen.py" "$LINIE/entscheide" "$1"; }
 
 haltepunkt() {
   local name="$1"

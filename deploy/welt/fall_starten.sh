@@ -24,7 +24,7 @@
 
 HIER="$(cd "$(dirname "$0")" && pwd)"
 WELT="${1:-}"; PHASE="${2:-}"; FALLDATEI="${3:-}"
-[ -n "$WELT" ] && [ -n "$PHASE" ] || { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[ -n "$WELT" ] && [ -n "$PHASE" ] || { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 2; }
 WELT="$(realpath -m "$WELT")"
 BAUM="$(realpath -m "${BAUM:-$HIER/../..}")"
 # Die Falldatei gilt relativ zum Verzeichnis des Aufrufs, nicht zum Codebaum,

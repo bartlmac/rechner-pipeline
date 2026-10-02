@@ -20,13 +20,27 @@ Test deshalb halten kann —, ist Mechanik:
   nichts doppelt (auch nach Haltepunkt oder Fehler nicht), legt nie ueber eine
   andere Datei, nimmt nur ein Paket, das seinen Pruefsummen entspricht, und
   haelt an, wenn ein Ergebnis andere Bytes traegt als festgehalten.
+  Den abgenommenen Stand, gegen den ein Beleg seine Aenderung zeigt, nennt
+  das Rezept nicht selbst: ``abgenommen <gate>`` liest ihn aus der Linie der
+  Welt, in der nachgefahren wird.
+* ``zugang.sh`` bringt den abgenommenen Bestand in die Ablage: Es haelt,
+  bevor es etwas anfasst (keine Migrationsabnahme, keine Zugangsabnahme, eine
+  Probe, die schon liegt, ein unsauberer Baum), und reicht je Phase den Ring,
+  den ihr Kommando braucht.
 * ``paket_bauen.sh`` baut aus einem gefuehrten Fall ein Paket, das
   ``fall_nachfahren.sh`` annimmt: Rezept und Paket gehoeren zusammen,
-  Zeichnungen kommen nie hinein, nichts wird ueberschrieben.
+  Zeichnungen kommen nie hinein, nichts wird ueberschrieben. Das Paket nennt
+  den Stand, auf dem die Linie des Falls abgenommen war — aus der Linie
+  gelesen, nie erfunden.
+* ``laufzeit_aufstellen.sh`` stellt die Welt auf DIESEM Stand auf (als eigener
+  Baum in der Welt) und faehrt den Fall auf dem Stand danach; es haelt, bevor
+  es etwas anlegt, und stellt eine stehende Welt nicht zweimal auf.
 * Jedes Systemkommando, das ein Skript faehrt, nimmt der Parser seines Moduls
   an (dieselbe Pruefung wie fuer die Dokumente,
   ``tests/test_dokumentierte_kommandos.py``): Ein Skript, das einen entfallenen
   Schalter nennt, scheitert sonst erst beim Aufstellen — nach Minuten.
+
+* Ohne Argument zeigt jedes Skript genau seinen Kommentarkopf.
 
 Ob eine Welt aufgestellt werden kann, prueft kein Unit-Test: Das rechnet
 Minuten und ist die Probe dessen, der sie aufstellt.
@@ -102,6 +116,7 @@ def baum(tmp_path):
     b = tmp_path / "baum"
     (b / "src" / "rechner_pipeline").mkdir(parents=True)
     (b / "src" / "rechner_pipeline" / "__init__.py").write_text("")
+    (b / ".gitignore").write_text("faelle/\n")    # wie im Repository: Faelle sind nicht Teil des Baums
     (b / "lieferungen").mkdir()
     shutil.copytree(REPO / "lieferungen" / "baldrian-2", b / "lieferungen" / "baldrian-2")
     _git(b, "init", "--quiet", "--initial-branch=main")
@@ -243,6 +258,7 @@ def test_eine_kopierte_welt_wird_von_keinem_skript_gefuehrt(tmp_path, welt, baum
         "fall_starten.sh": _lauf("fall_starten.sh", str(kopie), "vorlage", baum=baum),
         "fall_zeichnen.sh": _lauf("fall_zeichnen.sh", str(kopie), "ring", "A-M6", baum=baum),
         "fall_nachfahren.sh": _lauf("fall_nachfahren.sh", str(kopie), str(paket), baum=baum),
+        "zugang.sh": _lauf("zugang.sh", str(kopie), "probe", baum=baum),
     }
     for skript, lauf in laeufe.items():
         assert lauf.returncode == 2 and b"gehoert zur Welt" in lauf.stdout, (skript, lauf.stdout)
@@ -387,11 +403,136 @@ def test_ohne_aufgestellte_welt_startet_kein_fall(tmp_path, welt, baum):
     assert not (welt / "fall.conf").exists()
 
 
-@pytest.mark.parametrize("skript", ["welt_aufstellen.sh", "fall_starten.sh", "fall_zeichnen.sh", "fall_nachfahren.sh",
-                                    "paket_bauen.sh"])
+SKRIPTE = tuple(sorted(s.name for s in WELT_SKRIPTE.glob("*.sh")))
+
+
+def test_die_skripte_des_verzeichnisses_sind_die_bekannten():
+    # Positivkontrolle der beiden Tests darunter: Sie laufen ueber das, was im
+    # Verzeichnis liegt — ein leeres Muster liesse sie ohne einen Fall gruen.
+    assert SKRIPTE == ("fall_nachfahren.sh", "fall_starten.sh", "fall_zeichnen.sh", "laufzeit_aufstellen.sh",
+                       "paket_bauen.sh", "welt_aufstellen.sh", "zugang.sh")
+
+
+@pytest.mark.parametrize("skript", SKRIPTE)
 def test_shell_skripte_sind_syntaktisch_gueltig(skript):
     lauf = subprocess.run(["bash", "-n", str(WELT_SKRIPTE / skript)], capture_output=True, text=True)
     assert lauf.returncode == 0, lauf.stderr
+
+
+@pytest.mark.parametrize("skript", SKRIPTE)
+def test_ohne_argument_zeigt_jedes_skript_genau_seinen_kopf(skript, baum):
+    """Die Hilfe ist der Kommentarkopf des Skripts — ganz, und ohne eine Zeile
+    Code. Ein von Hand gezaehlter Zeilenbereich wandert nicht mit, wenn der
+    Kopf waechst: Er schneidet dann die letzten Absaetze ab oder zeigt Code."""
+    kopf = []
+    for zeile in (WELT_SKRIPTE / skript).read_text(encoding="utf-8").splitlines()[1:]:
+        if not zeile.startswith("#"):
+            break
+        kopf.append(re.sub(r"^# ?", "", zeile))
+    assert len(kopf) > 5
+    lauf = _lauf(skript, baum=baum)
+    assert lauf.returncode == 2
+    assert lauf.stdout.decode().splitlines() == kopf
+
+
+# --------------------------------------------------------------------------- #
+# zugang.sh: der abgenommene Bestand kommt in die Ablage
+# --------------------------------------------------------------------------- #
+
+#: Der Ring je Phase des Zugangs, der zeichnende Schluessel zuletzt — so
+#: gefahren im Zugang des Falls vom 02.10.2026. Ein falscher Ring scheitert
+#: sonst erst im Gate: bei der Probe nach einer Viertelstunde Rechnen.
+ZUGANG_RING = {
+    "probe": ["vorstand", "aktuariat"],
+    "aufsetzen": ["vorstand", "aktuariat", "betrieb-mensch"],
+    "ab3": ["vorstand", "betrieb-mensch"],
+    "binden": ["vorstand", "betrieb-mensch"],
+}
+
+
+def _fall_des_zugangs(baum: Path, *gates: str) -> Path:
+    entscheide = baum / "faelle" / "baldrian-klv-tg2015" / "entscheide"
+    entscheide.mkdir(parents=True, exist_ok=True)
+    for gate in gates:
+        (entscheide / (f"{gate}-" + "a" * 64 + ".json")).write_text("{}")
+    return entscheide.parent
+
+
+def _zugang(welt: Path, baum: Path, *args: str, **umgebung: str) -> subprocess.CompletedProcess:
+    lauf = _lauf("zugang.sh", str(welt), *args, baum=baum, **umgebung)
+    lauf.text = (lauf.stdout + lauf.stderr).decode()  # type: ignore[attr-defined]
+    return lauf
+
+
+@pytest.fixture
+def stellvertreter(tmp_path, baum):
+    """Ein Interpreter, der nichts rechnet und jeden Aufruf mitschreibt: Die
+    Systemkommandos des Zugangs rechnen Minuten; was das Skript selbst
+    entscheidet, ist, WOMIT es sie ruft."""
+    (baum / "configs").mkdir()
+    (baum / "configs" / "bestand_gesamt.toml").write_text("# Config des Falls\n")
+    _git(baum, "add", "-A")
+    _git(baum, "commit", "--quiet", "-m", "config")
+    spur = tmp_path / "aufrufe.txt"
+    skript = tmp_path / "interpreter.sh"
+    skript.write_text(f'#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "{spur}"\n')
+    skript.chmod(0o755)
+    return skript, spur
+
+
+def test_der_zugang_beginnt_nicht_ohne_migrationsabnahme(welt_mit_fall, baum):
+    lauf = _zugang(welt_mit_fall, baum, "probe")
+    assert lauf.returncode == 2 and "keine Migrationsabnahme A-M4" in lauf.text, lauf.text
+    assert not (welt_mit_fall / "zugangsprobe").exists() and not (welt_mit_fall / "zugang.log").exists()
+
+
+def test_der_zugang_haelt_bevor_er_etwas_anfasst(tmp_path, welt_mit_fall, baum, stellvertreter):
+    skript, spur = stellvertreter
+    _fall_des_zugangs(baum, "A-M4")
+    welt = welt_mit_fall
+    # Eine Phase, die es nicht gibt; eine Abnahme ohne Begruendung.
+    assert _zugang(welt, baum, "gibtsnicht", PYTHON=str(skript)).returncode == 2
+    lauf = _zugang(welt, baum, "ab3", PYTHON=str(skript))
+    assert lauf.returncode == 2 and "Begruendung fehlt" in lauf.text
+    # Neu aufgesetzt wird erst nach der Zugangsabnahme.
+    lauf = _zugang(welt, baum, "aufsetzen", PYTHON=str(skript))
+    assert lauf.returncode == 1 and "keine Zugangsabnahme A-B2" in lauf.text
+    # Eine Probe, die schon liegt, wird nicht ueberschrieben.
+    (welt / "zugangsprobe").mkdir()
+    (welt / "zugangsprobe" / "frueher").write_text("x")
+    lauf = _zugang(welt, baum, "probe", PYTHON=str(skript))
+    assert lauf.returncode == 1 and "liegt schon" in lauf.text
+    assert [d.name for d in (welt / "zugangsprobe").iterdir()] == ["frueher"]
+    # Ein unsauberer Codebaum: Probe und Aufbaulauf muessen auf demselben Stand rechnen.
+    (baum / "neu.txt").write_text("nicht committet\n")
+    lauf = _zugang(welt, baum, "belegen", PYTHON=str(skript))
+    assert lauf.returncode == 2 and "nicht sauber" in lauf.text
+    assert not spur.exists()            # kein Systemkommando wurde gerufen
+
+
+def test_der_ring_je_phase_des_zugangs(tmp_path, welt_mit_fall, baum, stellvertreter):
+    skript, spur = stellvertreter
+    _fall_des_zugangs(baum, "A-M4", "A-B2")
+    welt = welt_mit_fall
+    ringe = {}
+    for phase, argumente in (("probe", []), ("aufsetzen", []), ("aufbau", ["2026-03-15"]), ("belegen", []),
+                             ("ab3", ["der Beleg traegt"]), ("binden", [])):
+        vorher = len(spur.read_text().splitlines()) if spur.exists() else 0
+        lauf = _zugang(welt, baum, phase, *argumente, PYTHON=str(skript))
+        assert lauf.returncode == 0, (phase, lauf.text)
+        aufrufe = spur.read_text().splitlines()[vorher:]
+        ringe[phase] = [Path(k).stem for k in re.findall(r"--freigabe-schluessel (\S+)", aufrufe[0])]
+        if phase == "aufbau":
+            assert "--heute 2026-03-15" in aufrufe[0]
+        if phase == "ab3":
+            assert "--gate A-B3" in aufrufe[0] and "--begruendung der Beleg traegt" in aufrufe[0]
+            assert f"--linie {welt / 'linie'}" in aufrufe[0] and "--fall" not in aufrufe[0]
+        if phase == "binden":           # danach ein Tageslauf
+            assert len(aufrufe) == 2 and "rechner_pipeline.betrieb.tageslauf" in aufrufe[1]
+    assert {p: r for p, r in ringe.items() if r} == ZUGANG_RING
+    assert ringe["aufbau"] == ringe["belegen"] == []       # der Betrieb rechnet, niemand zeichnet
+    # Die Probe rechnet auf einem leeren Verzeichnis, das nur die Config des Falls traegt.
+    assert (welt / "zugangsprobe" / "configs" / "bestand.toml").read_text() == "# Config des Falls\n"
 
 
 # --------------------------------------------------------------------------- #
@@ -399,7 +540,7 @@ def test_shell_skripte_sind_syntaktisch_gueltig(skript):
 # --------------------------------------------------------------------------- #
 
 def _paket(wo: Path, rezept: str, *, erarbeitet: dict | None = None, erwartung: dict | None = None,
-           fallname: str = "probe") -> Path:
+           fallname: str = "probe", stand: str | None = None) -> Path:
     """Ein Paket mit gueltigen Pruefsummen. Das Rezept der Tests nutzt nur
     Shell-Kommandos: Was die Systemkommandos tun, ist nicht Sache des Skripts."""
     p = wo / f"paket-{fallname}"
@@ -412,6 +553,8 @@ def _paket(wo: Path, rezept: str, *, erarbeitet: dict | None = None, erwartung: 
         ziel.write_text(inhalt)
     (p / "ERWARTUNG").write_text("".join(
         f"{hashlib.sha256(inhalt.encode()).hexdigest()}  {rel}\n" for rel, inhalt in (erwartung or {}).items()))
+    if stand is not None:
+        (p / "STAND").write_text(f"VOR={stand}\n")
     _summen(p)
     return p
 
@@ -546,6 +689,70 @@ def test_im_rezept_stehen_nur_helfer(tmp_path, welt, baum, zeile):
     lauf = _nachfahren(welt, paket, baum)
     assert lauf.returncode == 2 and "kein Helfer" in lauf.text, lauf.text
     assert not (baum / "faelle").exists()
+
+
+def _annahme(linie: Path, gate: str, kennung: str, entschieden_am: str, commit: str, entscheid: str = "angenommen") -> None:
+    (linie / "entscheide").mkdir(parents=True, exist_ok=True)
+    (linie / "entscheide" / f"{gate}-{kennung * 64}.json").write_text(json.dumps(
+        {"gate": gate, "entscheid": entscheid, "entschieden_am": entschieden_am, "system": {"commit": commit}}))
+
+
+def test_abgenommen_nennt_den_commit_der_juengsten_annahme_des_gates_in_der_linie(tmp_path, welt, baum):
+    # Ein Beleg zeigt die Aenderung gegen den abgenommenen Stand (--von). Das
+    # Rezept nennt dafuer keinen Commit der Welt, in der es festgehalten wurde,
+    # sondern fragt die Linie der Welt, in der es nachgefahren wird.
+    linie = _welt_mit_linie(welt) / "linie"
+    _annahme(linie, "A-K2", "a", "2026-10-01T10:00:00+00:00", "erste")
+    _annahme(linie, "A-K2", "b", "2026-10-02T10:00:00+00:00", "juengste")
+    _annahme(linie, "A-K2", "c", "2026-10-03T10:00:00+00:00", "abgelehnte", entscheid="abgelehnt")
+    _annahme(linie, "A-T1", "d", "2026-10-04T10:00:00+00:00", "anderes-gate")
+    rezept = ('schritt "Fall anlegen" mkdir -p faelle/probe\n'
+              'schritt "von" bash -c \'printf %s "$1" > faelle/probe/von\' - "$(abgenommen A-K2)"\n')
+    lauf = _nachfahren(welt, _paket(tmp_path, rezept), baum)
+    assert lauf.returncode == 0, lauf.text
+    assert (baum / "faelle" / "probe" / "von").read_text() == "juengste"
+
+
+def test_abgenommen_ohne_annahme_in_der_linie_wird_benannt_und_der_schritt_haelt(tmp_path, welt, baum):
+    linie = _welt_mit_linie(welt) / "linie"
+    _annahme(linie, "A-K2", "c", "2026-10-03T10:00:00+00:00", "abgelehnte", entscheid="abgelehnt")
+    rezept = ('schritt "Fall anlegen" mkdir -p faelle/probe\n'
+              'schritt "braucht den Stand" test -n "$(abgenommen A-K2)"\n'
+              "schritt \"danach\" bash -c 'echo danach >> faelle/probe/spur'\n")
+    lauf = _nachfahren(welt, _paket(tmp_path, rezept), baum)
+    assert lauf.returncode == 1, lauf.text
+    assert "in der Linie liegt keine Annahme von A-K2" in lauf.text
+    assert not (baum / "faelle" / "probe" / "spur").exists()
+
+
+def test_der_zugang_im_rezept_ist_je_phase_ein_schritt_und_haelt_wenn_die_phase_haelt(tmp_path, welt, baum, stellvertreter):
+    skript, spur = stellvertreter
+    (tmp_path / "schluessel" / "programmleitung.key").write_bytes(b"p" * 64)
+    (welt / "fall.conf").write_text("FALLNAME=probe\nSTICHTAG=2026-01-01\n")
+    rezept = ('schritt "Fall anlegen" mkdir -p faelle/probe/entscheide\n'
+              'zugang belegen\n'
+              'zugang aufbau 2026-03-15\n'
+              "schritt \"danach\" bash -c 'echo danach >> faelle/probe/spur'\n")
+    paket = _paket(tmp_path, rezept)
+    # Ohne Migrationsabnahme haelt die Phase — und mit ihr das Rezept, an diesem Schritt.
+    erster = _lauf("fall_nachfahren.sh", str(welt), str(paket), baum=baum, PYTHON=str(skript))
+    text = (erster.stdout + erster.stderr).decode()
+    assert erster.returncode == 1 and "HALT   2  Zugang: belegen" in text and "keine Migrationsabnahme A-M4" in text, text
+    assert not (baum / "faelle" / "probe" / "spur").exists()
+    # Behoben: Derselbe Aufruf faehrt die Phase und danach weiter.
+    (baum / "faelle" / "probe" / "entscheide" / ("A-M4-" + "a" * 64 + ".json")).write_text("{}")
+    zweiter = _lauf("fall_nachfahren.sh", str(welt), str(paket), baum=baum, PYTHON=str(skript))
+    text = (zweiter.stdout + zweiter.stderr).decode()
+    assert zweiter.returncode == 0 and "ok     2  Zugang: belegen" in text, text
+    belegen, aufbau = spur.read_text().splitlines()
+    assert "rechner_pipeline.betrieb.anfangsbestand belegen" in belegen
+    # Das Argument der Phase kommt an: Der Aufbaulauf fuehrt bis zum Tag des
+    # Rezepts, nicht bis zum Tag, an dem nachgefahren wird (ohne Argument
+    # naehme die Phase den heutigen — der Tag im Rezept ist deshalb keiner,
+    # an dem dieser Test je laeuft).
+    assert "rechner_pipeline.betrieb.tageslauf" in aufbau and "--heute 2026-03-15" in aufbau
+    assert "ok     3  Zugang: aufbau" in text
+    assert (baum / "faelle" / "probe" / "spur").read_text() == "danach\n"
 
 
 def test_eine_welt_faehrt_ein_paket_nach_und_wechselt_den_fall_nur_auf_wunsch(tmp_path, welt, baum):
@@ -694,6 +901,155 @@ def test_ein_paket_wird_nie_ueberschrieben(tmp_path, welt, baum, gefuehrt):
 # Die Systemkommandos in den Skripten
 # --------------------------------------------------------------------------- #
 
+def test_das_paket_nennt_den_stand_auf_dem_die_linie_des_falls_abgenommen_war(tmp_path, welt, baum, gefuehrt):
+    # Ein Fall, der das Zielsystem geaendert hat, wird auf dem Stand DANACH
+    # nachgefahren; die Welt braucht den Stand DAVOR. Den kennt nur die Linie
+    # des festgehaltenen Falls — das Paket nimmt ihn mit.
+    linie = welt / "linie"
+    _annahme(linie, "A-K2", "a", "2026-10-01T10:00:00+00:00", "a" * 40)
+    _annahme(linie, "A-K2", "b", "2026-10-02T10:00:00+00:00", "b" * 40)
+    ziel = tmp_path / "paket-juengste"
+    lauf = _bauen(welt, ziel, tmp_path, baum)
+    assert lauf.returncode == 0, lauf.text
+    assert (ziel / "STAND").read_text() == "VOR=" + "b" * 40 + "\n"
+    assert "STAND" in (ziel / "SHA256SUMS").read_text()
+    # Nennt der Fallauftrag die Annahme, auf die er den Fall stellt, gilt DIE —
+    # auch wenn die Linie seither weitergegangen ist.
+    auftrag = gefuehrt / "abgeleitet" / "auftrag"
+    auftrag.mkdir(parents=True)
+    (auftrag / "fallauftrag.json").write_text(json.dumps({"zielsystem": {"abnahmen": {"A-K2": "a" * 64}}}))
+    ziel = tmp_path / "paket-auftrag"
+    lauf = _bauen(welt, ziel, tmp_path, baum)
+    assert lauf.returncode == 0, lauf.text
+    assert (ziel / "STAND").read_text() == "VOR=" + "a" * 40 + "\n"
+    # Ein Paket mit Stand faehrt das Skript zum Nachfahren wie jedes andere.
+    andere = tmp_path / "andere"
+    _lauf("welt_aufstellen.sh", str(andere), "schluessel", baum=baum, SCHLUESSEL=str(tmp_path / "schluessel-andere"))
+    shutil.rmtree(gefuehrt)
+    assert _nachfahren(andere, ziel, baum).returncode == 0
+
+
+@pytest.mark.parametrize("linie", ["ohne_annahme", "kurzer_commit", "kein_hex", "keine"])
+def test_ein_stand_den_die_linie_nicht_traegt_wird_nicht_erfunden(tmp_path, welt, baum, gefuehrt, linie):
+    if linie == "ohne_annahme":
+        _annahme(welt / "linie", "A-K2", "a", "2026-10-01T10:00:00+00:00", "a" * 40, entscheid="abgelehnt")
+    elif linie in ("kurzer_commit", "kein_hex"):    # ein Commit ist 40 Hex-Zeichen, nichts sonst
+        _annahme(welt / "linie", "A-K2", "a", "2026-10-01T10:00:00+00:00",
+                 "8c1bed3" if linie == "kurzer_commit" else "z" * 40)
+    ziel = tmp_path / "paket"
+    lauf = _bauen(welt, ziel, tmp_path, baum)
+    if linie == "keine":            # eine Welt ohne Linie: ein Paket ohne Stand
+        assert lauf.returncode == 0 and not (ziel / "STAND").exists(), lauf.text
+        assert "nicht genannt" in lauf.text
+    else:
+        assert lauf.returncode == 1 and not ziel.exists(), lauf.text
+        assert ("keinen abgenommenen Kernstand" if linie == "ohne_annahme" else "keinen Commit") in lauf.text
+
+
+# --------------------------------------------------------------------------- #
+# laufzeit_aufstellen.sh: Welt und Fall in einem Aufruf
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture
+def system(tmp_path, baum):
+    """Ein Interpreter, der mitschreibt und nur das hinlegt, woran die Skripte
+    den Fortgang erkennen (Abschluesse, Linienbereich, Snapshots der Gates):
+    Das Aufstellen einer Welt rechnet Minuten; was laufzeit_aufstellen.sh
+    selbst entscheidet, ist, WELCHER Baum WAS rechnet."""
+    (baum / "configs").mkdir()
+    (baum / "configs" / "bestand_gesamt.toml").write_text("# Config vor dem Fall\n")
+    _git(baum, "add", "-A")
+    _git(baum, "commit", "--quiet", "-m", "der Stand vor dem Fall")
+    vor = subprocess.run(["git", "-C", str(baum), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    (baum / "configs" / "bestand_gesamt.toml").write_text("# Config nach dem Fall\n")
+    _git(baum, "commit", "--quiet", "-am", "der Fall hat das Zielsystem geaendert")
+    spur = tmp_path / "aufrufe.txt"
+    skript = tmp_path / "system.sh"
+    skript.write_text(f"""#!/usr/bin/env bash
+printf '%s | %s\\n' "$PYTHONPATH" "$*" >> "{spur}"
+linie=""; stand=""; gate=""
+while [ $# -gt 0 ]; do
+  case "$1" in --linie) linie="$2" ;; --stand) stand="$2" ;; --gate) gate="$2" ;; esac
+  shift
+done
+case "$(tail -1 "{spur}")" in
+  *betrieb.tageslauf*) mkdir -p "$stand/abschluesse" ;;
+  *"stand_belegen linie"*) mkdir -p "$linie/ordnung" "$linie/entscheide" "$linie/abgeleitet/tbox" ;;
+  *gates.gate_entscheid*) : > "$linie/entscheide/$gate-$(printf 'a%.0s' $(seq 64)).json" ;;
+esac
+""")
+    skript.chmod(0o755)
+    return skript, spur, vor
+
+
+def _laufzeit(welt: Path, paket: Path, baum: Path, tmp_path: Path, skript: Path, *args: str) -> subprocess.CompletedProcess:
+    lauf = _lauf("laufzeit_aufstellen.sh", str(welt), str(paket), *args, baum=baum, PYTHON=str(skript),
+                 SCHLUESSEL=str(tmp_path / "schluessel-laufzeit"))
+    lauf.text = (lauf.stdout + lauf.stderr).decode()  # type: ignore[attr-defined]
+    return lauf
+
+
+REZEPT_LAUFZEIT = ('schritt "Fall anlegen" mkdir -p faelle/probe\n'
+                   "schritt \"eins\" bash -c 'cat configs/bestand_gesamt.toml >> faelle/probe/spur'\n"
+                   'haltepunkt mitte\n'
+                   "schritt \"zwei\" bash -c 'echo zwei >> faelle/probe/spur'\n")
+
+
+def test_die_welt_entsteht_auf_dem_stand_vor_dem_fall_und_der_fall_laeuft_auf_dem_stand_danach(tmp_path, baum, system):
+    skript, spur, vor = system
+    welt = tmp_path / "laufzeit"
+    paket = _paket(tmp_path, REZEPT_LAUFZEIT, stand=vor)
+    lauf = _laufzeit(welt, paket, baum, tmp_path, skript, "--bis", "mitte")
+    assert lauf.returncode == 0, lauf.text
+    assert "WELT STEHT" in lauf.text and "Haltepunkt mitte erreicht" in lauf.text
+    # Der Stand vor dem Fall liegt als eigener Baum in der Welt ...
+    vorbaum = welt / "baum-vor"
+    kopf = subprocess.run(["git", "-C", str(vorbaum), "rev-parse", "HEAD"], capture_output=True, text=True, check=True)
+    assert kopf.stdout.strip() == vor
+    assert (vorbaum / "configs" / "bestand_gesamt.toml").read_text() == "# Config vor dem Fall\n"
+    # ... die Welt ist AUF IHM aufgestellt: jedes Kommando des Aufstellens rechnet mit seinem Paket,
+    aufrufe = spur.read_text().splitlines()
+    assert len(aufrufe) > 8 and all(z.startswith(f"{vorbaum}/src | ") for z in aufrufe), aufrufe
+    assert (welt / "daten" / "configs" / "bestand.toml").read_text() == "# Config vor dem Fall\n"
+    # ... und der Fall laeuft auf dem Baum danach, nicht auf dem davor.
+    assert (baum / "faelle" / "probe" / "spur").read_text() == "# Config nach dem Fall\n"
+    assert not (vorbaum / "faelle").exists()
+    # Derselbe Aufruf noch einmal: Die Welt steht, nur das Paket faehrt weiter.
+    zweiter = _laufzeit(welt, paket, baum, tmp_path, skript)
+    assert zweiter.returncode == 0, zweiter.text
+    assert "steht schon" in zweiter.text and "NACHGEFAHREN" in zweiter.text
+    assert spur.read_text().splitlines() == aufrufe          # nichts wurde neu aufgestellt
+    assert (baum / "faelle" / "probe" / "spur").read_text() == "# Config nach dem Fall\nzwei\n"
+
+
+@pytest.mark.parametrize("fall", ["ohne_stand", "fremder_commit", "kein_vorfahr", "verzeichnis_liegt"])
+def test_laufzeit_aufstellen_haelt_bevor_es_etwas_anlegt(tmp_path, baum, system, fall):
+    skript, spur, vor = system
+    welt = tmp_path / "laufzeit"
+    stand = {"ohne_stand": None, "fremder_commit": "c" * 40, "kein_vorfahr": None, "verzeichnis_liegt": vor}[fall]
+    if fall == "kein_vorfahr":      # ein Commit neben der Geschichte des Baums
+        _git(baum, "checkout", "--quiet", "-b", "seitenzweig", vor)
+        (baum / "seite.txt").write_text("x\n")
+        _git(baum, "add", "-A")
+        _git(baum, "commit", "--quiet", "-m", "seitenzweig")
+        stand = subprocess.run(["git", "-C", str(baum), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        _git(baum, "checkout", "--quiet", "main")
+    if fall == "verzeichnis_liegt":
+        welt.mkdir()
+        (welt / "notiz.txt").write_text("keine Welt\n")
+    paket = _paket(tmp_path, REZEPT_LAUFZEIT, stand=stand)
+    lauf = _laufzeit(welt, paket, baum, tmp_path, skript)
+    assert lauf.returncode == 2, lauf.text
+    assert {"ohne_stand": "nennt den Stand nicht", "fremder_commit": "kennt dieser Codebaum nicht",
+            "kein_vorfahr": "kein Vorfahr", "verzeichnis_liegt": "keine aufgestellte Welt"}[fall] in lauf.text
+    assert not spur.exists() and not (baum / "faelle").exists()
+    assert not (tmp_path / "schluessel-laufzeit").exists()
+    if fall == "verzeichnis_liegt":
+        assert [d.name for d in welt.iterdir()] == ["notiz.txt"]
+    else:
+        assert not welt.exists()
+
+
 def _systemkommandos(text: str, name: str) -> list[Kommando]:
     """Die Aufrufe ``-m rechner_pipeline....`` eines Shell-Skripts als
     Kommandos mit Platzhaltern: Fortsetzungszeilen verbunden, an ``&&`` und
@@ -725,13 +1081,14 @@ def _systemkommandos(text: str, name: str) -> list[Kommando]:
             rest = rest.replace('"${ZUSATZ[@]}"', "").replace('"$@"', "")
             rest = re.sub(r'"\$\{@:\d+\}"', "", rest)      # weitere, durchgereichte Argumente
             rest = re.sub(r"(?<![\w\"])\$R(?![\w])", "--freigabe-schluessel <schluessel>", rest)
+            rest = re.sub(r'"\$\{RING_\w+\[@\]\}"', "--freigabe-schluessel <schluessel>", rest)
             rest = re.sub(r"\$\{?(\w+)\}?", lambda m: f"<{m.group(1)}>", rest)
             aus.append(Kommando(name, nr, " ".join(f"python -m {treffer.group(1)}{rest}".split())))
     return aus
 
 
 SKRIPT_KOMMANDOS = {name: _systemkommandos((WELT_SKRIPTE / name).read_text(encoding="utf-8"), f"deploy/welt/{name}")
-                    for name in ("welt_aufstellen.sh", "fall_starten.sh", "fall_zeichnen.sh", "fall_nachfahren.sh")}
+                    for name in SKRIPTE}
 
 
 @pytest.mark.parametrize("kommando", [k for ks in SKRIPT_KOMMANDOS.values() for k in ks], ids=str)
@@ -744,10 +1101,13 @@ def test_der_detektor_sieht_jedes_kommando_und_faellt_was_falsch_ist():
     # Die Menge, mit == gehalten: Ein Kommando, das die Extraktion nicht mehr
     # sieht, faellt hier auf statt still aus der Pruefung.
     assert {name: len(ks) for name, ks in SKRIPT_KOMMANDOS.items()} == {
-        "welt_aufstellen.sh": 10, "fall_starten.sh": 4, "fall_zeichnen.sh": 1, "fall_nachfahren.sh": 3}
+        "welt_aufstellen.sh": 10, "fall_starten.sh": 4, "fall_zeichnen.sh": 1, "fall_nachfahren.sh": 3,
+        "zugang.sh": 7, "paket_bauen.sh": 0, "laufzeit_aufstellen.sh": 0}
     module = {k.modul for ks in SKRIPT_KOMMANDOS.values() for k in ks}
     assert {"rechner_pipeline.betrieb.tageslauf", "rechner_pipeline.gates.gate_entscheid",
-            "rechner_pipeline.gates.fall_belegen", "rechner_pipeline.fall"} <= module
+            "rechner_pipeline.gates.fall_belegen", "rechner_pipeline.fall",
+            "rechner_pipeline.betrieb.zugangsprobe", "rechner_pipeline.betrieb.neuaufsetzen",
+            "rechner_pipeline.betrieb.anfangsbestand"} <= module
     # Positivkontrolle durch dieselbe Extraktion: ein entfallener Schalter,
     # ein unbekannter Unterbefehl und eine unzulaessige Auswahl fallen.
     falsch = (
