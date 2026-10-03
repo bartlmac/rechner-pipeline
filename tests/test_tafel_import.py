@@ -22,10 +22,10 @@ from rechner_pipeline.models.manifest import file_sha256
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TG2015_XLSM_SHA256 = (
-    "e9047bbab1b04209a9eac753903b201153f1cd3f34f4af5fdf414bfaa92e8f5f"
+    "e0cd0a03298f2a191a3f645d8c8f1263e050909dddbb29c9ec22aff9870683a8"
 )
 TG2015_EXPORTMANIFEST_SHA256 = (
-    "14778a5c4d8c5d95a2c559a35e936d80e0e2a6f196cbe72288e949fca6290a3c"
+    "6e2000ec484cec2c67a778ce1a6152c30068a48a86a85d3b06d0e4e6589f3e57"
 )
 TG2015_TAFELN_CSV_SHA256 = (
     "1ce920935ce25701ecf3a3af86e94da7552f5d44e39ee3e1cc0728a8d67af6c5"
@@ -549,9 +549,12 @@ def test_kern_fuehrt_die_tg2015_tafeln_mit_korrekter_mischung():
 def test_ausgelieferte_tg2015_tafeln_tragen_reale_vollhashkette():
     """Die sechs Bestandsbelege duerfen nicht auf Kurzprovenienz regredieren.
 
-    Die Konstanten stammen aus zwei bytegleichen P-Q1-1.1.0-Exporten des unter
-    seinem vollstaendigen Git-Blob rekonstruierten und registrierten TG2015-
-    Workbooks. Die vier Quellvektoren und zwei U70-Ableitungen wurden dabei
+    Die Konstanten sind die Kette der Lieferung von Fall 3 (registriertes
+    Tarifrechner-Workbook, sein P-Q1-Exportmanifest; das Blatt Tafeln.csv hat
+    denselben Hash wie in der frueheren Registrierung, 1ce92093...). Bis Fall 2
+    standen hier die Hashes der damaligen Registrierung (e9047bba..., 14778a5c...);
+    die qx-Werte der sechs Tafeln sind dabei gleich geblieben (gemessen am
+    2026-10-02, Uebergabe 10). Die vier Quellvektoren und zwei U70-Ableitungen wurden dabei
     vollstaendig gegen das ausgelieferte Kern-XML verglichen.
     """
     xml_text = (

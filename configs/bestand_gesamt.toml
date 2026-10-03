@@ -976,19 +976,17 @@ var_j = "bu_rente"
 rho = 0.30
 
 # --------------------------------------------------------------------------
-# Generation TG2015 (Baldrian Leben, Migrationsfall baldrian-klv-tg2015-lauf2):
-# UEBERNOMMENE Generation ohne Neuzugang -- ihre 834
-# Vertraege kamen zum 2026-01-01 als Zugang in den Tagesbetrieb
-# (uebernahme/<fall>/ der Laufzeitumgebung, Konzept Abschnitt 6), keine
-# synthetische Erzeugung. Rechnungsgrundlagen aus der Spez des Falls in
-# sechs Tarifzellen (status x tarifart); P-K1 gruen, A-M4 angenommen
-# (2026-09-01). Das Verkaufsfenster ist das des abgebenden Unternehmens
-# und darf mit KLV-2015 ueberlappen: Die PLV hat in diesem Fenster nie
-# TG2015 verkauft.
+# Generation TG2015 (Baldrian Leben, Migrationsfall baldrian-klv-tg2015-fall3):
+# UEBERNOMMENE Generation ohne Neuzugang -- ihre Vertraege kommen mit der
+# Uebernahme als Zugang in den Tagesbetrieb (kein synthetischer Neuzugang).
+# Tarifwerte und Zellen: abgeleitet/bestand/generation-zellen.toml des Falls,
+# erzeugt aus der Spez (nicht abgetippt). Das Verkaufsfenster ist das des
+# abgebenden Unternehmens und darf mit KLV-2015 ueberlappen: Die PLV hat in
+# diesem Fenster nie TG2015 verkauft.
 # --------------------------------------------------------------------------
 [[generation]]
 name = "TG2015"
-nummernkreis = 14  # Police-Nummern 14 * 10 Mio + ..; Eigenschaft der Generation, nicht ihrer Position (T22-09)
+nummernkreis = 14  # Eigenschaft der Generation, nicht ihrer Position
 knoten = "klv/tg2015"
 gueltig_von = 2015-01-01
 gueltig_bis = 2017-01-01
@@ -998,24 +996,16 @@ gamma3 = 0.0025
 min_alter_flex = 60
 min_rlz_flex = 5
 zillmer_dauer = 5
+
+# Tarifwerk der Fuehrung (Freischaltung): das belegte der Spez,
+# mit dem die Pruefstrecke des Falls abgenommen hat.
 scheiben_mit_gamma1 = true
 stoab_je_baustein = true
 red_verfahren = "teilkuendigung"
-# Der uebernommene Tarif kuendigt bei seiner "Herabsetzung" (= Teilkuendigung
-# der PLV) nur den Anteil der Grundversicherung; die Erhoehungsscheiben
-# bleiben (Bedingungswerk Ziffer 6; Entscheid des Maintainers 2026-10-01,
-# Tarifplan KLV 7.2). EIN Wert stellt die Regel um ("alle_bausteine").
 tku_umfang = "grundversicherung"
 
-# Grundlagen und Tarifwerk dieser Generation sind der Config-Abschnitt,
-# den die Uebernahme aus der abgenommenen Spez des Falls schreibt
-# (abgeleitet/bestand/generation-zellen.toml, A-Q1-Entscheide: Zins 1,25 %
-# nach Mitteilung, Inkassokosten Haus 0,01). Nicht abtippen, uebernehmen;
-# tests/test_bestand_config.py haelt den Block gegen die Spez-Fixture.
-
 # Ohne neuzugang_pro_jahr wird aus diesen Verteilungen NIE eine Zeile
-# gezogen (die Vertraege sind schon uebernommen). Sie sind trotzdem
-# Pflichtfelder der Config -- inert, nur zur Format-Erfuellung.
+# gezogen (die Vertraege sind uebernommen). Pflichtfelder der Config, inert.
 [generation.verteilungen.entry_age]
 typ = "normal_trunc"
 mean = 40.0
@@ -1074,8 +1064,8 @@ gamma1 = 0.0008
 gamma2 = 0.001
 policy_fee = 0.0
 stoab_satz = 0.0
-stoab_min = 0
-stoab_max = 0
+stoab_min = 0.0
+stoab_max = 0.0
 ratzu_zw2 = 0.0
 ratzu_zw4 = 0.0
 ratzu_zw12 = 0.0
@@ -1119,8 +1109,8 @@ gamma1 = 0.0008
 gamma2 = 0.001
 policy_fee = 0.0
 stoab_satz = 0.0
-stoab_min = 0
-stoab_max = 0
+stoab_min = 0.0
+stoab_max = 0.0
 ratzu_zw2 = 0.0
 ratzu_zw4 = 0.0
 ratzu_zw12 = 0.0

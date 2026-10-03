@@ -113,6 +113,21 @@ und unter welchen Bedingungen (Spielleiter-Bereiche, Rollen samt
 Zeichnungsordnung, Abbruchkriterien); wie die Simulation gehört sie zum
 Gesamtbild, aber nicht zum System.
 
+**Was im Repository liegt — und was bewusst nicht.** Hier liegen der Code
+des KI-Systems, die Definition der Vorzeigeobjekte (die PLV, die
+Lieferungen, der Fall der Vorführung) und die Routinen, mit denen daraus
+eine vollständige Laufzeit entsteht: `deploy/welt/` stellt eine Welt auf
+(Ablage, Linie, Erstabnahmen, auf Wunsch eigene Schlüssel) und startet
+einen Fall darin, `deploy/plv/` liefert Image und Bedienfolgen des
+Tagesbetriebs. Die Beispielumgebung selbst liegt nicht hier:
+der Rechner, auf dem die PLV Tag für Tag läuft, ihre Schlüssel und ihre
+Ablage, die Infrastruktur um den Webauftritt, die Einrichtung einzelner
+Rechner für eine Vorführung oder einen Workshop. Sie ist kein Bestandteil des
+Systems, sondern eine seiner Instanzen — aus dem Stand dieses Repositorys
+neu aufstellbar und mit jeder anderen Instanz vergleichbar: Dieselbe Welt,
+zweimal aufgestellt, trägt in ihrer Ablage dieselben Bytes, gleich mit
+welchen Schlüsseln gezeichnet wird.
+
 
 ## Architektur
 
@@ -415,6 +430,8 @@ python -m pytest                     # volle Suite
 ```
 
 Referenzumgebung ist Linux mit Python 3.11 und exakt diesen Pins. Wer nicht auf Linux arbeitet, fährt die Suite im Container, der genau diese Umgebung ist (`deploy/dev/Dockerfile`, Devcontainer in `.devcontainer/`; Anleitung in `ONBOARDING.md`, Abschnitt 2). Der Code wird nicht auf weitere Betriebssysteme gehärtet.
+
+Was neben dem Code nötig ist, damit die PLV läuft und ein Fall geführt werden kann — Ablage, Linie, Erstabnahmen, auf Wunsch eigene Schlüssel —, stellt `deploy/welt/` auf (`deploy/welt/README.md`).
 
 Das ist der eine Installationsweg, derselbe wie in der CI: Die
 Pin-Dateien tragen die direkten Abhängigkeiten UND ihre vollständige

@@ -18,6 +18,10 @@ bleibt, steht in `dev-docs/offene-punkte.md`.
 | `falldaten.py` | Datenmodell einer Falldarstellung aus den Artefakten |
 | `fallbericht.py` | Darstellung aus dem Datenmodell rendern |
 | `vorschau.py` | den Entwurf der Seite lokal ansehen, vor dem Schieben |
+| `vorfuehrung.py` | einen Fall in tmux fuehren: Cockpit und je Agentenrolle ein Fenster |
+| `lagebild.py` | wo ein Fall steht — die Anzeigen der Vorfuehrung, nur lesend |
+| `aufzeichnung.py` | die Vorfuehrung mitschneiden und als asciicast ausgeben |
+| `sitzungsprobe.py` | ob ein Agenten-Werkzeug die Sitzungen der Vorfuehrung traegt |
 
 ## Verlauf eines Laufs protokollieren
 
@@ -317,3 +321,105 @@ Fall-Seiten, Bau-Commit der Landkarte) zaehlen nicht als Drift —
 sonst schluege der Test immer, und ein Alarm, der immer schlaegt,
 wird abgeschaltet. Exit 1 listet die Abweichungen; aktualisiert wird
 von Hand (Abschnitt "Je Lauf").
+
+## Einen Fall vorfuehren und aufzeichnen
+
+```
+python werkzeuge/vorfuehrung.py --fall faelle/<fall> --linie <linie> --stand <ablage> --modell <modell>
+tmux attach -t vorfuehrung
+```
+
+Baut die tmux-Session `vorfuehrung`:
+
+| Fenster | links | rechts |
+|---|---|---|
+| `cockpit` | Chat mit dem Programmleitungs-Agenten | Lebenslauf des Falls, die letzten Entscheide, Systemstand und Laufzeit |
+| `aktuariat`, `architektur`, `rechenkern`, `betrieb` | Chat mit dem Agenten der Rolle | ihre Gates mit Stand und Belegen |
+| `mensch` | leere Shell fuer die Zeichnungen | |
+
+Die Fenster folgen den Agentendateien unter `.claude/agents/`; eine neue
+Rolle bekommt ihr Fenster ohne Aenderung am Werkzeug. Die Chats starten mit
+`claude --agent <rolle> --model <modell>`; `--modell` ist Pflicht und hat
+keine Vorgabe (sonst erbte jeder der fuenf Chats das Modell des Kontos).
+`--ohne-chat` baut nur das Geruest (Probe) und braucht kein Modell,
+`--trocken` gibt die tmux-Kommandos aus. Eine Session gleichen Namens wird
+nie ersetzt.
+
+Gezeichnet wird im Fenster `mensch`, nie in einem Agentenfenster: Ein Agent
+zeichnet keine Annahme, und die Schluessel liegen ausserhalb des Falls.
+
+Die Anzeigen rechts sind `werkzeuge/lagebild.py` unter `watch`:
+
+```
+python werkzeuge/lagebild.py lebenslauf --fall faelle/<fall> --linie <linie>
+python werkzeuge/lagebild.py entscheide --fall faelle/<fall> --linie <linie> -n 12
+python werkzeuge/lagebild.py system --linie <linie> --stand <ablage>
+python werkzeuge/lagebild.py rolle <rolle> --fall faelle/<fall> --linie <linie>
+python werkzeuge/lagebild.py zugangsprobe --fall faelle/<fall>
+```
+
+Das Lagebild ist eine Anzeige, kein Urteil. Es liest die Entscheid-Snapshots
+ohne Schluessel und prueft weder Signatur noch Rolle noch Beleg — das tun
+die Gates. Zwei Spitzen einer Kette zeigt es als `mehrdeutig`, eine nicht
+lesbare Datei als `unlesbar`, nie als `offen`.
+
+Die Sicht `zugangsprobe` ist keine der Anzeigen rechts: Sie zeigt den Beleg
+der Zugangsprobe als Lesefassung fuer die Zugangsabnahme A-B2 — Urteil,
+Folgetermin und je Vergleich Soll, Ist und Differenz —, ohne die Pruefsummen
+der Abschluesse, die den Beleg selbst unlesbar gross machen. "Bestanden"
+steht dort nur, wenn der Beleg es woertlich sagt; ein Vergleich ohne Soll
+ist als solcher ausgewiesen.
+
+### Aufzeichnen
+
+Aufgenommen wird mit `script` aus util-linux; auf dem Host wird dafuer
+nichts installiert. tmux zeichnet das Layout selbst, die Aufnahme enthaelt
+also alle Panes.
+
+```
+python werkzeuge/aufzeichnung.py aufnehmen --session vorfuehrung --out runs/fall3
+python werkzeuge/aufzeichnung.py cast --basis runs/fall3
+scriptreplay -T runs/fall3.tim -O runs/fall3.out
+```
+
+`aufnehmen` haengt sich an die Session und endet mit dem Abhaengen
+(`Ctrl-b d`); die Session laeuft weiter. `cast` erzeugt `runs/fall3.cast`
+im asciicast-Format (Version 2): klein, der Text bleibt kopierbar, die
+Wiedergabe laeuft in jedem asciinema-Player, im Terminal oder im Browser.
+Die Terminalgroesse kommt aus der Kopfzeile der Aufnahme und wird nie
+geraten. `scriptreplay` spielt die Aufnahme ohne jedes weitere Programm ab.
+
+Ein GIF oder Video entsteht aus der `.cast`-Datei mit `agg` und `ffmpeg`,
+auf einem beliebigen Rechner oder in einem Container:
+
+```
+agg runs/fall3.cast fall3.gif
+ffmpeg -i fall3.gif -movflags faststart -pix_fmt yuv420p fall3.mp4
+```
+
+Eine Aufnahme zeigt, was auf dem Bildschirm steht. Schluesseldateien werden
+nur als Pfad genannt, nie ausgegeben; `runs/` ist nicht versioniert.
+
+### Traegt ein Agenten-Werkzeug die Sitzungen?
+
+Die Chats der Vorfuehrung starten mit Claude Code. Soll ein anderes
+Agenten-Werkzeug die Rollen fuehren — oder ein Fall ohne Menschen an jeder
+Station laufen, sodass eine Sitzung der anderen Auftraege ins Fenster
+schreibt —, zeigt eine Probe in wenigen Minuten, ob das traegt:
+
+```
+python werkzeuge/sitzungsprobe.py probe --kommando "<start eines chats>" \
+    [--session sitzungsprobe] [--bericht runs/sitzungsprobe.md]
+```
+
+Sie baut eine eigene tmux-Session mit zwei Fenstern, startet in beiden das
+Werkzeug und prueft vier Schritte: START (es kommt zur Ruhe), EINGABE (eine
+von aussen geschriebene Zeile wird beantwortet), RUHE (von aussen erkennbar,
+wann die Sitzung fertig ist) und WEITERGABE (eine Sitzung schreibt der
+anderen auf Auftrag eine Zeile ins Fenster). Der Bericht nennt je Schritt das
+Urteil, die Zeilen, an denen man "arbeitet noch" sieht, und die Bildschirme —
+auch den einer Rueckfrage oder einer Sandbox, an der die Weitergabe haengt.
+
+Die Probe urteilt nach dem Bildschirm und kostet zwei kurze Chats mit
+zusammen drei Einzeilern. Sie ersetzt nie eine bestehende Session und laesst
+ihre eigene stehen (`tmux kill-session -t sitzungsprobe`).
