@@ -32,6 +32,11 @@ Lieferungen nicht durchfuehrbar.
    PDF-Parser waere ein fragiles Kunstwerk (Objektstroeme, Fonts,
    CMaps) und wurde verworfen; ein Systemwerkzeug (poppler/pdftotext)
    waere ein Subprozess mit Plattformrisiko.
+   Nachtrag 2026-10-03: angehoben auf `pypdf==6.19.0` (acht
+   Sicherheitsmeldungen der Stufe hoch gegen 6.16.2, alle ab 6.19.0
+   behoben). Gemessen vor dem Wechsel: Der Textlayer aller PDFs im
+   Repository kommt byte-gleich heraus, 6.19.0 bringt keine weitere
+   Abhaengigkeit mit.
 4. PDF kennt keine Absatzstile, Tabellen- und Formelstruktur:
    `tabellen` und `formeln` bleiben leer und der `hinweis` weist das
    aus — die Inhalte stehen als Text in den Absaetzen. Die
