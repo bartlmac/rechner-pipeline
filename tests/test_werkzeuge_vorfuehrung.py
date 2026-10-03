@@ -13,6 +13,9 @@ wo ein Fehler etwas Falsches BEHAUPTET:
 * Die Aufzeichnung setzt Ausgabe und Zeitmarken zusammen. Passen sie nicht
   zueinander, wird verweigert statt eine verschobene Aufnahme zu schreiben;
   eine Terminalgroesse wird nie geraten.
+* Die Sitzungsprobe sagt, ob ein Agenten-Werkzeug die Sitzungen traegt. Sie
+  darf weder Ruhe melden, solange sich der Bildschirm bewegt, noch die
+  Anzeige des eigenen Auftrags fuer die Antwort halten.
 
 Knoten: system/betrieb
 """
@@ -20,7 +23,9 @@ Knoten: system/betrieb
 from __future__ import annotations
 
 import json
+import shlex
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -30,6 +35,7 @@ sys.path.insert(0, str(REPO / "werkzeuge"))
 
 import aufzeichnung as az  # noqa: E402
 import lagebild as lb  # noqa: E402
+import sitzungsprobe as sp  # noqa: E402
 import vorfuehrung as vf  # noqa: E402
 
 
@@ -93,8 +99,60 @@ def test_eine_abnahme_der_linie_erscheint_im_lebenslauf_als_solche(tmp_path):
 
 def test_jede_sicht_sagt_dass_sie_nicht_prueft(tmp_path):
     for zeilen in (lb.sicht_lebenslauf(tmp_path, None), lb.sicht_entscheide(tmp_path, None, 5),
-                   lb.sicht_rolle("aktuariat", tmp_path, None, None)):
+                   lb.sicht_rolle("aktuariat", tmp_path, None, None), lb.sicht_zugangsprobe(tmp_path)):
         assert lb.VERMERK in zeilen
+
+
+def _zugangsprobe(fall: Path, **felder) -> None:
+    datei = fall / lb.ZUGANGSPROBE
+    datei.parent.mkdir(parents=True, exist_ok=True)
+    datei.write_text(json.dumps(felder), encoding="utf-8")
+
+
+def _vergleich(groesse: str, soll, ist, ok, **mehr) -> dict:
+    return dict(groesse=groesse, termin="zugangsstichtag", stichtag="2026-01-01", soll=soll, ist=ist,
+                differenz=None if soll is None else ist - soll, ok=ok, abweichend_anzahl=0, **mehr)
+
+
+def test_die_zugangsprobe_zeigt_je_vergleich_soll_ist_und_urteil_und_keine_pruefsummen(tmp_path):
+    _zugangsprobe(tmp_path, bestanden=True, stichtag="2026-01-01", bis="2026-02-01", kern_version="3.22.0",
+                  befunde=[], folgetermin={"stichtag": "2027-01-01", "gedeckt": False, "grund": "kein Abschluss"},
+                  vergleiche=[_vergleich("in_kraft", 834, 834, True),
+                              _vergleich("deckungskapital", 34784446.77739142, 34784446.77739142, True),
+                              _vergleich("rueckkaufswert", None, 34941635.493469484, None)],
+                  laeufe={"mit": {"abschluesse": {f"abschluss_{i}": "a" * 64 for i in range(380)}}})
+    zeilen = lb.sicht_zugangsprobe(tmp_path)
+    text = "\n".join(zeilen)
+    assert "Urteil    BESTANDEN — 3 Vergleiche, 0 rot, 0 Befunde" in text
+    assert "Folgetermin 2027-01-01: NICHT gedeckt (kein Abschluss)" in text
+    kapital = next(z for z in zeilen if z.startswith("deckungskapital"))
+    assert kapital.split()[-4:] == ["34.784.446,78", "34.784.446,78", "0,00", "ok"]
+    # Ein Vergleich ohne Soll ist kein bestandener: Er steht als solcher da.
+    assert next(z for z in zeilen if z.startswith("rueckkaufswert")).endswith("ohne Soll")
+    # Die Lesefassung bleibt lesbar: Die Pruefsummen der Abschluesse zeigt sie nicht.
+    assert len(zeilen) < 15 and "a" * 64 not in text
+
+
+def test_die_zugangsprobe_nennt_einen_roten_vergleich_und_rundet_keine_abweichung_weg(tmp_path):
+    _zugangsprobe(tmp_path, bestanden=False, stichtag="2026-01-01", bis="2026-02-01", kern_version="3.22.0",
+                  befunde=["deckungskapital weicht ab"],
+                  vergleiche=[_vergleich("deckungskapital", 100.0, 100.001, False) | {"abweichend_anzahl": 7}])
+    zeilen = lb.sicht_zugangsprobe(tmp_path)
+    assert "Urteil    NICHT bestanden — 1 Vergleiche, 1 rot, 1 Befunde" in zeilen
+    rot = next(z for z in zeilen if z.startswith("deckungskapital"))
+    assert rot.endswith("ROT (7 Vertraege)") and "1,0e-03" in rot and " 0,00 " not in rot
+    assert "Befund    deckungskapital weicht ab" in zeilen
+
+
+@pytest.mark.parametrize("inhalt,wort", [(None, "nicht vorhanden"), ("{kein json", "unlesbar"), ("[1, 2]", "unlesbar"),
+                                          ('{"vergleiche": []}', "NICHT bestanden"),
+                                          ('{"bestanden": "ja", "vergleiche": []}', "NICHT bestanden")])
+def test_die_zugangsprobe_sagt_nie_bestanden_wenn_der_beleg_es_nicht_sagt(tmp_path, inhalt, wort):
+    if inhalt is not None:
+        (tmp_path / lb.ZUGANGSPROBE).parent.mkdir(parents=True)
+        (tmp_path / lb.ZUGANGSPROBE).write_text(inhalt, encoding="utf-8")
+    text = "\n".join(lb.sicht_zugangsprobe(tmp_path))
+    assert wort in text and "BESTANDEN" not in text
 
 
 def test_die_entscheide_stehen_juengster_zuerst(tmp_path):
@@ -267,3 +325,63 @@ def test_aufgenommen_wird_die_ganze_session_im_klassischen_format():
     kommando = az.aufnahme_kommando("vorfuehrung", Path("runs/fall3"))
     assert kommando[:4] == ["script", "-q", "-m", "classic"]
     assert kommando[-1] == "tmux attach -t vorfuehrung"
+
+
+# --------------------------------------------------------------------------- #
+# Sitzungsprobe
+# --------------------------------------------------------------------------- #
+
+def test_ruhe_braucht_genug_gleiche_blicke():
+    genug = sp.RUHE_BLICKE
+    assert not sp.ruhig(["x"] * (genug - 1))                 # zu wenige Blicke sind kein Urteil
+    assert sp.ruhig(["a", "b"] + ["x"] * genug)
+    assert not sp.ruhig(["x"] * genug + ["y"])               # der letzte Blick bewegt sich wieder
+    assert not sp.ruhig(["x", "y"] * genug)
+
+
+def test_bewegte_zeilen_sind_die_die_nicht_in_jedem_blick_stehen():
+    blicke = ["kopf\n> frage\n  arbeitet (1s)", "kopf\n> frage\n  arbeitet (2s)", "kopf\n> frage\nantwort"]
+    assert sp.bewegte_zeilen(blicke) == ["  arbeitet (1s)", "  arbeitet (2s)", "antwort"]
+    assert sp.bewegte_zeilen(["nur ein Blick"]) == []
+
+
+def test_die_anzeige_des_auftrags_gilt_nicht_als_antwort():
+    paare = ((sp.AUFTRAG_EINGABE, sp.ANTWORT_EINGABE), (sp.AUFTRAG_WEITERGABE, sp.ANTWORT_WEITERGABE))
+    weitergabe = sp.weitergabe_auftrag(Path("/x/sitzungsprobe.py"), "s")
+    for auftrag, antwort in paare:
+        assert not sp.beantwortet(f"> {auftrag}\n", antwort)
+        assert not sp.beantwortet(f"> {weitergabe}\n", antwort)
+        assert sp.beantwortet(f"> {auftrag}\n{antwort}\n", antwort)
+    # Ein Chat darf die Antwort mit Leerzeichen schreiben oder umbrechen ...
+    assert sp.beantwortet("> frage\n42 BLAU\n", sp.ANTWORT_EINGABE)
+    # ... aber ein Zaehler oder eine Uhrzeit auf dem Bildschirm ist keine.
+    assert not sp.beantwortet("> frage\n42 tokens  14:42\n", sp.ANTWORT_EINGABE)
+
+
+def test_gesendet_wird_erst_der_text_woertlich_dann_enter():
+    assert sp.sende_kommandos("s", "b", "eine Zeile; $HOME") == [
+        ["send-keys", "-t", "s:b", "-l", "eine Zeile; $HOME"], ["send-keys", "-t", "s:b", "Enter"]]
+
+
+@pytest.mark.parametrize("text", ["zwei\nZeilen", "mit\rRuecklauf", "   "],
+                         ids=["zeilenumbruch", "wagenruecklauf", "leer"])
+def test_ein_mehrzeiler_oder_leerer_auftrag_wird_verweigert(text):
+    with pytest.raises(sp.ProbeFehler):
+        sp.sende_kommandos("s", "b", text)
+
+
+def test_der_weitergabe_auftrag_ist_ein_einzeiler_mit_dem_eigenen_sende_kommando():
+    auftrag = sp.weitergabe_auftrag(Path("/ein pfad/sitzungsprobe.py"), "meine session")
+    assert sp.sende_kommandos("s", "a", auftrag)             # selbst ein zulaessiger Einzeiler
+    kommando = auftrag.split(": ", 1)[1]
+    assert shlex.split(kommando) == ["python3", "/ein pfad/sitzungsprobe.py", "sende", "b",
+                                     sp.AUFTRAG_WEITERGABE, "--session", "meine session"]
+
+
+def test_der_bericht_zeigt_ein_nein_als_nein_samt_bildschirm():
+    zeilen = sp.bericht_zeilen("codex", "s", datetime(2026, 10, 2, 14, 0),
+                               [("START", "ja", "x"), ("WEITERGABE", "NEIN", "y")],
+                               ["  arbeitet (1s)"], [("Fenster a", "Rueckfrage: erlauben?")])
+    text = "\n".join(zeilen)
+    assert "| WEITERGABE | NEIN | y |" in text
+    assert "  arbeitet (1s)" in text and "Rueckfrage: erlauben?" in text

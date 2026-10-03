@@ -21,6 +21,7 @@ bleibt, steht in `dev-docs/offene-punkte.md`.
 | `vorfuehrung.py` | einen Fall in tmux fuehren: Cockpit und je Agentenrolle ein Fenster |
 | `lagebild.py` | wo ein Fall steht — die Anzeigen der Vorfuehrung, nur lesend |
 | `aufzeichnung.py` | die Vorfuehrung mitschneiden und als asciicast ausgeben |
+| `sitzungsprobe.py` | ob ein Agenten-Werkzeug die Sitzungen der Vorfuehrung traegt |
 
 ## Verlauf eines Laufs protokollieren
 
@@ -354,12 +355,20 @@ python werkzeuge/lagebild.py lebenslauf --fall faelle/<fall> --linie <linie>
 python werkzeuge/lagebild.py entscheide --fall faelle/<fall> --linie <linie> -n 12
 python werkzeuge/lagebild.py system --linie <linie> --stand <ablage>
 python werkzeuge/lagebild.py rolle <rolle> --fall faelle/<fall> --linie <linie>
+python werkzeuge/lagebild.py zugangsprobe --fall faelle/<fall>
 ```
 
 Das Lagebild ist eine Anzeige, kein Urteil. Es liest die Entscheid-Snapshots
 ohne Schluessel und prueft weder Signatur noch Rolle noch Beleg — das tun
 die Gates. Zwei Spitzen einer Kette zeigt es als `mehrdeutig`, eine nicht
 lesbare Datei als `unlesbar`, nie als `offen`.
+
+Die Sicht `zugangsprobe` ist keine der Anzeigen rechts: Sie zeigt den Beleg
+der Zugangsprobe als Lesefassung fuer die Zugangsabnahme A-B2 — Urteil,
+Folgetermin und je Vergleich Soll, Ist und Differenz —, ohne die Pruefsummen
+der Abschluesse, die den Beleg selbst unlesbar gross machen. "Bestanden"
+steht dort nur, wenn der Beleg es woertlich sagt; ein Vergleich ohne Soll
+ist als solcher ausgewiesen.
 
 ### Aufzeichnen
 
@@ -390,3 +399,27 @@ ffmpeg -i fall3.gif -movflags faststart -pix_fmt yuv420p fall3.mp4
 
 Eine Aufnahme zeigt, was auf dem Bildschirm steht. Schluesseldateien werden
 nur als Pfad genannt, nie ausgegeben; `runs/` ist nicht versioniert.
+
+### Traegt ein Agenten-Werkzeug die Sitzungen?
+
+Die Chats der Vorfuehrung starten mit Claude Code. Soll ein anderes
+Agenten-Werkzeug die Rollen fuehren — oder ein Fall ohne Menschen an jeder
+Station laufen, sodass eine Sitzung der anderen Auftraege ins Fenster
+schreibt —, zeigt eine Probe in wenigen Minuten, ob das traegt:
+
+```
+python werkzeuge/sitzungsprobe.py probe --kommando "<start eines chats>" \
+    [--session sitzungsprobe] [--bericht runs/sitzungsprobe.md]
+```
+
+Sie baut eine eigene tmux-Session mit zwei Fenstern, startet in beiden das
+Werkzeug und prueft vier Schritte: START (es kommt zur Ruhe), EINGABE (eine
+von aussen geschriebene Zeile wird beantwortet), RUHE (von aussen erkennbar,
+wann die Sitzung fertig ist) und WEITERGABE (eine Sitzung schreibt der
+anderen auf Auftrag eine Zeile ins Fenster). Der Bericht nennt je Schritt das
+Urteil, die Zeilen, an denen man "arbeitet noch" sieht, und die Bildschirme —
+auch den einer Rueckfrage oder einer Sandbox, an der die Weitergabe haengt.
+
+Die Probe urteilt nach dem Bildschirm und kostet zwei kurze Chats mit
+zusammen drei Einzeilern. Sie ersetzt nie eine bestehende Session und laesst
+ihre eigene stehen (`tmux kill-session -t sitzungsprobe`).
