@@ -17,6 +17,15 @@ name: tests
 on:
   push:
   pull_request:
+# Ein Push auf einen Zweig mit offenem PR loeste zwei Laeufe desselben
+# Commits aus (push und pull_request), die sich die Runner teilten und
+# einander verlaengerten: gemessen 33 und 57 Minuten fuer einen Commit
+# (PR #21, 2026-10-02). Eine Gruppe je Zweig laesst davon einen laufen;
+# ein neuer Push verwirft den ueberholten Lauf. Auf main wird nichts
+# abgebrochen — jeder Stand von main bekommt sein eigenes Ergebnis.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   pytest:
     runs-on: ubuntu-latest
