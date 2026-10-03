@@ -149,6 +149,10 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
         return
     for zeile in waechter.bericht():
         terminalreporter.write_line(zeile, red=bool(waechter.funde))
+    from tests.rueckbau import bericht
+
+    for zeile in bericht():
+        terminalreporter.write_line(zeile, yellow=True)
 
 
 def pytest_collection_modifyitems(config, items) -> None:
@@ -160,6 +164,37 @@ def pytest_collection_modifyitems(config, items) -> None:
             je_datei[pfad.name] = _marker_namen(pfad)
         for name in je_datei[pfad.name]:
             item.add_marker(getattr(pytest.mark, name))
+    _rueckbau_aussetzen(config, items)
+
+
+def _rueckbau_aussetzen(config, items) -> None:
+    """Die Tests der zurueckgebauten Faehigkeiten abwaehlen (tests/rueckbau.py).
+
+    Eine Kennung der Liste, die es beim Sammeln der GANZEN Suite nicht gibt,
+    ist ein Fehler: Ein umbenannter Test stuende sonst in der Liste und liefe
+    trotzdem — oder umgekehrt nirgends. Geprueft wird das nur, wenn jede
+    Testdatei gesammelt ist (ein Lauf ueber einzelne Dateien kennt die
+    uebrigen Kennungen nicht)."""
+    from tests.rueckbau import LISTE, ausgesetzt, teile
+
+    liste = ausgesetzt()
+    if not liste:
+        return
+    stellen, ohne_test = teile([item.nodeid for item in items], liste)
+    gesammelt = {Path(str(item.fspath)).name for item in items}
+    alle = {p.name for p in TESTS.glob("test_*.py")}
+    auswahl = bool(config.option.keyword or config.option.markexpr)
+    # Im xdist-Worker wird nicht abgebrochen: Der Abbruch erschiene dort als
+    # interner Fehler ohne diese Meldung. Dort faengt es der Test der Liste
+    # (tests/test_rueckbau_fall2.py), der die Suite eigens sammelt.
+    im_worker = hasattr(config, "workerinput")
+    if ohne_test and gesammelt >= alle and not auswahl and not im_worker:
+        raise pytest.UsageError(
+            f"{LISTE.name} nennt {len(ohne_test)} Kennung(en), die es in der Suite nicht "
+            f"gibt, z. B. {ohne_test[0]} — umbenannt oder geloescht? Die Liste nachziehen.")
+    weg = set(stellen)
+    config.hook.pytest_deselected(items=[items[i] for i in stellen])
+    items[:] = [item for i, item in enumerate(items) if i not in weg]
 
 
 def pytest_collection_finish(session) -> None:
