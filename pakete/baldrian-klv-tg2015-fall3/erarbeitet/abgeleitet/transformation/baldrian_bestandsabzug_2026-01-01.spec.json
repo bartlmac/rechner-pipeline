@@ -1,0 +1,195 @@
+{
+ "quelle_datei": "baldrian_bestandsabzug_2026-01-01.csv",
+ "quelle_sha256": "9ecb8bcd90d706ca31fcda165699299699cd2d25088982172ea571778deb865f",
+ "akteur": "claude-sonnet-5-5/transformiere-quellbestand+mapping-aenderung@2ad478c",
+ "erhoben_am": "2026-10-02",
+ "felder": [
+  {
+   "ziel": "police_id",
+   "typ": "direkt",
+   "quellen": [
+    "POLNR"
+   ],
+   "begruendung": "POLNR ist die Versicherungsscheinnummer (ganzzahlig, 834 verschiedene Werte bei 834 Zeilen: eindeutig je Vertrag)."
+  },
+  {
+   "ziel": "beginn",
+   "typ": "berechnung",
+   "quellen": [
+    "BEGINN"
+   ],
+   "begruendung": "BEGINN ist der Versicherungsbeginn (Datum TT.MM.JJJJ); Zielform ISO.",
+   "berechnung": "datum_nach_iso"
+  },
+  {
+   "ziel": "entry_age",
+   "typ": "berechnung",
+   "quellen": [
+    "GEBDAT",
+    "BEGINN"
+   ],
+   "begruendung": "Eintrittsalter nach Tarifplan Mitteilung 143 Abschnitt 3: Differenz der Kalenderjahre von Versicherungsbeginn und Geburt (absaetze[1]) — Kalenderjahresmethode, nicht die Geburtstagsmethode.",
+   "berechnung": "alter_kalenderjahresmethode"
+  },
+  {
+   "ziel": "sex",
+   "typ": "kodierung",
+   "quellen": [
+    "GESCHL"
+   ],
+   "begruendung": "GESCHL M/W: M = maennlich, W = weiblich; Ziel kennt M/F. Der Tarif ist Unisex (U70); das Geschlecht bleibt Vertragsattribut fuer Nachweisung und Folgebewertung. Die Bedeutung von M/W ist im Spaltenprofil nur aus dem Kuerzel gelesen, die Lieferung dokumentiert sie nicht (Befund fuer A-Q1, geringes Risiko).",
+   "kodierung": {
+    "M": "M",
+    "W": "F"
+   }
+  },
+  {
+   "ziel": "duration",
+   "typ": "berechnung",
+   "quellen": [
+    "BEGINN",
+    "ABLAUF"
+   ],
+   "begruendung": "Versicherungsdauer in vollen Jahren aus Beginn und Ablauftermin (ABLAUF = vereinbarter Ablauftermin, AVB Ziffer 1).",
+   "berechnung": "jahre_aus_datumsdifferenz"
+  },
+  {
+   "ziel": "premium_duration",
+   "typ": "berechnung",
+   "quellen": [
+    "BZDAUER"
+   ],
+   "begruendung": "BZDAUER = Beitragszahlungsdauer in Jahren (ganzzahlig, 10 bis 35, AVB Ziffer 2).",
+   "berechnung": "ganzzahl"
+  },
+  {
+   "ziel": "sum_insured",
+   "typ": "berechnung",
+   "quellen": [
+    "ERLSUMME"
+   ],
+   "begruendung": "ERLSUMME = Erlebensfallsumme; bei beitragsfrei gestellten Vertraegen die beitragsfreie Summe (Tarifplan Abschnitt 6). Fuer BFR-Vertraege ist das nicht die urspruengliche Versicherungssumme — siehe Befund fuer A-Q1.",
+   "berechnung": "zahl"
+  },
+  {
+   "ziel": "zahlweise",
+   "typ": "kodierung",
+   "quellen": [
+    "ZAHLW"
+   ],
+   "begruendung": "Zahlweise als Zahl der Raten je Jahr (Ziel: 1, 2, 4, 12).",
+   "kodierung": {
+    "jaehrlich": 1,
+    "halbjaehrlich": 2,
+    "vierteljaehrlich": 4,
+    "monatlich": 12
+   }
+  },
+  {
+   "ziel": "status",
+   "typ": "kodierung",
+   "quellen": [
+    "RK"
+   ],
+   "begruendung": "RK = Risikoklasse (Tarifplan Abschnitt 1): NR Nichtraucher, R Raucher; Ziel-Dimension status der Generation (nicht der Vertragsstatus).",
+   "kodierung": {
+    "NR": "nichtraucher",
+    "R": "raucher"
+   }
+  },
+  {
+   "ziel": "tarifart",
+   "typ": "kodierung",
+   "quellen": [
+    "BGRP"
+   ],
+   "begruendung": "BGRP = Bestandsgruppe (AVB Ziffer 1; Tarifplan Abschnitt 2): E Einzel, K Kollektiv, H Haus; Ziel-Dimension tarifart der Generation. Kuerzelauflosung E/K/H aus den drei Gruppen des Tarifplans, nicht woertlich dokumentiert.",
+   "kodierung": {
+    "E": "einzel",
+    "K": "kollektiv",
+    "H": "haus"
+   }
+  },
+  {
+   "ziel": "geburtsdatum",
+   "typ": "berechnung",
+   "quellen": [
+    "GEBDAT"
+   ],
+   "begruendung": "Geburtsdatum; optionales Zielfeld, fuer Nachweisung und Eintrittsalter-Gegenprobe.",
+   "berechnung": "datum_nach_iso"
+  },
+  {
+   "ziel": "brutto_jahresbeitrag",
+   "typ": "berechnung",
+   "quellen": [
+    "JBRUTTO"
+   ],
+   "begruendung": "JBRUTTO = aktueller Jahresbeitrag; 0,00 bei Beitragsfreiheit und nach Ablauf der Beitragszahlungsdauer (Tarifplan Abschnitt 6).",
+   "berechnung": "zahl"
+  },
+  {
+   "ziel": "deckungskapital",
+   "typ": "berechnung",
+   "quellen": [
+    "DECKKAP"
+   ],
+   "begruendung": "DECKKAP = Deckungskapital laut Quelle, letzte Standmitteilung zum letzten Vertragsjahrestag vor dem Abzugsstichtag, nicht interpoliert (Tarifplan Abschnitt 6).",
+   "berechnung": "zahl"
+  },
+  {
+   "ziel": "dk_ta",
+   "typ": "berechnung",
+   "quellen": [
+    "DECKKAP"
+   ],
+   "begruendung": "Verankerungswert: das Deckungskapital am letzten exakten Rechenpunkt der Quelle (Jahrestag) — dieselbe Spalte wie deckungskapital, dort als Abgleichswert, hier als Verankerungsattribut (Zielfelder dk_ta und monate_ta gehoeren zusammen).",
+   "berechnung": "zahl"
+  },
+  {
+   "ziel": "monate_ta",
+   "typ": "berechnung",
+   "quellen": [
+    "BEGINN"
+   ],
+   "begruendung": "Volle Vertragsmonate seit Beginn bis zum letzten Vertragsjahrestag vor dem Abzugsstichtag 01.01.2026 (Vielfaches von 12), weil die Quelle ihr Deckungskapital nur am Jahrestag fuehrt (Tarifplan Abschnitt 6).",
+   "berechnung": "monate_letzter_jahrestag_vor_stichtag",
+   "parameter": {
+    "stichtag": "2026-01-01"
+   }
+  },
+  {
+   "ziel": "",
+   "typ": "nicht_uebernommen",
+   "quellen": [
+    "TARIF"
+   ],
+   "begruendung": "TARIF hat genau einen Wert (KLV15); die Generation steht im Fall (Tarifwerk KLV TG2015), nicht je Zeile."
+  },
+  {
+   "ziel": "",
+   "typ": "nicht_uebernommen",
+   "quellen": [
+    "VTG_STATUS"
+   ],
+   "begruendung": "AKT/BFR (aktiv/beitragsfrei) hat im Abzugsformat des Ziels kein Feld (VERTRAG_PFLICHT/VERTRAG_OPTIONAL). Die Beitragsfreiheit erreicht das Ziel ueber JBRUTTO = 0 und die GeVo-Vorgeschichte (PEX). Gegenpruefung der Lieferung (Messung 04): im Abzug 01.01.2026 160 BFR-Zeilen, alle mit JBRUTTO 0,00 und alle mit PEX in der Vorgeschichte; kein AKT-Vertrag traegt PEX (0 von 674); die 124 AKT mit JBRUTTO 0 haben alle die Beitragszahlungsdauer bis 01.01.2026 beendet. Auskunft Nr. 1, Zu Rueckfrage 05 Punkt 2, bestaetigt die Zuordnung. Ein eigenes Zielfeld waere A-O1."
+  },
+  {
+   "ziel": "",
+   "typ": "nicht_uebernommen",
+   "quellen": [
+    "STORNO_KZ"
+   ],
+   "begruendung": "STORNO_KZ wird nicht uebernommen: R = Beitragsrueckstand (Mahnverfahren laeuft), S = Sperrvermerk (z. B. Abtretung oder Pfaendung; Auszahlungen gesperrt), beide ohne Rechenwirkung; gekennzeichnete Vertraege bleiben im uebertragenen Bestand (Auskunft Nr. 1, Zu Rueckfrage 03, eingang/auskunft-1-rechnungsgrundlagen-kodierungen-herabsetzung.md). Gegenpruefung der Lieferung (Messung 04, bestaetigt in Messung 05): 23 Policen (20 R, 3 S), in beiden Abzuegen (01.01.2026 und 01.01.2027) dieselben Policen mit demselben Wert, keine im GeVo-Protokoll 2026; keine der 23 Policen, die 2027 im Abzug fehlen, traegt ein Kennzeichen. Kein Zielfeld."
+  }
+ ],
+ "offene_konflikte": [],
+ "anmerkungen": [
+  "Mapping fuer den Abzug 01.01.2026 (834 Zeilen). Der Abzug 01.01.2027 hat dieselben 15 Spalten (Profil); fuer ihn wuerde nur der Parameter stichtag von monate_ta auf 2027-01-01 wechseln — nicht Gegenstand dieser Spec.",
+  "Offen, ohne Zielfeld: vertragsjahre_am_stichtag (optional) und brutto_zahlbeitrag (optional) liefert die Quelle nicht; sie werden nicht gemappt.",
+  "Entry-Age-Regel (Kalenderjahre) ist aus dem Tarifplan belegt; die Abzugsprobe (Eintrittsalter gegen den gelieferten Beitrag) ist Sache der Gates, nicht dieser Spec.",
+  "Aenderung dieses Mappings (Zug 10): Der offene Konflikt zur Spalte STORNO_KZ entfaellt, weil die Quelle ihn beantwortet hat (Auskunft Nr. 1, Zu Rueckfrage 03; SHA-256 8125b6fe8d881f62d995fae9b16319d7e089ee5f9fbc5b25917ca109fb1b9754). Die Spalte ist nun als nicht_uebernommen mit Begruendung gefuehrt. Die Vorfassung der Spec liegt unveraendert unter protokoll/werkzeug-aktuariat/baldrian_bestandsabzug_2026-01-01.spec.vor-zug-10.json.",
+  "Beobachtung ohne Urteil: Alle 23 gekennzeichneten Policen tragen eine Vorgeschichte (ERH, PEX oder RED); im Gesamtbestand sind es 577 von 834 (69 %). Eine der 23 ist beitragsfrei. Die Auskunft nennt keine Rechenwirkung; die Haeufung ist keine Gegenaussage.",
+  "Mapping fuer den Abzug 01.01.2026 (834 Zeilen); der Abzug 01.01.2027 hat dieselben 15 Spalten, nur der Parameter stichtag von monate_ta waere ein anderer."
+ ]
+}

@@ -8,6 +8,9 @@
 # einschliesslich der CRLF, die ein Quellsystem geschrieben hat.
 lieferungen/** -text
 tests/fixtures/** -text
+# Ein festgehaltener Fall ist an seine SHA256SUMS gebunden; das Nachfahren
+# faehrt ihn nur, wenn jede Datei byteweise stimmt.
+pakete/** -text
 
 *.pdf binary
 *.xlsx binary

@@ -183,6 +183,11 @@ Im Paket liegen keine Schluessel und keine Zeichnungen. Das Skript faehrt
 nur ein Paket, das seinen Pruefsummen entspricht und keine Datei darueber
 hinaus traegt.
 
+Der festgehaltene Fall 3 liegt als Paket unter
+`pakete/baldrian-klv-tg2015-fall3/` (Stand vor dem Fall: `8c1bed3`). Es
+traegt die Aufloesung des Falls: Es ist zum Nachfahren da, nicht als
+Lesestoff fuer einen Lauf, der denselben Fall live fuehrt.
+
 Im **Rezept** stehen nur diese Helfer, je Zeile einer (Fortsetzungszeilen
 mit `\`); eine andere Zeile verweigert das Skript, bevor es beginnt:
 

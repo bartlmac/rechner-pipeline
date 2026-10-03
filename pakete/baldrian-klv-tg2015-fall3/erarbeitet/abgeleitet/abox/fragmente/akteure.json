@@ -1,0 +1,7 @@
+{
+ "tg2015-rechner.json": "claude-sonnet-5-5/extrahiere-quellfragment+verifikation@b98b9da",
+ "tg2015-meldung.json": "claude-sonnet-5-5/extrahiere-quellfragment+verifikation@b98b9da",
+ "tg2015-avb.json": "claude-sonnet-5-5/extrahiere-quellfragment+verifikation@b98b9da",
+ "tg2015-auskunft.json": "claude-sonnet-5-5/extrahiere-quellfragment+verifikation@b98b9da",
+ "tg2015-festlegung-plv.json": "claude-sonnet-5-5/extrahiere-quellfragment+verifikation@2ad478c"
+}

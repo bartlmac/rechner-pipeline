@@ -115,7 +115,8 @@ Gesamtbild, aber nicht zum System.
 
 **Was im Repository liegt — und was bewusst nicht.** Hier liegen der Code
 des KI-Systems, die Definition der Vorzeigeobjekte (die PLV, die
-Lieferungen, der Fall der Vorführung) und die Routinen, mit denen daraus
+Lieferungen, der Fall der Vorführung), die festgehaltenen Fälle als Pakete
+zum Nachfahren (`pakete/`) und die Routinen, mit denen daraus
 eine vollständige Laufzeit entsteht: `deploy/welt/` stellt eine Welt auf
 (Ablage, Linie, Erstabnahmen, auf Wunsch eigene Schlüssel) und startet
 einen Fall darin, `deploy/plv/` liefert Image und Bedienfolgen des

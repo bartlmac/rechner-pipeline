@@ -1,0 +1,629 @@
+{
+ "generation": "tg2015",
+ "quelle_datei": "Mitteilung_143_KLV_TG2015.pdf",
+ "quelle_art": "tarifmeldung",
+ "dimensionen": [
+  {
+   "id": "status",
+   "name": "Risikoklasse (Raucherstatus)",
+   "auspraegungen": [
+    "nichtraucher",
+    "raucher"
+   ]
+  },
+  {
+   "id": "tarifart",
+   "name": "Bestandsgruppe (Tarifart)",
+   "auspraegungen": [
+    "einzel",
+    "kollektiv",
+    "haus"
+   ]
+  }
+ ],
+ "zellen": [
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "einzel"
+   },
+   "parameter": {
+    "zins": {
+     "wert": 0.0125,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'Der Tarifzins beträgt 1,25 %'",
+     "konfidenz": 1.0
+    },
+    "tafel": {
+     "wert": "DAV2008_T_NR",
+     "fundstelle": "absaetze[0] Abschnitt 1: Tabelle Risikoklasse/Sterbetafel: NR DAV2008_T_NR_U70 (Suffix U70 nach unisex)",
+     "konfidenz": 0.9
+    },
+    "alpha": {
+     "wert": 0.025,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Abschlusskosten alpha",
+     "konfidenz": 1.0
+    },
+    "beta1": {
+     "wert": 0.03,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Inkassokosten beta1",
+     "konfidenz": 1.0
+    },
+    "gamma1": {
+     "wert": 0.001,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Verwaltung gamma1",
+     "konfidenz": 1.0
+    },
+    "gamma2": {
+     "wert": 0.00125,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Verwaltung gamma2",
+     "konfidenz": 1.0
+    },
+    "gamma3": {
+     "wert": 0.0025,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Verwaltung gamma3",
+     "konfidenz": 1.0
+    },
+    "policy_fee": {
+     "wert": 12.0,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Stückkosten je Jahr",
+     "konfidenz": 1.0
+    },
+    "zillmer_dauer": {
+     "wert": 5,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'Abschlusskosten ... über die ersten fünf Versicherungsjahre getilgt (Zillmerdauer)'",
+     "konfidenz": 1.0
+    },
+    "min_alter_flex": {
+     "wert": 60,
+     "fundstelle": "absaetze[0] Abschnitt 1: flexible Abrufphase 'ab Alter 60'",
+     "konfidenz": 1.0
+    },
+    "min_rlz_flex": {
+     "wert": 5,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'bei einer Restlaufzeit von höchstens fünf Jahren'",
+     "konfidenz": 0.9
+    },
+    "stoab_satz": {
+     "wert": 0.005,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Abzug bei Rückkauf (der Differenz VS - DK) 0,5 %",
+     "konfidenz": 1.0
+    },
+    "stoab_min": {
+     "wert": 50.0,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Abzug mindestens",
+     "konfidenz": 1.0
+    },
+    "stoab_max": {
+     "wert": 200.0,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Abzug höchstens",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw2": {
+     "wert": 0.02,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Ratenzuschlag halbjährlich",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw4": {
+     "wert": 0.03,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Ratenzuschlag vierteljährlich",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw12": {
+     "wert": 0.05,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Ratenzuschlag monatlich",
+     "konfidenz": 1.0
+    }
+   }
+  },
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "kollektiv"
+   },
+   "parameter": {
+    "zins": {
+     "wert": 0.0125,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'Der Tarifzins beträgt 1,25 %'",
+     "konfidenz": 1.0
+    },
+    "tafel": {
+     "wert": "DAV2008_T_NR",
+     "fundstelle": "absaetze[0] Abschnitt 1: Tabelle Risikoklasse/Sterbetafel: NR DAV2008_T_NR_U70 (Suffix U70 nach unisex)",
+     "konfidenz": 0.9
+    },
+    "alpha": {
+     "wert": 0.015,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Abschlusskosten alpha",
+     "konfidenz": 1.0
+    },
+    "beta1": {
+     "wert": 0.015,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Inkassokosten beta1",
+     "konfidenz": 1.0
+    },
+    "gamma1": {
+     "wert": 0.0008,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Verwaltung gamma1",
+     "konfidenz": 1.0
+    },
+    "gamma2": {
+     "wert": 0.001,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Verwaltung gamma2",
+     "konfidenz": 1.0
+    },
+    "gamma3": {
+     "wert": 0.0025,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Verwaltung gamma3",
+     "konfidenz": 1.0
+    },
+    "policy_fee": {
+     "wert": 12.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Stückkosten je Jahr",
+     "konfidenz": 1.0
+    },
+    "zillmer_dauer": {
+     "wert": 5,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'Abschlusskosten ... über die ersten fünf Versicherungsjahre getilgt (Zillmerdauer)'",
+     "konfidenz": 1.0
+    },
+    "min_alter_flex": {
+     "wert": 60,
+     "fundstelle": "absaetze[0] Abschnitt 1: flexible Abrufphase 'ab Alter 60'",
+     "konfidenz": 1.0
+    },
+    "min_rlz_flex": {
+     "wert": 5,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'bei einer Restlaufzeit von höchstens fünf Jahren'",
+     "konfidenz": 0.9
+    },
+    "stoab_satz": {
+     "wert": 0.005,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Abzug bei Rückkauf (der Differenz VS - DK) 0,5 %",
+     "konfidenz": 1.0
+    },
+    "stoab_min": {
+     "wert": 50.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Abzug mindestens",
+     "konfidenz": 1.0
+    },
+    "stoab_max": {
+     "wert": 200.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Abzug höchstens",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw2": {
+     "wert": 0.01,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Ratenzuschlag halbjährlich",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw4": {
+     "wert": 0.015,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Ratenzuschlag vierteljährlich",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw12": {
+     "wert": 0.025,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Ratenzuschlag monatlich",
+     "konfidenz": 1.0
+    }
+   }
+  },
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "haus"
+   },
+   "parameter": {
+    "zins": {
+     "wert": 0.0125,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'Der Tarifzins beträgt 1,25 %'",
+     "konfidenz": 1.0
+    },
+    "tafel": {
+     "wert": "DAV2008_T_NR",
+     "fundstelle": "absaetze[0] Abschnitt 1: Tabelle Risikoklasse/Sterbetafel: NR DAV2008_T_NR_U70 (Suffix U70 nach unisex)",
+     "konfidenz": 0.9
+    },
+    "alpha": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: Abschlusskosten alpha",
+     "konfidenz": 1.0
+    },
+    "beta1": {
+     "wert": 0.01,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: Inkassokosten beta1",
+     "konfidenz": 1.0
+    },
+    "gamma1": {
+     "wert": 0.0008,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: Verwaltung gamma1",
+     "konfidenz": 1.0
+    },
+    "gamma2": {
+     "wert": 0.001,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: Verwaltung gamma2",
+     "konfidenz": 1.0
+    },
+    "gamma3": {
+     "wert": 0.0025,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: Verwaltung gamma3",
+     "konfidenz": 1.0
+    },
+    "policy_fee": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: Stückkosten je Jahr",
+     "konfidenz": 1.0
+    },
+    "zillmer_dauer": {
+     "wert": 5,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'Abschlusskosten ... über die ersten fünf Versicherungsjahre getilgt (Zillmerdauer)'",
+     "konfidenz": 1.0
+    },
+    "min_alter_flex": {
+     "wert": 60,
+     "fundstelle": "absaetze[0] Abschnitt 1: flexible Abrufphase 'ab Alter 60'",
+     "konfidenz": 1.0
+    },
+    "min_rlz_flex": {
+     "wert": 5,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'bei einer Restlaufzeit von höchstens fünf Jahren'",
+     "konfidenz": 0.9
+    },
+    "stoab_satz": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: 'Abzug bei Rückkauf entfällt'",
+     "konfidenz": 0.8
+    },
+    "stoab_min": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: 'Abzug bei Rückkauf entfällt'",
+     "konfidenz": 0.8
+    },
+    "stoab_max": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: 'Abzug bei Rückkauf entfällt'",
+     "konfidenz": 0.8
+    },
+    "ratzu_zw2": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: 'Ratenzuschlag entfällt'",
+     "konfidenz": 0.8
+    },
+    "ratzu_zw4": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: 'Ratenzuschlag entfällt'",
+     "konfidenz": 0.8
+    },
+    "ratzu_zw12": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: 'Ratenzuschlag entfällt'",
+     "konfidenz": 0.8
+    }
+   }
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "einzel"
+   },
+   "parameter": {
+    "zins": {
+     "wert": 0.0125,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'Der Tarifzins beträgt 1,25 %'",
+     "konfidenz": 1.0
+    },
+    "tafel": {
+     "wert": "DAV2008_T_R",
+     "fundstelle": "absaetze[0] Abschnitt 1: Tabelle Risikoklasse/Sterbetafel: R DAV2008_T_R_U70 (Suffix U70 nach unisex)",
+     "konfidenz": 0.9
+    },
+    "alpha": {
+     "wert": 0.025,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Abschlusskosten alpha",
+     "konfidenz": 1.0
+    },
+    "beta1": {
+     "wert": 0.03,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Inkassokosten beta1",
+     "konfidenz": 1.0
+    },
+    "gamma1": {
+     "wert": 0.001,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Verwaltung gamma1",
+     "konfidenz": 1.0
+    },
+    "gamma2": {
+     "wert": 0.00125,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Verwaltung gamma2",
+     "konfidenz": 1.0
+    },
+    "gamma3": {
+     "wert": 0.0025,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Verwaltung gamma3",
+     "konfidenz": 1.0
+    },
+    "policy_fee": {
+     "wert": 12.0,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Stückkosten je Jahr",
+     "konfidenz": 1.0
+    },
+    "zillmer_dauer": {
+     "wert": 5,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'Abschlusskosten ... über die ersten fünf Versicherungsjahre getilgt (Zillmerdauer)'",
+     "konfidenz": 1.0
+    },
+    "min_alter_flex": {
+     "wert": 60,
+     "fundstelle": "absaetze[0] Abschnitt 1: flexible Abrufphase 'ab Alter 60'",
+     "konfidenz": 1.0
+    },
+    "min_rlz_flex": {
+     "wert": 5,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'bei einer Restlaufzeit von höchstens fünf Jahren'",
+     "konfidenz": 0.9
+    },
+    "stoab_satz": {
+     "wert": 0.005,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Abzug bei Rückkauf (der Differenz VS - DK) 0,5 %",
+     "konfidenz": 1.0
+    },
+    "stoab_min": {
+     "wert": 50.0,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Abzug mindestens",
+     "konfidenz": 1.0
+    },
+    "stoab_max": {
+     "wert": 200.0,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Abzug höchstens",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw2": {
+     "wert": 0.02,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Ratenzuschlag halbjährlich",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw4": {
+     "wert": 0.03,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Ratenzuschlag vierteljährlich",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw12": {
+     "wert": 0.05,
+     "fundstelle": "absaetze[0] Abschnitt 2, Bestandsgruppe Einzel: Ratenzuschlag monatlich",
+     "konfidenz": 1.0
+    }
+   }
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "kollektiv"
+   },
+   "parameter": {
+    "zins": {
+     "wert": 0.0125,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'Der Tarifzins beträgt 1,25 %'",
+     "konfidenz": 1.0
+    },
+    "tafel": {
+     "wert": "DAV2008_T_R",
+     "fundstelle": "absaetze[0] Abschnitt 1: Tabelle Risikoklasse/Sterbetafel: R DAV2008_T_R_U70 (Suffix U70 nach unisex)",
+     "konfidenz": 0.9
+    },
+    "alpha": {
+     "wert": 0.015,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Abschlusskosten alpha",
+     "konfidenz": 1.0
+    },
+    "beta1": {
+     "wert": 0.015,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Inkassokosten beta1",
+     "konfidenz": 1.0
+    },
+    "gamma1": {
+     "wert": 0.0008,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Verwaltung gamma1",
+     "konfidenz": 1.0
+    },
+    "gamma2": {
+     "wert": 0.001,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Verwaltung gamma2",
+     "konfidenz": 1.0
+    },
+    "gamma3": {
+     "wert": 0.0025,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Verwaltung gamma3",
+     "konfidenz": 1.0
+    },
+    "policy_fee": {
+     "wert": 12.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Stückkosten je Jahr",
+     "konfidenz": 1.0
+    },
+    "zillmer_dauer": {
+     "wert": 5,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'Abschlusskosten ... über die ersten fünf Versicherungsjahre getilgt (Zillmerdauer)'",
+     "konfidenz": 1.0
+    },
+    "min_alter_flex": {
+     "wert": 60,
+     "fundstelle": "absaetze[0] Abschnitt 1: flexible Abrufphase 'ab Alter 60'",
+     "konfidenz": 1.0
+    },
+    "min_rlz_flex": {
+     "wert": 5,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'bei einer Restlaufzeit von höchstens fünf Jahren'",
+     "konfidenz": 0.9
+    },
+    "stoab_satz": {
+     "wert": 0.005,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Abzug bei Rückkauf (der Differenz VS - DK) 0,5 %",
+     "konfidenz": 1.0
+    },
+    "stoab_min": {
+     "wert": 50.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Abzug mindestens",
+     "konfidenz": 1.0
+    },
+    "stoab_max": {
+     "wert": 200.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Abzug höchstens",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw2": {
+     "wert": 0.01,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Ratenzuschlag halbjährlich",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw4": {
+     "wert": 0.015,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Ratenzuschlag vierteljährlich",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw12": {
+     "wert": 0.025,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Kollektiv: Ratenzuschlag monatlich",
+     "konfidenz": 1.0
+    }
+   }
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "haus"
+   },
+   "parameter": {
+    "zins": {
+     "wert": 0.0125,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'Der Tarifzins beträgt 1,25 %'",
+     "konfidenz": 1.0
+    },
+    "tafel": {
+     "wert": "DAV2008_T_R",
+     "fundstelle": "absaetze[0] Abschnitt 1: Tabelle Risikoklasse/Sterbetafel: R DAV2008_T_R_U70 (Suffix U70 nach unisex)",
+     "konfidenz": 0.9
+    },
+    "alpha": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: Abschlusskosten alpha",
+     "konfidenz": 1.0
+    },
+    "beta1": {
+     "wert": 0.01,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: Inkassokosten beta1",
+     "konfidenz": 1.0
+    },
+    "gamma1": {
+     "wert": 0.0008,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: Verwaltung gamma1",
+     "konfidenz": 1.0
+    },
+    "gamma2": {
+     "wert": 0.001,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: Verwaltung gamma2",
+     "konfidenz": 1.0
+    },
+    "gamma3": {
+     "wert": 0.0025,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: Verwaltung gamma3",
+     "konfidenz": 1.0
+    },
+    "policy_fee": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: Stückkosten je Jahr",
+     "konfidenz": 1.0
+    },
+    "zillmer_dauer": {
+     "wert": 5,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'Abschlusskosten ... über die ersten fünf Versicherungsjahre getilgt (Zillmerdauer)'",
+     "konfidenz": 1.0
+    },
+    "min_alter_flex": {
+     "wert": 60,
+     "fundstelle": "absaetze[0] Abschnitt 1: flexible Abrufphase 'ab Alter 60'",
+     "konfidenz": 1.0
+    },
+    "min_rlz_flex": {
+     "wert": 5,
+     "fundstelle": "absaetze[0] Abschnitt 1: 'bei einer Restlaufzeit von höchstens fünf Jahren'",
+     "konfidenz": 0.9
+    },
+    "stoab_satz": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: 'Abzug bei Rückkauf entfällt'",
+     "konfidenz": 0.8
+    },
+    "stoab_min": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: 'Abzug bei Rückkauf entfällt'",
+     "konfidenz": 0.8
+    },
+    "stoab_max": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: 'Abzug bei Rückkauf entfällt'",
+     "konfidenz": 0.8
+    },
+    "ratzu_zw2": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: 'Ratenzuschlag entfällt'",
+     "konfidenz": 0.8
+    },
+    "ratzu_zw4": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: 'Ratenzuschlag entfällt'",
+     "konfidenz": 0.8
+    },
+    "ratzu_zw12": {
+     "wert": 0.0,
+     "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: 'Ratenzuschlag entfällt'",
+     "konfidenz": 0.8
+    }
+   }
+  }
+ ],
+ "unisex": {
+  "wert": "U70",
+  "fundstelle": "absaetze[0] Abschnitt 1: Sterbetafeln DAV2008_T_NR_U70 / DAV2008_T_R_U70 (Unisex, Männeranteil 70 %)",
+  "konfidenz": 0.9
+ },
+ "tarifwerk": {},
+ "quellverfahren": {
+  "dk_stichtag": {
+   "wert": "jahrestag",
+   "fundstelle": "absaetze[2] Abschnitt 6: DECKKAP 'zum letzten Vertragsjahrestag vor dem Abzugsstichtag ... interpoliert nicht'",
+   "konfidenz": 1.0
+  }
+ },
+ "quellnamen": {
+  "DAV2008_T_NR_U70": "parameter:tafel (DAV2008_T_NR) + unisex U70",
+  "DAV2008_T_R_U70": "parameter:tafel (DAV2008_T_R) + unisex U70",
+  "Bestandsgruppe": "dimension:tarifart",
+  "Risikoklasse": "dimension:status",
+  "Stückkosten je Jahr": "parameter:policy_fee",
+  "Abzug bei Rückkauf": "parameter:stoab_satz",
+  "ERLSUMME": "bestand:erlebensfallsumme",
+  "JBRUTTO": "bestand:jahresbeitrag",
+  "DECKKAP": "bestand:deckungskapital"
+ },
+ "nicht_belegt": [
+  "tarifwerk.scheiben_mit_gamma1",
+  "tarifwerk.stoab_je_baustein",
+  "tarifwerk.red_verfahren",
+  "tarifwerk.tku_umfang",
+  "quellverfahren.red_verfahren",
+  "quellverfahren.erhoehungssatz",
+  "quellverfahren.formfunktion",
+  "quellverfahren.fenster"
+ ],
+ "anmerkungen": [
+  "Das Staging liefert nur 'absaetze' (Text je Seite): 'tabellen' und 'formeln' sind bauartbedingt leer, die Fundstellen sind daher absaetze[i] plus Abschnitt.",
+  "Prozent/Promille normalisiert (25 Promille = 0.025; 1,25 Promille = 0.00125; 0,8 Promille = 0.0008; 0,5 % = 0.005).",
+  "Haus: 'Abzug bei Rückkauf entfällt' und 'Ratenzuschlag entfällt' sind als 0 gelesen (Konfidenz 0,8) — Interpretation von 'entfällt'. Haus-Inkassokosten beta1 = 10 Promille = 0.01.",
+  "Tafel: 'DAV2008_T_NR_U70' auf Rechner-Konvention DAV2008_T_NR normalisiert; das Suffix U70 ist die Unisex-Vorschrift (70 % Maenner) und steht in 'unisex'.",
+  "Die Tafel haengt nur an der Risikoklasse, die Kostensaetze nur an der Bestandsgruppe (Abschnitt 2, Satz 2) — deshalb je Zelle status x tarifart.",
+  "omega = 123, l(0) = 1.000.000, Rundung der Ausscheideordnung/Kommutationszahlen auf 16 Stellen, Betraege erst in der Ausgabe auf den Cent (Abschnitt 1, 5): kein Zellparameter.",
+  "Abschnitt 6 (Bestandsabzug): ERLSUMME bei beitragsfreien Vertraegen = beitragsfreie Summe; JBRUTTO 0,00 bei Beitragsfreiheit und nach Ablauf der Beitragszahlungsdauer; DECKKAP zum letzten Vertragsjahrestag.",
+  "Das Eintrittsalter x = Differenz der Kalenderjahre von Versicherungsbeginn und Geburt (Abschnitt 3) — Konvention fuer die Transformation.",
+  "Dynamiksatz: der Tarifplan nennt keinen. Tarifwerk-Merkmale stehen im Bedingungswerk, nicht hier."
+ ]
+}

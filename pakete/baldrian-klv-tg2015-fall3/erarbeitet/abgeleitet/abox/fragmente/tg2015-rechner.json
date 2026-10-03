@@ -1,0 +1,635 @@
+{
+ "generation": "tg2015",
+ "quelle_datei": "Tarifrechner_KLV_TG2015.xlsm",
+ "quelle_art": "tarifrechner",
+ "dimensionen": [
+  {
+   "id": "status",
+   "name": "Risikoklasse (Raucherstatus)",
+   "auspraegungen": [
+    "nichtraucher",
+    "raucher"
+   ]
+  },
+  {
+   "id": "tarifart",
+   "name": "Bestandsgruppe (Tarifart)",
+   "auspraegungen": [
+    "einzel",
+    "kollektiv",
+    "haus"
+   ]
+  }
+ ],
+ "zellen": [
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "einzel"
+   },
+   "parameter": {
+    "zins": {
+     "wert": 0.0175,
+     "fundstelle": "Tarifrechnung!$G$4",
+     "konfidenz": 1.0
+    },
+    "tafel": {
+     "wert": "DAV2008_T_NR",
+     "fundstelle": "Tarifrechnung!$G$5 (Basis DAV2008_T) + Tarifrechnung!$E$5 (Suffix _NR/_R nach RK)",
+     "konfidenz": 0.9
+    },
+    "alpha": {
+     "wert": 0.025,
+     "fundstelle": "Tarifrechnung!$G$6",
+     "konfidenz": 1.0
+    },
+    "beta1": {
+     "wert": 0.03,
+     "fundstelle": "Tarifrechnung!$G$7",
+     "konfidenz": 1.0
+    },
+    "gamma1": {
+     "wert": 0.001,
+     "fundstelle": "Tarifrechnung!$G$8",
+     "konfidenz": 1.0
+    },
+    "gamma2": {
+     "wert": 0.00125,
+     "fundstelle": "Tarifrechnung!$G$9",
+     "konfidenz": 1.0
+    },
+    "gamma3": {
+     "wert": 0.0025,
+     "fundstelle": "Tarifrechnung!$G$10",
+     "konfidenz": 1.0
+    },
+    "policy_fee": {
+     "wert": 12,
+     "fundstelle": "Tarifrechnung!$G$11",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw2": {
+     "wert": 0.02,
+     "fundstelle": "Tarifrechnung!$G$12",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw4": {
+     "wert": 0.03,
+     "fundstelle": "Tarifrechnung!$G$12",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw12": {
+     "wert": 0.05,
+     "fundstelle": "Tarifrechnung!$G$12",
+     "konfidenz": 1.0
+    },
+    "min_alter_flex": {
+     "wert": 60,
+     "fundstelle": "Tarifrechnung!$G$13",
+     "konfidenz": 1.0
+    },
+    "min_rlz_flex": {
+     "wert": 5,
+     "fundstelle": "Tarifrechnung!$G$14",
+     "konfidenz": 1.0
+    },
+    "stoab_min": {
+     "wert": 50,
+     "fundstelle": "Tarifrechnung!$G$15",
+     "konfidenz": 1.0
+    },
+    "stoab_max": {
+     "wert": 200,
+     "fundstelle": "Tarifrechnung!$G$16",
+     "konfidenz": 1.0
+    },
+    "stoab_satz": {
+     "wert": 0.005,
+     "fundstelle": "Tarifrechnung!$G$17",
+     "konfidenz": 1.0
+    },
+    "zillmer_dauer": {
+     "wert": 5,
+     "fundstelle": "Tarifrechnung!$H$21:$H$71 (Formel: Act_axn_k(x,5,...) im Zillmer-Zuschlag)",
+     "konfidenz": 0.8
+    }
+   }
+  },
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "kollektiv"
+   },
+   "parameter": {
+    "zins": {
+     "wert": 0.0175,
+     "fundstelle": "Tarifrechnung!$H$4",
+     "konfidenz": 1.0
+    },
+    "tafel": {
+     "wert": "DAV2008_T_NR",
+     "fundstelle": "Tarifrechnung!$H$5 (Basis DAV2008_T) + Tarifrechnung!$E$5 (Suffix _NR/_R nach RK)",
+     "konfidenz": 0.9
+    },
+    "alpha": {
+     "wert": 0.015,
+     "fundstelle": "Tarifrechnung!$H$6",
+     "konfidenz": 1.0
+    },
+    "beta1": {
+     "wert": 0.015,
+     "fundstelle": "Tarifrechnung!$H$7",
+     "konfidenz": 1.0
+    },
+    "gamma1": {
+     "wert": 0.0008,
+     "fundstelle": "Tarifrechnung!$H$8",
+     "konfidenz": 1.0
+    },
+    "gamma2": {
+     "wert": 0.001,
+     "fundstelle": "Tarifrechnung!$H$9",
+     "konfidenz": 1.0
+    },
+    "gamma3": {
+     "wert": 0.0025,
+     "fundstelle": "Tarifrechnung!$H$10",
+     "konfidenz": 1.0
+    },
+    "policy_fee": {
+     "wert": 12,
+     "fundstelle": "Tarifrechnung!$H$11",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw2": {
+     "wert": 0.01,
+     "fundstelle": "Tarifrechnung!$H$12",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw4": {
+     "wert": 0.015,
+     "fundstelle": "Tarifrechnung!$H$12",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw12": {
+     "wert": 0.025,
+     "fundstelle": "Tarifrechnung!$H$12",
+     "konfidenz": 1.0
+    },
+    "min_alter_flex": {
+     "wert": 60,
+     "fundstelle": "Tarifrechnung!$H$13",
+     "konfidenz": 1.0
+    },
+    "min_rlz_flex": {
+     "wert": 5,
+     "fundstelle": "Tarifrechnung!$H$14",
+     "konfidenz": 1.0
+    },
+    "stoab_min": {
+     "wert": 50,
+     "fundstelle": "Tarifrechnung!$H$15",
+     "konfidenz": 1.0
+    },
+    "stoab_max": {
+     "wert": 200,
+     "fundstelle": "Tarifrechnung!$H$16",
+     "konfidenz": 1.0
+    },
+    "stoab_satz": {
+     "wert": 0.005,
+     "fundstelle": "Tarifrechnung!$H$17",
+     "konfidenz": 1.0
+    },
+    "zillmer_dauer": {
+     "wert": 5,
+     "fundstelle": "Tarifrechnung!$H$21:$H$71 (Formel: Act_axn_k(x,5,...) im Zillmer-Zuschlag)",
+     "konfidenz": 0.8
+    }
+   }
+  },
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "haus"
+   },
+   "parameter": {
+    "zins": {
+     "wert": 0.0175,
+     "fundstelle": "Tarifrechnung!$I$4",
+     "konfidenz": 1.0
+    },
+    "tafel": {
+     "wert": "DAV2008_T_NR",
+     "fundstelle": "Tarifrechnung!$I$5 (Basis DAV2008_T) + Tarifrechnung!$E$5 (Suffix _NR/_R nach RK)",
+     "konfidenz": 0.9
+    },
+    "alpha": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$6",
+     "konfidenz": 1.0
+    },
+    "beta1": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$7",
+     "konfidenz": 1.0
+    },
+    "gamma1": {
+     "wert": 0.0008,
+     "fundstelle": "Tarifrechnung!$I$8",
+     "konfidenz": 1.0
+    },
+    "gamma2": {
+     "wert": 0.001,
+     "fundstelle": "Tarifrechnung!$I$9",
+     "konfidenz": 1.0
+    },
+    "gamma3": {
+     "wert": 0.0025,
+     "fundstelle": "Tarifrechnung!$I$10",
+     "konfidenz": 1.0
+    },
+    "policy_fee": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$11",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw2": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$12",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw4": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$12",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw12": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$12",
+     "konfidenz": 1.0
+    },
+    "min_alter_flex": {
+     "wert": 60,
+     "fundstelle": "Tarifrechnung!$I$13",
+     "konfidenz": 1.0
+    },
+    "min_rlz_flex": {
+     "wert": 5,
+     "fundstelle": "Tarifrechnung!$I$14",
+     "konfidenz": 1.0
+    },
+    "stoab_min": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$15",
+     "konfidenz": 1.0
+    },
+    "stoab_max": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$16",
+     "konfidenz": 1.0
+    },
+    "stoab_satz": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$17",
+     "konfidenz": 1.0
+    },
+    "zillmer_dauer": {
+     "wert": 5,
+     "fundstelle": "Tarifrechnung!$H$21:$H$71 (Formel: Act_axn_k(x,5,...) im Zillmer-Zuschlag)",
+     "konfidenz": 0.8
+    }
+   }
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "einzel"
+   },
+   "parameter": {
+    "zins": {
+     "wert": 0.0175,
+     "fundstelle": "Tarifrechnung!$G$4",
+     "konfidenz": 1.0
+    },
+    "tafel": {
+     "wert": "DAV2008_T_R",
+     "fundstelle": "Tarifrechnung!$G$5 (Basis DAV2008_T) + Tarifrechnung!$E$5 (Suffix _NR/_R nach RK)",
+     "konfidenz": 0.9
+    },
+    "alpha": {
+     "wert": 0.025,
+     "fundstelle": "Tarifrechnung!$G$6",
+     "konfidenz": 1.0
+    },
+    "beta1": {
+     "wert": 0.03,
+     "fundstelle": "Tarifrechnung!$G$7",
+     "konfidenz": 1.0
+    },
+    "gamma1": {
+     "wert": 0.001,
+     "fundstelle": "Tarifrechnung!$G$8",
+     "konfidenz": 1.0
+    },
+    "gamma2": {
+     "wert": 0.00125,
+     "fundstelle": "Tarifrechnung!$G$9",
+     "konfidenz": 1.0
+    },
+    "gamma3": {
+     "wert": 0.0025,
+     "fundstelle": "Tarifrechnung!$G$10",
+     "konfidenz": 1.0
+    },
+    "policy_fee": {
+     "wert": 12,
+     "fundstelle": "Tarifrechnung!$G$11",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw2": {
+     "wert": 0.02,
+     "fundstelle": "Tarifrechnung!$G$12",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw4": {
+     "wert": 0.03,
+     "fundstelle": "Tarifrechnung!$G$12",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw12": {
+     "wert": 0.05,
+     "fundstelle": "Tarifrechnung!$G$12",
+     "konfidenz": 1.0
+    },
+    "min_alter_flex": {
+     "wert": 60,
+     "fundstelle": "Tarifrechnung!$G$13",
+     "konfidenz": 1.0
+    },
+    "min_rlz_flex": {
+     "wert": 5,
+     "fundstelle": "Tarifrechnung!$G$14",
+     "konfidenz": 1.0
+    },
+    "stoab_min": {
+     "wert": 50,
+     "fundstelle": "Tarifrechnung!$G$15",
+     "konfidenz": 1.0
+    },
+    "stoab_max": {
+     "wert": 200,
+     "fundstelle": "Tarifrechnung!$G$16",
+     "konfidenz": 1.0
+    },
+    "stoab_satz": {
+     "wert": 0.005,
+     "fundstelle": "Tarifrechnung!$G$17",
+     "konfidenz": 1.0
+    },
+    "zillmer_dauer": {
+     "wert": 5,
+     "fundstelle": "Tarifrechnung!$H$21:$H$71 (Formel: Act_axn_k(x,5,...) im Zillmer-Zuschlag)",
+     "konfidenz": 0.8
+    }
+   }
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "kollektiv"
+   },
+   "parameter": {
+    "zins": {
+     "wert": 0.0175,
+     "fundstelle": "Tarifrechnung!$H$4",
+     "konfidenz": 1.0
+    },
+    "tafel": {
+     "wert": "DAV2008_T_R",
+     "fundstelle": "Tarifrechnung!$H$5 (Basis DAV2008_T) + Tarifrechnung!$E$5 (Suffix _NR/_R nach RK)",
+     "konfidenz": 0.9
+    },
+    "alpha": {
+     "wert": 0.015,
+     "fundstelle": "Tarifrechnung!$H$6",
+     "konfidenz": 1.0
+    },
+    "beta1": {
+     "wert": 0.015,
+     "fundstelle": "Tarifrechnung!$H$7",
+     "konfidenz": 1.0
+    },
+    "gamma1": {
+     "wert": 0.0008,
+     "fundstelle": "Tarifrechnung!$H$8",
+     "konfidenz": 1.0
+    },
+    "gamma2": {
+     "wert": 0.001,
+     "fundstelle": "Tarifrechnung!$H$9",
+     "konfidenz": 1.0
+    },
+    "gamma3": {
+     "wert": 0.0025,
+     "fundstelle": "Tarifrechnung!$H$10",
+     "konfidenz": 1.0
+    },
+    "policy_fee": {
+     "wert": 12,
+     "fundstelle": "Tarifrechnung!$H$11",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw2": {
+     "wert": 0.01,
+     "fundstelle": "Tarifrechnung!$H$12",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw4": {
+     "wert": 0.015,
+     "fundstelle": "Tarifrechnung!$H$12",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw12": {
+     "wert": 0.025,
+     "fundstelle": "Tarifrechnung!$H$12",
+     "konfidenz": 1.0
+    },
+    "min_alter_flex": {
+     "wert": 60,
+     "fundstelle": "Tarifrechnung!$H$13",
+     "konfidenz": 1.0
+    },
+    "min_rlz_flex": {
+     "wert": 5,
+     "fundstelle": "Tarifrechnung!$H$14",
+     "konfidenz": 1.0
+    },
+    "stoab_min": {
+     "wert": 50,
+     "fundstelle": "Tarifrechnung!$H$15",
+     "konfidenz": 1.0
+    },
+    "stoab_max": {
+     "wert": 200,
+     "fundstelle": "Tarifrechnung!$H$16",
+     "konfidenz": 1.0
+    },
+    "stoab_satz": {
+     "wert": 0.005,
+     "fundstelle": "Tarifrechnung!$H$17",
+     "konfidenz": 1.0
+    },
+    "zillmer_dauer": {
+     "wert": 5,
+     "fundstelle": "Tarifrechnung!$H$21:$H$71 (Formel: Act_axn_k(x,5,...) im Zillmer-Zuschlag)",
+     "konfidenz": 0.8
+    }
+   }
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "haus"
+   },
+   "parameter": {
+    "zins": {
+     "wert": 0.0175,
+     "fundstelle": "Tarifrechnung!$I$4",
+     "konfidenz": 1.0
+    },
+    "tafel": {
+     "wert": "DAV2008_T_R",
+     "fundstelle": "Tarifrechnung!$I$5 (Basis DAV2008_T) + Tarifrechnung!$E$5 (Suffix _NR/_R nach RK)",
+     "konfidenz": 0.9
+    },
+    "alpha": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$6",
+     "konfidenz": 1.0
+    },
+    "beta1": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$7",
+     "konfidenz": 1.0
+    },
+    "gamma1": {
+     "wert": 0.0008,
+     "fundstelle": "Tarifrechnung!$I$8",
+     "konfidenz": 1.0
+    },
+    "gamma2": {
+     "wert": 0.001,
+     "fundstelle": "Tarifrechnung!$I$9",
+     "konfidenz": 1.0
+    },
+    "gamma3": {
+     "wert": 0.0025,
+     "fundstelle": "Tarifrechnung!$I$10",
+     "konfidenz": 1.0
+    },
+    "policy_fee": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$11",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw2": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$12",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw4": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$12",
+     "konfidenz": 1.0
+    },
+    "ratzu_zw12": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$12",
+     "konfidenz": 1.0
+    },
+    "min_alter_flex": {
+     "wert": 60,
+     "fundstelle": "Tarifrechnung!$I$13",
+     "konfidenz": 1.0
+    },
+    "min_rlz_flex": {
+     "wert": 5,
+     "fundstelle": "Tarifrechnung!$I$14",
+     "konfidenz": 1.0
+    },
+    "stoab_min": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$15",
+     "konfidenz": 1.0
+    },
+    "stoab_max": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$16",
+     "konfidenz": 1.0
+    },
+    "stoab_satz": {
+     "wert": 0,
+     "fundstelle": "Tarifrechnung!$I$17",
+     "konfidenz": 1.0
+    },
+    "zillmer_dauer": {
+     "wert": 5,
+     "fundstelle": "Tarifrechnung!$H$21:$H$71 (Formel: Act_axn_k(x,5,...) im Zillmer-Zuschlag)",
+     "konfidenz": 0.8
+    }
+   }
+  }
+ ],
+ "tarifwerk": {},
+ "quellverfahren": {},
+ "quellnamen": {
+  "Tarifrechnung": "blatt:kalkulation",
+  "Tafeln": "blatt:tafeln",
+  "BGRP": "dimension:tarifart",
+  "RK": "dimension:status",
+  "Zins": "parameter:zins",
+  "Tafel": "parameter:tafel",
+  "alpha": "parameter:alpha",
+  "beta1": "parameter:beta1",
+  "gamma1": "parameter:gamma1",
+  "gamma2": "parameter:gamma2",
+  "gamma3": "parameter:gamma3",
+  "k": "parameter:policy_fee",
+  "StoAb_rel": "parameter:stoab_satz",
+  "StoAb_min": "parameter:stoab_min",
+  "StoAb_max": "parameter:stoab_max",
+  "MinAlterFlex": "parameter:min_alter_flex",
+  "MinRLZFlex": "parameter:min_rlz_flex",
+  "x": "eingabe:alter_bei_beginn",
+  "n": "eingabe:vertragsdauer",
+  "t": "eingabe:beitragszahlungsdauer",
+  "VS": "eingabe:versicherungssumme",
+  "zw": "eingabe:zahlweise",
+  "GESCHL": "eingabe:geschlecht"
+ },
+ "nicht_belegt": [
+  "tarifwerk.scheiben_mit_gamma1",
+  "tarifwerk.stoab_je_baustein",
+  "tarifwerk.red_verfahren",
+  "tarifwerk.tku_umfang",
+  "quellverfahren.red_verfahren",
+  "quellverfahren.erhoehungssatz",
+  "quellverfahren.dk_stichtag",
+  "quellverfahren.formfunktion",
+  "quellverfahren.fenster"
+ ],
+ "anmerkungen": [
+  "Der Rechner rechnet einen Einzelvertrag; Erhoehungsbausteine, Herabsetzung und Teilkuendigung kommen in ihm nicht vor. Tarifwerk und Quellverfahren sind deshalb nicht belegt (der Stornoabzug J21:J71 ist je Vertrag, das ist kein Beleg fuer die Fuehrung je Baustein).",
+  "Das Blatt heisst 'Tarifrechnung' (nicht 'Kalkulation'), Names-Manager nach Quellkonvention (z. B. StoAb_rel, k, B_xt).",
+  "Zins 1,75 % in G4:I4 fuer alle drei Bestandsgruppen; Wert wortgleich aus der Zelle, keine Wertung.",
+  "Tafel: Matrix traegt nur 'DAV2008_T'; E5 haengt _NR/_R nach RK an; Geschlecht 'U70' in B5 ist eine Beispiel-Eingabe und KEINE Unisex-Vorschrift (Regel 6) — unisex daher nicht gesetzt. Das Blatt Tafeln fuehrt DAV2008_T_NR/_R je _M/_F; der Unisex-Mix steht in VBA Act_qx (Maenneranteil aus dem Geschlechtsstring).",
+  "Haus: beta1 = 0 (I7), StoAb 0 (I15:I17), Stueckkosten 0 (I11), Ratenzuschlag 0 (I12).",
+  "Der Rechner nennt Raucher und Nichtraucher ueber RK (B10) nur als Eingabe; alle Tarifparameter ausser der Tafel sind fuer beide Risikoklassen gleich.",
+  "ratzu (E12) ist der Ratenzuschlag je Zahlweise und NICHT der Dynamiksatz der planmaessigen Erhoehung.",
+  "zillmer_dauer: im Rechner nur als Konstante 5 in der Formel H21:H71, kein benannter Parameter (Konfidenz 0,8).",
+  "Rundung: rund_lx/tx/Dx/Cx/Nx/Mx/Rx = 16 Stellen, max_Alter = 123 (VBA mConstants) — kein Feld des ModelPoints.",
+  "Blatt Tarifrechnung hat weitere Rechenzellen (Bxt, BJB, BZB, Pxt, Verlaufswerte A21:L71): Beispielrechnung, keine Parameter.",
+  "Verifikation (Programmleitung, Zug 3): Fundstellen der 18 ratzu-Aussagen auf die reine Zelladresse gekuerzt ($G$12 Einzel, $H$12 Kollektiv, $I$12 Haus); Werte unveraendert. Anlass: Rueck-Check pruefe_ratzu_staffeln liest alles hinter '!' als Adresse (Messung agent/aktuariat, Ergebnis 02)."
+ ]
+}

@@ -210,6 +210,9 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   tests/zugangsabnahme_testhelfer.py). Runtime
   environment and image: `deploy/plv/`. Setting up a world (store, line, first acceptances,
   optionally its own keys) and starting a case in it: `deploy/welt/`.
+  Recorded cases for deterministic replay live in `pakete/`; they carry
+  the resolution of their case, so a session that runs one of these
+  cases live does not read there.
 - Navigate and scope changes via the ontology index (ADR-005;
   fundstellen are derived, not searched):
   `python -m rechner_pipeline.ontologie.code_index --tests tests`,

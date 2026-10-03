@@ -1,0 +1,86 @@
+{
+ "generation": "tg2015",
+ "quelle_datei": "festlegung-plv-tarifplan-migration-klv-tg2015.md",
+ "quelle_art": "tarifmeldung",
+ "dimensionen": [
+  {
+   "id": "status",
+   "name": "Risikoklasse (Raucherstatus)",
+   "auspraegungen": [
+    "nichtraucher",
+    "raucher"
+   ]
+  },
+  {
+   "id": "tarifart",
+   "name": "Bestandsgruppe (Tarifart)",
+   "auspraegungen": [
+    "einzel",
+    "kollektiv",
+    "haus"
+   ]
+  }
+ ],
+ "zellen": [
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "einzel"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "kollektiv"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "haus"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "einzel"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "kollektiv"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "haus"
+   },
+   "parameter": {}
+  }
+ ],
+ "tarifwerk": {},
+ "quellverfahren": {
+  "formfunktion": {
+   "wert": "proportional_zur_basis",
+   "fundstelle": "Abschnitt 3 (Entscheid 1 — Formfunktion), 'Festgelegt': 'Die Formfunktion ist proportional zur Basis (proportional_zur_basis)' (SHA-256 26c3736bb2f1885b1434d2727ea7246c9ec2944fa327af731e2e945273ea333d)",
+   "konfidenz": 1.0
+  }
+ },
+ "quellnamen": {
+  "Formfunktion": "quellverfahren:formfunktion"
+ },
+ "nicht_belegt": [],
+ "anmerkungen": [
+  "Dokument der Pfefferminzia Lebensversicherung (PLV), Festlegung zum Tarifplan der Migration KLV TG2015, Fassung 1, Datum 2026-10-02; KEINE Aussage der abgebenden Gesellschaft Baldrian. Quellname der Aussage: die PLV (Festlegung durch die Regie in der Rolle mensch/aktuariat unter Mandat, Simulation).",
+  "quelle_art 'tarifmeldung' ist die naechstliegende der drei zulaessigen Arten und stimmt nicht: Das Dokument ist weder Tarifmeldung noch Auskunft der Quelle; sauberer waere eine eigene Art (T-Box-Aenderung, A-O1).",
+  "fenster: kein Wert. Zur Formfunktion proportional_zur_basis darf kein Fenster stehen (Festlegung Abschnitt 4: 'Kein Fenster'; P-Q3 verweigert fenster ohne konstantes_fenster). Es steht deshalb weder in quellverfahren noch in nicht_belegt dieses Fragments.",
+  "Zellen ohne Parameter wie in den Fragmenten der AVB und der Auskunft (der Merge verlangt die Dimensionen in jedem Fragment)."
+ ]
+}

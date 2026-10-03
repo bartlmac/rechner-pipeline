@@ -1,0 +1,111 @@
+{
+ "generation": "tg2015",
+ "quelle_datei": "auskunft-1-rechnungsgrundlagen-kodierungen-herabsetzung.md",
+ "quelle_art": "tarifmeldung",
+ "dimensionen": [
+  {
+   "id": "status",
+   "name": "Risikoklasse (Raucherstatus)",
+   "auspraegungen": [
+    "nichtraucher",
+    "raucher"
+   ]
+  },
+  {
+   "id": "tarifart",
+   "name": "Bestandsgruppe (Tarifart)",
+   "auspraegungen": [
+    "einzel",
+    "kollektiv",
+    "haus"
+   ]
+  }
+ ],
+ "zellen": [
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "einzel"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "kollektiv"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "haus"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "einzel"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "kollektiv"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "haus"
+   },
+   "parameter": {}
+  }
+ ],
+ "tarifwerk": {
+  "scheiben_mit_gamma1": {
+   "wert": true,
+   "fundstelle": "Abschnitt 'Zu Rückfrage 05', Punkt 4: 'Jede planmäßige Erhöhung wird als eigenständiger Baustein ... nach der vollen Beitragssatzformel gerechnet ... Die Formel enthält alpha, beta1, gamma1 und gamma2 und gilt je Baustein unverändert'",
+   "konfidenz": 0.9
+  },
+  "red_verfahren": {
+   "wert": "teilkuendigung",
+   "fundstelle": "Abschnitt 'Zu Rückfrage 02', Punkt 2: 'Die Angabe lautet daher für alle Absetzungen: teilkuendigung'",
+   "konfidenz": 0.9
+  },
+  "tku_umfang": {
+   "wert": "grundversicherung",
+   "fundstelle": "Abschnitt 'Zu Rückfrage 02', Punkt 2 und 'Zu Rückfrage 04': Teilkündigung der Grundversicherung, Anteil auf die Grundversicherung allein, 'planmäßige Erhöhungen bleiben unberührt'",
+   "konfidenz": 0.9
+  }
+ },
+ "quellverfahren": {
+  "erhoehungssatz": {
+   "wert": 0.05,
+   "fundstelle": "Abschnitt 'Zu Rückfrage 02', Punkt 1: 'einheitlich 5 % der Gesamtversicherungssumme je Erhöhungstermin, 2016 bis 2025 unverändert'",
+   "konfidenz": 0.9
+  },
+  "red_verfahren": {
+   "wert": "teilkuendigung",
+   "fundstelle": "Abschnitt 'Zu Rückfrage 02', Punkt 2: 'Absetzungen (GEVO = RED) sind Teilkündigungen der Grundversicherung mit Auszahlung ... Weder prospektiv noch mit_abzug ... kommt vor'",
+   "konfidenz": 0.9
+  }
+ },
+ "quellnamen": {
+  "RED": "quellverfahren:red_verfahren=teilkuendigung",
+  "ERH": "quellverfahren:erhoehungssatz"
+ },
+ "nicht_belegt": [
+  "quellverfahren.formfunktion",
+  "quellverfahren.fenster"
+ ],
+ "anmerkungen": [
+  "VORSCHLAG der Aktuariats-Rolle, nicht im Merge: Auskunftsschreiben Nr. 1 der abgebenden Gesellschaft (Datum 2026-10-02), registriert unter dem Eingang. Es ist weder Tarifmeldung noch Bedingungswerk; quelle_art 'tarifmeldung' ist die naechstliegende der drei zulaessigen Arten, kein Urteil ueber die Art der Quelle (sauberer waere eine eigene Art, T-Box-Aenderung A-O1).",
+  "Erhoehungssatz ist laut Auskunft Fuehrungspraxis; die AVB (Ziffer 3) und der Tarifplan nennen keinen Zahlwert. Gemessen: Abzug 2026 mit 291 Vertraegen (nur Erhoehungen, laufender Beitrag) und Protokoll 2026 (128 Erhoehungen, Betrag = 5 % der Erlebensfallsumme) stuetzen 0,05, siehe messung/04-auskunft-gegen-lieferung.md.",
+  "Zellen ohne Parameter wie im Fragment der AVB (der Merge verlangt die Dimensionen in jedem Fragment). Zins und Haus-beta1 stehen hier bewusst NICHT: Die Aussage der Quelle dazu entscheidet die Diskrepanz nicht (A-Q1), und eine dritte Lesart mit demselben Wert wie die Meldung wuerde sie nicht schliessen.",
+  "stoab_je_baustein nennt die Auskunft nicht; nicht belegt bleibt es dem Bedingungswerk (AVB Ziffer 4)."
+ ]
+}

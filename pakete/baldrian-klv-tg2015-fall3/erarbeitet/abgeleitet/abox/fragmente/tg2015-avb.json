@@ -1,0 +1,111 @@
+{
+ "generation": "tg2015",
+ "quelle_datei": "AVB_KLV_TG2015.pdf",
+ "quelle_art": "tarifmeldung",
+ "dimensionen": [
+  {
+   "id": "status",
+   "name": "Risikoklasse (Raucherstatus)",
+   "auspraegungen": [
+    "nichtraucher",
+    "raucher"
+   ]
+  },
+  {
+   "id": "tarifart",
+   "name": "Bestandsgruppe (Tarifart)",
+   "auspraegungen": [
+    "einzel",
+    "kollektiv",
+    "haus"
+   ]
+  }
+ ],
+ "zellen": [
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "einzel"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "kollektiv"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "haus"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "einzel"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "kollektiv"
+   },
+   "parameter": {}
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "haus"
+   },
+   "parameter": {}
+  }
+ ],
+ "tarifwerk": {
+  "scheiben_mit_gamma1": {
+   "wert": true,
+   "fundstelle": "absaetze[0] Ziffer 3: 'Jede Erhöhung wird versicherungstechnisch als eigenständiger Baustein geführt ... eigener Wertermittlung nach dem Tarifplan'",
+   "konfidenz": 0.7
+  },
+  "stoab_je_baustein": {
+   "wert": true,
+   "fundstelle": "absaetze[0] Ziffer 4: 'Der Abzug wird für jeden Versicherungsbaustein GESONDERT erhoben ... jeweils mit Mindest- und Höchstbetrag'",
+   "konfidenz": 1.0
+  },
+  "red_verfahren": {
+   "wert": "teilkuendigung",
+   "fundstelle": "absaetze[1] Ziffer 6: 'Herabsetzung der Beiträge (Teilkündigung)'; Grundversicherung wird anteilig gekündigt, freiwerdendes Deckungskapital nach Abzug AUSGEZAHLT",
+   "konfidenz": 1.0
+  },
+  "tku_umfang": {
+   "wert": "grundversicherung",
+   "fundstelle": "absaetze[1] Ziffer 6: 'Planmäßige Erhöhungen bleiben von der Herabsetzung unberührt'",
+   "konfidenz": 1.0
+  }
+ },
+ "quellverfahren": {},
+ "quellnamen": {
+  "Bestandsgruppe": "dimension:tarifart",
+  "Risikoklasse": "dimension:status",
+  "Teilkündigung": "tarifwerk:red_verfahren=teilkuendigung"
+ },
+ "nicht_belegt": [
+  "quellverfahren.red_verfahren",
+  "quellverfahren.erhoehungssatz",
+  "quellverfahren.dk_stichtag",
+  "quellverfahren.formfunktion",
+  "quellverfahren.fenster"
+ ],
+ "anmerkungen": [
+  "Bedingungswerk, keine Zahlen: Zellparameter verweisen durchweg auf den Tarifplan (Mitteilung 143, Ziffer 2 AVB: 'nach dem Tarifplan'; Ziffer 4: Hoehe, Mindest- und Hoechstbetrag 'ergeben sich aus dem Tarifplan'). Die Zellen tragen daher keine Parameter; die Dimensionen folgen Ziffer 1 (Bestandsgruppen Einzel, Kollektiv, Haus; Risikoklasse Nichtraucher/Raucher).",
+  "scheiben_mit_gamma1 = true ist gelesen, nicht woertlich: Ziffer 3 sagt 'eigenständiger Baustein ... mit ... eigener Wertermittlung nach dem Tarifplan', gamma1 wird nicht genannt (Konfidenz 0,7); bitte im Dossier pruefen.",
+  "Dynamiksatz: Ziffer 3 nennt keinen Satz; nur 'Erhöhungen sind ausgeschlossen, sobald die restliche Versicherungsdauer weniger als fünf Jahre beträgt' (Mindestrestdauer, nicht der Satz). quellverfahren.erhoehungssatz ist nicht belegt (Fundstelle: Ziffer 3, kein Satz).",
+  "Das Bedingungswerk sagt nichts ueber das Verfahren, mit dem die ABGEBENDE Gesellschaft Absetzungen lieferte (quellverfahren.red_verfahren) und nichts zu Deckungskapital-Stichtag und Formfunktion; zu letzterem siehe Tarifplan Abschnitt 6.",
+  "Ziffer 5: die beitragsfreie Summe wird je Baustein zum letzten Jahrestag des Versicherungsbeginns ermittelt und fest gefuehrt — Fuehrungsregel, kein Tarifwerks-Merkmal der T-Box.",
+  "Ziffer 3: Erhoehung nur bei Restdauer >= 5 Jahre; Ziffer 4: in der flexiblen Abrufphase entfaellt der Abzug (Werte im Tarifplan)."
+ ]
+}

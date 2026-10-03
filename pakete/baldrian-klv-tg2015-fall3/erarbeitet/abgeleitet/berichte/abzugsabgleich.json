@@ -1,0 +1,556 @@
+{
+ "kopf": {
+  "akteur": "claude-sonnet-5-5/abzugsabgleich-fall@2ad478c",
+  "eingaben_sha256": {
+   "abgeleitet/abox/abox.json": "6c3575aec6fabd830adf09cc5644c807bb286361523c29366590b152cba11f86",
+   "abgeleitet/transformation/baldrian_bestandsabzug_2026-01-01.zeilen.json": "3089ef0939f94e6ad140282c5bf60dd157268586101c5c03124073669643b912",
+   "eingang.json": "1cd21fb78c7a49c2a6697e8f7fc43b82670189d09d19c47d49c37ff3167dafca",
+   "eingang/baldrian_gevo_metadaten.csv": "d9327a8b79557328c15e89b29bb1a11787ff08a1d73ee41e31e68e569bf9d9bc"
+  },
+  "grenzen": [
+   "Gepruefte Belege: 212 Vertraege OHNE Vorgeschichte (kein ERH, PEX, RED) mit laufendem Beitrag (JBRUTTO > 0) aus 834 Zeilen; je Vertrag zwei Werte (BJB gegen JBRUTTO, kVx_MRV gegen DECKKAP am Jahrestag).",
+   "Vertraege mit Erhoehungen sind ueber die Dynamikprobe (Messung 04) gestuetzt, nicht hier; Vertraege ohne Beitrag haben keine Beitragsgleichung.",
+   "Strittige Felder: Beim Pruefen eines Felds steht das andere strittige Feld auf der Lesart der Tarifmeldung; die Rechner-Lesart gesamt ist gesondert ausgewiesen."
+  ],
+  "hinweis": "Dieser Beleg ersetzt die Aufloesung der Diskrepanzen nicht; sie ist menschlich (A-Q1). Eine verworfene Meldungs-Lesart gaebe immer an den Menschen (harte Regel).",
+  "rechnet_ueber": "rechner_pipeline.qa.abzugsabgleich (gleiche_ab, pruefe_lesart); Toleranzen: REL_TOL 1e-06, ABS_TOL 0.02 (unveraendert)",
+  "skript": {
+   "pfad": "faelle/baldrian-klv-tg2015-fall3/abgeleitet/protokoll/werkzeug-aktuariat/abzugsabgleich_fall.py",
+   "sha256": "9f33ba4f661cf6ce1849b0bbae0f7ebd06c4c08fc74a00ee55d720c1ef8770a8"
+  },
+  "systemstand": {
+   "baum_src_configs_geaendert": false,
+   "git_commit_baum": "2ad478c18cf5185ba87ff2eba8834727bf4846c7",
+   "kern_tafeln_xml_sha256": "760d38f966df427aff78e5296443cc414a26fb6d7781e73ceb3f851e08aa451a",
+   "kern_version": "3.22.0",
+   "tafeln_quelle": "Baum 2ad478c ohne Tafeln des Falls; tafeln.xml dieses Laufs = Baum-Datei plus 6 Tafeln aus quellen.tafel_import (Tafeln.csv der Vorverdichtung des Falls, Provenienzkette xlsm e0cd0a03..., Import in einer Messkopie mit Spez-Hypothese, 0 Konflikte); Tafelimport im Fall (A-K2) steht aus"
+  },
+  "werkzeug": "Ad-hoc-Skript des Agenten, kein Systemwerkzeug (kein Kommando des Pakets, kein Gate)"
+ },
+ "vertraege_gepruefte": 212,
+ "zeilen_gesamt": 834,
+ "zellen": [
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "einzel"
+   },
+   "pruefungen": [
+    {
+     "automatisch_aufloesbar": true,
+     "begruendung_werkzeug": "Beleg ueber 64 Vertraege (128 Werte): Lesart 0.0125 (tarifmeldung) von ALLEN Belegen gestuetzt, max. rel. Abweichung 3.85e-06; Lesart 0.0175 (tarifrechner) in 128 von 128 Werten verworfen (100.0%, max. rel. Abweichung 7.81e-02, z. B. 7000087/BJB). Der Fehler liegt im Rechner — deterministisch belegt, automatisch aufloesbar.",
+     "belegte_werte_der_anderen_strittigen_felder": "Lesart der Tarifmeldung (Grundstellung)",
+     "feld": "zins",
+     "gewaehlter_wert": 0.0125,
+     "lesarten": [
+      {
+       "fundstelle": "absaetze[0] Abschnitt 1: 'Der Tarifzins beträgt 1,25 %'",
+       "quelle_art": "tarifmeldung",
+       "quelle_datei": "Mitteilung_143_KLV_TG2015.pdf",
+       "wert": 0.0125
+      },
+      {
+       "fundstelle": "Tarifrechnung!$G$4",
+       "quelle_art": "tarifrechner",
+       "quelle_datei": "Tarifrechner_KLV_TG2015.xlsm",
+       "wert": 0.0175
+      }
+     ],
+     "menschlich_erforderlich": false,
+     "urteile": [
+      {
+       "geprueft": 128,
+       "max_relative_abweichung": 3.848503699796001e-06,
+       "max_relative_abweichung_verletzt": 0.0,
+       "passt": true,
+       "quelle_art": "tarifmeldung",
+       "quote_stuetzend": 1.0,
+       "verletzende_belege": [],
+       "verletzt": 0,
+       "wert": 0.0125
+      },
+      {
+       "geprueft": 128,
+       "max_relative_abweichung": 0.07809303112796169,
+       "max_relative_abweichung_verletzt": 0.07809303112796169,
+       "passt": false,
+       "quelle_art": "tarifrechner",
+       "quote_stuetzend": 0.0,
+       "verletzende_belege": [
+        "7000087/BJB",
+        "7000162/BJB",
+        "7000643/BJB",
+        "7000798/BJB",
+        "7000254/BJB"
+       ],
+       "verletzt": 128,
+       "wert": 0.0175
+      }
+     ]
+    }
+   ],
+   "vertraege": 64,
+   "zelle": "zelle:nichtraucher,einzel"
+  },
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "haus"
+   },
+   "pruefungen": [
+    {
+     "automatisch_aufloesbar": true,
+     "begruendung_werkzeug": "Beleg ueber 49 Vertraege (98 Werte): Lesart 0.01 (tarifmeldung) von ALLEN Belegen gestuetzt, max. rel. Abweichung 3.67e-06; Lesart 0 (tarifrechner) in 49 von 98 Werten verworfen (50.0%, max. rel. Abweichung 1.00e-02, z. B. 7000464/BJB). Der Fehler liegt im Rechner — deterministisch belegt, automatisch aufloesbar.",
+     "belegte_werte_der_anderen_strittigen_felder": "Lesart der Tarifmeldung (Grundstellung)",
+     "feld": "beta1",
+     "gewaehlter_wert": 0.01,
+     "lesarten": [
+      {
+       "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: Inkassokosten beta1",
+       "quelle_art": "tarifmeldung",
+       "quelle_datei": "Mitteilung_143_KLV_TG2015.pdf",
+       "wert": 0.01
+      },
+      {
+       "fundstelle": "Tarifrechnung!$I$7",
+       "quelle_art": "tarifrechner",
+       "quelle_datei": "Tarifrechner_KLV_TG2015.xlsm",
+       "wert": 0
+      }
+     ],
+     "menschlich_erforderlich": false,
+     "urteile": [
+      {
+       "geprueft": 98,
+       "max_relative_abweichung": 3.668137918727609e-06,
+       "max_relative_abweichung_verletzt": 0.0,
+       "passt": true,
+       "quelle_art": "tarifmeldung",
+       "quote_stuetzend": 1.0,
+       "verletzende_belege": [],
+       "verletzt": 0,
+       "wert": 0.01
+      },
+      {
+       "geprueft": 98,
+       "max_relative_abweichung": 0.010003631456539487,
+       "max_relative_abweichung_verletzt": 0.010003631456539487,
+       "passt": false,
+       "quelle_art": "tarifrechner",
+       "quote_stuetzend": 0.5,
+       "verletzende_belege": [
+        "7000464/BJB",
+        "7000809/BJB",
+        "7000647/BJB",
+        "7000238/BJB",
+        "7000694/BJB"
+       ],
+       "verletzt": 49,
+       "wert": 0
+      }
+     ]
+    },
+    {
+     "automatisch_aufloesbar": true,
+     "begruendung_werkzeug": "Beleg ueber 49 Vertraege (98 Werte): Lesart 0.0125 (tarifmeldung) von ALLEN Belegen gestuetzt, max. rel. Abweichung 3.67e-06; Lesart 0.0175 (tarifrechner) in 98 von 98 Werten verworfen (100.0%, max. rel. Abweichung 7.96e-02, z. B. 7000924/BJB). Der Fehler liegt im Rechner — deterministisch belegt, automatisch aufloesbar.",
+     "belegte_werte_der_anderen_strittigen_felder": "Lesart der Tarifmeldung (Grundstellung)",
+     "feld": "zins",
+     "gewaehlter_wert": 0.0125,
+     "lesarten": [
+      {
+       "fundstelle": "absaetze[0] Abschnitt 1: 'Der Tarifzins beträgt 1,25 %'",
+       "quelle_art": "tarifmeldung",
+       "quelle_datei": "Mitteilung_143_KLV_TG2015.pdf",
+       "wert": 0.0125
+      },
+      {
+       "fundstelle": "Tarifrechnung!$I$4",
+       "quelle_art": "tarifrechner",
+       "quelle_datei": "Tarifrechner_KLV_TG2015.xlsm",
+       "wert": 0.0175
+      }
+     ],
+     "menschlich_erforderlich": false,
+     "urteile": [
+      {
+       "geprueft": 98,
+       "max_relative_abweichung": 3.668137918727609e-06,
+       "max_relative_abweichung_verletzt": 0.0,
+       "passt": true,
+       "quelle_art": "tarifmeldung",
+       "quote_stuetzend": 1.0,
+       "verletzende_belege": [],
+       "verletzt": 0,
+       "wert": 0.0125
+      },
+      {
+       "geprueft": 98,
+       "max_relative_abweichung": 0.07956911770329864,
+       "max_relative_abweichung_verletzt": 0.07956911770329864,
+       "passt": false,
+       "quelle_art": "tarifrechner",
+       "quote_stuetzend": 0.0,
+       "verletzende_belege": [
+        "7000924/BJB",
+        "7000894/BJB",
+        "7000160/BJB",
+        "7000464/BJB",
+        "7000381/BJB"
+       ],
+       "verletzt": 98,
+       "wert": 0.0175
+      }
+     ]
+    }
+   ],
+   "rechner_lesart_gesamt": {
+    "felder": {
+     "beta1": 0,
+     "zins": 0.0175
+    },
+    "urteil": {
+     "geprueft": 98,
+     "max_relative_abweichung": 0.08877342652626574,
+     "max_relative_abweichung_verletzt": 0.08877342652626574,
+     "passt": false,
+     "quelle_art": "tarifrechner",
+     "quote_stuetzend": 0.0,
+     "verletzende_belege": [
+      "7000924/BJB",
+      "7000894/BJB",
+      "7000160/BJB",
+      "7000464/BJB",
+      "7000381/BJB"
+     ],
+     "verletzt": 98,
+     "wert": 0
+    }
+   },
+   "vertraege": 49,
+   "zelle": "zelle:nichtraucher,haus"
+  },
+  {
+   "auspraegungen": {
+    "status": "nichtraucher",
+    "tarifart": "kollektiv"
+   },
+   "pruefungen": [
+    {
+     "automatisch_aufloesbar": true,
+     "begruendung_werkzeug": "Beleg ueber 52 Vertraege (104 Werte): Lesart 0.0125 (tarifmeldung) von ALLEN Belegen gestuetzt, max. rel. Abweichung 3.79e-06; Lesart 0.0175 (tarifrechner) in 104 von 104 Werten verworfen (100.0%, max. rel. Abweichung 8.31e-02, z. B. 7000688/BJB). Der Fehler liegt im Rechner — deterministisch belegt, automatisch aufloesbar.",
+     "belegte_werte_der_anderen_strittigen_felder": "Lesart der Tarifmeldung (Grundstellung)",
+     "feld": "zins",
+     "gewaehlter_wert": 0.0125,
+     "lesarten": [
+      {
+       "fundstelle": "absaetze[0] Abschnitt 1: 'Der Tarifzins beträgt 1,25 %'",
+       "quelle_art": "tarifmeldung",
+       "quelle_datei": "Mitteilung_143_KLV_TG2015.pdf",
+       "wert": 0.0125
+      },
+      {
+       "fundstelle": "Tarifrechnung!$H$4",
+       "quelle_art": "tarifrechner",
+       "quelle_datei": "Tarifrechner_KLV_TG2015.xlsm",
+       "wert": 0.0175
+      }
+     ],
+     "menschlich_erforderlich": false,
+     "urteile": [
+      {
+       "geprueft": 104,
+       "max_relative_abweichung": 3.791249826176844e-06,
+       "max_relative_abweichung_verletzt": 0.0,
+       "passt": true,
+       "quelle_art": "tarifmeldung",
+       "quote_stuetzend": 1.0,
+       "verletzende_belege": [],
+       "verletzt": 0,
+       "wert": 0.0125
+      },
+      {
+       "geprueft": 104,
+       "max_relative_abweichung": 0.08312446374897604,
+       "max_relative_abweichung_verletzt": 0.08312446374897604,
+       "passt": false,
+       "quelle_art": "tarifrechner",
+       "quote_stuetzend": 0.0,
+       "verletzende_belege": [
+        "7000688/BJB",
+        "7000892/BJB",
+        "7000420/BJB",
+        "7000272/BJB",
+        "7000737/BJB"
+       ],
+       "verletzt": 104,
+       "wert": 0.0175
+      }
+     ]
+    }
+   ],
+   "vertraege": 52,
+   "zelle": "zelle:nichtraucher,kollektiv"
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "einzel"
+   },
+   "pruefungen": [
+    {
+     "automatisch_aufloesbar": true,
+     "begruendung_werkzeug": "Beleg ueber 19 Vertraege (38 Werte): Lesart 0.0125 (tarifmeldung) von ALLEN Belegen gestuetzt, max. rel. Abweichung 2.29e-06; Lesart 0.0175 (tarifrechner) in 38 von 38 Werten verworfen (100.0%, max. rel. Abweichung 8.53e-02, z. B. 7000638/BJB). Der Fehler liegt im Rechner — deterministisch belegt, automatisch aufloesbar.",
+     "belegte_werte_der_anderen_strittigen_felder": "Lesart der Tarifmeldung (Grundstellung)",
+     "feld": "zins",
+     "gewaehlter_wert": 0.0125,
+     "lesarten": [
+      {
+       "fundstelle": "absaetze[0] Abschnitt 1: 'Der Tarifzins beträgt 1,25 %'",
+       "quelle_art": "tarifmeldung",
+       "quelle_datei": "Mitteilung_143_KLV_TG2015.pdf",
+       "wert": 0.0125
+      },
+      {
+       "fundstelle": "Tarifrechnung!$G$4",
+       "quelle_art": "tarifrechner",
+       "quelle_datei": "Tarifrechner_KLV_TG2015.xlsm",
+       "wert": 0.0175
+      }
+     ],
+     "menschlich_erforderlich": false,
+     "urteile": [
+      {
+       "geprueft": 38,
+       "max_relative_abweichung": 2.2946118499309342e-06,
+       "max_relative_abweichung_verletzt": 0.0,
+       "passt": true,
+       "quelle_art": "tarifmeldung",
+       "quote_stuetzend": 1.0,
+       "verletzende_belege": [],
+       "verletzt": 0,
+       "wert": 0.0125
+      },
+      {
+       "geprueft": 38,
+       "max_relative_abweichung": 0.08528780466004142,
+       "max_relative_abweichung_verletzt": 0.08528780466004142,
+       "passt": false,
+       "quelle_art": "tarifrechner",
+       "quote_stuetzend": 0.0,
+       "verletzende_belege": [
+        "7000638/BJB",
+        "7000594/BJB",
+        "7000638/kVx_MRV",
+        "7000416/BJB",
+        "7000227/BJB"
+       ],
+       "verletzt": 38,
+       "wert": 0.0175
+      }
+     ]
+    }
+   ],
+   "vertraege": 19,
+   "zelle": "zelle:raucher,einzel"
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "haus"
+   },
+   "pruefungen": [
+    {
+     "automatisch_aufloesbar": true,
+     "begruendung_werkzeug": "Beleg ueber 15 Vertraege (30 Werte): Lesart 0.01 (tarifmeldung) von ALLEN Belegen gestuetzt, max. rel. Abweichung 2.40e-06; Lesart 0 (tarifrechner) in 15 von 30 Werten verworfen (50.0%, max. rel. Abweichung 1.00e-02, z. B. 7000633/BJB). Der Fehler liegt im Rechner — deterministisch belegt, automatisch aufloesbar.",
+     "belegte_werte_der_anderen_strittigen_felder": "Lesart der Tarifmeldung (Grundstellung)",
+     "feld": "beta1",
+     "gewaehlter_wert": 0.01,
+     "lesarten": [
+      {
+       "fundstelle": "absaetze[1] Abschnitt 2, Bestandsgruppe Haus: Inkassokosten beta1",
+       "quelle_art": "tarifmeldung",
+       "quelle_datei": "Mitteilung_143_KLV_TG2015.pdf",
+       "wert": 0.01
+      },
+      {
+       "fundstelle": "Tarifrechnung!$I$7",
+       "quelle_art": "tarifrechner",
+       "quelle_datei": "Tarifrechner_KLV_TG2015.xlsm",
+       "wert": 0
+      }
+     ],
+     "menschlich_erforderlich": false,
+     "urteile": [
+      {
+       "geprueft": 30,
+       "max_relative_abweichung": 2.399486260322324e-06,
+       "max_relative_abweichung_verletzt": 0.0,
+       "passt": true,
+       "quelle_art": "tarifmeldung",
+       "quote_stuetzend": 1.0,
+       "verletzende_belege": [],
+       "verletzt": 0,
+       "wert": 0.01
+      },
+      {
+       "geprueft": 30,
+       "max_relative_abweichung": 0.01000237549139786,
+       "max_relative_abweichung_verletzt": 0.01000237549139786,
+       "passt": false,
+       "quelle_art": "tarifrechner",
+       "quote_stuetzend": 0.5,
+       "verletzende_belege": [
+        "7000633/BJB",
+        "7000197/BJB",
+        "7000898/BJB",
+        "7000590/BJB",
+        "7000602/BJB"
+       ],
+       "verletzt": 15,
+       "wert": 0
+      }
+     ]
+    },
+    {
+     "automatisch_aufloesbar": true,
+     "begruendung_werkzeug": "Beleg ueber 15 Vertraege (30 Werte): Lesart 0.0125 (tarifmeldung) von ALLEN Belegen gestuetzt, max. rel. Abweichung 2.40e-06; Lesart 0.0175 (tarifrechner) in 30 von 30 Werten verworfen (100.0%, max. rel. Abweichung 7.45e-02, z. B. 7000590/BJB). Der Fehler liegt im Rechner — deterministisch belegt, automatisch aufloesbar.",
+     "belegte_werte_der_anderen_strittigen_felder": "Lesart der Tarifmeldung (Grundstellung)",
+     "feld": "zins",
+     "gewaehlter_wert": 0.0125,
+     "lesarten": [
+      {
+       "fundstelle": "absaetze[0] Abschnitt 1: 'Der Tarifzins beträgt 1,25 %'",
+       "quelle_art": "tarifmeldung",
+       "quelle_datei": "Mitteilung_143_KLV_TG2015.pdf",
+       "wert": 0.0125
+      },
+      {
+       "fundstelle": "Tarifrechnung!$I$4",
+       "quelle_art": "tarifrechner",
+       "quelle_datei": "Tarifrechner_KLV_TG2015.xlsm",
+       "wert": 0.0175
+      }
+     ],
+     "menschlich_erforderlich": false,
+     "urteile": [
+      {
+       "geprueft": 30,
+       "max_relative_abweichung": 2.399486260322324e-06,
+       "max_relative_abweichung_verletzt": 0.0,
+       "passt": true,
+       "quelle_art": "tarifmeldung",
+       "quote_stuetzend": 1.0,
+       "verletzende_belege": [],
+       "verletzt": 0,
+       "wert": 0.0125
+      },
+      {
+       "geprueft": 30,
+       "max_relative_abweichung": 0.07454999694464756,
+       "max_relative_abweichung_verletzt": 0.07454999694464756,
+       "passt": false,
+       "quelle_art": "tarifrechner",
+       "quote_stuetzend": 0.0,
+       "verletzende_belege": [
+        "7000590/BJB",
+        "7000197/BJB",
+        "7000414/BJB",
+        "7000835/BJB",
+        "7000475/BJB"
+       ],
+       "verletzt": 30,
+       "wert": 0.0175
+      }
+     ]
+    }
+   ],
+   "rechner_lesart_gesamt": {
+    "felder": {
+     "beta1": 0,
+     "zins": 0.0175
+    },
+    "urteil": {
+     "geprueft": 30,
+     "max_relative_abweichung": 0.08380449697520118,
+     "max_relative_abweichung_verletzt": 0.08380449697520118,
+     "passt": false,
+     "quelle_art": "tarifrechner",
+     "quote_stuetzend": 0.0,
+     "verletzende_belege": [
+      "7000590/BJB",
+      "7000197/BJB",
+      "7000414/BJB",
+      "7000835/BJB",
+      "7000475/BJB"
+     ],
+     "verletzt": 30,
+     "wert": 0
+    }
+   },
+   "vertraege": 15,
+   "zelle": "zelle:raucher,haus"
+  },
+  {
+   "auspraegungen": {
+    "status": "raucher",
+    "tarifart": "kollektiv"
+   },
+   "pruefungen": [
+    {
+     "automatisch_aufloesbar": true,
+     "begruendung_werkzeug": "Beleg ueber 13 Vertraege (26 Werte): Lesart 0.0125 (tarifmeldung) von ALLEN Belegen gestuetzt, max. rel. Abweichung 2.70e-06; Lesart 0.0175 (tarifrechner) in 26 von 26 Werten verworfen (100.0%, max. rel. Abweichung 7.12e-02, z. B. 7000384/BJB). Der Fehler liegt im Rechner — deterministisch belegt, automatisch aufloesbar.",
+     "belegte_werte_der_anderen_strittigen_felder": "Lesart der Tarifmeldung (Grundstellung)",
+     "feld": "zins",
+     "gewaehlter_wert": 0.0125,
+     "lesarten": [
+      {
+       "fundstelle": "absaetze[0] Abschnitt 1: 'Der Tarifzins beträgt 1,25 %'",
+       "quelle_art": "tarifmeldung",
+       "quelle_datei": "Mitteilung_143_KLV_TG2015.pdf",
+       "wert": 0.0125
+      },
+      {
+       "fundstelle": "Tarifrechnung!$H$4",
+       "quelle_art": "tarifrechner",
+       "quelle_datei": "Tarifrechner_KLV_TG2015.xlsm",
+       "wert": 0.0175
+      }
+     ],
+     "menschlich_erforderlich": false,
+     "urteile": [
+      {
+       "geprueft": 26,
+       "max_relative_abweichung": 2.6963536060858855e-06,
+       "max_relative_abweichung_verletzt": 0.0,
+       "passt": true,
+       "quelle_art": "tarifmeldung",
+       "quote_stuetzend": 1.0,
+       "verletzende_belege": [],
+       "verletzt": 0,
+       "wert": 0.0125
+      },
+      {
+       "geprueft": 26,
+       "max_relative_abweichung": 0.07116518600048993,
+       "max_relative_abweichung_verletzt": 0.07116518600048993,
+       "passt": false,
+       "quelle_art": "tarifrechner",
+       "quote_stuetzend": 0.0,
+       "verletzende_belege": [
+        "7000384/BJB",
+        "7000445/BJB",
+        "7000527/BJB",
+        "7000589/BJB",
+        "7000384/kVx_MRV"
+       ],
+       "verletzt": 26,
+       "wert": 0.0175
+      }
+     ]
+    }
+   ],
+   "vertraege": 13,
+   "zelle": "zelle:raucher,kollektiv"
+  }
+ ]
+}
