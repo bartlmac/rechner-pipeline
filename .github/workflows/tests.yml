@@ -4,6 +4,9 @@
 # sein Fehlen oder Hashdrift ist ein Fehler, kein Skip. `faelle/` bleibt als
 # lokaler Arbeitsbereich gitignoriert und ist keine CI-Vorbedingung. Die volle
 # Suite laeuft weiterhin mit `-rs`, damit jeder kuenftige Skip sichtbar bleibt.
+# Sie laeuft parallel wie lokal (ADR-019): `-n auto` nimmt so viele Arbeiter,
+# wie der Runner Kerne hat; `--dist loadfile` haelt die modulgebundenen
+# Fixtures bei einem Arbeiter.
 #
 # Installation ueber die Pin-Dateien, NICHT ueber pip install -e ".[dev]":
 # pyproject pinnt nur die direkten Abhaengigkeiten, das Transitive loeste
@@ -41,4 +44,4 @@ jobs:
           python -m pytest -q
           tests/test_pk1_fixture_e2e.py
           tests/test_pk1_am4_beweisvertrag.py::test_echtes_pk1_schreibt_beleg_und_am4_nimmt_denselben_stand_an
-      - run: python -m pytest -q -rs
+      - run: python -m pytest -q -rs -n auto --dist loadfile

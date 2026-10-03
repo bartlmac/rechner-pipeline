@@ -78,6 +78,12 @@ in einem Baum, nicht fuer die Arbeiter EINER Suite.
   sieben statt zwanzig Minuten.
 * Ein Test, der von der Reihenfolge anderer Tests abhaengt, faellt ab
   jetzt auf — das ist ein Gewinn, kein Risiko.
+* Nachtrag 2026-10-03: Die CI faehrt die volle Suite ebenso parallel
+  (`-n auto --dist loadfile`, so viele Arbeiter, wie der Runner Kerne
+  hat). Seriell war sie dort nie entschieden, nur nie umgestellt. Mit
+  der Suite nach T27 (5108 Tests) brauchte der serielle Lauf 49 bis 58
+  Minuten; je Test 0,56 bis 0,71 s wie am 23.09. mit 2399 Tests in 22
+  Minuten. Die Dauer wuchs mit der Testzahl, nicht mit der Last.
 
 ## Zwei Suiten auf einem Rechner: der Lock gehoert in EINEN Aufruf
 
