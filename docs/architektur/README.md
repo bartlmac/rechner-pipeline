@@ -45,6 +45,8 @@ Rechenkern-Entwicklung. Die Fachdokumente des Beispiel-Rechenkerns
   — Kernstand, T-Box-Stand, Tarifwerk und Anfangsbestand werden einmal in der Linie abgenommen; ein Fall verweist darauf.
 - [ADR-026: Lebenslauf eines Falls — Fallauftrag und Fallabbruch](adr-026-lebenslauf-eines-falls.md)
   — ein Fall beginnt mit dem vom Vorstand gezeichneten Auftrag A-M6 und endet mit Abnahme oder dem Abbruch A-M5.
+- [ADR-027: Fünf Gegenstände des Repositorys — keine Infrastruktur](adr-027-fuenf-gegenstaende-keine-infrastruktur.md)
+  — Laufzeit der PLV, Migrationssystem, Fall-Definitionen, Routinen, Webseite; die vier Ebenen aus ADR-017 bleiben die Importregel im Paket.
 
 > **Zu den Gate-Namen:** Die Namen in allen aelteren ADRs sind auf die
 > Ordnung aus ADR-012 umgestellt (`G-2` heisst jetzt `A-M4`, `O3` heisst
