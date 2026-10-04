@@ -458,9 +458,9 @@ def test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt():
     onboarding = (
         Path(__file__).resolve().parents[1] / "ONBOARDING.md"
     ).read_text(encoding="utf-8")
-    assert "no subprocess" in onboarding
+    assert "kein Subprozess" in onboarding
     assert "gates/_provenienz._git_lesen" in onboarding
-    assert "exactly ONE subprocess exception" in onboarding
+    assert "genau EINE Subprozess-Ausnahme" in onboarding
     assert (
         "test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt"
         in onboarding
