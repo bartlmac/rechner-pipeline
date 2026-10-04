@@ -2,297 +2,132 @@
 
 > **Status:** öffentlicher Prototyp, lauffähig Ende-zu-Ende.
 > Vorgängerprojekt: [portxlpy](https://github.com/bartlmac/portxlpy).
-> Was der aktuelle Stand kann, was er bewusst noch nicht kann und was
-> sich zuletzt geändert hat: [`CHANGELOG.md`](CHANGELOG.md).
+> Was der aktuelle Stand kann und was er bewusst noch nicht kann:
+> [`CHANGELOG.md`](CHANGELOG.md).
+
+Ein **agentisches System für die Bestandsmigration Leben**. Es übernimmt
+fremde Tarifgenerationen samt Bestand aus heterogenen Lieferungen
+(Tarifrechner, Tarifmeldung, Bedingungen, Bestandsabzüge) in ein Zielsystem
+— nachvollziehbar, mit menschlichen Entscheidungen an genau den Stellen, an
+denen Quellen sich widersprechen oder das Zielsystem erweitert werden muss.
+
+Vorgeführt wird es an einem erfundenen Versicherer: Die **Pfefferminzia
+Lebensversicherung (PLV)** übernimmt den Bestand der ebenso erfundenen
+**Baldrian Leben**. Das Repository enthält keine echten Vertrags-, Kunden-
+oder Bestandsdaten; Struktur und Rechnungsgrundlagen sind aus realen
+Vorlagen abgeleitet, Unternehmen und Bestände sind frei erfunden.
 
 ## Was dieses Repository ist
 
-Ein **agentisches System für die Bestandsmigration Leben und die
-Entwicklung des zugehörigen Rechenkerns**. Es löst zwei eng verzahnte
-Aufgaben:
+Fünf Gegenstände, keine Infrastruktur
+([ADR-027](docs/architektur/adr-027-fuenf-gegenstaende-keine-infrastruktur.md)):
 
-1. **Migration:** fremde Tarifgenerationen samt Bestand aus heterogenen
-   Lieferungen (Tarifrechner, Tarifmeldung, Bestandsabzüge) in ein
-   Zielsystem übernehmen — nachvollziehbar, mit menschlichen
-   Entscheidungen an genau den Stellen, an denen Quellen sich
-   widersprechen oder das Zielsystem erweitert werden muss.
-2. **Rechenkern-Entwicklung:** der Zielkern wird mit KI-Unterstützung
-   weiterentwickelt — unter einer Architektur, die Korrektheit erzwingt
-   statt erhofft.
+| | Gegenstand | Wozu | Wo |
+|---|---|---|---|
+| 1 | **Laufzeit der PLV** | die Pfefferminzia mit ihrem eigenen Geschäft: Rechenkern, geführter Bestand, Tagesbetrieb. Sie läuft ohne jede Migration. | `src/rechner_pipeline/kern`, `src/rechner_pipeline/bestand`, `src/rechner_pipeline/betrieb`, `configs/` |
+| 2 | **Migrationssystem** | das KI-System mit seinen jeweiligen Fähigkeiten: Quellen vorverdichten, Aussagen mit Herkunft führen, den Tarif parametrieren, prüfen und abnehmen; dazu die Agentenrollen | `src/rechner_pipeline/quellen`, `src/rechner_pipeline/ontologie`, `src/rechner_pipeline/spez`, `src/rechner_pipeline/qa`, `src/rechner_pipeline/gates`, `src/rechner_pipeline/fall.py`, `.claude/`, `.agents/` |
+| 3 | **Fall-Definitionen** | was man braucht, um eine Migration durchzuspielen: die Lieferungen der abgebenden Gesellschaft, das Werkzeug, das sie erzeugt, und die festgehaltenen Fälle zum Nachfahren | `lieferungen/`, `quellsystem/`, `pakete/` |
+| 4 | **Routinen** | deterministisch eine Welt aufstellen, einen Fall darin führen oder nachfahren — und so die aktuelle Laufzeit erzeugen | `deploy/welt/`, `deploy/plv/` |
+| 5 | **Webseite** | der Auftritt der PLV und die Werkzeuge, die ihn rendern und verknüpfen | `vorzeige-seite/`, `werkzeuge/` |
 
-Das Repository trägt dabei **vier Ebenen** (ADR-017), und jedes Modul,
-jedes Dokument und jede Rolle gehört genau einer davon an:
+```mermaid
+flowchart LR
+    G3["(3) Fall-Definitionen
+Lieferungen · festgehaltene Fälle"]
+    G2["(2) Migrationssystem
+Gates · Ontologie · Agentenrollen"]
+    G1["(1) Laufzeit der PLV
+Kern · Bestand · Tagesbetrieb"]
+    G4["(4) Routinen
+Welt aufstellen · Fall nachfahren"]
+    LZ(["aktuelle Laufzeit
+mit übernommenem Bestand"])
+    G5["(5) Webseite"]
 
-| Ebene | Was sie ist | Hier |
-|---|---|---|
-| Entwickler und KI | die Arbeit an Tool und Vorzeige | Reviews, ADRs, Suite; Änderungen am Tool laufen über kein Laufzeit-Gate (ADR-017) |
-| KI-Tool | das agentische Migrationssystem, unabhängig vom Unternehmen | `ontologie/`, `spez/`, `gates/`, `models/`, `qa/`, `quellen/`, Skills und Agentenrollen, Berichts-Generatoren |
-| Vorzeige | ein fiktives Unternehmen, an dem sich das Tool zeigt und testen lässt | Referenz-Zielsystem `kern/`, Bestandsführung `bestand/`, der Migrationsfall, die Unternehmensseite |
-| Vorzeige-Werkzeuge | was die Vorzeige herstellt und in der Wirklichkeit ein Unternehmen oder Quellsystem liefern würde | Bestandssimulation, Quellsystem-Erzeugung, Regie-Mechanik |
+    G3 -- "ist die Eingabe für" --> G2
+    G2 -- "arbeitet auf" --> G1
+    G1 & G2 & G3 --> G4
+    G4 -- "setzt zusammen" --> LZ
+    LZ -- "wird gezeigt von" --> G5
+```
 
-Abgrenzung: Was bei einem beliebigen Versicherer unverändert eingesetzt
-würde, ist Tool; was nur für die fiktiven Unternehmen gilt, ist
-Vorzeige. Der Generator eines Berichts ist Tool, die konfigurierte
-Instanz ist Vorzeige. Die Schichtenkarte trägt die Ebene je Modul und
-hält zwei Grenzen innerhalb des Pakets als Ratsche fest: die Kanten aus
-dem Tool in die Vorzeige und die Kanten aus der Vorzeige in ihre
-Simulationswerkzeuge (Generator, Ereignis-Engine, Neugeschäft). Was
-außerhalb des Pakets liegt (Berichtsgeneratoren, Quellsystem,
-Simulation), misst sie nicht (ADR-017, Reichweite).
+**Quer zu allen fünf** liegen `tests/`, `docs/` (Fachdokumentation und
+Architektur-Entscheidungen), `dev-docs/` (geplante Vorhaben),
+`src/rechner_pipeline/models` (Datenverträge), `deploy/dev` und
+`.devcontainer/` (Entwicklungsumgebung) und `.github/` (Prüfläufe und
+Image-Bau).
+
+**Zwei Verzeichnisse tragen zwei Gegenstände.** `werkzeuge/` enthält neben
+den Werkzeugen der Webseite vier für den Live-Lauf eines Falls
+(`werkzeuge/vorfuehrung.py`, `werkzeuge/lagebild.py`,
+`werkzeuge/aufzeichnung.py`, `werkzeuge/sitzungsprobe.py`); sie gehören zum
+Migrationssystem. `deploy/welt/` enthält neben den Routinen die Definition
+des Falls der Vorführung (`deploy/welt/fall-baldrian-klv-tg2015.conf`).
+
+**Bewusst nicht hier:** die laufende Instanz (Rechner, Schlüssel, Ablage),
+das Hosting der Seite, die Einrichtung einzelner Rechner und die Regie mit
+Drehbüchern und Auflösungen noch nicht gefahrener Fälle. Eine Laufzeit ist
+kein Bestandteil des Systems, sondern eine seiner Instanzen — aus dem Stand
+dieses Repositorys neu aufstellbar und mit jeder anderen Instanz
+vergleichbar: Dieselbe Welt, zweimal aufgestellt, trägt in ihrer Ablage
+dieselben Bytes, gleich mit welchen Schlüsseln gezeichnet wird.
+
+**Der Stand von `main`** ist der Stand nach dem jüngsten festgehaltenen
+Fall: Was der Fall am Zielsystem gebaut hat, liegt im Code. Der Stand davor
+ist ein Commit der Geschichte, den das Paket des Falls nennt. Die Routine
+stellt die Welt auf jenem Stand auf und fährt den Fall auf diesem nach.
+
+Innerhalb des Pakets regelt ADR-017, wer wen importieren darf: Das
+Migrationssystem ist das KI-Tool, das bei jedem Versicherer unverändert
+einsetzbar wäre; die PLV ist die Vorzeige, an der es sich zeigt; und was
+ihre Bestände erzeugt, sind Vorzeige-Werkzeuge. Die Schichtenkarte misst
+das je Modul (`python -m rechner_pipeline.ontologie.code_karte`).
+
+## Wie das System arbeitet
 
 Die Arbeitsteilung ist der Kern der Methodik:
 
 - **Agenten schlagen vor** — als versionierte Rollen (Skills): Quellen
-  extrahieren, Bestandsdaten-Mappings vorschlagen, Konflikte
-  aufbereiten, Code unter den Architekturregeln entwickeln. Ein Agent
-  einer späteren Stufe liest nie die Rohquelle einer früheren.
+  extrahieren, Bestandsdaten-Mappings vorschlagen, Konflikte aufbereiten,
+  Code unter den Architekturregeln entwickeln. Ein Agent einer späteren
+  Stufe liest nie die Rohquelle einer früheren.
 - **Deterministischer Code entscheidet** — Zusammenführung, Vergleich,
   Abdeckung, Transformation, Abnahmerechnung. In `src/` gibt es keine
-  Modell-, Provider- oder Token-Fläche und keinen LLM-Pfad in einer
-  Prüfung.
-- **Menschen entscheiden fachlich** — Widersprüche zwischen Quellen
-  werden Objekte mit beiden Lesarten, nie stille Annahmen; jede
-  Abnahme ist ein menschliches Gate mit unveränderlichem Snapshot.
+  Modell-, Provider- oder Token-Fläche und keinen LLM-Pfad in einer Prüfung.
+- **Menschen entscheiden fachlich** — Widersprüche zwischen Quellen werden
+  Objekte mit beiden Lesarten, nie stille Annahmen; jede Abnahme ist ein
+  menschliches Gate mit unveränderlichem, gezeichnetem Snapshot.
 
-Die Komponenten des Repositories, mit ihrem Simulations-Tooling
-daneben (die Objekte und das System links sind das Produkt; das
-Tooling rechts erzeugt die Vorzeigeobjekte und ist je Objekt
-verzichtbar, ohne dass das System etwas verliert):
+Ein Fall läuft so: Der Vorstand beauftragt ihn (`A-M6`). Jede Quelle wird
+vorverdichtet und extrahiert, die Aussagen werden zur A-Box zusammengeführt,
+und Widersprüche gehen als Dossier an den Menschen (`A-Q1`). Aus der
+abgenommenen Lesart entsteht die Parametrierung des Kerns; was der Fall am
+Zielsystem ändert, wird als Kernstand (`A-K2`), T-Box-Stand (`A-O1`) und
+Tarifwerk (`A-T1`) abgenommen. Der Bestand wird transformiert und
+übernommen. Drei aktuarielle Tests je Vertrag (`A-M1`, `A-M2`, `A-M3`) gehen
+der Migrationsabnahme (`A-M4`) voraus. Danach nimmt der Betrieb den Zugang
+mit einer Probe auf einer Kopie der Ablage ab (`A-B2`), die Ablage wird mit
+dem übernommenen Bestand neu aufgesetzt und ihr Anfangsbestand gebunden
+(`A-B3`). Geht ein Stand nach außen, zeichnet der Betrieb die Auslieferung
+(`A-B1`). Ein scheiternder Fall endet mit dem gezeichneten Abbruch (`A-M5`).
+Der ganze Ablauf mit seinen Belegen steht in
+[docs/architektur/ablauf-eines-falls.md](docs/architektur/ablauf-eines-falls.md).
 
-```mermaid
-flowchart RL
-    subgraph OBJEKTE["Objekte und System"]
-        direction TB
-        P1["(1) Pfefferminzia
-Zielbestand: Kern + Bestandsführung"]
-        F2["(2) Migrationsobjekte
-Quellbestände: faelle/ · lieferungen/"]
-        S3["(3) KI-System
-Pipeline · Gates · Agenten-Skills"]
-        P1 ~~~ F2 ~~~ S3
-    end
-    subgraph TOOLING["Simulations-Tooling"]
-        direction TB
-        T4["(4) Bestands-Simulation
-erzeugt (1) einmalig · bestand.cli_fortschreibung"]
-        T5["(5) Quellbestand-Simulation
-erzeugt Lieferungen für (2) · quellsystem/"]
-        T6["(6) Tagesbetrieb der PLV
-Neugeschäft, Vorfälle und Abschlüsse je Tag für (1)"]
-        R7["(7) Regie — WIP
-Spielleitung der Vorführung: Drehbücher, Rollen,
-Auflösungen; bespielt (4)–(6)"]
-        T4 ~~~ T5 ~~~ T6 ~~~ R7
-    end
-    TOOLING -. "erzeugt die Vorzeigeobjekte" .-> OBJEKTE
+Braucht die Migration eine **Code-Änderung** am Zielsystem
+(Berechnungskatalog, Bewertung, Produktdefinition), läuft sie als kleines,
+knotengebundenes Inkrement auf dem einen Trunk — Landung nur mit grüner
+Gesamt-Suite einschließlich der Referenzwerte aller anderen Fälle (ADR-007).
+Das ist der Normalfall einer Migration, nicht die Ausnahme.
 
-    classDef objekt fill:#0e7568,stroke:#0a544b,color:#ffffff
-    classDef system fill:#4a5d8a,stroke:#36466b,color:#ffffff
-    classDef sim fill:#5c636b,stroke:#464c53,color:#ffffff
-    classDef geplant stroke-dasharray: 6 4
-    class P1,F2 objekt
-    class S3 system
-    class T4,T5,T6 sim
-    classDef regie fill:#7a5c2e,stroke:#5d461f,color:#ffffff
-    class R7 regie
-    class R7 geplant
-```
+## Die Laufzeit der PLV
 
-Die Bestands-Simulation (4) und die Fortschreibung stecken heute in
-**einem** Werkzeug: `bestand.cli_fortschreibung` erzeugt den
-Basisbestand und schreibt ihn bis zum Horizont fort. Der Tagesbetrieb
-(6) ist seit dem Sommer gebaut und hat eigene Werkzeuge
-(`betrieb.neugeschaeft`, `betrieb.tageslauf`). Die Quellbestand-Simulation
-(5) ist das eingecheckte `quellsystem/`. Der Weg vom leeren
-Verzeichnis zum geführten Bestand steht in
-[docs/simulation/bestandserzeugung.md](docs/simulation/bestandserzeugung.md).
-
-Die **Regie** (7) ist als Konzept benannt, ihre Dokumentation ist in
-Arbeit — Stub: `dev-docs/regie.md`. Sie legt fest, was vorgeführt wird
-und unter welchen Bedingungen (Spielleiter-Bereiche, Rollen samt
-Zeichnungsordnung, Abbruchkriterien); wie die Simulation gehört sie zum
-Gesamtbild, aber nicht zum System.
-
-**Was im Repository liegt — und was bewusst nicht.** Hier liegen der Code
-des KI-Systems, die Definition der Vorzeigeobjekte (die PLV, die
-Lieferungen, der Fall der Vorführung), die festgehaltenen Fälle als Pakete
-zum Nachfahren (`pakete/`) und die Routinen, mit denen daraus
-eine vollständige Laufzeit entsteht: `deploy/welt/` stellt eine Welt auf
-(Ablage, Linie, Erstabnahmen, auf Wunsch eigene Schlüssel) und startet
-einen Fall darin, `deploy/plv/` liefert Image und Bedienfolgen des
-Tagesbetriebs. Die Beispielumgebung selbst liegt nicht hier:
-der Rechner, auf dem die PLV Tag für Tag läuft, ihre Schlüssel und ihre
-Ablage, die Infrastruktur um den Webauftritt, die Einrichtung einzelner
-Rechner für eine Vorführung oder einen Workshop. Sie ist kein Bestandteil des
-Systems, sondern eine seiner Instanzen — aus dem Stand dieses Repositorys
-neu aufstellbar und mit jeder anderen Instanz vergleichbar: Dieselbe Welt,
-zweimal aufgestellt, trägt in ihrer Ablage dieselben Bytes, gleich mit
-welchen Schlüsseln gezeichnet wird.
-
-
-## Architektur
-
-**Schichten** (Import-Regeln maschinell erzwungen,
-`ontologie/code_karte`; jedes Modul trägt seine Ebene nach ADR-017, die
-29 gemessenen Kanten aus dem Tool in die Vorzeige sind die
-Zielsystem-Schnittstelle, die sechs Kanten aus der Vorzeige in ihre
-Simulationswerkzeuge sind die zweite Ratsche — eine neue Kante ist
-jeweils ein Befund, bis ein ADR sie aufnimmt). Die Kette unten ist die Lesefassung; die erzwungene
-Erlaubnismatrix ist ein Netz mit Quer- und Rückkanten und steht in der
-erzeugten [Landkarte](docs/architektur/landkarte.md):
-
-```
-quellen  ->  ontologie  ->  spez  ->  kern  ->  bestand  ->  qa  ->  gates
-             (T-Box/A-Box)          (Zielkern)  (GeVo-Strom)        (Abnahme)
-```
-
-- `quellen/`: deterministische Vorverdichter je Quelltyp (Excel-Mappen,
-  DOCX-Meldungen, CSV-Bestandsabzüge) — Agenten lesen nie Rohdateien.
-- `ontologie/`: die T-Box (was eine Tarifgeneration ausmacht) und je
-  Fall eine A-Box, in der **jede Aussage Provenienz trägt** (Quelle,
-  SHA-256, Fundstelle, Akteur). Widersprüche sind Diskrepanz-Objekte.
-  Dazu die Datentransformation (Quell-Datenmodell -> Ziel-Ontologie:
-  der Agent schlägt das Mapping vor, Code validiert und wendet an,
-  Unklarheit blockiert bis zur menschlichen Entscheidung) und der
-  **Code-Index**: Module und Tests deklarieren ihren Fachknoten
-  (`Knoten: klv/tg2015`), daraus werden Impact, Schichtenprüfung und
-  Landkarten-Sichten **berechnet** statt gepflegt — ausgelegt auf ein
-  Zielbild von einer Million Codezeilen, in dem es kein Bild "der
-  Codebasis" mehr gibt, nur begrenzte Ausschnitte
-  (`docs/architektur/landkarte.md`).
-- `spez/`: die abgenommene Lesart einer Generation als Parametrierung
-  des Kerns — samt maschinell berechnetem Struktur-Urteil
-  (Parametrierung vs. neues Produkt).
-- `kern/`: der Zielrechenkern (unten).
-- `bestand/`: der fortschreibbare Bestand auf dem Kern (unten).
-- `qa/` und `gates/`: Abnahmerechnungen und blockierende Prüf-Gates.
-
-**Ablauf eines Migrationsfalls** (Details:
-`docs/architektur/migrations-pipeline-v01.md`): Fall-Arbeitsbereich
-anlegen und Quellen registrieren (`eingang/` mit SHA-256-Register, nie
-still überschrieben — hier beginnt die Provenienzkette) -> **Fallauftrag**
-`A-M6`: der Vorstand beauftragt den Fall, benennt die Programmleitung und
-bindet die Lieferung; jeder weitere Abnahmepunkt setzt ihn voraus, ein
-scheiternder Fall endet mit dem gezeichneten **Fallabbruch** `A-M5` der
-Programmleitung (ADR-026) -> je Quelle
-Vorverdichtung und Agenten-Extraktion -> deterministischer Merge zur
-A-Box -> Diskrepanzen als Entscheidungs-Dossier an den Menschen
-(Gate A-Q1) -> Spez -> parametrierter Kern -> Abnahme gegen die
-Lieferung (Gate P-K1, Bestandsabzugs-Abgleich) -> Transformation und
-Übernahme des Bestands -> **aktuarieller Test je Vertrag an seinen
-eigenen Rechenpunkten** auf belegten Stichproben
-(`qa/aktuarieller_test`, `qa/testprofil`, `gates/aktuartest`) in drei
-einzeln gezeichneten Abnahmen — `A-M1` Stichtagstest, `A-M2`
-Verlaufstest, `A-M3` Geschäftsvorfalltest —, die dem Controlling `A-M4`
-vorausgehen (ADR-010, ADR-012), ebenso wie die Abnahme des Stands, auf
-dem der Fall rechnet — Kernstand `A-K2`, T-Box-Stand `A-O1`, Tarifwerk
-`A-T1`; einmal ausserhalb jedes Falls im Linienbereich abgenommen
-(Erstabnahme, ADR-025), im Fall nur, was sich durch ihn aendert, sonst
-belegt durch einen Verweis auf die geltende Abnahme (ADR-018, Nachtrag
-2026-10-01) ->
-**Migrationscontrolling über zwei Stichtage**:
-Deckungskapital am Migrations- und am Folgestichtag plus die
-Geschäftsvorfälle dazwischen, gegen die gelieferten Erwartungswerte
-(`qa/migrationssuite`), zusammengefasst im HTML-Abnahmebericht
-(`gates/abnahmebericht`) mit Transformationsspecifikation,
-Transformationsergebnis und Bestandsberichten vor/nach als Pflichtartefakte —
-als Vorlage für das menschliche Gate A-M4. Prüflücken, Zeilenverlust,
-Transformationsbefunde oder nicht entschiedene Konflikte ergeben einen roten
-Kopfsatz, ein fehlgeschlagenes Ledger und einen blockierenden Exit-Code. Jede
-Eingabe-, Ausgabe- und Ledgerrolle muss dabei eine eigene Datei bezeichnen;
-Pfad- oder Hardlink-Aliase blockieren vor dem Rendern. Der in `fall.json`
-deklarierte Scope unterscheidet dabei reine Tariffälle von
-Bestandsfällen: Nur der Bestands-Scope verlangt und bindet P-B1, eine vollständig
-geprüfte Suite und den Abnahmebericht auf denselben Stand.
-`gates.transformation_anwenden.wende_an(spec, fall)` löst die Quelle anhand
-von `spec.quelle_datei` selbst über das
-Fallregister auf, liest die registrierte CSV und führt `validate_spec` gegen
-deren physischen Header aus; SHA-256 und Spalten müssen zur Spec passen. Ein
-frei übergebbarer Dateipfad ist damit kein Transformations-Eingang mehr.
-Berechnungen haben katalogspezifisch exakt einen oder zwei Operanden, und eine
-Konfliktentscheidung gilt nur mit nichtleerem Entscheid und Entscheider. Das
-persistierte Transformationsergebnis bindet Quell-, Spec- und Ziel-SHA-256,
-Quellspalten sowie Quell-/Zielzeilenzahl. Der Abnahmebericht liest die Quelle
-über `eingang.json` erneut und rechnet diese Bindungen nach; ohne diese
-physische Fallbindung bleibt auch ein ansonsten grüner Renderer-Aufruf
-ausdrücklich rot und nichtautoritativ. Im Bestands-Scope verlangt er als Ziel
-genau den von Suite und P-B1 geprüften Bestand. A-M4 wiederholt diese Prüfung,
-verlangt Spec, Transformationsergebnis sowie Vor-/Nachbericht unter vier festen
-Pfad-/SHA-256-Rollen und rendert den Bericht aus den erneut gelesenen Inhalten
-zum Bytevergleich neu (ADR-009).
-
-Braucht die Migration eine **Code-Änderung** (Berechnungskatalog,
-Bewertung, Produktdefinition), läuft sie als kleines, knotengebundenes
-Inkrement auf dem einen Trunk — Landung nur mit grüner Gesamt-Suite
-einschließlich der Referenzwerte aller anderen Fälle (ADR-007: parallele
-Migrationen in einem Kern).
-
-Die Agenten-Rollen samt Grenzen stehen im Katalog
-`docs/architektur/skill-architektur.md`; Architektur-Entscheidungen als
-ADRs unter `docs/architektur/`.
-
-## Die Prüf-Gates
-
-Jedes Gate schreibt ein JSON auf stdout und ein Ledger in den
-Diagnostics-Ordner; ein Nicht-Null-Exit ist **blockierend** und wird
-nie zur Warnung abgeschwächt. Vor der fachlichen Arbeit ersetzt ein roter
-Startbeleg einen etwaigen Beleg des vorigen Laufs. Der Abschluss ersetzt
-diesen Startbeleg atomar durch das aktuelle Ergebnis. Eine unerwartete
-Exception bleibt damit als aktueller fehlgeschlagener Lauf sichtbar; scheitert
-das Schreiben des Abschlussbelegs, endet auch eine fachlich gruene Pruefung mit
-Exit 50 statt ohne aktuellen Beleg erfolgreich zu erscheinen.
-Fehlende Pflichtargumente und ungueltige Optionen liefern ebenfalls genau ein
-strukturiertes Fehler-JSON und ersetzen einen alten gruenen Beleg durch den
-aktuellen roten Lauf. Syntax- und `argparse`-Choice-Fehler verwenden Exit 2;
-fachlich kategorisierte fehlende Eingaben behalten den vom jeweiligen Gate
-definierten Fehlercode. `--help` bleibt ein erfolgreicher Aufruf mit Exit 0 und
-startet keinen Gate-Lauf.
-
-| Gate | Kommando | Prüft |
-|---|---|---|
-| P-Q1 | `gates.extract` | deterministische Vorverdichtung einer Quellmappe (Formeln, Werte, Namen, VBA) |
-| P-Q2 | `gates.abox_merge` | Zusammenführung der Extraktions-Fragmente zur A-Box |
-| P-Q3 (Version `2.0.0`) | `gates.abox_validate` | A-Box gegen T-Box: Abdeckung, Wertebereiche, Formel-Rück-Check; die A-Box muss die geltende T-Box-Version tragen (Review T22-02, Major: eine A-Box fremder Version war vorher grün). `2.0.0`: im Bestands-Scope muss die A-Box die Tarifregeln der migrierten Generation belegt führen — Tarifwerk und Quellverfahren (`tbox.BESTAND_PFLICHT`, Code `tarifregeln`); eine A-Box ohne sie war vorher ein gültiger Beleg (ADR-024, Nachtrag) |
-| P-K1 (Version `1.0.0`) | `gates.generation_golden` | der parametrierte Kern gegen die Erwartungswerte der Lieferung; schreibt je Generation einen inhaltsadressierten Beleg des A-Box- und Systemstands; Spez, A-Box und Code müssen dieselbe T-Box-Version sprechen (Review T22-02, Major) |
-| P9 (Version `5.0.0`) | `gates.gate_entscheid` | schema- und kettengültige Snapshots der menschlichen Gates (A-Q1, A-O1, A-K2, A-T1, A-M1 bis A-M6, A-B1, A-B2, A-B3), im Fall oder — mit `--linie` allein — im Linienbereich der Erstabnahme (A-K2, A-O1, A-T1, A-B3); Annahmen sind mit einem extern verwahrten HMAC-Schlüssel autorisiert, A-M1 und A-M4 verlangen die zum Fall-Scope passenden Pflichtbelege je Gate, A-M4 verlangt die geltende, signierte A-M1-Annahme auf demselben Stand und pinnt sie als Pflichtrolle `am1_snapshot` (aktuarielle vor finanzieller Abnahme, ADR-010), A-O1 (gezeichnet von `mensch/architektur`) verlangt den Beleg der T-Box-Änderung `abgeleitet/tbox/aenderung.json` (alte und neue Version, Hash des T-Box-Moduls, Änderungsartefakt), und eine simulierte Rolle zeichnet nur mit Mandat (ADR-018). `1.0.0`: Akzeptanzmenge geändert durch Mandatspflicht und den Beleg der T-Box-Änderung, damals unter dem Gate-Namen A-K1, der entfallen ist (heute A-O1, ADR-012) (Review T22-02, T22-07); `2.0.0`: A-M4 verlangt im Bestands-Scope die Führungsprobe als Pflichtbelegrolle `fuehrungsprobe` (Freischaltung des übernommenen Bestands, Schritt 6); `3.0.0`: A-M4 verlangt in beiden Scopes, dass der Stand des Falls abgenommen ist — Kernstand (A-K2, Rolle `kernstand`) und T-Box-Stand (A-O1, Rolle `tboxstand`) nach einer Regel: im Fall gezeichnet, „keine Änderung seit Abnahme …“ über einen Verweis auf einen früher angenommenen Snapshot (`gates.stand_belegen verweisen`), oder für die T-Box die Basislinie; A-K2 nimmt den Kernstand ab (Änderungen entlang der Module mit Commits, `gates.kernstand_belegen`; Regression bis zu ihrem Werkzeug als benannte Ausnahme „nicht gefahren“); P9-Schema 8 mit `stand`, `ausnahmen` und `standabnahmen` (ADR-018, Nachtrag 2026-10-01); `4.0.0`: A-M4 verlangt zusaetzlich das Tarifwerk der PLV (A-T1, Rolle `tarifwerkstand`, `gates.tarifwerk_belegen`), die Basislinie der T-Box entfaellt (Erstabnahme im Linienbereich, Verweis `stand_belegen verweisen --linie`), mit `--linie` wird nur unter der Spitze der Versionslinie der Zeichnungsordnung gezeichnet und jede Vorbedingung gegen die Ordnung gelesen, unter der sie gezeichnet wurde; P9-Schema 9 mit Scope `linie` und `zeichnung.ordnungsglied_sha256` (ADR-025); `5.0.0`: jede Annahme eines Falls ausser dem Auftrag selbst verlangt den geltenden, vom Vorstand gezeichneten Fallauftrag `A-M6` auf der heutigen Lieferung (`eingang.json`, `fall.json`) und nennt ihn signiert (`fallauftrag`); simulierte Rollen zeichnen nur unter dem Mandat, das der Auftrag ihnen nennt; neu der Fallabbruch `A-M5`, gezeichnet von der Programmleitung mit dem Recht aus dem Auftrag, danach ist im Fall nichts mehr zeichenbar; P9-Schema 10 mit `auftrag`, `abbruch` und `fallauftrag` (ADR-026); eine Annahme gruendet nur auf Annahmen des Falls unter dem geltenden Auftrag, die Linie des Aufrufs ist die Linie des Auftrags, und A-M5 geht auch bei verletztem Eingang mit dem Befund im Abbruch (ADR-026, Nachtrag Runde G); zugleich ist die Linie Pflicht: ohne `--linie` wird nicht entschieden, und keine Vorbedingung wird ohne sie gelesen (ADR-025, Nachtrag 2026-10-01) |
-| P-B1 (Version `4.0.0`) | `gates.bestand_validate` | physisches Parquet-Schema mit exakten Arrow-Typen und ohne unbekannte Spalten, nichtleere `tarif_generation`, endliche Beträge in Stamm, Scheiben und Ledger (`NaN` und `inf` sind Datenfehler), Zustandsregeln des geführten Bestands (Ursprungssatz `1`/`POL` am Versicherungsbeginn; Folgezustände nur mit Journal und deckungsgleich zum jüngsten Journalstand), die Form des `gamma1` jeder Erhöhungsscheibe (endlich, nicht negativ) und mit `--config` seinen Wert gegen das Tarifwerk der Generation (`0`, oder das `gamma1` der Zelle bei `scheiben_mit_gamma1`), mit `--schichten`/`--verankerung` die Korrekturschicht übernommener Verträge (Form, Zugehörigkeit, Anker) und ihren Anteil an jeder Storno-Herleitung, die Semantik jeder Ledger-Buchung (GeVo-Vokabular, Betragsart zum GeVo, Generation des Stammsatzes, Vertragsjahr zum Datum, Journalzeile zum Zustandswechsel) mit zeilenweiser Bindung jeder `ERH`-Buchung an genau eine Scheibe, mit `--config` die Betragsidentität jeder STO-/PEX-/TOD-/ABL-/ZUG-Buchung gegen die Kern-Herleitung für genau diese Police (Tarifzellen brauchen `--merkmale`), und Bewegungs-Identitäten je Jahr, Track und Maß; mit `--manifest` zusätzlich den belegten Horizont und die Bytes jeder Tabelle gegen das Laufmanifest. `2.0.0` änderte die normative Akzeptanzmenge (vorher grüne Belege werden rot und umgekehrt), `2.1.0` ergänzte die optionale Manifest-Bindung, `3.0.0` erweitert die Akzeptanzmenge um Ledger-Semantik, Betragsidentität und Herkunftsbindung — mit Config geprüfte, betragsfalsche Ledger werden rot (Review T21-09: eine geänderte Akzeptanzmenge braucht einen Versionssprung), `4.0.0` macht die `gamma1`-Regel zur Eigenschaft der Generation und nimmt Schicht und Verankerung in die Herleitung — Scheiben mit `gamma1` einer freigeschalteten Generation werden grün, Storno-Buchungen ohne ihre Schicht rot (Freischaltung des übernommenen Bestands, Schritt 4 und 5) |
-| A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
-| G2-Vorlage (Version `10.0.0`) | `gates.abnahmebericht` | berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu; ein grünes Ledger verlangt vollständige Pflichtartefakte, lückenlose Suite, kongruente Transformationszeilen, keine Transformationsbefunde und keine offenen Konflikte; im Bestands-Scope bindet es P-B1, Suite und Bericht auf denselben Stand sowie die vier Renderer-Eingaben unter festen Pfad-/SHA-256-Rollen, und der P-B1-Beleg muss das Vollprofil tragen (Stamm, Journal, Ledger, Config, Horizont, Betragsbindung). `2.0.0`: ein Teilprofil war vorher ein gültiger Beleg (Review T22-01); `3.0.0`: im Bestands-Scope bindet es zusätzlich die Führungsprobe (`gates.fuehrungsprobe`, bestanden, auf demselben Systemstand, auf dem Bestand der Suite) — ohne sie kein grüner Beleg (Freischaltung, Schritt 6); `4.0.0`: die Führungsprobe wird mit ihrem eigenen Aufruf nachgerechnet und Feld für Feld gegen den Beleg gehalten, die Fortschreibung ist Pflicht, und die Probe leitet den Endzustand (Historie, Zustand, Scheiben) aus Übernahme und Geschäftsvorfällen her (Prüfrunde T27); `5.0.0`: die Probe prüft die Übernahme des Falls (`abgeleitet/bestand`), ihre Fortschreibung reicht bis zum Folgestichtag, und P-B1 läuft vollständig auf dieser Fortschreibung; `6.0.0`: im Bestands-Scope muss die Suite die Auskunft zu den Herabsetzungsanteilen als `red_anteile_datei` führen (`null` = keine; Name und SHA-256 müssen unter den Eingaben der Suite stehen), und Suite und Führungsprobe müssen dieselbe Auskunft gelesen haben — eine Suite ohne das Feld war vorher ein gültiger Beleg (Block F, Nachbesserung); `7.0.0`: die Policen, deren Anfangszustand die Auskunft trägt (Übernahme, über die Führungsprobe als `gedeckt` geführt), sind die Pflichtschicht der Abnahmen — die Suite führt dieselbe Menge als `pflichtschicht`, und kein Beleg des aktuariellen Tests hat eine Fehlstelle in ihr; vorher lag eine solche Police in keiner Stichprobe, und der Beleg war gültig (Prüfer-Befund B1, 2026-10-01); `8.0.0`: im Bestands-Scope trägt die Suite in Fassung 2 je Vertrag den `fuehrungswert` — Deckungskapital, Rückkaufswert und Korrekturschicht, die der Monatsabschluss am Zugangs- und am Folgestichtag führt, als Systemwert auf dem Bestand der Suite (`models.fuehrungswert`); eine Suite ohne ihn war vorher ein gültiger Beleg (Entscheid des Maintainers 2026-10-01); `9.0.0`: die Führungsprobe trägt Fassung 5 — Tarifwerk und Quellverfahren aus der Spez statt aus Schaltern, ihr Aufruf nennt keine Tarifschalter mehr; ein Beleg der Fassung 4 war gültig und ist mit seinem Aufruf nicht mehr nachrechenbar (ADR-024, Nachtrag); `10.0.0`: der Führungswert der Suite wird auf den gebundenen Bytes (Bestand, Nebentabellen, Config, Tarifwerk der Spez) über denselben Weg wie die Suite nachgerechnet und in der Vorlage ausgewiesen (Summary `fuehrungswert`, HTML je Vertrag); A-M4 bindet die Spez der Generation (Summary `tarifregeln`), und jeder Beleg der Bestandsstrecke (Übernahme, Schicht, aktuarieller Test, Suite, Führungsprobe) muss genau ihre Regeln nennen und sie gelesen haben — ein verfälschter Führungswert oder ein Beleg mit anderer Regelangabe war vorher gültig (Prüfrunde G, ADR-024, vierter Nachtrag) |
-
-Gate-Versionen folgen der Akzeptanzmenge (ADR-012, Nachtrag 2026-09-05): Major, wenn ein vorher grüner Beleg rot werden kann oder umgekehrt; Minor für eine optionale Rolle oder Prüfung, die bestehende Belege nicht berührt; Patch für Meldetexte und Summary-Felder. Trägt eine Zeile dieser Tabelle eine Version, hält `tests/test_gate_versionsregel.py` sie mit der `GATE_VERSION` des Moduls zusammen.
-
-Dazu prüfen Hypothesis-Tests die aktuariellen Identitäten des Kerns
-(`tests/test_kern_algebraisch.py`: qx-Schranken, Barwert-Bilanz
-`A + d·ä = 1`, Rekursionen, Äquivalenzprinzip) — unabhängig von jeder
-Quell-Lieferung.
-
-## Die Beispielartefakte: die PLV-Fiktion
-
-Vorgeführt wird das System an der fiktiven **Pfefferminzia
-Lebensversicherung (PLV)**: der Zielkern ist der PLV-Kern, der Bestand
-der PLV-Bestand, und Migrationsfälle übernehmen fremde Bestände in die
-PLV. Die Artefakte der Fiktion enthalten keine echten Vertrags-,
-Kunden- oder Bestandsdaten; Struktur und Rechnungsgrundlagen sind aus
-realen Vorlagen abgeleitet, Unternehmen und Bestände sind frei
-erfunden:
-`configs/` hält die Bestands-Konfigurationen der PLV
-(TOML, von Suite und Berichten geladen), `tests/fixtures/` synthetische
-Quellmappen für die Extraktions-Tests, und `lieferungen/` das Frachtgut
-der Showcase-Migrationen — die Lieferung eines fiktiven abgebenden
-Unternehmens, mit der jeder die Migration selbst durchführen kann
-(`ONBOARDING.md`, Abschnitt 3). Einen impliziten Eingangskanal gibt es
-nicht: In einen Fall gelangt eine Lieferung nur über die ausdrückliche
-Registrierung.
-
-**Der Rechenkern** (`rechner_pipeline.kern`): KLV und
-Berufsunfähigkeit auf einem gemeinsamen (Semi-)Markov-Zustandsmodell
-mit Thiele-Rückwärtsrekursion; Tafelwerk als reine qx-Vektoren mit
-harten Erschöpfungsgrenzen; Monatsreserven für Bilanz-Stichtage
-(unterjährige Interpolation) und vertragsweite Bewertung dynamischer
-Erhöhungsscheiben. Eine Tarifgeneration, deren Leistungsmerkmale der
-Kern bereits kennt, ist eine **Parametrierung** über den Modellpunkt —
-kein neuer Kern-Code für die Generation selbst (der Normalfall einer
-Migration ist das nicht, siehe oben und ADR-007):
+**Der Rechenkern** (`rechner_pipeline.kern`): KLV und Berufsunfähigkeit auf
+einem gemeinsamen (Semi-)Markov-Zustandsmodell mit
+Thiele-Rückwärtsrekursion; Tafelwerk als reine qx-Vektoren mit harten
+Erschöpfungsgrenzen; Monatsreserven für Bilanz-Stichtage und vertragsweite
+Bewertung dynamischer Erhöhungsscheiben. Eine Tarifgeneration, deren
+Leistungsmerkmale der Kern bereits kennt, ist eine **Parametrierung** über
+den Modellpunkt:
 
 ```python
 import dataclasses
@@ -304,61 +139,24 @@ mp = dataclasses.replace(KLV_DEFAULT, x=30, sex="F", zins=0.0225,
 ergebnis2 = berechne(mp)
 ```
 
-**Die Fachdokumentation** ist zweistufig, produktseitig, und jede
-Aussage hat genau ein Zuhause (`tests/test_tarifplan_struktur.py` hält
-den Schnitt):
+Die Mathematik dahinter steht in der
+[Grundsatzdokumentation](docs/mathematik/grundsatzdokumentation.md), die
+Ausgestaltung je Produkt in den [Tarifplänen](docs/tarifplaene/). Abschnitt
+9 der Grundsatzdokumentation beschreibt die Methode des Migrationszugangs:
+konstruktive Neuberechnung mit Korrekturschicht, also Bestandsmigration
+ohne Historienmigration.
 
-1. **Die Grundsatzdokumentation**
-   (`docs/mathematik/grundsatzdokumentation.md`): Mathematik und
-   Numerik, der die Umsetzung folgt — das allen Produkten gemeinsame
-   Rückgrat (Zustandsraum und Semi-Markov-Modell, Thiele-Rekursion,
-   Rechnungsgrundlagen-Schicht, Diskretisierung und Rundung,
-   Schichtenbild) und in Abschnitt 9 die Methode des Migrationszugangs:
-   konstruktive Neuberechnung mit Korrekturschicht, also
-   Bestandsmigration ohne Historienmigration. Die Schicht rechnet
-   (`kern/korrekturschicht.py`) — sie ist keine zweite Rechenmaschine,
-   sondern dieselbe Thiele-Rekursion mit anderen Zahlungen; die
-   wertkontinuierlichen Übergänge fallen aus ihrer Dynamik heraus,
-   weshalb Stornoannahmen den Kalibrierungsfaktor nicht beeinflussen
-   können.
-2. **Die Tarifpläne** (`docs/tarifplaene/klv.md`, `bu.md`): die
-   Ausgestaltung je Produkt — Zustandsraum des Tarifs, Leistungen,
-   Beiträge, Reservebegriffe, GeVo-Katalog mit Betragsformeln,
-   Stellschrauben, Gültigkeitsgrenzen. Sie wiederholen das Rückgrat
-   nicht, sondern verweisen darauf. Gerendert über eine gepinnte
-   Doku-Engine (`docs/engine/`).
-
-Daneben — nicht darunter — steht projektseitig das
-**Migrationskonzept** (`docs/migrationskonzept/`): das Verfahren eines
-Migrationsfalls (Prüfebenen, Nachweise, Entscheidungen), je Bestand
-instanziiert.
-
-**Der Bestand** (`rechner_pipeline.bestand`): synthetische,
-deterministisch reproduzierbare Bestände, deren Datenmodell 1:1 auf dem
-Kern-Contract liegt. Die Entwicklung über die Zeit ist ein einziger
-Strom datierter Geschäftsvorfälle (Neuzugang, Storno, Tod,
-Beitragsfreistellung, dynamische Erhöhungen als eigene Scheiben,
-Ablauf); jeder Betrag kommt aus dem Kern, die Eintrittsraten aus einer
-eigenen Annahmenschicht (3. Ordnung), und das Bewegungskonto führt die
-Identität Anfangsbestand + Zugang − Abgang = Endbestand exakt in der
-Struktur der BaFin-Nachweisungen. Der Bestand wird **geführt**
-(ADR-011): Der Stammsatz trägt je Vertrag den aktuellen Zustand (Status
-und seit wann), das Journal die vollständige Aufzeichnung; die Auskunft
-rekonstruiert den Bestand zu jedem früheren Tag aus dem Journal, und
-die Bewertung liest ausschließlich den Zustand — kein Bewertungspfad
-liest das Journal. Gate P-B1 erzwingt die Deckungsgleichheit von
-Stammzustand und jüngstem Journalstand. Berichte rechnen jederzeit neu
-— **Abschlüsse nicht**: Ein festgeschriebener Stichtagsstand
-(`bestand/abschluss.py`, genau einer je Stichtag, mit Kern-Version je
-Zeile) wird nie überschrieben; die Kontrolle stellt die Neuberechnung
-dagegen und weist Abweichungen aus, statt sie still zu ersetzen.
-„Genau einmal" ist dabei nicht nur eine Prüfung vor dem Schreiben,
-sondern der Publish selbst: existiert der Zielpfad, scheitert der Aufruf
-atomar. Und weil ein festgeschriebener Stand unumkehrbar ist, verlangt er
-das **ganze** Lauf-Bundle — Stamm, Historie, Ledger, Scheiben und Config,
-geprüft mit derselben Engine wie Gate P-B1, vor dem Schreiben wie vor dem
-Prüfen. Eine Teilmenge des Laufs ergäbe sonst einen festgeschriebenen
-Falschstand, den die eigene Kontrolle bestätigt:
+**Der Bestand** (`rechner_pipeline.bestand`): synthetisch und
+deterministisch reproduzierbar; sein Datenmodell liegt 1:1 auf dem Vertrag
+des Kerns. Die Entwicklung über die Zeit ist ein einziger Strom datierter
+Geschäftsvorfälle (Neuzugang, Storno, Tod, Beitragsfreistellung, dynamische
+Erhöhungen als eigene Scheiben, Ablauf). Jeder Betrag kommt aus dem Kern,
+und das Bewegungskonto führt die Identität Anfangsbestand + Zugang − Abgang
+= Endbestand exakt. Der Bestand wird **geführt** (ADR-011): Der Stammsatz
+trägt je Vertrag den aktuellen Zustand, das Journal die vollständige
+Aufzeichnung. Berichte rechnen jederzeit neu — **Abschlüsse nicht**: Ein
+festgeschriebener Stichtagsstand wird nie überschrieben; die Kontrolle
+stellt die Neuberechnung dagegen und weist Abweichungen aus.
 
 ```mermaid
 flowchart LR
@@ -387,32 +185,17 @@ Nachweisungen · Bewegungskonto"]
 festgeschrieben, nie überschrieben")]
 ```
 
-Der Bestandsbericht rendert das als selbst-enthaltene HTML-Seite:
-
-```bash
-# Doku: docs/simulation/bestandserzeugung.md (Kommando, Ausgaben, Datums-Fallen)
-python -m rechner_pipeline.bestand.cli_fortschreibung --config configs/bestand_gesamt.toml ...
-python -m rechner_pipeline.bestand.cli_report --portfolio <parquet> --out bericht.html ...
-python -m rechner_pipeline.bestand.cli_abschluss --config ... --lauf runs/bestand --stichtag 2026-01-01 --bis 2026-01-01
-python -m rechner_pipeline.betrieb.tageslauf --stand ~/apps/plv/daten [--heute 2026-09-05] \
-    --schluessel <betriebsschluessel> --zeichnungsordnung <ordnung>   # der Tagesbetrieb der PLV
-```
-
-**Die Migrationsfälle** (`faelle/`, lokale Arbeitsbereiche, nicht
-eingecheckt): je Fall die registrierten Quellen, die A-Box mit
-Provenienz, die menschlichen Entscheide (append-only) und alle
-abgeleiteten Artefakte bis zum Abnahmebericht. Der erste durchgängige
-Fall übernimmt den KLV-Bestand (Tarifgeneration TG2015) der fiktiven
-**Baldrian Leben** in die PLV — inklusive der Datentransformation aus
-einem fremden Datenmodell und der Zwei-Stichtags-Abnahme; die
-Lieferung dazu liegt unter `lieferungen/baldrian/` zum
-Selbst-Durchführen.
+**Der Tagesbetrieb** (`rechner_pipeline.betrieb`): Die PLV läuft Tag für
+Tag — Neugeschäft je Werktag, nächtliche Fortschreibung, Tagesjournal,
+Monatsabschluss. Wie Bestand und Tagesbetrieb entstehen, steht in
+[docs/simulation/](docs/simulation/README.md).
 
 ## Schnellstart
 
-Voraussetzung: **Python 3.11 oder neuer**. Kein LLM-Key nötig — das
-Paket ist SDK-frei; Agenten arbeiten über ihre CLIs (unten) auf dem
-Repo.
+Voraussetzung: **Python 3.11 oder neuer**. Kein LLM-Key nötig — das Paket
+ist SDK-frei; Agenten arbeiten über ihre CLIs auf dem Repository.
+
+**1. Installieren und die Suite fahren**
 
 ```bash
 git clone https://github.com/bartlmac/rechner-pipeline.git
@@ -422,217 +205,100 @@ python -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements-dev.txt
 python -m pip install -e . --no-deps
-python -m pytest                     # volle Suite
+python -m pytest -n auto --dist loadfile     # volle Suite, parallel (ADR-019)
 ```
 
-Referenzumgebung ist Linux mit Python 3.11 und exakt diesen Pins. Wer nicht auf Linux arbeitet, fährt die Suite im Container, der genau diese Umgebung ist (`deploy/dev/Dockerfile`, Devcontainer in `.devcontainer/`; Anleitung in `ONBOARDING.md`, Abschnitt 2). Der Code wird nicht auf weitere Betriebssysteme gehärtet.
+Das ist der eine Installationsweg, derselbe wie in der CI: Die Pin-Dateien
+tragen die direkten Abhängigkeiten und ihre vollständige transitive Hülle.
+Referenzumgebung ist Linux mit Python 3.11. Wer nicht auf Linux arbeitet,
+fährt die Suite im Container, der genau diese Umgebung ist
+(`deploy/dev/Dockerfile`; Anleitung in `ONBOARDING.md`, Abschnitt 2).
 
-Was neben dem Code nötig ist, damit die PLV läuft und ein Fall geführt werden kann — Ablage, Linie, Erstabnahmen, auf Wunsch eigene Schlüssel —, stellt `deploy/welt/` auf (`deploy/welt/README.md`).
-
-Das ist der eine Installationsweg, derselbe wie in der CI: Die
-Pin-Dateien tragen die direkten Abhängigkeiten UND ihre vollständige
-transitive Hülle (ein Test hält sie geschlossen). `pip install -e
-".[dev]"` allein pinnt nur die direkten Abhängigkeiten und lässt pip
-alles Transitive tagesaktuell auflösen — mit `filterwarnings = error`
-wurde daraus wiederholt eine rote Suite ohne eigene Änderung; dieser Weg
-ist deshalb nicht dokumentiert.
-
-Die Pflicht-E2E-Tests laufen auch im frischen Clone ohne lokalen
-Fall-Arbeitsbereich. Das kleine anonymisierte Fixture unter
-`tests/fixtures/pk1_am4_minimal/` bindet die synthetische Quell-XLSM mit ihrem
-vollen SHA-256. `tests/test_pk1_fixture_e2e.py` materialisiert daraus pro Test
-einen temporaeren Fall und prueft echte Vorverdichtung, Formel-Rueckcheck und
-P-K1; `tests/test_pk1_am4_beweisvertrag.py` fuehrt denselben Belegpfad bis A-M4.
-Fehlt oder driftet das Fixture, wird die Suite rot statt den E2E-Pfad zu
-ueberspringen. Details in `ONBOARDING.md`, Abschnitt 5.
-
-Einen Fall anlegen und die Pipeline fahren:
+**2. Die Laufzeit aufstellen**
 
 ```bash
-python -m rechner_pipeline.fall anlegen --fall faelle/mein-fall --scope tarif
-# Für eine Bestandsübernahme stattdessen: --scope bestand
+deploy/welt/laufzeit_aufstellen.sh ~/plv-welt pakete/baldrian-klv-tg2015-fall3
+```
+
+Ein Aufruf, ohne Agenten: Er stellt eine Welt auf dem Stand vor dem Fall
+auf (Ablage der PLV, Linie, Erstabnahmen, eigene Schlüssel), fährt den
+festgehaltenen dritten Fall der Baldrian nach und bringt den übernommenen
+Bestand in die Ablage. Das rechnet rund 45 Minuten. Mit `--bis <haltepunkt>`
+endet der Lauf an einer Stelle des Falls, an der man selbst liest und
+zeichnet; derselbe Aufruf fährt danach weiter. Einzelheiten:
+[deploy/welt/README.md](deploy/welt/README.md).
+
+**3. Einen Fall selbst führen**
+
+```bash
+python -m rechner_pipeline.fall anlegen --fall faelle/mein-fall --scope bestand
 python -m rechner_pipeline.fall registrieren --fall faelle/mein-fall --datei <quelle>
 python -m rechner_pipeline.fall status --fall faelle/mein-fall
-
-# Dazwischen liegen die Agenten-Stufen (Vorverdichtung, Extraktion je
-# Quelle, Merge zur A-Box) — ohne sie enden P-Q3 und P-K1 planmäßig mit
-# Exit 2 und nennen die fehlende Datei. Siehe ONBOARDING.md, Abschnitt 3.
-python -m rechner_pipeline.gates.abox_validate --fall faelle/mein-fall --repo-root .   # P-Q3
-python -m rechner_pipeline.quellen.tafel_import --fall faelle/mein-fall --generation klv/tgX
-python -m rechner_pipeline.gates.generation_golden --fall faelle/mein-fall \
-    --generation klv/tgX --repo-root .                                                 # P-K1
-
-# der Fallauftrag (ADR-026): Vorlage, ansehen, der Vorstand zeichnet A-M6 —
-# vor jedem anderen Abnahmepunkt; ein Abbruch laeuft ueber fall_belegen abbruch
-# und A-M5 (Bedienfolgen in docs/architektur/adr-026-lebenslauf-eines-falls.md;
-# auch bei verletztem Eingang, der Befund steht dann im Abbruch; liegt eine A-M4
-# im Fall, traegt der Ring des Abbruchs den Schluessel von mensch/aktuariat —
-# der Abbruch nach einer A-M4 geht nur gemeinsam mit dem Aktuariat):
-python -m rechner_pipeline.gates.fall_belegen auftrag --fall faelle/mein-fall \
-    --linie linie --zeichnungsordnung /sicher/zeichnungsordnung.json \
-    --programmleitung-schluessel /sicher/programmleitung.key \
-    --programmleitung-klasse mensch --auftrag "..."
-python -m rechner_pipeline.gates.gate_entscheid --fall faelle/mein-fall --gate A-M6 \
-    --entscheid angenommen --entscheider ... --begruendung ... --linie linie \
-    --zeichnungsordnung /sicher/zeichnungsordnung.json \
-    --freigabe-schluessel /sicher/vorstand.key
-
-# menschliche Gates (ADR-018: die zeichnende Rolle wird aus dem Schluessel
-# ueber die Zeichnungsordnung BESTIMMT, nicht behauptet):
-python -m rechner_pipeline.ontologie.entscheide --fall ... --diskrepanz ... \
-    --wert ... --entscheider ... --begruendung ... \
-    --zeichnungsordnung /sicher/zeichnungsordnung.json \
-    --freigabe-schluessel /sicher/verantwortlicher-aktuar.key
-# (jeder Entscheid nennt die Linie, ADR-025: Pflicht; der Ring traegt den
-# Schluessel des Vorstands, der den Fallauftrag und die Glieder der Linie
-# prueft, ADR-026 und ADR-025; --repo-root ist der Baum des Pakets, das rechnet)
-python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate A-Q1 \
-    --entscheid angenommen --entscheider ... --begruendung ... --linie linie \
-    --zeichnungsordnung /sicher/zeichnungsordnung.json \
-    --freigabe-schluessel /sicher/vorstand.key \
-    --freigabe-schluessel /sicher/verantwortlicher-aktuar.key
 ```
 
-Parallele `fall registrieren`-Aufrufe desselben Falls werden über eine
-fallbezogene Dateisperre serialisiert. `eingang.json` wird erst nach dem
-vollständigen Schreiben und Synchronisieren einer temporären Datei atomar
-ersetzt; dadurch verlieren konkurrierende Read-Modify-Write-Abläufe keine
-Quellen und Leser sehen nie ein teilweise geschriebenes Register.
+In einen Fall gelangt eine Lieferung nur über die ausdrückliche
+Registrierung — dort beginnt die Kette der Herkunft. Danach folgen die
+Stufen der Agenten und die Gates. Den Weg beschreibt `ONBOARDING.md`,
+Abschnitt 3; die Rollen der Agenten stehen in
+[docs/architektur/skill-architektur.md](docs/architektur/skill-architektur.md).
 
-Die Tarifregeln eines übernommenen Tarifs stehen einmal, belegt, in der
-A-Box und daraus in der Spez der Generation (ADR-024, Nachtrag): das
-Tarifwerk (`scheiben_mit_gamma1`, `stoab_je_baustein`, `red_verfahren`,
-`tku_umfang`) und das Verfahren der Quelle (`red_verfahren` als Lesart der
-Lieferung, `erhoehungssatz`, `dk_stichtag`, `formfunktion`, `fenster`). Im
-Bestands-Scope verlangt P-Q3 sie, und die fünf Kommandos der
-Bestandsstrecke (`gates.bestand_uebernehmen`, `verankerung_belegen`,
-`aktuartest_lauf`, `migrationssuite_lauf`, `fuehrungsprobe`) lesen sie über
-`gates.migrationssuite_lauf.tarifregeln_des_falls` aus der Spez — nur in einem
-Fall mit Scope `bestand` (ein Tariffall führt keinen Bestand) und ohne
-Schalter und Vorgabe. Ein Dynamiksatz, den der Tarif nicht kennt, steht in der
-Spez als ausdrückliche Feststellung `"nicht_belegt"`; fehlt der Eintrag, ist
-er nie erhoben, und jedes Kommando verweigert wie P-Q3 (ADR-024, vierter
-Nachtrag). Die früheren Schalter (`--red-verfahren`,
-`--stoab-je-baustein`, `--scheiben-mit-gamma1`, `--tku-umfang`,
-`--erhoehungssatz`, `--dk-stichtag`, `--formfunktion`, `--fenster`) werden mit
-dem Abschnitt der Spez verweigert; eine Spez ohne die Regeln ebenso. Am
-Aufruf bleiben registrierte Eingaben und die Arbeitsannahme des Laufs
-(`--red-anteil-kandidat`).
+## Wo was steht
 
-Auskünfte der abgebenden Gesellschaft zu Herabsetzungsanteilen
-(`POLNR;GEVO;DATUM;ANTEIL`, optional `BEZUG` als Quellenangabe) kommen als
-registrierte Datei in den Fall und werden in allen fünf Kommandos, die
-Herabsetzungsanteile verarbeiten (`gates.bestand_uebernehmen`,
-`verankerung_belegen`, `aktuartest_lauf`, `migrationssuite_lauf`,
-`fuehrungsprobe`), mit `--red-anteile-datei <Dateiname>` genannt: erst
-`fall registrieren`, dann der Schalter. Ein Anteil je Police am Aufruf
-(`--red-anteil`) wird nicht mehr angenommen — er wäre für die Zeichnung nicht
-bindbar. Die Belege nennen die Datei mit ihrem SHA-256; ein Lauf mit
-`--schicht` verweigert, wenn der Schichtbeleg mit einer anderen Auskunft
-erzeugt wurde als der, die er selbst liest.
-
-Beitragsherabsetzung (`RED`) und Teilkündigung (`TKU`) sind zwei
-Geschäftsvorfälle (ADR-023; Tarifplan KLV, Abschnitte 7.1 bis 7.3): Die
-Herabsetzung senkt den Beitrag und gibt es nur, solange er gezahlt wird; die
-Teilkündigung zahlt einen Summenanteil aus und ist in jeder Generation auch
-nach dem Beitragsende und nach der Beitragsfreistellung möglich. Ein Vertrag
-trägt beliebig viele davon in jeder Reihenfolge (`kern.Vorgangsfolge`).
-Welche Bausteine eine Teilkündigung kürzt, sagt das Tarifwerk
-(`tku_umfang`). Ab der Migration
-gilt das Vokabular des Zielsystems (Grundsatzdokumentation 7.1): Eine
-gelieferte Absetzung **nach dem Beitragsende** oder nach einer
-Beitragsfreistellung war eine Teilkündigung, im übernommenen Tarif TG2015
-jede. Nach dem Beitragsende ist der gelieferte Vertrag der
-zustandslose Vertrag mit der gelieferten Summe und braucht für sich keine
-Auskunft. Wo der Anteil wirkt — eine solche Absetzung nach dynamischen
-Erhöhungen verteilt die gelieferte Summe auf Grund und Erhöhungen —, kommt
-er als Auskunft in dieser Datei; ohne sie verweigern die Kommandos und nennen
-`--red-anteile-datei` als Ausweg. Ein Vertrag, dessen Anfangszustand nicht
-ableitbar ist, wird nicht still als Grundvertrag übernommen; ein Vertrag,
-dessen Struktur die Auskunft trägt, ist Pflichtziehung der Abnahmen.
-
-Der Tafelimport akzeptiert nur eine vollstaendige Exportkette: Das
-`export_manifest.json` muss die registrierte XLSM sowie die konkrete
-`Tafeln.csv` mit ihren vollstaendigen SHA-256-Werten binden. Fehlende Manifeste,
-alte Exporte oder nachtraeglich veraenderte Blatt-CSVs blockieren bereits den
-`--dry-run`; in diesem Fall die registrierte XLSM erneut mit P-Q1 extrahieren.
-P-Q1 plant die Dateinamen aller Blatt- und Folgeartefakte vor dem ersten
-Blattexport kollisionsfrei. Treffen bereinigte Blattnamen oder reservierte
-Folgenamen aufeinander, erhaelt der spaetere Kandidat einen deterministischen
-`__<n>`-Suffix; `sheet_artifacts` im Exportmanifest bindet jeden
-Originalblattnamen an seinen tatsaechlichen Dateinamen. Der Tafelimport loest
-das Originalblatt `Tafeln` ueber genau diese Bindung auf.
-Zusaetzlich muessen alle Altersvektoren exakt die eindeutigen ganzzahligen Alter
-0 bis 123 tragen; jeder qx-Wert muss endlich sein und in `[0,1]` liegen. Diese
-Invarianten werden beim Import und erneut beim Laden des Kern-XML erzwungen.
-
-Wer zeichnet, steht in der **Zeichnungsordnung** (ADR-018): Rollen
-heißen `mensch/<funktion>` oder `agent/<name>`, jede trägt eine
-Schlüsselklasse (`mensch`, `simulation`, `agent`) und die Gates, die sie
-zeichnen darf. Eine Annahme braucht Ordnung und Schlüssel; die Rolle wird
-aus dem Schlüssel bestimmt und wandert samt Klasse mitsigniert in den
-Snapshot. Agentenrollen legen vor und zeichnen nie; sie können ein
-menschliches Gate nur **ablehnen** (`--rolle agent/<name>`, dokumentierter
-Zwischenstand). In der Vorführung tragen die menschlichen Rollen die
-Schlüsselklasse `simulation`, und jeder Beleg sagt das.
-
-Eine Annahme braucht zusätzlich `--freigabe-schluessel`. Die Datei wird vom
-Menschen ausserhalb des Falls und ausserhalb des Agentenzugriffs verwahrt,
-muss mindestens 32 kryptografisch zufällige Byte lang sein und unter POSIX
-Rechte 0600 sowie genau einen Hardlink besitzen. Das
-Flag kann bei einer Schluesselrotation wiederholt werden: alte Schluessel
-zuerst zum Pruefen der Historie, der letzte Schluessel signiert den neuen
-Snapshot. Weder Schluesselbytes noch Pfad werden in Snapshot oder Ledger
-gespeichert. P9 rechnet beim Lesen Schema, vollständigen Inhalts-Hash,
-Dateinamen, Freigabesignatur sowie Existenz, Zyklen und eindeutige Spitze der
-Vorgängerkette nach (ADR-008).
-
-Die Code-Ontologie navigiert und begrenzt Änderungen:
-
-```bash
-python -m rechner_pipeline.ontologie.code_index --tests tests    # Knoten <-> Modul/Test, Drift
-python -m rechner_pipeline.ontologie.code_karte                  # Import-Graph vs. Schichtenkarte
-git diff --name-only | python -m rechner_pipeline.ontologie.impact
-python -m rechner_pipeline.ontologie.landkarte --format mermaid --umfang knoten --out k.mmd
-```
+| Frage | Dokument |
+|---|---|
+| Wie läuft ein Migrationsfall ab, vom Auftrag bis zur Auslieferung? | [docs/architektur/ablauf-eines-falls.md](docs/architektur/ablauf-eines-falls.md) |
+| Welche Architektur-Entscheidungen gelten? | [docs/architektur/](docs/architektur/README.md), dazu die erzeugte [Landkarte](docs/architektur/landkarte.md) |
+| Wer zeichnet welches Gate, und worüber? | [ADR-012](docs/architektur/adr-012-gate-namensordnung.md), [ADR-018](docs/architektur/adr-018-rollenmodell-und-schluesselklassen.md) |
+| Was hält ein Prüf-Gate ein, und warum trägt es seine Version? | [docs/architektur/gate-vertrag-und-versionen.md](docs/architektur/gate-vertrag-und-versionen.md) |
+| Welche Mathematik rechnet der Kern? | [docs/mathematik/](docs/mathematik/README.md) |
+| Was verspricht die PLV in ihren Tarifen? | [docs/tarifplaene/](docs/tarifplaene/README.md) |
+| Wie führt ein Unternehmen einen Migrationsfall durch? | [docs/migrationskonzept/](docs/migrationskonzept/README.md) |
+| Wie entstehen Bestand und Tagesbetrieb der PLV? | [docs/simulation/](docs/simulation/README.md) |
+| Welche Fälle gibt es, und was ist nachfahrbar? | [docs/faelle/](docs/faelle/README.md), [pakete/](pakete/README.md), [lieferungen/](lieferungen/README.md) |
+| Wie stelle ich eine Welt auf und führe einen Fall darin? | [deploy/welt/](deploy/welt/README.md) |
+| Wie läuft das Image der Laufzeit im Tagesbetrieb? | [deploy/plv/](deploy/plv/README.md) |
+| Wie entsteht die Webseite, wie führe ich einen Lauf vor? | [werkzeuge/](werkzeuge/README.md) |
+| Wie arbeite ich mit — als Mensch oder als Agent? | [ONBOARDING.md](ONBOARDING.md), [AGENTS.md](AGENTS.md), [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Was ist erkannt, aber noch nicht gebaut? | [dev-docs/](dev-docs/README.md) |
 
 ## Reproduzierbarkeit und Verlässlichkeit
 
-- **Deterministisch:** gleiche Eingaben ergeben byte-identische
-  Artefakte (Extrakte, Berichte, Parquet-Bestände, Landkarten); Seeds
-  stehen in Configs, nie im Code.
+- **Deterministisch:** gleiche Eingaben ergeben byte-identische Artefakte
+  (Extrakte, Berichte, Parquet-Bestände, Landkarten); Seeds stehen in
+  Configs, nie im Code.
 - **SDK-frei:** keine Modell-Abhängigkeit im Paket; die Erwartungswerte
   jeder Abnahme stammen aus der Lieferung, nie vom Modell.
-- **Fail fast:** fehlende Tafeln, verletzte Schichtregeln, Bausteine
-  ohne Ontologie-Knoten und Register-Abweichungen im Fall-Eingang sind
-  harte Fehler, keine Warnungen.
-- **Gepinnte Abhängigkeiten:** die direkten exakt in `pyproject.toml`,
-  ihre vollständige transitive Hülle in `requirements.txt` /
-  `requirements-dev.txt` — der eine Installationsweg (Schnellstart
-  oben), derselbe, den die CI fährt. `tests/test_abhaengigkeiten.py`
-  prüft, dass jede direkte Abhängigkeit mit ihrer Version in den
-  Pin-Dateien steht und die installierte transitive Hülle darin
-  geschlossen ist.
+- **Fail fast:** fehlende Tafeln, verletzte Schichtregeln, Bausteine ohne
+  Ontologie-Knoten und Register-Abweichungen im Fall-Eingang sind harte
+  Fehler, keine Warnungen.
+- **Abgenommene Gegenstände ändern sich nicht still:** Kern und Tarifwerk
+  sind gezeichnet. Ein Test hält am Baum fest, dass er sie so trägt wie der
+  festgehaltene Fall (`tests/test_pakete.py`) — sonst wäre die Laufzeit aus
+  `main` nicht mehr nachfahrbar.
+- **Gepinnte Abhängigkeiten:** die direkten exakt in `pyproject.toml`, ihre
+  vollständige transitive Hülle in `requirements.txt` und
+  `requirements-dev.txt`; `tests/test_abhaengigkeiten.py` hält die Hülle
+  geschlossen.
 
 ## Agenten-Anbindung
 
 Claude-CLI wird über `.claude/skills/` unterstützt, Codex-CLI über
 `AGENTS.md` plus gespiegelte Skills unter `.agents/skills/`; die
-Spiegel-Parität ist test-erzwungen. Die portable Basis ist: lokale
-Dateien plus einfache Python-Kommandos — kein MCP/RPC-Pfad.
+Spiegel-Parität ist test-erzwungen. Die portable Basis ist: lokale Dateien
+plus einfache Python-Kommandos — kein MCP/RPC-Pfad.
 
 ## Mitwirken
 
 Beiträge laufen über GitHub-Collaborators auf Vertrauensbasis; siehe
-`CONTRIBUTING.md` und `AGENTS.md`. **Arbeitsweise am gemeinsamen
-Branch:** klonen und lokal arbeiten, kein direkter Push in den
-gemeinsamen Branch — Änderungen werden nach Absprache übernommen.
+`CONTRIBUTING.md` und `AGENTS.md`. **Arbeitsweise am gemeinsamen Branch:**
+klonen und lokal arbeiten, kein direkter Push in den gemeinsamen Branch —
+Änderungen werden nach Absprache übernommen. Wie Pull Requests geschnitten
+werden, regelt ADR-027.
 
 ## Lizenz
 
 MIT — siehe `LICENSE`.
 
 Die Rechnungsgrundlagen (`src/rechner_pipeline/kern/tafeln.xml`) sind
-veröffentlichte DAV-Tafeln bzw. synthetische Vektoren; die Herkunft
-steht bei den meisten Vektoren in der Datei selbst (siehe
-`CONTRIBUTING.md`).
+veröffentlichte DAV-Tafeln bzw. synthetische Vektoren; die Herkunft steht
+bei den meisten Vektoren in der Datei selbst (siehe `CONTRIBUTING.md`).

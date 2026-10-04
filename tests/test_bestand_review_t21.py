@@ -268,8 +268,10 @@ def test_zugang_eines_uebernommenen_vertrags_muss_geliefert_tragen(klv_lauf):
 # T21-09: Die Akzeptanzmenge von P-B1 hat sich geaendert -> Major
 # --------------------------------------------------------------------------- #
 
-def test_pb1_version_und_readme_nennen_den_versionssprung():
+def test_pb1_version_und_gate_dokument_nennen_den_versionssprung():
+    """Die Zeile steht seit ADR-027 im Gate-Dokument, nicht mehr im README."""
     assert bestand_validate.GATE_VERSION == "4.0.0"
-    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    assert "P-B1 (Version `4.0.0`)" in readme
-    assert "`2.1.0`" in readme and "T21-09" in readme
+    gate_dokument = (REPO_ROOT / "docs/architektur/gate-vertrag-und-versionen.md"
+                     ).read_text(encoding="utf-8")
+    assert "P-B1 (Version `4.0.0`)" in gate_dokument
+    assert "`2.1.0`" in gate_dokument and "T21-09" in gate_dokument

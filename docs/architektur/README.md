@@ -11,6 +11,8 @@ Rechenkern-Entwicklung. Die Fachdokumente des Beispiel-Rechenkerns
 - [Prinzipien P1-P10 der Migrations-Pipeline](prinzipien.md)
 - [Migrations-Pipeline v0.1: Ontologie als Stage-Interface](migrations-pipeline-v01.md)
 - [Skill-Architektur: die Agenten-Rollen des Gesamtsystems](skill-architektur.md)
+- [Ablauf eines Migrationsfalls: vom Auftrag bis zur Auslieferung](ablauf-eines-falls.md)
+- [Prüf-Gates: Vertrag und Versionen](gate-vertrag-und-versionen.md)
 - [ADR-001: Repo-Zielstruktur entlang der Migrations-Pipeline](adr-001-repo-zielstruktur.md)
 - [ADR-002: Fall-Arbeitsbereich — das Repo ist das System, nicht der Datenraum](adr-002-fall-arbeitsbereich.md)
 - [ADR-003: Pydantic fuer T-Box und A-Box](adr-003-pydantic-fuer-ontologie.md)

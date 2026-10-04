@@ -1,8 +1,8 @@
 """Quellsystem-Tooling: die Bestandsfuehrung der abgebenden Gesellschaft.
 
 Simulations-Tooling, KEIN Teil des Systems (Beschluss 2026-08-31: ADRs
-gelten dem System; dieses Paket gehoert wie die Bestands-Simulation zum
-Gesamtbild, README-Komponente (5)). Harte Regel dieses Pakets:
+gelten dem System; dieses Paket gehoert zu den Fall-Definitionen,
+Gegenstand 3 nach ADR-027). Harte Regel dieses Pakets:
 
     KEIN Import aus ``rechner_pipeline``.
 

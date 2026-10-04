@@ -81,8 +81,7 @@ abgebendes Unternehmen lieferte Werte in seinem eigenen Format, und die
 Übersetzung in Prüfaufträge wäre selbst ein Arbeitsschritt. Die
 Abkürzung spart diesen Schritt; sie ändert nichts an den Werten.
 
-**Durchführung:** siehe `ONBOARDING.md`, Abschnitt 3 („Run the
-showcase migration").
+**Durchführung:** siehe `ONBOARDING.md`, Abschnitt 3.
 
 ## baldrian-2/
 
