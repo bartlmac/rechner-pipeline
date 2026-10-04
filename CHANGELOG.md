@@ -72,6 +72,11 @@ Entscheidungen dahinter als ADRs unter `docs/architektur/`.
   Nachfahrbar ist es nur auf einem Baum, der Kern und Tarifwerk unverändert
   trägt. Ändert sich einer der beiden Gegenstände, wird das Paket neu
   festgehalten (ADR-027, dort als offen benannt).
+* **Formelidentität ist keine Maschinenprüfung.** Der Formel-Rück-Check
+  in Gate P-Q3 deckt eine Formelform, die IF-Staffeln; jede andere meldet
+  er als benannten Zustand, statt sie nachzurechnen. Ob Tarifmeldung und
+  Tarifrechner dieselbe Formel meinen, entscheidet ein Mensch gegen den
+  Tarifplan.
 * **Die Regression des Kerns für `A-K2` ist nicht gebaut.** Die Abnahme
   führt sie als benannte Ausnahme „nicht gefahren, Werkzeug noch nicht
   erstellt"; sie deckt dann nur die qualitative Prüfung der Änderungen.
