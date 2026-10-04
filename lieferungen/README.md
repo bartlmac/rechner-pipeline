@@ -96,3 +96,23 @@ auf dem Systemstand wiederholt wird, auf dem er gezeichnet wurde —
 einschließlich des eigenen Bestands der übernehmenden Gesellschaft, der
 nicht aus der Lieferung stammt, sondern erzeugt wird:
 `docs/faelle/baldrian-lauf2-wiederholen.md`.
+
+### Fall 3 nutzt dieselbe Lieferung
+
+Für Fall 3 gibt es keine eigene Lieferung und kein Verzeichnis
+`baldrian-3`. Fall 3 hat die Übernahme von vorn neu geführt, und zwar auf
+genau dieser Lieferung: Registriert wurden die zwölf Dateien, die der
+Lieferschein nennt. Die vier Auskunftsschreiben in diesem Verzeichnis
+gehören zum zweiten Lauf; in Fall 3 wurden sie nicht verwendet.
+
+Was die Gesellschaft in Fall 3 auf Rückfrage nachgeliefert hat, liegt mit
+dem festgehaltenen Fall unter
+`pakete/baldrian-klv-tg2015-fall3/nachlieferung/`: fünf Auskünfte, die
+Herabsetzungsanteile einzelner Policen, drei Erwartungswert-Dateien eines
+zweiten Lieferlaufs und die Festlegung der übernehmenden Gesellschaft zum
+Tarifplan der Migration. Die Auskünfte 1 bis 4 tragen dieselben Nummern wie
+die Auskunftsschreiben hier, haben aber einen anderen Inhalt: Es sind die
+Antworten auf die Rückfragen von Fall 3.
+
+Dort und nicht hier liegen sie, weil das Paket sie über seine Prüfsummen
+bindet. Wie Fall 3 nachgefahren wird: `deploy/welt/README.md`.
