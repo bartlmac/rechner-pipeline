@@ -123,7 +123,6 @@
   td.erlaubt { background: var(--akzent-flach); color: var(--akzent); font-variant-numeric: tabular-nums; }
   td.leer { color: var(--linie); }
   td.selbst { background: var(--linie); color: var(--gedaempft); }
-  td.regel { outline: 2px solid var(--warn); outline-offset: -2px; }
 
   /* Impact-Demo */
   .demo { display: grid; gap: 24px; grid-template-columns: minmax(220px, 300px) 1fr; align-items: start; }
@@ -272,10 +271,8 @@
         Die Karte parst jedes Modul statisch und prüft eine deklarative
         Erlaubnisliste: Welche Schicht darf aus welcher importieren? Eine neue
         Kante zwischen Schichten wird damit zu einer bewussten
-        Architektur-Entscheidung statt zu einem Nebeneffekt. Zwei Regeln sind
-        besonders geschützt: der Zielkern darf den Kommutations-Zweitkern
-        nicht berühren (ADR-004, umrandet), und <code>src/</code> bleibt
-        SDK-frei.
+        Architektur-Entscheidung statt zu einem Nebeneffekt. Eine Regel ist
+        besonders geschützt: <code>src/</code> bleibt SDK-frei.
       </p>
     </div>
     <div class="tafel">
@@ -497,10 +494,6 @@ schichten.forEach((von) => {
       td = el("td", "erlaubt", anzahl ? String(anzahl) : "");
     } else {
       td = el("td", "leer", "");
-    }
-    if (von === "kern" && nach === "kommutationskern") {
-      td.classList.add("regel");
-      td.title = "ADR-004: der Zielkern rechnet ohne Kommutation";
     }
     tr.append(td);
   });

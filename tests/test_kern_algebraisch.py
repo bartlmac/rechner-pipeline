@@ -112,8 +112,7 @@ def _zweitkern(sex: str, tafel: str, zins: float):
     keiten rechnet. Eine Gegenrechnung aus diesen Bausteinen ist damit
     keine Umformung des geprueften Rumpfes.
     """
-    from rechner_pipeline.kommutationskern.barwerte import Barwerte
-    from rechner_pipeline.kommutationskern.kommutation import fuer
+    from tests.kommutationszeuge import Barwerte, fuer
 
     return Barwerte(fuer(sex, tafel, zins), zins)
 
@@ -355,7 +354,7 @@ def test_leistung_skaliert_linear_mit_der_versicherungssumme(faktor):
 
 @pytest.fixture()
 def kom():
-    from rechner_pipeline.kommutationskern.kommutation import fuer
+    from tests.kommutationszeuge import fuer
 
     return fuer("M", "DAV2008_T", 0.0175)
 

@@ -304,11 +304,6 @@ mp = dataclasses.replace(KLV_DEFAULT, x=30, sex="F", zins=0.0225,
 ergebnis2 = berechne(mp)
 ```
 
-Die klassische Kommutationsrechnung lebt als **separater Zweitkern**
-(`rechner_pipeline.kommutationskern`) ausschließlich für den
-Kreuz-Check (`qa/ueberleitung`) — sie ist kein Bestandteil des
-Zielkerns.
-
 **Die Fachdokumentation** ist zweistufig, produktseitig, und jede
 Aussage hat genau ein Zuhause (`tests/test_tarifplan_struktur.py` hält
 den Schnitt):

@@ -15,8 +15,6 @@ deklarative Regeln:
   die Zielsystem-Schnittstelle — die heute gemessene Menge dieser Kanten
   ist als Ratsche festgeschrieben (``TOOL_NACH_VORZEIGE_ERLAUBT``); jede
   neue Kante Tool -> Vorzeige ist ein Befund, bis ein ADR sie aufnimmt.
-* **Zweitkern-Regel (ADR-004)**: ``kommutationskern`` konsumiert nur
-  ``qa`` — der Zielkern rechnet ohne Kommutation.
 * **SDK-Verbot**: kein openai/anthropic/langgraph/langchain in src.
 
 Dynamische Importe sind mitgeprueft, soweit sie sich aus EINER Datei
@@ -69,7 +67,6 @@ PAKET = "rechner_pipeline"
 #: == verboten. Kommentare nennen die Begruendung der Sonderfaelle.
 SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
     "kern": {"kern"},                                # rein: das Fundament
-    "kommutationskern": {"kommutationskern", "kern"},  # Zweitkern liest Tafeln
     # models seit 2026-09-01: der Zeichnungsordnungs-Vertrag
     # (models.zeichnung) wird von gates UND ontologie.entscheide
     # gelesen (Vier-Rollen-Modell) — paketuebergreifende Vertraege
@@ -110,10 +107,9 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
 #: innerhalb des Pakets (Review T22-08).
 EBENE_JE_SCHICHT: Dict[str, str] = {
     "ontologie": "tool", "spez": "tool", "gates": "tool", "models": "tool",
-    "qa": "tool", "quellen": "tool", "fall": "tool", "cli": "tool",
+    "qa": "tool", "quellen": "tool", "fall": "tool",
     "__init__": "tool",
     "kern": "vorzeige", "bestand": "vorzeige", "betrieb": "vorzeige",
-    "kommutationskern": "vorzeige",
 }
 
 #: Module der Ebene 4 innerhalb von src: Sie erzeugen synthetische
@@ -222,16 +218,6 @@ def ebene(schicht: str, rel: Optional[str] = None) -> Optional[str]:
         return EBENE_JE_MODUL[rel]
     return EBENE_JE_SCHICHT.get(schicht)
 
-
-#: ADR-013: Der Kommutations-Zweitkern hat KEINEN Konsumenten mehr im
-#: Produktivpfad. Er lebt nur noch als unabhaengiger Zeuge der
-#: algebraischen Eigenschaftstests (tests/test_kern_algebraisch.py), die
-#: ihn testseitig direkt bauen — nicht ueber eine Schnittstelle, die der
-#: Zielkern seinetwegen aufrechterhaelt. Genau darin liegt der
-#: Unterschied zu vorher: Der Zweitkern hat keinen Anspruch mehr an den
-#: lebenden Code, und deshalb formt er ihn auch nicht mehr.
-ZWEITKERN = "kommutationskern"
-ZWEITKERN_KONSUMENTEN = {"kommutationskern"}
 
 #: Verbotene SDK-Namensfamilien. Geprueft wird die FAMILIE, nicht der
 #: exakte Name: ``langchain_openai``, ``langgraph_sdk``,
@@ -508,7 +494,7 @@ def baue_karte(src: Path) -> Dict[str, object]:
                 continue
             if not isinstance(n, ast.Call):
                 continue
-            # Attribut-Aufrufe auf Modul-Aliase: kommutation.fuer(...)
+            # Attribut-Aufrufe auf Modul-Aliase: tafeln.basis(...)
             if (isinstance(n.func, ast.Attribute)
                     and isinstance(n.func.value, ast.Name)):
                 ziel = alias_zu_modul.get(n.func.value.id)
@@ -635,12 +621,6 @@ def validate(karte: Dict[str, object]) -> List[str]:
                 f"{von} -> {nach}: Schicht {s_von!r} darf nicht aus "
                 f"{s_nach!r} importieren (erlaubt: "
                 f"{', '.join(sorted(erlaubt)) or 'nichts'})"
-            )
-        if s_nach == ZWEITKERN and s_von not in ZWEITKERN_KONSUMENTEN:
-            befunde.append(
-                f"{von} -> {nach}: der Kommutations-Zweitkern hat genau "
-                f"einen Konsumenten ({', '.join(sorted(ZWEITKERN_KONSUMENTEN - {ZWEITKERN}))}) "
-                "— der Zielkern rechnet ohne Kommutation (ADR-004)"
             )
     for name, nutzer in karte["extern"].items():
         if _ist_sdk(name):

@@ -45,9 +45,7 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
 
 - **Layer map** (import allowlist enforced by
   `python -m rechner_pipeline.ontologie.code_karte`):
-  `quellen -> ontologie -> spez -> kern -> bestand -> qa -> gates`,
-  plus `kommutationskern` as a separate second kernel consumed only by
-  `qa` (cross-check rail).
+  `quellen -> ontologie -> spez -> kern -> bestand -> qa -> gates`.
 - **Node annotation is mandatory:** every module and test file declares
   its ontology node in the docstring (`Knoten: klv/tg2015`); a building
   block without a node is a hard drift error
