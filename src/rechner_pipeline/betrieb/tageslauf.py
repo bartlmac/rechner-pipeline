@@ -2658,7 +2658,7 @@ def _monatsbericht(
     for tag in monatsraster(stichtag, BERICHT_MONATE):
         pfad = ablage.abschluesse / f"abschluss_{tag.isoformat()}.parquet"
         if pfad.is_file():
-            abschluesse[tag] = read_portfolio(pfad)
+            abschluesse[tag] = lies_abschluss(pfad)[0]   # die EINE Lesefunktion (Ratsche)
     html = monatsbericht_html(
         abschluesse, journal, stichtag, monate=BERICHT_MONATE, stand=heute,
         titel=f"Monatsbericht zum {stichtag.isoformat()}",

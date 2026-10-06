@@ -93,6 +93,7 @@ def test_stands_paket_traegt_stempel_und_berichte(gefuehrt, tmp_path):
     # (T24-04 Teil 1) und die Abschluesse, deren Vertragszahl stand.json
     # nennt (Schema 5), fahren mit.
     assert set(stand["dateien"]) == {"index.html", "bestandsbericht_2026-02-01.html",
+                                     "bestandsbericht_2026-01-01.html", "jahresbericht_2025.html",
                                      "protokoll.jsonl", "laufmanifest.json",
                                      "tagesjournal.parquet",
                                      "abschluesse/abschluss_2026-01-01.parquet",

@@ -28,7 +28,7 @@ dahinter sind nachrechenbar (`ontologie.code_karte`), nicht Prosa.
 %% Schichten — erzeugt von ontologie.landkarte
 flowchart TD
     n__init__["__init__<br/>1 Module"]
-    bestand["bestand<br/>23 Module"]
+    bestand["bestand<br/>24 Module"]
     betrieb["betrieb<br/>11 Module"]
     fall["fall<br/>1 Module"]
     gates["gates<br/>23 Module"]
@@ -40,9 +40,9 @@ flowchart TD
     quellen["quellen<br/>13 Module"]
     spez["spez<br/>6 Module"]
     bestand -- 33 --> kern
-    bestand -- 18 --> models
+    bestand -- 19 --> models
     bestand -- 1 --> qa
-    betrieb -- 30 --> bestand
+    betrieb -- 31 --> bestand
     betrieb -- 2 --> kern
     betrieb -- 32 --> models
     gates -- 14 --> bestand
@@ -78,8 +78,8 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 ```mermaid
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
-    bu["bu<br/>41 Module"]
-    klv["klv<br/>93 Module"]
+    bu["bu<br/>42 Module"]
+    klv["klv<br/>94 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>14 Module"]
     system_entscheid["system/entscheid<br/>17 Module"]

@@ -519,6 +519,8 @@ LESER = {
     "betrieb/tageslauf.py::_pruefe_zahlen_der_zeile",
     "betrieb/tageslauf.py::_abschluss_kennt_eingang",
     "betrieb/tageslauf.py::_tageslauf_mit_config",
+    # Der Monatsbericht liest die Abschluesse seines Fensters von der Platte.
+    "betrieb/tageslauf.py::_monatsbericht",
     "betrieb/zugangsprobe.py::vergleiche",
 }
 #: Funktionen, die Abschlussdateien hantieren UND roh lesen — je mit dem,
