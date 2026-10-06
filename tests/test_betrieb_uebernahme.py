@@ -680,8 +680,12 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
     # zaehlt nicht je Generation, sondern fuehrt den Bestand des Abschlusses.
     # Dass der Teilbestand ein Teil ist, steht damit im Abschluss selbst —
     # und der ist die Quelle, aus der beide Berichte lesen.
+    # KLV-2017 verkauft nicht mehr (Fenster bis 2021): im Gesamtbestand stehen
+    # genau die drei uebernommenen; das eigene Geschaeft der verkaufenden
+    # Generation (KLV-2025) kommt seit ADR-020 aus dem Tagesstrom dazu.
     abschluss = read_portfolio(ablage.abschluesse / "abschluss_2026-02-01.parquet")
-    assert int((abschluss["tarif_generation"] == "KLV-2017").sum()) > 3
+    assert int((abschluss["tarif_generation"] == "KLV-2017").sum()) == 3
+    assert int((abschluss["tarif_generation"] == "KLV-2025").sum()) > 0
     # Ohne den Schalter kein Teilbestand-Bericht:
     aus = Ablage(stand.parent / "aus")
     _mit_config(aus.wurzel, _kleine_config().replace(

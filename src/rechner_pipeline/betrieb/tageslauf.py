@@ -409,6 +409,9 @@ SCHREIBZIELE: Tuple[Tuple[str, str], ...] = (
     (JOURNAL_DIR, TAGESJOURNAL_DATEI),
     (ABSCHLUSS_DIR, "abschluss_*.parquet"),
     (BERICHT_DIR, "bestandsbericht_*.html"),
+    # Der Jahresbericht zum 1.1. — Monatsbericht und Jahresbericht sind zwei
+    # Dokumente; ohne Eintrag verweigert schreibziel ihn (Exit 4).
+    (BERICHT_DIR, "jahresbericht_*.html"),
     (ARBEIT_DIR, "*.parquet"),
     (ARBEIT_DIR, MANIFEST_DATEI),
     (SEITE_STAGING_DIR, "index.html"),
@@ -3323,7 +3326,9 @@ def _tageslauf_mit_config(
                 # (die Unternehmensseite verlinkt zwoelf Monate); aeltere beim
                 # Nachholen nicht — das waere Rechenzeit fuer Seiten, die niemand
                 # liest.
-                if stichtag in stichtage[-PAKET_ABSCHLUESSE_ANZAHL:]:
+                # Das Fenster ist das des Monatsberichts (zwoelf Monate), dasselbe
+                # wie das Paketfenster der Seite (seite.PAKET_ABSCHLUESSE_ANZAHL).
+                if stichtag in stichtage[-BERICHT_MONATE:]:
                     # Der Bericht legt den Abschluss aus, den er begleitet,
                     # und liest ihn dafuer selbst — samt der zwoelf davor.
                     # Auf der Sicht von heute nachgerechnet erzaehlte er

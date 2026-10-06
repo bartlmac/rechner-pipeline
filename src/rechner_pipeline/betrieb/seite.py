@@ -244,6 +244,13 @@ def abschluesse_aus_protokoll(
                 eintrag.pop("bericht_sha256", None)
                 if a.get("bericht_sha256"):
                     eintrag["bericht_sha256"] = a["bericht_sha256"]
+            # Der Jahresbericht zum 1.1. ebenso — Nennung und Hash gehoeren
+            # zusammen, sonst reist er nicht mit (nur bezeugte Berichte).
+            if a.get("jahresbericht"):
+                eintrag["jahresbericht"] = a["jahresbericht"]
+                eintrag.pop("jahresbericht_sha256", None)
+                if a.get("jahresbericht_sha256"):
+                    eintrag["jahresbericht_sha256"] = a["jahresbericht_sha256"]
             if a.get("teilbestaende"):
                 eintrag["teilbestaende"] = a["teilbestaende"]
             for feld in KENNZAHL_FELDER:
