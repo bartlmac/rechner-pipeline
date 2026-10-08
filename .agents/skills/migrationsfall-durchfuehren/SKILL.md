@@ -444,9 +444,17 @@ python -m rechner_pipeline.bestand.cli_report \
     --scheiben  faelle/<fall>/abgeleitet/bestand-nach/scheiben.parquet \
     --merkmale  faelle/<fall>/abgeleitet/bestand/merkmale.parquet \
     --config <bestand-config>.toml \
-    --bis <horizont> --stichtag <migrationsstichtag> \
+    --berichtsstichtag <migrationsstichtag> \
     --out faelle/<fall>/abgeleitet/bestand-nach/bestandsbericht.html
 ```
+
+`--berichtsstichtag` statt `--bis`/`--stichtag`: Der Bericht endet am
+Uebernahmestichtag und zeigt keine Projektion. Eine Prognose ueber Jahre
+nach der Uebernahme ist hier keine Aussage ueber den uebernommenen
+Bestand, sondern eine Behauptung ueber Tage, die noch nicht stattgefunden
+haben — und sie macht den Bericht mit den anderen beiden unvergleichbar,
+weil jeder einen anderen Horizont haette. Beide Schalter zugleich sind
+ein Fehler, kein Vorrang.
 
 Quelle ist `bestand_gesamt.parquet` (der GEFUEHRTE Gesamtbestand), nicht
 der Basisbestand. `--merkmale` ist Pflicht, sobald die uebernommene

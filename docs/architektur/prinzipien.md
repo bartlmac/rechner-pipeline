@@ -2,76 +2,76 @@
 
 Die normative Grundlage des Systems (beschlossen in der
 Architektur-Fragerunde 2026-08-14, hier team-sichtbar in Vollform).
-Nicht verhandelbar; Aenderungen sind ein A-O1-artiger Vorgang mit
+Nicht verhandelbar; Änderungen sind ein A-O1-artiger Vorgang mit
 dem Maintainer.
 
 **P1 — Provenance auf Attributebene.** Jede Aussage in der A-Box
-traegt Quelle (Datei + SHA-256 + Fundstelle), erzeugenden Akteur
+trägt Quelle (Datei + SHA-256 + Fundstelle), erzeugenden Akteur
 (Modell + Skill + Git-Stand des Setups), Zeitstempel, Konfidenz. Ohne
-lueckenlose Rueckverfolgbarkeit ist keine Abnahme durch einen
-Verantwortlichen Aktuar moeglich.
+lückenlose Rückverfolgbarkeit ist keine Abnahme durch einen
+Verantwortlichen Aktuar möglich.
 
 **P2 — Widerspruch ist ein Modellobjekt, kein Fehler.** Widersprechen
 sich Quellen (Normalfall, nicht Ausnahme), entsteht eine Diskrepanz
 mit beiden Lesarten und ihren Belegen. Kein stiller Overwrite, keine
-Mehrheitsentscheidung durch ein Modell. Aufloesung ist ein expliziter
-Vorgang mit benanntem menschlichem Verantwortlichen; Agenten duerfen
-ausschliesslich VORLAEUFIG aufloesen (blockt jede Annahme).
+Mehrheitsentscheidung durch ein Modell. Auflösung ist ein expliziter
+Vorgang mit benanntem menschlichem Verantwortlichen; Agenten dürfen
+ausschliesslich VORLAEUFIG auflösen (blockt jede Annahme).
 
 **P3 — Unsicherheit ist explizit.** `nicht_belegt` (gesucht, nicht
 gefunden), `mehrdeutig` und `widerspruechlich` sind unterscheidbare
-Zustaende — und unterscheidbar von `fehlt_in_extraktion` (nie
-gesucht: der gefaehrliche stille Fall).
+Zustände — und unterscheidbar von `fehlt_in_extraktion` (nie
+gesucht: der gefährliche stille Fall).
 
 **P4 — Trennung probabilistisch / deterministisch.** LLM-Agenten
 extrahieren, schlagen vor, klassifizieren. Sie rechnen nicht,
-vergleichen nicht, entscheiden nicht ueber Vollstaendigkeit oder
+vergleichen nicht, entscheiden nicht über Vollständigkeit oder
 Konflikte. Vergleich, Validierung, Coverage, Struktur-Urteil und
 Abnahme sind deterministischer Code.
 
-**P5 — Validierung als ausfuehrbare Constraints.** Regeln der T-Box
+**P5 — Validierung als ausführbare Constraints.** Regeln der T-Box
 (Pflichtfelder, Wertebereiche, Konsistenz) sind Code, der gegen jede
-A-Box laeuft — nicht Prosa.
+A-Box läuft — nicht Prosa.
 
-**P6 — Coverage statt Plausibilitaet.** Messbar ist, welcher Anteil
+**P6 — Coverage statt Plausibilität.** Messbar ist, welcher Anteil
 des T-Box-Pflichtumfangs je Tarif belegt ist und woher. Der
-gefaehrliche Fehler ist nicht die falsche Extraktion, sondern die
-stillschweigend fehlende. Nicht Pruefbares wird AUSGEWIESEN, nie
-still uebersprungen.
+gefährliche Fehler ist nicht die falsche Extraktion, sondern die
+stillschweigend fehlende. Nicht Prüfbares wird AUSGEWIESEN, nie
+still übersprungen.
 
-**P7 — Bidirektionalitaet.** Aus der A-Box ist eine menschenlesbare
+**P7 — Bidirektionalität.** Aus der A-Box ist eine menschenlesbare
 Fachspezifikation generierbar — das Dokument, das der Fachbereich im
-Abnahmegate liest. Generiert schlaegt handgeschrieben.
+Abnahmegate liest. Generiert schlägt handgeschrieben.
 
-**P8 — Testfaelle referenzieren Ontologieknoten.** Golden-Master- und
-Abnahme-Faelle haengen an Klassen/Instanzen der A-Box, nicht an
-Codezeilen; eine T-Box-Aenderung zeigt ihre Testabdeckungsluecke.
-(Stand v0.1: nur grob eingeloest — siehe Pipeline-Dokument
+**P8 — Testfälle referenzieren Ontologieknoten.** Golden-Master- und
+Abnahme-Fälle hängen an Klassen/Instanzen der A-Box, nicht an
+Codezeilen; eine T-Box-Änderung zeigt ihre Testabdeckungslücke.
+(Stand v0.1: nur grob eingelöst — siehe Pipeline-Dokument
 Abschnitt 8.)
 
-**P9 — Gates erzeugen unveraenderliche Artefakte.** Jedes menschliche
+**P9 — Gates erzeugen unveränderliche Artefakte.** Jedes menschliche
 Gate schreibt einen inhaltsadressierten Snapshot: Artefakt-Hashes,
-Systemstand, Entscheider, Rolle, Begruendung; Snapshots verketten
-ihre Vorgaenger. Die Annahme RECHNET ihre Vorbedingungen (Gates gruen
+Systemstand, Entscheider, Rolle, Begründung; Snapshots verketten
+ihre Vorgänger. Die Annahme RECHNET ihre Vorbedingungen (Gates grün
 und an denselben Stand gebunden). Gate P-K1 schreibt entsprechend einen
 inhaltsadressierten Beleg je Generation. A-M4 verlangt genau die
 Generationenmenge der aktuellen A-Box und gleicht A-Box- sowie Systemstand
 jedes Belegs ab. Eine menschliche Annahme wird mit einem ausserhalb des Falls
-verwahrten HMAC-Schluessel autorisiert. P9 validiert beim Lesen Schema,
-vollstaendigen kanonischen Hash, daraus abgeleiteten Dateinamen, Signatur und
-den zyklenfreien Vorgaengergraph mit genau einer Spitze (ADR-008).
+verwahrten HMAC-Schlüssel autorisiert. P9 validiert beim Lesen Schema,
+vollständigen kanonischen Hash, daraus abgeleiteten Dateinamen, Signatur und
+den zyklenfreien Vorgängergraph mit genau einer Spitze (ADR-008).
 Der Fall-Scope bestimmt die Pflichtbelege JE GATE (ADR-009 mit
 ADR-010-Nachtrag): A-M4 verlangt in beiden Scopes P-Q3, A-Q1, die geltende
 A-M1-Annahme (Rolle ``am1_snapshot`` — aktuarielle vor finanzieller
-Abnahme) und P-K1; Bestandsfaelle binden zusaetzlich P-B1, vollstaendige
+Abnahme) und P-K1; Bestandsfälle binden zusätzlich P-B1, vollständige
 Suite und Abnahmebericht auf denselben Eingangs-, A-Box-, System- und
 Zwei-Stichtagsstand. A-M1 verlangt im Bestands-Scope Testergebnis und
 Bericht des aktuariellen Tests, im Tarif-Scope keine eigenen Rollen. A-M4 hasht ihre aktuellen Bytes und das von P-B1 benannte
-Portfolio neu, fuehrt die P-B1-Engines erneut aus und rendert den Abnahmebericht
+Portfolio neu, führt die P-B1-Engines erneut aus und rendert den Abnahmebericht
 zum Bytevergleich deterministisch neu (ADR-009).
 
-**P10 — Kontext ist Architekturgegenstand.** Uebergaben zwischen
-Agenten laufen ueber persistierte Artefakte, nie ueber
-Konversationsverlauf. Kein Agent erhaelt Rohmaterial, wenn ein
+**P10 — Kontext ist Architekturgegenstand.** Übergaben zwischen
+Agenten laufen über persistierte Artefakte, nie über
+Konversationsverlauf. Kein Agent erhält Rohmaterial, wenn ein
 strukturiertes Derivat existiert; Rohquellen werden deterministisch
 vorverdichtet, bevor ein Modell sie sieht.

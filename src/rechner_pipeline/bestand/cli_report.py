@@ -131,6 +131,26 @@ def main(argv: Optional[List[str]] = None) -> int:
         default=None,
         help="Kommagetrennte ISO-Daten; Default: Jahresraster über die Vertragslaufzeiten.",
     )
+    parser.add_argument(
+        "--berichtsstichtag",
+        default=None,
+        help=(
+            "Betriebsbericht: Der Bericht endet an diesem Tag und zeigt "
+            "keine Projektion. Schliesst --stichtag aus (der teilt in "
+            "Historie und Prognose, was hier gerade nicht gemeint ist)."
+        ),
+    )
+    parser.add_argument(
+        "--ohne-verlauf",
+        action="store_true",
+        help=(
+            "Fuer Bestaende ohne Historie — den gelieferten Bestand einer "
+            "Uebernahme etwa, der zu genau einem Stichtag bewertet ist. "
+            "Laesst Verlaufskurven, Bewegungsrechnung und die Tabellen "
+            "'je Stichtag' weg und stellt die Zahlen des einen Stichtags "
+            "auf. Verlangt genau einen Stichtag."
+        ),
+    )
     parser.add_argument("--titel", default="Bestandsbericht")
     # Jede Rolle des Erzeugers hat ein Flag, abgeleitet aus der
     # Rollentabelle wie beim Gate P-B1 — der Bericht fand die
@@ -186,6 +206,26 @@ def main(argv: Optional[List[str]] = None) -> int:
         except ValueError as exc:
             print(f"bestand_report: Ungueltiges --bis-Datum: {exc}", file=sys.stderr)
             return 2
+    berichtsstichtag = None
+    if ns.berichtsstichtag and ns.stichtag:
+        print("bestand_report: --berichtsstichtag und --stichtag schliessen "
+              "sich aus — entweder der Bericht endet am Stichtag (keine "
+              "Projektion) oder er teilt in Historie und Prognose",
+              file=sys.stderr)
+        return 2
+    if ns.berichtsstichtag:
+        try:
+            berichtsstichtag = _dt.date.fromisoformat(ns.berichtsstichtag)
+        except ValueError as exc:
+            print(f"bestand_report: Ungueltiges --berichtsstichtag-Datum: {exc}",
+                  file=sys.stderr)
+            return 2
+        # Die Vorbedingungen pruefen bis dorthin, wo der Bericht endet.
+        # Ohne das rechnet P-B1 die Bewegungskonten ueber den vollen
+        # Ledger nach, also ueber Jahre, die der Bericht gar nicht zeigt —
+        # und meldet Befunde zu Zeilen, die niemand zu sehen bekommt.
+        if bis is None:
+            bis = berichtsstichtag
     eingaben = {"portfolio": portfolio_path}
     # Jede Nebentabelle eines Laufs veraendert den gefuehrten Zustand (Runde E,
     # Klasse geschlossen; Runde D, Fund 4 war der erste Fall): Wer sie neben
@@ -285,8 +325,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"bestand_report: Config ungueltig: {'; '.join(fehler)}", file=sys.stderr)
             return 2
         # Der Referenzstichtag ist eine Eigenschaft des Bestands: er kommt
-        # aus der Config und wird per --stichtag nur uebersteuert.
-        if stichtag is None:
+        # aus der Config und wird per --stichtag nur uebersteuert. NICHT
+        # aber beim Betriebsbericht: Dort ist die Trennung in Historie und
+        # Prognose gerade nicht gemeint, und ein aus der Config gezogener
+        # Stichtag brachte den Aufruf zu Fall, ohne dass ihn jemand
+        # angegeben haette.
+        if stichtag is None and berichtsstichtag is None:
             stichtag = config.referenzstichtag
 
     # Dieselbe Pruefengine wie Gate P-B1 und der Abschluss — nicht ein
@@ -364,6 +408,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             stichtag=stichtag,
             schichten=tabellen.get("schichten"),
             verankerung=tabellen.get("verankerung"),
+            berichtsstichtag=berichtsstichtag,
+            ohne_verlauf=ns.ohne_verlauf,
             # Ohne die Tabelle bewertet der Bericht jeden herabgesetzten
             # Vertrag ungekuerzt (Angriffsrunde 2, Fund N12: +32 bis +48 %
             # Deckungskapital) — gelesen wurde sie schon, weitergereicht nicht.

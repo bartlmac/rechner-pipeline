@@ -1045,7 +1045,7 @@ def test_runbook_und_architektur_nennen_die_formel_grenze():
     assert "keine FORMELN" in runbook
     assert "8.1" in runbook                       # Verweis auf die Begruendung
     assert "### 8.1" in architektur
-    assert "Formelidentitaet" in architektur
+    assert "Formelidentität" in architektur
 
 
 # --------------------------------------------------------------------------- #

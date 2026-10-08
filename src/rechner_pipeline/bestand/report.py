@@ -812,6 +812,49 @@ def _generationen_uebersicht_html(
     )
 
 
+def _stichtagsblock(
+    kennzahl: Dict[str, Any], ausw: Optional[Dict[str, Any]],
+    volumen: List[Dict[str, Any]], index: int, mit_schicht: bool,
+) -> str:
+    """Die Zahlen EINES Stichtags als zweispaltige Aufstellung.
+
+    Fuer Bestaende ohne Historie. Eine Reihe mit einem Punkt ist kein
+    Verlauf, und eine Tabelle "je Stichtag" mit einer Zeile behauptet
+    eine Entwicklung, die es nicht gibt: Der gelieferte Bestand einer
+    Uebernahme ist zu genau einem Stichtag bewertet: Was er zeigen kann,
+    ist sein Stand, nicht sein Weg dorthin.
+    """
+    zeilen = [("Verträge", _zahl(kennzahl["vertraege"]))]
+    for v in volumen:
+        name = f"Σ {v['leistung_label']}"
+        if len(volumen) > 1:
+            name += f" ({v['titel']})"
+        zeilen.append((name, _zahl(v["reihe"][index]["summe_vs"])))
+    if ausw:
+        zeilen += [
+            ("Σ Deckungskapital", _zahl(ausw["deckungskapital"])),
+            ("davon auf beitragsfreie Verträge", _zahl(ausw["deckungskapital_bfr"])),
+        ]
+        if mit_schicht:
+            zeilen.append(("davon Korrekturschicht", _zahl(ausw["korrekturschicht"])))
+        zeilen += [
+            ("Σ Rückkaufswert (beitragspflichtig)", _zahl(ausw["rueckkaufswert"])),
+            ("Σ VS_bfr (fixiert)", _zahl(ausw["vs_bfr"])),
+            ("Σ Jahresbeitrag", _zahl(ausw["bjb"] + ausw["bu_beitrag"])),
+            ("Σ Beitragsvolumen p. a.", _zahl(ausw["bzb_jahr"] + ausw["bu_beitrag"])),
+        ]
+    zeilen += [
+        ("Ø Alter (Jahre)", _zahl(kennzahl["mittel_alter"], 1)),
+        ("Ø Restlaufzeit (Jahre)", _zahl(kennzahl["mittel_restlaufzeit_jahre"], 1)),
+    ]
+    koerper = "".join(
+        f"<tr><td>{_html.escape(name)}</td><td class='num'>{wert}</td></tr>"
+        for name, wert in zeilen
+    )
+    return ("<table><thead><tr><th>Kennzahl</th><th>Wert</th></tr></thead>"
+            f"<tbody>{koerper}</tbody></table>")
+
+
 def render_html(
     df: pd.DataFrame,
     stichtage: Optional[List[_dt.date]] = None,
@@ -829,6 +872,7 @@ def render_html(
     reduktionen: Optional[pd.DataFrame] = None,
     berichtsstichtag: Optional[_dt.date] = None,
     hinweis: str = "",
+    ohne_verlauf: bool = False,
 ) -> str:
     """Rendert den vollständigen Bericht als selbst-enthaltenes HTML.
 
@@ -847,6 +891,21 @@ def render_html(
     die Nachweisungen in **Historie** (Bestandsaufbau bis zum Stichtag) und
     **Prognose** (Entwicklung danach) — in den Tabellen als Trennzeile, in
     den Grafiken als senkrechte Linie.
+
+    ``ohne_verlauf`` ist fuer Bestaende OHNE HISTORIE — den gelieferten
+    Bestand einer Uebernahme etwa, der zu genau einem Stichtag bewertet
+    ist. Verlaufskurven, Bewegungsrechnungen und Tabellen "je Stichtag"
+    zeigen dort eine Entwicklung, die es nicht gibt: eine Linie durch
+    einen Punkt, eine Nachweisung ueber eine Periode der Laenge null. Der
+    Bericht behaelt seinen Aufbau und laesst weg, was ohne zweiten
+    Stichtag nichts aussagt; die Zahlen des einen Stichtags stehen
+    stattdessen als Aufstellung.
+
+    Der Schalter wird GESETZT und nicht aus der Zahl der Stichtage
+    geraten: Ein Aufrufer darf einen Bericht auf genau einen Stichtag
+    stellen und trotzdem die gewohnte Tabelle wollen. Umgekehrt ist
+    ``ohne_verlauf`` mit mehreren Stichtagen ein Widerspruch — dann
+    fielen Daten still unter den Tisch, und der Aufruf bricht ab.
 
     ``hinweis`` steht im Fuss, wenn er gesetzt ist. Der Bericht ist eine
     selbst-enthaltene Datei und wandert ohne die Seite, die ihn verlinkt;
@@ -929,6 +988,13 @@ def render_html(
             # sind nicht mehr simuliert) — das waere keine Prognose, sondern
             # eine systematische Ueberzeichnung des Bestands.
             stichtage = [s for s in stichtage if s <= bis] or stichtage[:1]
+    if ohne_verlauf and len(stichtage) > 1:
+        raise ValueError(
+            f"ohne_verlauf mit {len(stichtage)} Stichtagen — entweder der "
+            "Bestand hat eine Entwicklung, dann gehoert sie in den Bericht, "
+            "oder er hat keine, dann ist ein Stichtag genug. Beides zugleich "
+            "liesse Daten still verschwinden")
+    einzelstichtag = ohne_verlauf
     generationen = generationsnamen(df)
     # Mit Historie rechnen Verlauf und Auskunfts-Schnitte abgangsbereinigt auf der
     # Mehrzeilen-Sicht; Strukturbilder je Vertrag bleiben auf dem Basisbestand.
@@ -1004,20 +1070,32 @@ def render_html(
         if historie is not None and ledger is not None and len(ledger) > 0
         else ledger
     )
+    # Ein Bericht, der am Berichtsstichtag endet, fasst auch nur bis
+    # dorthin zusammen. Sonst nennt die Ueberschrift "Geschaeftsvorfaelle
+    # 1994 bis 2046", waehrend jede Kurve daneben 2026 aufhoert — die
+    # Summen liefen naemlich ueber den ganzen Ledger, unabhaengig vom
+    # Raster. Dasselbe Muster wie im Monatsbericht: Was nicht am Raster
+    # haengt, zeigt die volle Historie, und niemand merkt es.
+    if berichtsstichtag is not None and gevo_ledger is not None \
+            and len(gevo_ledger) > 0:
+        gevo_ledger = gevo_ledger[
+            gevo_ledger["status_date"] <= pd.Timestamp(berichtsstichtag)]
 
     with plt.rc_context(_RC):
-        svg_vertraege = _chart_verlauf_vertraege(reihe, generationen,
-                                                 stichtag=stichtag)
         mehrere_arten = len(volumen_reihen) > 1
-        svg_summe = "".join(
-            _chart_verlauf_summe(
-                v["reihe"],
-                v["leistung_label"],
-                v["titel"] if mehrere_arten else "",
-                stichtag=stichtag,
+        svg_vertraege = svg_summe = ""
+        if not einzelstichtag:
+            svg_vertraege = _chart_verlauf_vertraege(reihe, generationen,
+                                                     stichtag=stichtag)
+            svg_summe = "".join(
+                _chart_verlauf_summe(
+                    v["reihe"],
+                    v["leistung_label"],
+                    v["titel"] if mehrere_arten else "",
+                    stichtag=stichtag,
+                )
+                for v in volumen_reihen
             )
-            for v in volumen_reihen
-        )
         # Struktur je Versicherungsart: Eintrittsalter, Laufzeit und
         # versicherte Leistung sind je Art anders definiert (Summe gegen
         # Jahresrente) und in einer gemeinsamen Grafik nicht vergleichbar.
@@ -1044,19 +1122,20 @@ def render_html(
 <div class="charts">{scatter}</div>""")
         struktur_html = "".join(struktur_bloecke)
         svg_status = svg_ereignisse = svg_dk = svg_beitrag = ""
-        if historie is not None and len(ledger) > 0:
+        if historie is not None and len(ledger) > 0 and not einzelstichtag:
             svg_status = _chart_status_verlauf(
                 status_verlauf(bestand, stichtage), stichtag=stichtag)
             svg_ereignisse = _chart_ereignisse_je_jahr(
                 ereignisse_je_jahr(gevo_ledger), stichtag=stichtag
             )
         if config is not None:
-            svg_dk = _chart_deckungskapital(reihe_ausw, stichtag=stichtag)
-            svg_beitrag = _chart_beitraege(
-                [r for r in reihe_ausw if r["vertraege"] > 0],
-                any(r["bu_vertraege"] for r in reihe_ausw),
-                stichtag=stichtag,
-            )
+            if not einzelstichtag:
+                svg_dk = _chart_deckungskapital(reihe_ausw, stichtag=stichtag)
+                svg_beitrag = _chart_beitraege(
+                    [r for r in reihe_ausw if r["vertraege"] > 0],
+                    any(r["bu_vertraege"] for r in reihe_ausw),
+                    stichtag=stichtag,
+                )
 
     # Je Versicherungsart eine eigene Volumen-Spalte — dieselbe Trennung
     # wie in den Grafiken; die Vertragszahl bleibt die Gesamtzahl.
@@ -1158,12 +1237,15 @@ def render_html(
             )
             gevo_von = int(gevo_ledger["status_date"].dt.year.min())
             gevo_bis = int(gevo_ledger["status_date"].dt.year.max())
-            gevo_zeitraum = f"{gevo_von} bis {gevo_bis}"
+            # "2026 bis 2026" ist keine Spanne. Ohne Verlauf nennt die
+            # Ueberschrift nur die Sache; das Jahr steht ohnehin im Kopf.
+            gevo_zeitraum = ("" if einzelstichtag or gevo_von == gevo_bis
+                             else f"{gevo_von} bis {gevo_bis}")
             ereignis_html = f"""
-<h2>Geschäftsvorfälle {gevo_zeitraum}</h2>
+<h2>Geschäftsvorfälle{" " + gevo_zeitraum if gevo_zeitraum else ""}</h2>
 <div class="charts">{svg_status}{svg_ereignisse}</div>
 {summen_tabelle}
-<p>{TEXTE["gevo"].format(zeitraum=gevo_zeitraum)} Der Bestandsverlauf ist
+<p>{TEXTE["gevo"].format(zeitraum=gevo_zeitraum) if gevo_zeitraum else TEXTE["gevo"].format(zeitraum=str(gevo_bis))} Der Bestandsverlauf ist
 abgangsbereinigt: stornierte, gestorbene und abgelaufene Verträge verlassen
 den Bestand am Buchungstag. {klv_hinweis}Alle Beträge stammen aus dem
 stabilen Rechenkern.</p>"""
@@ -1183,7 +1265,8 @@ stabilen Rechenkern.</p>"""
     # Prognose geteilt.
     # ------------------------------------------------------------------ #
     nachweisungen: List[str] = []
-    if historie is not None and bis is not None and len(ledger) > 0:
+    if historie is not None and bis is not None and len(ledger) > 0 \
+            and not einzelstichtag:
         for spec in NACHWEISUNGEN:
             if not spec["vorhanden"](df):
                 continue
@@ -1203,7 +1286,7 @@ stabilen Rechenkern.</p>"""
         f"{mit_bestand[0]['stichtag'][:4]} bis {mit_bestand[-1]['stichtag'][:4]}"
         if mit_bestand else f"{stichtage[0].year} bis {stichtage[-1].year}"
     )
-    if config is not None:
+    if config is not None and not einzelstichtag:
         # Traegt der Bestand eine Korrekturschicht (uebernommene Vertraege,
         # 9.11), steht ihr Anteil als eigene Spalte — wie im Abschluss.
         # Ohne Schicht bleibt die Tabelle, wie sie war (N-01).
@@ -1286,6 +1369,28 @@ ist im Tarifwerk keine Rückkaufsregel hinterlegt.</p>
 {beitrag_tabelle}
 <p>{TEXTE["beitraege"]}</p>"""
 
+    verlauf_html = "" if einzelstichtag else (
+        "<h2>Bestandsverlauf</h2>\n"
+        f'<div class="charts">{svg_vertraege}{svg_summe}</div>\n'
+        f'<p>{TEXTE["verlauf"]}</p>'
+    )
+    if einzelstichtag:
+        kennzahlen_html = (
+            f"<h2>Kennzahlen am {struktur_stichtag.isoformat()}</h2>\n"
+            + _stichtagsblock(
+                reihe[0], reihe_ausw[0] if reihe_ausw else None,
+                volumen_reihen, 0, schichten is not None)
+            + "\n<p>Dieser Bestand ist zu genau einem Stichtag bewertet; "
+              "eine Entwicklung über die Zeit gibt es nicht und wird "
+              "deshalb auch nicht gezeigt. Alle Bewertungsgrößen sind im "
+              "Rechenkern gerechnet, nicht aus der Lieferung übernommen.</p>"
+        )
+    else:
+        kennzahlen_html = (
+            f"<h2>Kennzahlen je Stichtag, {ausw_zeitraum}</h2>\n"
+            f"{tabelle}\n<p>{TEXTE['kennzahlen']}</p>\n{auswertung_html}"
+        )
+
     return f"""<!doctype html>
 <html lang="de">
 <head>
@@ -1315,9 +1420,7 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 </ul>
 {stichtag_absatz}
 {generationen_html}
-<h2>Bestandsverlauf</h2>
-<div class="charts">{svg_vertraege}{svg_summe}</div>
-<p>{TEXTE["verlauf"]}</p>
+{verlauf_html}
 
 <h2>Bestandsstruktur am {struktur_stichtag.isoformat()}</h2>
 <p>{TEXTE["struktur"]}</p>
@@ -1325,10 +1428,7 @@ footer {{ margin-top: 2rem; font-size: .8rem; color: #666; }}
 {bewegung_html}
 {ereignis_html}
 
-<h2>Kennzahlen je Stichtag, {ausw_zeitraum}</h2>
-{tabelle}
-<p>{TEXTE["kennzahlen"]}</p>
-{auswertung_html}
+{kennzahlen_html}
 
 <h2>Zur Lesart</h2>
 <p>{TEXTE["lesart_betrieb"] if berichtsstichtag is not None else TEXTE["lesart"]}</p>

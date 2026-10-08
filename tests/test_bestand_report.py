@@ -797,3 +797,46 @@ def test_beitragssumme_gegen_nachrechnung_ueber_die_schnitt_am(
         erwartet += beitraege(kern, int(row["months_exp"]) // 12)["bjb"]
     assert erwartet > 0
     assert reihe[0]["bjb"] == pytest.approx(erwartet)
+
+
+def test_ohne_verlauf_laesst_weg_was_ein_stichtag_nicht_hergibt():
+    """Der gelieferte Bestand einer Uebernahme ist zu genau einem Stichtag
+    bewertet. Eine Linie durch einen Punkt, eine Nachweisung ueber eine
+    Periode der Laenge null und eine Tabelle "je Stichtag" mit einer Zeile
+    behaupten eine Entwicklung, die es nicht gibt.
+
+    Mutationsprobe: ohne_verlauf ignorieren -> die Verlaufsabschnitte
+    stehen wieder da, mit je einem Punkt."""
+    # Seit ADR-020 entsteht ein Bestand aus dem Zugangsstrom der Config,
+    # nicht mehr aus generator.generate — dieselbe Quelle wie die
+    # Modul-Fixtures dieser Datei.
+    cfg = load_config(REPO_ROOT / "configs" / "bestand_bu.toml")
+    df = bestand_aus_zugangsstrom(cfg, bis=dt.date(2026, 1, 1))
+    html = report.render_html(
+        df, config=cfg, stichtage=[dt.date(2026, 1, 1)],
+        berichtsstichtag=dt.date(2026, 1, 1), ohne_verlauf=True,
+    )
+    # Der Aufbau bleibt: Kopf, Generationen, Struktur, Lesart.
+    assert "<h2>Bestandsstruktur am 2026-01-01</h2>" in html
+    assert "<h2>Zur Lesart</h2>" in html
+    # Die Zahlen des einen Stichtags stehen als Aufstellung.
+    assert "<h2>Kennzahlen am 2026-01-01</h2>" in html
+    assert "zu genau einem Stichtag bewertet" in html
+    # Und kein Verlauf, in keiner Gestalt.
+    for weg in ("<h2>Bestandsverlauf</h2>", "Kennzahlen je Stichtag",
+                "Aktuarielle Kennzahlen je Stichtag", "Bestandsbewegung"):
+        assert weg not in html, weg
+
+
+def test_ohne_verlauf_mit_mehreren_stichtagen_ist_ein_widerspruch():
+    """Sonst fielen die uebrigen Stichtage still unter den Tisch."""
+    # Seit ADR-020 entsteht ein Bestand aus dem Zugangsstrom der Config,
+    # nicht mehr aus generator.generate — dieselbe Quelle wie die
+    # Modul-Fixtures dieser Datei.
+    cfg = load_config(REPO_ROOT / "configs" / "bestand_bu.toml")
+    df = bestand_aus_zugangsstrom(cfg, bis=dt.date(2026, 1, 1))
+    with pytest.raises(ValueError, match="ohne_verlauf mit 2 Stichtagen"):
+        report.render_html(
+            df, config=cfg, ohne_verlauf=True,
+            stichtage=[dt.date(2025, 1, 1), dt.date(2026, 1, 1)],
+        )

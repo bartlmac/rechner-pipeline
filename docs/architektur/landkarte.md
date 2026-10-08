@@ -8,18 +8,18 @@ python -m rechner_pipeline.ontologie.landkarte --format mermaid --umfang knoten 
 python -m rechner_pipeline.ontologie.landkarte --format mermaid --umfang modul --auswahl kern --out /dev/stdout
 ```
 
-Ein Test haelt diese Seite gegen den Generator: weicht sie ab, faellt die
-Suite. GitHub zeichnet die Diagramme direkt; fuer Graphviz, Gephi, yEd
+Ein Test hält diese Seite gegen den Generator: weicht sie ab, fällt die
+Suite. GitHub zeichnet die Diagramme direkt; für Graphviz, Gephi, yEd
 oder einen Graph-Store liefert derselbe Befehl `--format dot` bzw.
 `--format graphml`.
 
 Im Zielbild (~1 Mio. Zeilen) gibt es kein Bild "der Codebasis". Es gibt
 begrenzte Ausschnitte, und alle drei hier wachsen mit der Struktur statt
-mit der Codemenge: der Schichten-Ueberblick, die fachliche Knotensicht,
-und der Blick in EINEN Knoten. Ueberschreitet ein Ausschnitt 60 Kaesten,
+mit der Codemenge: der Schichten-Überblick, die fachliche Knotensicht,
+und der Blick in EINEN Knoten. Überschreitet ein Ausschnitt 60 Kästen,
 verweigert der Generator das Bild und nennt den engeren Weg.
 
-## 1 Schichten — der Ueberblick
+## 1 Schichten — der Überblick
 
 Wer darf aus wem importieren, und wie oft wird es genutzt. Die Regeln
 dahinter sind nachrechenbar (`ontologie.code_karte`), nicht Prosa.
@@ -31,7 +31,7 @@ flowchart TD
     bestand["bestand<br/>24 Module"]
     betrieb["betrieb<br/>11 Module"]
     fall["fall<br/>1 Module"]
-    gates["gates<br/>23 Module"]
+    gates["gates<br/>24 Module"]
     kern["kern<br/>13 Module"]
     models["models<br/>18 Module"]
     ontologie["ontologie<br/>16 Module"]
@@ -47,7 +47,7 @@ flowchart TD
     gates -- 14 --> bestand
     gates -- 12 --> fall
     gates -- 10 --> kern
-    gates -- 48 --> models
+    gates -- 49 --> models
     gates -- 13 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
@@ -69,8 +69,8 @@ flowchart TD
 ## 2 Fachknoten — die Sicht der Ontologie
 
 Dieselben IDs wie in der A-Box eines Migrationsfalls und in Gate O3. Eine
-Kante entsteht nur bei einem ECHTEN Uebergang: ein Rueckgrat-Modul, das
-`klv, bu` traegt, macht KLV nicht von BU abhaengig — beide stehen darauf.
+Kante entsteht nur bei einem ECHTEN Übergang: ein Rückgrat-Modul, das
+`klv, bu` trägt, macht KLV nicht von BU abhängig — beide stehen darauf.
 Deshalb sind KLV und BU hier korrekt unverbunden.
 
 ```mermaid
@@ -79,7 +79,7 @@ flowchart TD
     bu["bu<br/>42 Module"]
     klv["klv<br/>91 Module"]
     system_architektur["system/architektur<br/>4 Module"]
-    system_assurance["system/assurance<br/>14 Module"]
+    system_assurance["system/assurance<br/>15 Module"]
     system_entscheid["system/entscheid<br/>17 Module"]
     system_fall["system/fall<br/>1 Module"]
     bu -- 3 --> system_assurance
@@ -89,7 +89,7 @@ flowchart TD
     klv -- 10 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv
-    system_assurance -- 3 --> system_entscheid
+    system_assurance -- 4 --> system_entscheid
     system_assurance -- 1 --> system_fall
     system_entscheid -- 3 --> bu
     system_entscheid -- 12 --> klv
@@ -99,9 +99,9 @@ flowchart TD
 
 ## 3 Der Zielrechenkern von innen
 
-Die neun Module von `kern/` und ihre Abhaengigkeiten. `tafeln` ist die
+Die neun Module von `kern/` und ihre Abhängigkeiten. `tafeln` ist die
 unterste Fachschicht (reine Ausscheidewahrscheinlichkeiten),
-`zustandsmodell` das Rueckgrat, die Produkte sind Parametrierungen
+`zustandsmodell` das Rückgrat, die Produkte sind Parametrierungen
 darauf (ADR-004).
 
 ```mermaid

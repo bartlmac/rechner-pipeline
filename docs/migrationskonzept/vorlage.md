@@ -8,8 +8,8 @@ date: 2026-08-26
 | Feld | Wert |
 |---|---|
 | Dokumenttyp | Migrationskonzept (projektseitig, je Bestand/Quellsystem instanziiert) |
-| Status | Vorlage v0.2 — Kapitel 6 und 7 ausgearbeitet, uebrige Kapitel Geruest |
-| Normative Referenzen | **Grundsatzdokumentation** (`docs/mathematik/grundsatzdokumentation.md`) — Mathematik und Numerik des Zielrechenkerns, dort Abschnitt 9 fuer den Migrationszugang und die Korrekturschicht; Ausgestaltungen der betroffenen Tarifpläne ⟨Liste⟩ |
+| Status | Vorlage v0.2 — Kapitel 6 und 7 ausgearbeitet, übrige Kapitel Gerüst |
+| Normative Referenzen | **Grundsatzdokumentation** (`docs/mathematik/grundsatzdokumentation.md`) — Mathematik und Numerik des Zielrechenkerns, dort Abschnitt 9 für den Migrationszugang und die Korrekturschicht; Ausgestaltungen der betroffenen Tarifpläne ⟨Liste⟩ |
 | Bestand / Mandant | ⟨…⟩ |
 | Quellsystem | ⟨…⟩ |
 | Freigabe | ⟨Projektleitung⟩, ⟨Quellsystem-Verantwortliche⟩, ⟨Fachexperte Aktuariat⟩ |
@@ -424,8 +424,8 @@ vollständig ab. **Nicht** abgedeckt sind:
 Diese vier Punkte sind der Arbeitsvorrat dieser Prüfebene. Sie stehen
 hier, damit eine Abnahme weiß, was sie abnimmt.
 
-⟨TODO aus dem Geruest, noch offen: Clusterdefinition nach
-GV-Historientyp aus Lieferobjekt 2; Ausreisser-Klaerungsworkflow mit
+⟨TODO aus dem Gerüst, noch offen: Clusterdefinition nach
+GV-Historientyp aus Lieferobjekt 2; Ausreisser-Klärungsworkflow mit
 Zugriff auf die Quellhistorie; Stichprobenkonzept jenseits des Profils
 `vollbestand`; Form des Abnahmeberichts an den Verantwortlichen
 Aktuar⟩
@@ -446,6 +446,6 @@ Anforderungen gemäß Grundsatzdokumentation 9.14 (Rolle „Archiv") und Grundsa
 
 | Nr | Gegenstand | Bezug | Status |
 |---|---|---|---|
-| E1 | GV-Metadatenliste dauerhaft im Zielbestand vs. Verbleib im Migrations-Staging | Grundsatzdokumentation 9.16 | Standard: **Archiv der PLV** (Entscheidung 2026-08-31; das Quellsystem wird stillgelegt und als Archiv genutzt — die Uebernahme legt die Liste unter `quellarchiv/` beim Zielbestand ab). Abweichung je Bestand begruenden. |
-| E2 | Aktivierung des $R_{\mathrm{conv}}$-Pfads (Zweitverankerung am $t_0$) für diesen Bestand | Grundsatzdokumentation 9.13 | Standard: **aktivieren, sobald systematische Konventionsdifferenzen bestehen** (Entscheidung 2026-08-31: getrennt erfassen — die Schichtdatei traegt je Police `hist` und `conv` mit eigenem `monate_t0`). Der plv-va legt die Klassifikation je Cluster zur Zeichnung vor. |
+| E1 | GV-Metadatenliste dauerhaft im Zielbestand vs. Verbleib im Migrations-Staging | Grundsatzdokumentation 9.16 | Standard: **Archiv der PLV** (Entscheidung 2026-08-31; das Quellsystem wird stillgelegt und als Archiv genutzt — die Übernahme legt die Liste unter `quellarchiv/` beim Zielbestand ab). Abweichung je Bestand begründen. |
+| E2 | Aktivierung des $R_{\mathrm{conv}}$-Pfads (Zweitverankerung am $t_0$) für diesen Bestand | Grundsatzdokumentation 9.13 | Standard: **aktivieren, sobald systematische Konventionsdifferenzen bestehen** (Entscheidung 2026-08-31: getrennt erfassen — die Schichtdatei trägt je Police `hist` und `conv` mit eigenem `monate_t0`). Der plv-va legt die Klassifikation je Cluster zur Zeichnung vor. |
 | E3 | ⟨…⟩ | ⟨…⟩ | ⟨…⟩ |
