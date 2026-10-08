@@ -18,11 +18,11 @@ date: 2026-08-26
 
 ## Bearbeitungshinweise für die Weiterbearbeitung (Agent)
 
-1. **Normativ ist die Grundsatzdokumentation.** Begriffe und Notation aus ihrem Abschnitt 2 gelten unverändert; nichts daraus wird hier umdefiniert, abgeschwächt oder dupliziert — es wird referenziert.
-2. **Markierungen:** ⟨TODO: …⟩ = zu erarbeitender Inhalt. ⟨ENTSCHEIDUNG: …⟩ = offene menschliche Entscheidung — nicht selbst auflösen, sondern in Kap. 11 führen und zur Entscheidung vorlegen.
+1. **Normativ ist die Grundsatzdokumentation.** Begriffe und Notation aus ihrem Abschnitt 2 gelten unverändert; nichts daraus wird hier umdefiniert, abgeschwächt oder dupliziert; es wird referenziert.
+2. **Markierungen:** ⟨TODO: …⟩ = zu erarbeitender Inhalt. ⟨ENTSCHEIDUNG: …⟩ = offene menschliche Entscheidung; nicht selbst auflösen, sondern in Kap. 11 führen und zur Entscheidung vorlegen.
 3. **Kapitel 5 ist fachlich vorbefüllt.** Schrittfolge, System-Zuordnungen (MIG/RK) und Fehlerausgänge sind mit der Methode abgestimmt; Änderungen daran nur nach menschlicher Freigabe (Entwicklung + Fachexperte). Technische Konkretisierungen (5.7) sind ausdrücklich erwünscht.
 4. **Konflikte** zwischen diesem Dokument, der Kern-Architektur und der Grundsatzdokumentation werden nicht implizit aufgelöst: Verfahren nach Grundsatzdokumentation 9.16 (Konfliktregel), Eintrag hier in Kap. 11 und im Abweichungsverzeichnis der Grundsatzdokumentation.
-5. Keine erfundenen Feldnamen, Paragraphen oder Kennzahlen — Unbekanntes bleibt ⟨TODO⟩. Dokumentsprache Deutsch.
+5. Keine erfundenen Feldnamen, Paragraphen oder Kennzahlen; Unbekanntes bleibt ⟨TODO⟩. Dokumentsprache Deutsch.
 
 ---
 
@@ -45,9 +45,9 @@ Zielrechenkern und Migrationssystem laufen in einer gemeinsamen Hülle, sind abe
 
 ## 3 Quellsystem und Bestandsabgrenzung
 
-⟨TODO: Quellsystembeschreibung; frühere Migrationen des Quellsystems (geerbte Residuen — Grundsatzdokumentation 9.3); Bestandsgruppen und Tarifplan-Zuordnung; Tarifpläne ohne freigegebene Ausgestaltung → nicht migrationsfähig (Grundsatzdokumentation Abschnitt 10 Nr. 9); Ausschlüsse und Sonderbestände⟩
+⟨TODO: Quellsystembeschreibung; frühere Migrationen des Quellsystems (geerbte Residuen, Grundsatzdokumentation 9.3); Bestandsgruppen und Tarifplan-Zuordnung; Tarifpläne ohne freigegebene Ausgestaltung → nicht migrationsfähig (Grundsatzdokumentation Abschnitt 10 Nr. 9); Ausschlüsse und Sonderbestände⟩
 
-Die Regeln jeder migrierten Tarifgeneration stehen belegt in der A-Box des Falls, nicht in Aufrufen (ADR-024, Nachtrag): das Tarifwerk aus dem Bedingungswerk (Erhöhung mit $\gamma_1$, Stornoabzug je Baustein, Verfahren der Herabsetzung, Umfang der Teilkündigung) und das Verfahren der Quelle (Lesart einer gelieferten Absetzung, Dynamiksatz, Stichtag des gelieferten Deckungskapitals, Formfunktion und Fenster der Korrekturschicht). Die Quellenprüfung P-Q3 verlangt sie im Bestands-Scope; eine Generation, deren Regeln nicht belegt sind, ist nicht migrationsfähig — die Regel des eigenen Geschäfts ist keine Vorgabe dafür. Was eine Quelle nicht kennt (etwa einen Dynamiksatz), wird ausdrücklich als „nicht belegt“ festgestellt, mit Fundstelle; ein nie erhobenes Merkmal ist eine Lücke. Die Rechnungen der Bestandsstrecke laufen nur in einem Fall mit Bestands-Scope, und die Migrationsabnahme hält jeden ihrer Belege an die Regeln der Spez und weist den Führungswert aus, den sie selbst nachgerechnet hat.
+Die Regeln jeder migrierten Tarifgeneration stehen belegt in der A-Box des Falls, nicht in Aufrufen (ADR-024, Nachtrag): das Tarifwerk aus dem Bedingungswerk (Erhöhung mit $\gamma_1$, Stornoabzug je Baustein, Verfahren der Herabsetzung, Umfang der Teilkündigung) und das Verfahren der Quelle (Lesart einer gelieferten Absetzung, Dynamiksatz, Stichtag des gelieferten Deckungskapitals, Formfunktion und Fenster der Korrekturschicht). Die Quellenprüfung P-Q3 verlangt sie im Bestands-Scope; eine Generation, deren Regeln nicht belegt sind, ist nicht migrationsfähig; die Regel des eigenen Geschäfts ist keine Vorgabe dafür. Was eine Quelle nicht kennt (etwa einen Dynamiksatz), wird ausdrücklich als „nicht belegt“ festgestellt, mit Fundstelle; ein nie erhobenes Merkmal ist eine Lücke. Die Rechnungen der Bestandsstrecke laufen nur in einem Fall mit Bestands-Scope, und die Migrationsabnahme hält jeden ihrer Belege an die Regeln der Spez und weist den Führungswert aus, den sie selbst nachgerechnet hat.
 
 ⟨TODO: je Generation die Regeln mit Fundstelle, oder die offene Frage an die Quelle⟩
 
@@ -99,7 +99,7 @@ Hauptpfad: `angeliefert → validiert → verankert → nachgefahren → abgegli
 
 ### 5.4 Idempotenz und Wiederanlauf
 
-Die Routine ist je Vertrag deterministisch und wiederholbar (Datennachlieferungen, Korrekturläufe). Ein erneuter Lauf ersetzt die Verankerungsparameter vollständig — es gibt kein kumulierendes $\rho$. Nachfahren und Verankerung sind je Vertrag transaktional; ein abgebrochener Lauf hinterlässt keinen teilverankerten Vertrag. ⟨TODO: technischer Mechanismus; Transaktionsschnitt und Persistenz sind Implementierungsfreiheiten Grundsatzdokumentation 9.16⟩
+Die Routine ist je Vertrag deterministisch und wiederholbar (Datennachlieferungen, Korrekturläufe). Ein erneuter Lauf ersetzt die Verankerungsparameter vollständig; es gibt kein kumulierendes $\rho$. Nachfahren und Verankerung sind je Vertrag transaktional; ein abgebrochener Lauf hinterlässt keinen teilverankerten Vertrag. ⟨TODO: technischer Mechanismus; Transaktionsschnitt und Persistenz sind Implementierungsfreiheiten Grundsatzdokumentation 9.16⟩
 
 ### 5.5 Kohorten
 
@@ -135,14 +135,14 @@ und das Geschäftsvorfall-Protokoll des Zwischenzeitraums.
 
 Je Vertrag des Bestands:
 
-1. **Deckungskapital am Migrationsstichtag** — die Bilanzgröße.
+1. **Deckungskapital am Migrationsstichtag**: die Bilanzgröße.
 2. **Bruttojahresbeitrag am Migrationsstichtag**, sofern geliefert. Er
    ist die zweite Prüfachse gegen Parametrierungsfehler: Ein um ein Jahr
    versetztes Eintrittsalter verschiebt die Reserve oft nur um
    Bruchteile eines Cents, den Beitrag dagegen deutlich.
 3. **Die Beträge der Geschäftsvorfälle** zwischen den Stichtagen
    (Storno, Tod, Ablauf, Beitragsfreistellung, dynamische Erhöhung) und
-   die Wirkung von Herabsetzung und Teilkündigung — beliebig viele, in
+   die Wirkung von Herabsetzung und Teilkündigung: beliebig viele, in
    jeder Folge, jeder Vorfall auf dem Zustand, den die Vorfälle davor
    hinterlassen haben (Grundsatzdokumentation 7.2). Ein gelieferter Vorfall
    wird im Vokabular des Zielsystems geprüft (Grundsatzdokumentation 7.1);
@@ -158,7 +158,7 @@ Genau deshalb sind es zwei Werkzeuge und nicht eines mit zwei Spalten.
 ### 6.3 Vollständigkeit und Prüflücken
 
 „Vollständig geprüft“ heißt hier: **jeder Vertrag des Bestands wurde
-geprüft.** Ein ungeprüfter Vertrag ist eine **Prüflücke** — weder
+geprüft.** Ein ungeprüfter Vertrag ist eine **Prüflücke**: weder
 bestanden noch fehlgeschlagen, sondern ungeprüft, und beim Lesen des
 Verdikts abzuziehen. Die Prüfmenge wird zusätzlich gegen die
 Zeilenzahl der Lieferung gestellt: Eine Abnahme über 400 von 500
@@ -169,9 +169,9 @@ Fehlt eine Erwartungsgröße in der Lieferung, wird sie als Lücke
 ausgewiesen, nicht stillschweigend übergangen. Im Bestands-Scope
 blockieren offene Prüflücken die Abnahme.
 
-Inkonsistenzen der Lieferung — ein Geschäftsvorfall außerhalb der
+Inkonsistenzen der Lieferung (ein Geschäftsvorfall außerhalb der
 Stichtage, ein Wert trotz Abgang, ein Abgang ohne Vorfall, ein Vorfall
-auf dem falschen Track — sind **Befunde je Vertrag** und gehen an den
+auf dem falschen Track) sind **Befunde je Vertrag** und gehen an den
 Menschen. Erwartungswerte werden nie „korrigiert“, damit ein Lauf grün
 wird.
 
@@ -196,7 +196,7 @@ deterministisch und wird rot wie grün geschrieben.
 
 Die Prüfsummen-Bindungen zwischen Bestandsdatei, Prüfrechnung, Bericht und
 Gate-Belegen sind **Transport- und Provenienzsicherung**: Sie belegen,
-dass alle Nachweise denselben Stand meinen — sie ersetzen kein
+dass alle Nachweise denselben Stand meinen; sie ersetzen kein
 fachliches Urteil.
 
 ### 6.5 Gate A-M4: der Entscheid
@@ -247,7 +247,7 @@ Stichtagen und die Nachfahr-Abweichungen. **Nicht** abgedeckt sind die
 ### 7.1 Zweck und Abgrenzung
 
 Der aktuarielle Test misst die **methodische Güte** der konstruktiven
-Neuberechnung — nicht die Bilanz. Er fragt: Rechnet das Zielsystem den
+Neuberechnung, nicht die Bilanz. Er fragt: Rechnet das Zielsystem den
 einzelnen Vertrag an dem Punkt richtig, an dem das Quellsystem ihn
 zuletzt exakt gerechnet hat? Die finanzielle Frage („stimmt der Bestand
 am Übernahmestichtag in Summe?“) ist Gegenstand des
@@ -263,7 +263,7 @@ Reihenfolge ist technisch erzwungen, nicht empfohlen (7.7).
 
 Geprüft wird **je Vertrag an seinem eigenen Verankerungszeitpunkt
 $t_a$** (Grundsatzdokumentation 9.12: der letzte exakte Rechenpunkt des Quellsystems). $t_a$
-ist damit ein **Vertragsattribut**, kein Parameter des Prüflaufs — zwei
+ist damit ein **Vertragsattribut**, kein Parameter des Prüflaufs: zwei
 Verträge desselben Bestands werden in aller Regel zu verschiedenen
 Zeitpunkten verglichen.
 
@@ -272,7 +272,7 @@ Konvention gelten:
 
 1. **Keine Interpolation.** Verglichen wird am Rechenpunkt. Ein
    unterjähriger Vergleichszeitpunkt ist ein Konstruktionsfehler des
-   Prüfauftrags und bricht den Lauf ab — er wird nicht als Befund
+   Prüfauftrags und bricht den Lauf ab; er wird nicht als Befund
    ausgewiesen. Begründung (Grundsatzdokumentation 9.12): Ein interpolierter Wert misst die
    Interpolationskonvention mit und entwertet das Residuum als
    Diagnoseinstrument.
@@ -288,14 +288,14 @@ Konvention gelten:
 
 Der Test läuft auf einer **belegten Stichprobe**: benanntes Profil,
 deterministisch gezogen, mit ausgewiesener Grundgesamtheit und
-vollständiger Policenliste. Die Ziehung gehört zum Nachweis — ohne sie
+vollständiger Policenliste. Die Ziehung gehört zum Nachweis: ohne sie
 ließe sich später nicht nachvollziehen, welche Verträge den Test
 getragen haben.
 
 „Vollständig“ heißt auf dieser Prüfebene: **die Stichprobe wurde
 vollständig abgearbeitet.** Die Nichtprüfung der Nicht-Stichprobe ist
 kein Befund, sondern die Definition des Tests. (Im Controlling heißt
-derselbe Begriff etwas anderes — dort ist jeder ungeprüfte Vertrag eine
+derselbe Begriff etwas anderes: dort ist jeder ungeprüfte Vertrag eine
 Prüflücke, Kapitel 6.)
 
 Es gibt zwei Profile (ADR-010, Abschnitt 5): **`vollbestand`**, die
@@ -312,7 +312,7 @@ $$R = \text{Wert des Zielsystems} - \text{Wert der Lieferung}$$
 
 Geprüft werden die Größen, die die Lieferung zum Verankerungszeitpunkt
 führt: Deckungskapital ($kVx_{MRV}$), Rückkaufswert, Bruttojahresbeitrag
-und — im beitragsfreien Zustand — die beitragsfreie Summe. Eine nicht
+und (im beitragsfreien Zustand) die beitragsfreie Summe. Eine nicht
 gelieferte Größe wird nicht geprüft; eine unbekannte Größe im Auftrag
 ist ein harter Fehler statt einer stillen Auslassung.
 
@@ -325,7 +325,7 @@ Mittelwert bei großen Einzelmaxima ist ein Befund, keine Entwarnung.
 
 **Lesehilfe für die Vorlage.** Cent-Größenordnung in den Perzentilen ist
 Rundungsrauschen der Lieferung. Ein Maximum, das deutlich darüber liegt,
-verlangt eine **benannte Ursache je Cluster** — „Rundung“ ist als
+verlangt eine **benannte Ursache je Cluster**; „Rundung“ ist als
 Erklärung nur für Cent-Beträge zulässig. Ein Cluster, dessen Verteilung
 sich von den anderen abhebt, zeigt auf seinen Historientyp: dort ist die
 Übergangsbehandlung zu prüfen, nicht der einzelne Vertrag.
@@ -352,7 +352,7 @@ Ein Testlauf hinterlässt drei Dinge:
    Urteil, die Verteilungsgrößen je Cluster, die Transportangaben und
    der Systemstand, unter dem gerechnet wurde.
 2. **Die Entscheidungsvorlage** (lesbarer Bericht): dasselbe in der
-   Form, in der der Verantwortliche Aktuar entscheidet — Verdikt,
+   Form, in der der Verantwortliche Aktuar entscheidet: Verdikt,
    Stichprobe, Verteilung je Cluster, Fehlschläge, Einzelvergleiche,
    Transportsicherung als eigener, ausdrücklich vom Urteil getrennter
    Abschnitt.
@@ -361,7 +361,7 @@ Ein Testlauf hinterlässt drei Dinge:
 
 Die Vorlage ist deterministisch: gleiche Eingaben ergeben denselben
 Bericht Byte für Byte. Ein **roter** Bericht wird geschrieben wie ein
-grüner — er ist das Beweisstück, nicht sein Gegenteil.
+grüner: er ist das Beweisstück, nicht sein Gegenteil.
 
 Das Werkzeug leitet das Verdikt aus dem Ergebnis **neu ab**, statt ihm
 zu glauben: Einzelurteile gegen die Toleranzen, Zähler, Mengenabgleich
@@ -385,13 +385,13 @@ festgehalten (ADR-008). Dabei gilt:
   verglichen, und das Ergebnis muss den Systemstand des Entscheids
   tragen. Ein nachträglich geänderter Prüfbeleg öffnet das Gate nicht.
 * Die Annahme **pinnt** Testergebnis und Bericht als Pflichtbelege.
-* Eine **Ablehnung ist jederzeit möglich** und ebenso ein Snapshot —
+* Eine **Ablehnung ist jederzeit möglich** und ebenso ein Snapshot,
   auch über einem roten Test. Ein Agent kann an diesem Gate
   ausschließlich ablehnen.
 * **Gate A-M4 verlangt die geltende A-M1-Annahme** auf demselben Eingangs-,
   A-Box- und Systemstand und pinnt sie als Pflichtbeleg; im Bestands-Scope
   ebenso die Annahmen von A-M2 und A-M3. Ändert sich der
-  Stand, ist die A-M1-Annahme nicht mehr geltend — der Test wird auf dem
+  Stand, ist die A-M1-Annahme nicht mehr geltend; der Test wird auf dem
   neuen Stand wiederholt und neu entschieden.
 * Die **Rückschleife ist zulässig**: Eine Ablehnung an A-M4 führt zurück
   in Analyse und ggf. erneuten Test; die Kette bildet das als neue
@@ -406,7 +406,11 @@ Mittelwert vollständig ab. Verlaufstest (A-M2) und Geschäftsvorfalltest
 Kapitel beschreibt A-M1. Eine A-M1-Annahme belegt die Stichtagstreue am
 Rechenpunkt. Nach Grundsatzdokumentation 9.15 gilt die Methode ohne
 Verlaufstests nicht als abgenommen; Stichtagstreue allein ist notwendig,
-nicht hinreichend.
+nicht hinreichend. Führt ein Fall eine Korrekturschicht, rechnet der Test
+mit ihr: $R_{hist}$ verankert am Anker $t_a$, $R_{conv}$ am
+Migrationsstichtag $t_0$, getrennt geführt (`qa.aktuarieller_test`,
+Felder `schicht` und `schicht_conv`). Ohne Schicht trägt der Wertvergleich
+am richtigen Zeitpunkt und ohne Summen.
 
 **Nicht** abgedeckt sind:
 * **Toleranzen auf der Verteilung als Urteilskriterium.** Die Verteilung
@@ -414,15 +418,9 @@ nicht hinreichend.
   Toleranzen je Einzelwert. Eine Schwelle auf Maximum oder hohem
   Perzentil je Cluster (Grundsatzdokumentation 9.15) ist eine Festlegung des Aktuariats und
   noch nicht getroffen.
-* **Das methodische Residuum $R_{hist}$.** Solange es keine
-  Korrekturschicht gibt (Grundsatzdokumentation Abschnitt 9), trägt der Test den vorhandenen
-  Wertvergleich — am richtigen Zeitpunkt und ohne Summen. Der Platz für
-  $R_{hist}$ ist im Werkzeug benannt und leer; er wird gefüllt, wenn die
-  Korrekturschicht steht, ohne dass sich Verfahren, Gate oder
-  Nachweiskette ändern.
 * **Floor-Prüfungen** (§ 169 VVG, Grundsatzdokumentation 9.10) als Teil des Tests.
 
-Diese drei Punkte sind der Arbeitsvorrat dieser Prüfebene. Sie stehen
+Diese zwei Punkte sind der Arbeitsvorrat dieser Prüfebene. Sie stehen
 hier, damit eine Abnahme weiß, was sie abnimmt.
 
 ⟨TODO aus dem Gerüst, noch offen: Clusterdefinition nach
@@ -433,7 +431,7 @@ Aktuar⟩
 
 ## 8 Fehler- und Klärungsprozess
 
-Abgrenzung bindend gemäß Grundsatzdokumentation 9.4: Die Korrekturschicht absorbiert Bewertungsdifferenzen bei unveränderten Ankern; jede Veränderung eines Ankers (Quellfehler) ist ein Kundenrechts- und Kommunikationsthema und läuft über diesen Prozess — niemals über die Schicht. ⟨TODO: Prozessdefinition, Rollen, Schwellen für Einzelfallklärung, Nachzahlungs-/Kommunikationsregeln, Schnittstelle zur Kappungs-Kohorte aus 5.5⟩
+Abgrenzung bindend gemäß Grundsatzdokumentation 9.4: Die Korrekturschicht absorbiert Bewertungsdifferenzen bei unveränderten Ankern; jede Veränderung eines Ankers (Quellfehler) ist ein Kundenrechts- und Kommunikationsthema und läuft über diesen Prozess, niemals über die Schicht. ⟨TODO: Prozessdefinition, Rollen, Schwellen für Einzelfallklärung, Nachzahlungs-/Kommunikationsregeln, Schnittstelle zur Kappungs-Kohorte aus 5.5⟩
 
 ## 9 Archiv und Auskunftssystem
 

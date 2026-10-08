@@ -10,7 +10,7 @@ die Pipeline finden.
 Kein Eingangskanal: kein Code liest dieses Verzeichnis implizit. In
 einen Migrationsfall gelangt eine Lieferung ausschließlich über die
 ausdrückliche Registrierung (`python -m rechner_pipeline.fall
-registrieren ...`) — dort beginnt die Provenienzkette.
+registrieren ...`); dort beginnt die Provenienzkette.
 
 ## baldrian/
 
@@ -20,7 +20,7 @@ der Tarifrechner, die Tarifmeldung und die Bestandsdaten-Lieferung
 (Abzug zum Migrations- und zum Folgestichtag plus
 Geschäftsvorfall-Protokoll des Zwischenjahres).
 
-Ein Drittel der Verträge trägt eine **Vorgeschichte** — Erhöhungen,
+Ein Drittel der Verträge trägt eine **Vorgeschichte**: Erhöhungen,
 Beitragsfreistellungen und Herabsetzungen vor dem Migrationsstichtag.
 Ihre Wirkung steckt im gelieferten Stand, ihre Beträge kommen nicht mit.
 Geliefert wird nur `baldrian_gevo_metadaten.csv`: Police, Art und Datum,
@@ -31,7 +31,7 @@ rechnet und keine fremde Historie liest.
 
 Die **aktuarielle Notiz zur Beitragsabsetzung** liegt bei, gehört aber
 nicht zur ursprünglichen Lieferung: Die Tarifmeldung beschreibt das
-Verfahren der Herabsetzung nicht, und das ist kein Versehen — der
+Verfahren der Herabsetzung nicht, und das ist kein Versehen: der
 Vorgang ist in den Bedingungen als Möglichkeit eröffnet, ohne zugesagtes
 Ergebnis. Die Notiz wird deshalb erst registriert, wenn die Lücke
 aufgefallen und nachgefragt worden ist. Wer sie von Anfang an in den
@@ -43,7 +43,7 @@ ursprünglichen Lieferung:
 
 * Die **aktuarielle Notiz zum Stornoabschlag** (2026/05) beantwortet die
   Frage, nach welcher Regel der Abschlag eines bereits herabgesetzten
-  Vertrages gebildet wird — mit der Auskunft, dass es diese Regel nicht
+  Vertrages gebildet wird, mit der Auskunft, dass es diese Regel nicht
   gibt: Die Absetzung war der Werthöhe nach nie zugesagt, die damalige
   Berechnung ist nicht mehr rekonstruierbar. Für die betroffenen
   Verträge ist der gelieferte Rückkaufswert damit kein herleitbarer
@@ -56,7 +56,7 @@ ursprünglichen Lieferung:
   Beitragszahlungsdauer am Migrationsstichtag bereits abgelaufen war.
   Bei allen übrigen Absetzungen ist dieser Anteil aus dem gelieferten
   Stand rückrechenbar; bei dieser einen fällt die Beitragsgleichung weg.
-  Geliefert wird also, was wirklich nicht ableitbar ist — nicht mehr.
+  Geliefert wird also, was wirklich nicht ableitbar ist, nicht mehr.
 
 Beide Nachlieferungen sind Dokumente, nicht Zusagen per Zuruf: Die
 menschlichen Gates binden registrierte Eingänge über ihre Prüfsummen,
@@ -69,7 +69,7 @@ im Verlauf (fünf und zehn Jahre nach der Übernahme sowie zum Ablauf),
 die Werte je Geschäftsvorfall, und der Beleg der vereinbarten
 Stichprobe. Baldrian rechnet nicht den ganzen Bestand nach, sondern die
 hundert Verträge einer nach Historientyp geschichteten Stichprobe plus
-alle zweiundvierzig Verträge mit Vorfall im Migrationsjahr — die
+alle zweiundvierzig Verträge mit Vorfall im Migrationsjahr; die
 Stichprobe ist deshalb Teil der Lieferung und nicht Sache des
 übernehmenden Unternehmens.
 
@@ -91,11 +91,12 @@ zweiten Migrationslauf (Abschlussbericht `docs/faelle/baldrian-lauf2.md`):
 Tarifrechner, Mitteilung und Bedingungen, Bestandsabzüge zu beiden
 Stichtagen, Vorgeschichts-Metadaten, Geschäftsvorfall-Protokoll, die vier
 Erwartungswert-Dateien und vier Auskunftsschreiben, die erst auf Rückfrage
-entstanden sind — was wozu gehört, sagt `LIEFERSCHEIN.md`. Wie der Lauf
-auf dem Systemstand wiederholt wird, auf dem er gezeichnet wurde —
-einschließlich des eigenen Bestands der übernehmenden Gesellschaft, der
-nicht aus der Lieferung stammt, sondern erzeugt wird:
-`docs/faelle/baldrian-lauf2-wiederholen.md`.
+entstanden sind; was wozu gehört, sagt `LIEFERSCHEIN.md`. Wie der Lauf
+auf dem Systemstand wiederholt wurde, auf dem er gezeichnet wurde, steht in
+`docs/faelle/baldrian-lauf2-wiederholen.md`. Aus dem Repository allein
+geht das nicht: Die Anleitung braucht ein Paket, das nicht im Repository
+liegt. Nachfahren lässt sich Fall 3 auf derselben Lieferung
+(`pakete/`).
 
 ### Fall 3 nutzt dieselbe Lieferung
 

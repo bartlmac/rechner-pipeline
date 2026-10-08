@@ -8,7 +8,7 @@ Umsetzung und ihr Stand stehen unter „Umsetzung“.
 Das Repository trägt vier Dinge, die bisher als eines beschrieben,
 geprüft und dokumentiert wurden: die Arbeit des Entwicklers mit seiner
 KI; das KI-Tool, das eine Bestandsmigration agentisch durchführt; die
-Vorzeige, an der sich dieses Tool zeigt und testen lässt — ein fiktives
+Vorzeige, an der sich dieses Tool zeigt und testen lässt: ein fiktives
 Unternehmen mit Rechenkern, Produkten, Bestand, Bestandsführung und
 Migrationsfall; und die Werkzeuge, mit denen die Vorzeige hergestellt
 wird. Ein Paket, eine Schichtenkarte, eine README, ein Rollenbegriff.
@@ -43,37 +43,37 @@ sind Vorzeige. Der Gate-Vertrag von P-B1 ist Tool, die Fachregeln des
 konkreten Bestands gehören zum Zielsystem.
 
 **Der Rechenkern ist das Referenz-Zielsystem.** Das Tool definiert die
-Schnittstelle, die es von einem Zielsystem braucht — Parametrierung
-entgegennehmen, Werte liefern, Verlauf liefern —, und diese Schnittstelle
+Schnittstelle, die es von einem Zielsystem braucht (Parametrierung
+entgegennehmen, Werte liefern, Verlauf liefern), und diese Schnittstelle
 ist Tool. Der Kern, der sie in der Vorzeige erfüllt, ist Vorzeige. Ein
 anderes Haus brächte sein eigenes Zielsystem mit.
 
-**Regie: Mechanik im Repo, Auflösungen lokal (Weg B).** Simulations-
-werkzeuge, Drehbuchformat, Auftragsprofile simulierter Menschen und
+**Regie: Mechanik im Repo, Auflösungen lokal (Weg B).** Simulationswerkzeuge,
+Drehbuchformat, Auftragsprofile simulierter Menschen und
 künftige Rückfragen-Generatoren sind versioniertes Ebene-4-Paket. Nur
-die konkreten Auflösungen eines Falls — Manipulationen, Antworten —
+die konkreten Auflösungen eines Falls (Manipulationen, Antworten)
 liegen als lokale, nicht eingecheckte Daten, nach demselben Muster wie
 `faelle/`: Code öffentlich, Daten lokal. Damit wird die Vorzeige
 reproduzierbar und die Regie testbar, ohne die Vorführung zu verraten.
 
 **Das Tool ist während eines Falls fix.** Änderungen am Tool während
-eines laufenden Falls sind ein Ereignis der Ebene 1 — und sie laufen
+eines laufenden Falls sind ein Ereignis der Ebene 1, und sie laufen
 über kein Laufzeit-Gate.
 
 *Korrigiert am 2026-09-16 (Entscheid des Maintainers).* Hier stand, sie
 liefen über das Gate A-K1, und das sei „der Inhalt, der ihm bisher
 fehlte“. Beides ist mit der Einführung von `A-O1.tbox-aenderung` und
 `A-K2.kernaenderung` überholt: Die T-Box ist ein Teil des Tools, nicht
-das ganze Tool — Gates und Ledger, Zeichnungsordnung, Skills und
+das ganze Tool: Gates und Ledger, Zeichnungsordnung, Skills und
 Agentenrollen gehören ebenfalls dazu, und für die gibt es kein Gate.
 
 Es soll auch keines geben. Ein Fall, der sein Werkzeug während des
 Laufs nachschärft, hat keinen festen Boden mehr, auf dem seine Belege
-stehen — genau dafür pinnen wir Systemstände. Der Fall hält an und
+stehen; genau dafür pinnen wir Systemstände. Der Fall hält an und
 wartet auf eine neue Tool-Version; die Version wechselt kontrolliert
 außerhalb, und der Fall läuft auf dem neuen Stand weiter. Das ist eine
 Entscheidung des Maintainers und in der Regel eine kollektive eines
-menschlichen Teams — also ausdrücklich keine Rolle des Laufzeitmodells
+menschlichen Teams, also ausdrücklich keine Rolle des Laufzeitmodells
 (ADR-018 hält den Maintainer aus dem Rollenmodell heraus).
 
 Die Vorzeige darf in den ersten Ausbaustufen davon abweichen.
@@ -86,12 +86,12 @@ Die Vorzeige darf in den ersten Ausbaustufen davon abweichen.
   das.
 - Die Schichtenkarte (`ontologie.code_karte`) erhält die Ebene als
   Attribut je Modul und erzwingt: Das Tool importiert nichts aus der
-  Vorzeige außer über die Zielsystem-Schnittstelle; die Vorzeige-
-  Werkzeuge importiert niemand außer der Vorzeige selbst. Ob daraus
+  Vorzeige außer über die Zielsystem-Schnittstelle; die Vorzeige-Werkzeuge
+  importiert niemand außer der Vorzeige selbst. Ob daraus
   eine Paketteilung folgt, wird nach der Messung entschieden, nicht
   vorher.
   Reichweite (präzisiert 2026-09-06 nach Befund T22-08): Erzwungen ist
-  das innerhalb des Pakets `src/rechner_pipeline` — die Grenze Ebene 2
+  das innerhalb des Pakets `src/rechner_pipeline`: die Grenze Ebene 2
   zu 3 als gemessene Schnittstelle, die Grenze Ebene 3 zu 4 als feste
   Liste der heute bestehenden Importe in die Simulationsmodule
   (Generator, Stochastik, Ereignis-Engine, Fortschreibungs-Kommando,
@@ -102,17 +102,17 @@ Die Vorzeige darf in den ersten Ausbaustufen davon abweichen.
   außerhalb des Pakets (`simulation/`, `quellsystem/`, die
   Berichtsgeneratoren unter `werkzeuge/`); dass die Berichtsgeneratoren
   das Produkt lesen und nie umgekehrt, gilt heute durch Messung von
-  Hand, nicht durch Prüfung — Backlog „werkzeuge/ in die
-  Schichtenkarte“. Der Satz „vier Ebenen erzwungen“ wäre zu groß;
+  Hand, nicht durch Prüfung (Backlog „werkzeuge/ in die
+  Schichtenkarte“). Der Satz „vier Ebenen erzwungen“ wäre zu groß;
   richtig ist: zwei Grenzen im Paket erzwungen, der Rest benannt.
   Nachtrag 2026-09-07 (Freischaltung des übernommenen Bestands,
   dev-docs/freischaltung-uebernommener-bestand.md, Schritt 3): Die
   Zielsystem-Schnittstelle wächst um zwei Kanten aus der Übernahme
   (`gates/bestand_uebernehmen`) in `bestand/migrationszugang` und
   `kern/beitragsreduktion`. Grund: Der Anfangszustand eines
-  übernommenen Vertrags entsteht an einem Ort — derselben Ableitung,
+  übernommenen Vertrags entsteht an einem Ort (derselben Ableitung,
   die Prüfstrecke und Verankerung längst über genau diese Kanten
-  rufen — und die Übernahme materialisiert ihn in den Tabellen der
+  rufen) und die Übernahme materialisiert ihn in den Tabellen der
   Führung. Zwei Rechenwege für denselben Zustand waren der Befund;
   eine zweite Ableitung im Tool wäre die Wiederholung davon. Keine
   neue Art von Kante, dieselbe Schnittstelle von einem weiteren Modul.
@@ -120,10 +120,22 @@ Die Vorzeige darf in den ersten Ausbaustufen davon abweichen.
   stellt den geführten Bestand gegen die Prüfstrecke und liest dazu
   die Config und die Tabellen der Führung (`bestand/config`,
   `bestand/parquet_io`, `bestand/auswertung` für die Grundlagen je
-  Police) und rechnet mit Kern, Verfahren und Schicht — sechs Kanten,
+  Police) und rechnet mit Kern, Verfahren und Schicht: sechs Kanten,
   jede davon bei `migrationssuite_lauf` oder `bestand_validate` schon
   vorhanden. Ein Tool-Modul, das die Führung prüft, muss die Führung
   lesen; erzeugen tut es nichts.
+  Nachtrag 2026-09-20 (Entscheid des Maintainers; Herleitung in
+  `dev-docs/annahmen-2026-09-20.md`, N1 und D1): zwei weitere Kanten.
+  `gates/bestand_uebernehmen` → `kern/korrekturschicht`: Die Übernahme
+  bucht die Umbuchung bei Beitragsfreistellung übernommener Verträge mit
+  demselben Zuschlag wie die Führung und fragt dafür dieselbe Funktion
+  (`zuschlag_bei_pex`) wie Prüfstrecke und Führungsprobe.
+  `gates/verankerung_belegen` → `bestand/manifest`: Die Verankerung
+  schreibt das Laufmanifest des Migrationszugangs, weil sie als erster
+  Schritt Korrekturschicht und Config kennt; dieselbe Schnittstelle hat
+  `bestand_validate` schon. Ein Umweg über `kern/__init__` oder eine
+  eigene Hülle hätte die Nutzung versteckt, statt sie in der Liste zu
+  messen.
 - README, ONBOARDING und die Unternehmensseite werden nach Ebenen
   geschnitten: Was ist das Tool, was ist die Vorzeige, was stellt sie
   her. Fachdokumente der Vorzeige nennen KI-Beteiligung und

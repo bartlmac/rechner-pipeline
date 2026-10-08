@@ -52,8 +52,8 @@ Kombinationen stehen im Tarifplan KLV, Abschnitt 7.2.
 Ein Vorgang mit Verfahrensschalter und stiller Umdeutung (die gebaute
 Regel A: eine Herabsetzung nach $t$ wird als Teilkündigung gerechnet und als
 `RED` gebucht). Verworfen, weil es zwei Vorgänge mit verschiedener Wirkung
-sind — der eine senkt den Beitrag ohne Zahlung, der andere zahlt einen Teil
-des Deckungskapitals aus —, und das Ledger sagen muss, was geschah; ein
+sind (der eine senkt den Beitrag ohne Zahlung, der andere zahlt einen Teil
+des Deckungskapitals aus), und das Ledger sagen muss, was geschah; ein
 Leser, der `RED` sieht, darf keine Auszahlung vermuten müssen.
 
 ## Folgen
@@ -68,7 +68,7 @@ Leser, der `RED` sieht, darf keine Auszahlung vermuten müssen.
 * Eigene Generationen ohne Teilkündigungsrate rechnen bitgleich wie vor
   dem Entscheid (Rate 0 als Vorgabe, Ziehung hinter der Jahresbedingung,
   eigener Strom). Eine Generation mit `red_verfahren = teilkuendigung`
-  bucht ihren Herabsetzungswunsch jetzt als `TKU` statt `RED` — gleiche
+  bucht ihren Herabsetzungswunsch jetzt als `TKU` statt `RED`: gleiche
   Beträge, anderer Code.
 * Im Migrationszugang war eine gelieferte Absetzung nach $t$ eine
   Teilkündigung (Annahme A2). Ein Vertrag, dessen Anfangszustand nicht
@@ -89,12 +89,12 @@ A3 und A4 und die Verweigerungen der ersten Fassung:
   Beitragsfreistellung; jeder Vorgang wirkt auf den Zustand, den der Vertrag
   gerade hat. Der Zustand ist die Folge seiner Vorgänge (Grundsatzdokumentation
   7.2), und es gibt **eine** Darstellung davon im Kern
-  (`kern/vorgangsfolge.py`), die jeder Leser rechnet — Ereignis-Engine,
+  (`kern/vorgangsfolge.py`), die jeder Leser rechnet: Ereignis-Engine,
   Bewertung und Abschluss, Ledger-Herleitung (P-B1), Bewegungskonto,
   Führungsprobe, Migrationssuite samt Führungswert, aktuarieller Test,
   Verankerung. Die Tabelle `reduktionen` trägt beliebig viele Zeilen je
   Vertrag (eindeutig je Police, Jahr und Vorgang).
-* Die Herabsetzung gilt nur, solange Beitrag gezahlt wird — nicht ab dem
+* Die Herabsetzung gilt nur, solange Beitrag gezahlt wird: nicht ab dem
   Beitragsende, nicht nach der Beitragsfreistellung (verweigert, Ausweg
   Teilkündigung). Die Teilkündigung gilt bis zum Ablauf, auch nach der
   Beitragsfreistellung; dort zahlt sie den Rückkaufswert des beitragsfreien

@@ -21,10 +21,10 @@ verschoben:
 
 * Der Zielkern ist eine eigenständige, versionierte Komponente in der
   Zustandsmodell-Welt (ADR-004). Die Excel-Parität ist kein laufender Referenzwert mehr.
-* Eine neue Tarifgeneration ist **Parametrierung** — der Präzedenzfall
+* Eine neue Tarifgeneration ist **Parametrierung**: der Präzedenzfall
   TG2012 -> TG2015 lief ohne eine einzige Formeländerung durch.
 * Ein neues Produkt kommt über die T-Box (Gate A-O1) und wird im
-  Zielsystem entwickelt — nicht durch die Übersetzung einer weiteren
+  Zielsystem entwickelt, nicht durch die Übersetzung einer weiteren
   Arbeitsmappe.
 
 Damit erzeugt niemand mehr einen Sechs-Datei-Kern. Eine Maschinerie, die
@@ -49,7 +49,7 @@ fällt:
   Schema `models/kern_output.py`.
 * **Der zweite Auswertungspfad** in `bestand/kernlauf.py`
   (`run_kernel_for_contract`: abgeschotteter Kindprozess je Vertrag) samt
-  `render_inputs_py` — es gibt keinen unreviewten Fremdkern mehr, also
+  `render_inputs_py`: es gibt keinen unreviewten Fremdkern mehr, also
   nichts abzuschotten.
 * **Der Skill** `build-vergleichsrechenkern` (beide CLI-Verzeichnisse)
   und `qa_contract.json`.
@@ -59,7 +59,7 @@ Portierung:
 
 * **Die Vorverdichtung**: `gates/extract`, `quellen/adapters/`,
   `quellen/extract/`, `models/bundle`, `models/manifest`. Stufe 1 der
-  Migrations-Pipeline liest ihre Quellen damit — ohne sie gibt es keine
+  Migrations-Pipeline liest ihre Quellen damit; ohne sie gibt es keine
   A-Box.
 * **Die Vergleichs-Engine** `qa/golden_master.py`: Gate P-K1 hält damit
   den parametrierten Kern gegen den Quell-Rechner.
@@ -67,14 +67,14 @@ Portierung:
   `load_gate_ledger` sind aus `orchestrate/dossier` dorthin gewandert;
   er führt jetzt die Gates, die es wirklich gibt (P-Q1, P-Q2, P-Q3, P-K1, P9,
   P-B1). Bei der Gelegenheit wurde eine Schein-Unterscheidung beseitigt:
-  `required` war schon immer für alle Gates wahr — das steht jetzt so
+  `required` war schon immer für alle Gates wahr; das steht jetzt so
   im Code statt als Ableitung aus einer Liste, die mit sich selbst
   identisch war.
 
 ## Das algebraische Gate wird gerettet, nicht gestrichen
 
 Gate G6 war kein Portierungs-Artefakt. Es prüft aktuarielle
-Identitäten, Schranken und Rekursionen mit Hypothesis — ausdrücklich
+Identitäten, Schranken und Rekursionen mit Hypothesis, ausdrücklich
 Excel-unabhängig, als Gegengewicht dazu, dass ein Wertevergleich auf
 vier Nachkommastellen relative Drift verstecken kann. Dieser Nutzen gilt
 für den Zielkern genauso.
@@ -89,7 +89,7 @@ die Kommutations-Identitäten (D/N/C/M) gegen den Zweitkern.
 Was entfällt, ist die Vertragsmechanik des Gates: `function_mappings`,
 dynamische Auflösung per `importlib`, ein Contract-JSON. Sie existierte,
 weil der zu prüfende Kern ein fremdes Artefakt unbekannter Modulstruktur
-war. Unser Kern ist unser Code — wir importieren ihn direkt. Nicht
+war. Unser Kern ist unser Code; wir importieren ihn direkt. Nicht
 übernommen sind die `l_x`-Identitäten: der Zielkern kennt keine
 Absterbeordnung, dort wäre die Rekursion eine Tautologie über eine
 Größe, die es nicht gibt.
@@ -98,7 +98,7 @@ Größe, die es nicht gibt.
 
 * Das Paket schrumpft um rund 8.000 Zeilen in 19 Modulen; die Suite von
   46 auf 35 Testmodule (720 -> 518 Tests). Es wurde keine geprüfte
-  Eigenschaft des Zielsystems aufgegeben — nur Prüfungen eines
+  Eigenschaft des Zielsystems aufgegeben, nur Prüfungen eines
   Artefakts, das nicht mehr entsteht.
 * `pip install` bringt kein Konsolen-Kommando `rechner-pipeline` mehr;
   alle Einstiege sind `python -m rechner_pipeline.<modul>`.
@@ -106,7 +106,7 @@ Größe, die es nicht gibt.
   mehr.
 * ADR-001 und ADR-002 beschreiben Strukturen, die es teilweise nicht
   mehr gibt (`orchestrate/`, `kern_output`, `assurance --fall`). Sie
-  werden nicht umgeschrieben — ein ADR ist Protokoll, kein Handbuch —,
+  werden nicht umgeschrieben (ein ADR ist Protokoll, kein Handbuch),
   sondern tragen einen Ablösungsvermerk auf dieses ADR.
 * Rückweg: Der letzte Stand der Portierung liegt vollständig und
   lauffähig als Git-Bundle im nicht veröffentlichten Archiv des
@@ -119,4 +119,4 @@ Die Maschinerie „erstmal liegen lassen, sie stört ja nicht“. Sie stört:
 Sie kostet Pflege bei jeder Änderung, ihre Doku widerspricht dem
 Zielbild, und sie erzeugt in jedem Gespräch den Eindruck eines zweiten,
 lebenden Anwendungsfalls. Wo Code konserviert gehört, gehört er in
-einen Branch — nicht in den Hauptzweig.
+einen Branch, nicht in den Hauptzweig.

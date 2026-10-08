@@ -38,7 +38,8 @@ Abnahme zeichnen sie nie (Nachtrag 2026-09-16). Eine fünfte Rolle,
 | `agent/aktuariat` | Aktuariats-Agent | das Unternehmen bildet nach der Migration fachlich alles richtig ab (Transformation, aktuarielle Tests, Controlling, Bestandsfortführung) |
 | `agent/architektur` | Architektur-Agent | die Migration arbeitet in der vorgegebenen IT-Architektur |
 | `agent/rechenkern` | Rechenkern-Agent | das Zielsystem bleibt stabil: Regressionstests, Dokumentation, Kern-Abnahmeprotokoll |
-| `agent/programmleitung` | Programmleitungs-Agent | die Migration wird effizient geliefert; orchestriert die drei anderen |
+| `agent/programmleitung` | Programmleitungs-Agent | die Migration wird effizient geliefert; orchestriert die vier anderen |
+| `agent/betrieb` | Betriebs-Agent (seit dem ersten Nachtrag) | der übernommene Bestand wird danach richtig geführt: Zugangsprobe, Anfangsbestand und Auslieferung vorbereiten |
 
 **Menschliche Rollen** sind Funktionen des Unternehmens. Sie prüfen die
 Vorlagen, stellen Rückfragen, sehen selbst nach und zeichnen mit ihrem
@@ -333,7 +334,8 @@ Vorführung aufzunehmen, ebenso die Erweiterung der T-Box als Abnahmepunkt.
      (`abgeleitet/kern/verweis.json` bzw. `abgeleitet/tbox/verweis.json`,
      Produzent `gates.stand_belegen verweisen`) trägt die vollständige,
      signierte Kopie dieses Snapshots. `A-M4` prüft Signatur, Rolle und
-     Klasse und hält dessen Feld `stand` mit `==` gegen den lebenden. Der
+     Klasse und verlangt, dass dessen Feld `stand` dem lebenden genau
+     gleicht. Der
      A-M4-Snapshot vermerkt „keine Änderung seit Abnahme <snapshot>
      (<Herkunft>)“: unverändert heißt belegt, nicht ungeprüft;
    * (c) *Basislinie,* nur T-Box: Solange die Versionslinie ein Element

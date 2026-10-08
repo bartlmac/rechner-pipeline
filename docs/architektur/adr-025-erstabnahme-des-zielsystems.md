@@ -10,8 +10,9 @@ Seit dem Nachtrag 2026-10-01 zu ADR-018 verlangt die Migrationsabnahme
 `A-M4`, dass der Stand abgenommen ist, auf dem ein Fall rechnet: der
 Kernstand (`A-K2`, gezeichnet von `mensch/rechenkern`) und der T-Box-Stand
 (`A-O1`, `mensch/architektur`). Gezeichnet wurde das bisher im ersten Fall,
-obwohl die Änderungen nicht aus dem Fall stammten: Der Kern war außerhalb
-jedes Falls von 3.6.0 auf 3.16.0 gewachsen, die T-Box auf 0.2.0. Einen Ort
+obwohl die Änderungen nicht aus dem Fall stammten: Der Kern war bis zu
+diesem ADR außerhalb jedes Falls von 3.6.0 auf 3.16.0 gewachsen, die T-Box
+auf 0.2.0. Einen Ort
 für eine Abnahme außerhalb eines Falls gab es nicht. Das Tarifwerk der PLV
 hatte keine eigene Abnahme, und der Anfangsbestand einer Ablage auch nicht.
 
@@ -42,7 +43,7 @@ Erstabnahme das ganze Vokabular), das Tarifwerk je Tarifplan und je
 Generation mit altem und neuem Wert, den Anfangsbestand mit Kennzahlen und,
 bei einem erneuten Aufsetzen, der Abweichung zum zuletzt abgenommenen. Jedes
 Gate prüft mit der Rollenregel (`models.zeichnung.zeichnende_rolle_fehler`).
-`tests/test_erstabnahme_linie.py` hält die Tabelle mit `==`.
+`tests/test_erstabnahme_linie.py` legt die Tabelle abschließend fest.
 
 ### 2. Erstabnahme außerhalb jedes Falls: der Linienbereich
 
@@ -57,8 +58,9 @@ durch `linie.json` gekennzeichnet; seine Snapshots tragen den Scope `linie`
 Zeichenbar sind dort genau die vier Gegenstände, `A-B3` nur dort.
 
 **Ort:** ein Verzeichnis `linie/`, das nicht zum Repository gehört (in
-`.gitignore`; die Vorgabe der Kommandos ist `linie/` im Wurzelverzeichnis,
-eine Welt legt es unter `<welt>/linie` an). Die Snapshots tragen Namen
+`.gitignore`; üblich ist `linie/` im Wurzelverzeichnis, eine Welt legt es
+unter `<welt>/linie` an). Jedes Kommando verlangt `--linie` ausdrücklich;
+eine Vorgabe gibt es nicht. Die Snapshots tragen Namen
 der Entscheider, Fingerabdrücke von Schlüsseln und Mandats-Hashes einer
 konkreten Installation; das gehört nicht in ein öffentliches Repository,
 dieselbe Regel wie für `faelle/`. Unter `faelle/` liegt es nicht, weil der
@@ -174,7 +176,7 @@ Spitze der Linie ist, und die Zeichnung pinnt das Glied
 liest, um auf ihr zu gründen, sucht das gepinnte Glied und hält Rolle, Klasse
 und Gate-Berechtigung gegen dessen Ordnung: Maßgeblich ist, wer damals
 zeichnen durfte. Eine spätere Erweiterung entwertet nichts; was ein späterer
-Entzug bewirkt, regelt der Nachtrag Prüfrunde H, Punkt 1. Ein Snapshot ohne
+Entzug bewirkt, regelt der zweite Nachtrag zu Prüfrunde H, Punkt 1. Ein Snapshot ohne
 auffindbares Glied wird benannt verweigert.
 
 **Der Schnitt:** Die Linie beginnt mit der Ordnung der Erstabnahme. Abnahmen
@@ -365,8 +367,9 @@ Ordnungs-Hash gar nicht.
    unter der Spitze. Dasselbe gilt für Fallauftrag und Fallabbruch
    (ADR-026); `fall_belegen auftrag --linie` ist Pflicht.
 2. **Gründen:** `models.zeichnung.zeichnende_rolle_fehler` hat keinen Zweig
-   ohne Linie; ihr Parameter `linie` hat keinen Default. Die gründenden
-   Leser hält `tests/test_linie_pflicht.py` mit `==`: im Gate die
+   ohne Linie; ihr Parameter `linie` hat keinen Default.
+   `tests/test_linie_pflicht.py` legt die gründenden Leser abschließend
+   fest: im Gate die
    Standabnahme (Wege a und b), der Fallauftrag und die Vorbedingungen von
    A-M4 und A-B2; im Betrieb der eine Leser (`uebernahme.zeichnende_rolle`).
 3. **Altbestand:** Snapshots ohne Linie (Schema bis 8) bleiben zur Anzeige
@@ -395,7 +398,7 @@ Prüfer bekommt `linie/ordnung/` und `linie/linie.json` als Prüfpaket;
 Nummern und Änderungslisten ohne Schlüssel nach, `models.ordnungslinie.lade_linie`
 zusätzlich die Signaturen, aber nur mit dem Schlüssel des Vorstands im Ring.
 
-## Nachtrag 2026-10-01: Prüfrunde G — die Linie wird mit dem Schlüssel des Vorstands gelesen, verwiesen wird nur auf die geltende Abnahme, gerechnet wird der Stand des Codes, der rechnet
+## Nachtrag 2026-10-01: Prüfrunde G — Linie, Verweis, lebender Stand
 
 **1. Die Glieder werden gegen den Vorstand geprüft.** Keine Annahme, kein
 Verweis, keine Registrierung und keine Bindung gründet auf einer Linie,
@@ -428,8 +431,9 @@ der Schicht `gates` geht durch `gates._provenienz.lebendes_repo`. Es
 verlangt, dass `<repo_root>/src/rechner_pipeline` inhaltsgleich mit dem
 ausgeführten Paket ist (derselbe Hash wie `quellcode_sha256`), sonst endet
 der Aufruf mit beiden Hashes und einem Ausweg. Verlangt wird der Inhalt,
-nicht der Ort; einen Schalter zum Abschalten gibt es nicht. Die Kommandos
-hält `tests/test_repo_root_lebendes_paket.py` mit `==`. **Grenze:**
+nicht der Ort; einen Schalter zum Abschalten gibt es nicht.
+`tests/test_repo_root_lebendes_paket.py` legt die Kommandos abschließend
+fest. **Grenze:**
 Configs, Tarifpläne, Referenzwerte und Grundsatzdokumentation liest der
 lebende Stand weiter aus `--repo-root`.
 
@@ -455,7 +459,8 @@ hatte.
    braucht keine Sicht.
 2. **Ein Register:** `gates.sichten.SICHTEN` nennt je Gate mit Sicht die
    Pflichtbelege, den Ort der Sicht, die Renderfunktion und den
-   Produzenten; `tests/test_sicht_beleg_ausfall.py` hält es mit `==`. Die
+   Produzenten; `tests/test_sicht_beleg_ausfall.py` legt es abschließend
+   fest. Die
    Ordnungsänderung `A-Z1` steht nicht darin; ihre Sicht zieht
    `stand_belegen ordnung` für ein schon liegendes Glied nach.
 3. **Schichten:** Die Renderfunktion des Anfangsbestands liegt beim Vertrag
@@ -483,7 +488,7 @@ hatte.
 Ein-/Ausgabefehler weiter mit Exit 50 und Traceback; sie legen keinen Beleg
 vor, den ein Mensch über eine Sicht zeichnet.
 
-## Nachtrag 2026-10-01: Prüfrunde H — der Anfangsbestand wird beim Binden nachgerechnet, eine liegengebliebene Vorbereitung ist nie still
+## Nachtrag 2026-10-01: Prüfrunde H — Binden des Anfangsbestands, Schreibreste, Vorbereitung
 
 1. **`binden` rechnet den ganzen Beleg nach.** Es liest den Beleg, den der
    A-B3-Snapshot pinnt, baut ihn auf den Bytes der Ablage mit denselben
@@ -507,7 +512,7 @@ zweites Mal. Zwei Schreiber des Betriebs räumen ihre Reste nach einem
 Prozessende noch nicht (`seite._schreibe`, `zugangsprobe._schreibe_beleg`);
 ein Test führt sie als offen.
 
-## Nachtrag 2026-10-01: Prüfrunde H — ein Glied, das ein Recht mindert, erklärt die früheren Zeichnungen; das Gate rechnet die Grundlage der T-Box-Sicht; der Bytecode gehört zum lebenden Stand; kein Zwilling bleibt liegen
+## Nachtrag 2026-10-01: Prüfrunde H, zweiter Nachtrag — Erklärung, T-Box-Sicht, Bytecode, Zwillinge
 
 **1. Die Erklärung im Glied.** Ein Glied, das ein Recht mindert, sagt
 gezeichnet, was mit den früheren Zeichnungen geschieht. Minderungen sind
@@ -569,13 +574,13 @@ Image ohne beschreibbares `__pycache__`.
 **4. Kein Hardlink-Zwilling bleibt liegen.** Wer einen Bereich betritt oder
 ein Ziel als schon vorhanden erkennt, räumt dort die Zwillinge
 (`gates._common.raeume_zwillinge`): beim Eintritt in `linie`, `ordnung/`,
-das Archiv und `entscheide/`. `tests/test_schreibreste_zwillinge.py` hält
-Schreib- und Räumstellen mit `==`.
+das Archiv und `entscheide/`. `tests/test_schreibreste_zwillinge.py` legt
+die Schreib- und Räumstellen abschließend fest.
 
 **Versionen:** `stand_belegen` 5.0.0, Glied Schema 2. P9 bleibt 5.0.0,
 Snapshot-Schema 10.
 
-## Nachtrag 2026-10-01: Prüfrunde I — „verfallen“ trifft die Linie der Rolle; die Folge vor der Wahl; die Uhr des Aufrufs; eine Sperre
+## Nachtrag 2026-10-01: Prüfrunde I — Erklärung je Linie, Vorschau, Uhr, Sperre
 
 **1. Die Erklärung trifft die Linie einer Rolle.** Die eine Bestimmung ist
 `models.ordnungslinie.treffer_der_erklaerungen`. Eine Abnahme wird vom

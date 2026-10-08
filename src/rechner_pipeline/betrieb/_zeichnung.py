@@ -15,7 +15,7 @@ das der Export allein (``seite._zeichnung_des_exports``), jetzt tun es
 Export, Tageslauf, Registrierung und Neuaufsetzen mit EINER Regel. Fuer
 den Schluessel gelten die Regeln des Freigabe-Schluesselrings
 (``models.freigabe.lade_schluesselring``): 32 bis 4096 Byte, Modus 0600,
-genau ein Hardlink, nicht in der Ablage. Was der schreibende Prozess
+keine weiteren Hardlinks, nicht in der Ablage. Was der schreibende Prozess
 selbst umschreiben kann, belegt nichts.
 
 Knoten: klv, bu
@@ -107,7 +107,7 @@ def lade_zeichner(
         raise ZeichnungFehler(
             "Schluessel: " + "; ".join(fehler[:3] or ["nicht geladen"])
             + " — Ausweg: den Schluessel ausserhalb der Ablage verwahren (0600, "
-            "ein Hardlink, 32 bis 4096 Byte)")
+            "keine weiteren Hardlinks, 32 bis 4096 Byte)")
     ordnung, sha, fehler = lade_zeichnungsordnung(str(zeichnungsordnung), Path(ausserhalb))
     if fehler or ordnung is None or sha is None:
         raise ZeichnungFehler("Zeichnungsordnung: " + "; ".join(fehler[:3]))

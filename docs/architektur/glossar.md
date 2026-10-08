@@ -36,6 +36,13 @@ nur ablehnen. Zeichnen dürfen sie nur Urheberschaft, etwa den Ankersatz
 eines Stands-Pakets. Die Rollen beschreibt
 [skill-architektur.md](skill-architektur.md).
 
+### Anker
+
+Ein Satz, den der Export eines [Stands-Pakets](#stands-paket) außerhalb
+des Pakets ablegt (`--anker`, Datei `anker.jsonl`). Er bindet das Paket an
+einen Ort, den der Tagesbetrieb nicht anfasst: Ein Paket, das nur sich
+selbst belegt, könnte seine Herkunft behaupten.
+
 ### Auslieferung
 
 Geht ein Stand der [Ablage](#ablage) nach außen, zum Beispiel für die
@@ -46,6 +53,15 @@ Vorzeigeseite, zeichnet der Betrieb die Auslieferung (`A-B1`).
 Ein Widerspruch zwischen zwei Quellen. Er wird mit beiden Lesarten und
 ihren Belegen festgehalten und nie still aufgelöst. Ein Mensch entscheidet
 ihn am Gate `A-Q1`.
+
+### Ebene
+
+Die Gliederung aus ADR-017: die Entwicklung (Entwickler und KI), das
+Migrationssystem, die [Vorzeige](#vorzeige) und die Werkzeuge, mit denen
+die Vorzeige hergestellt wird. In ADR-017 und ADR-018 heißt das
+Migrationssystem „KI-Tool“. Seit ADR-027 ist das Repository nach fünf
+Gegenständen gegliedert; die Ebenen der Module misst weiter die
+Schichtenkarte (`ontologie.code_karte`).
 
 ### Erstabnahme
 
@@ -119,9 +135,10 @@ Ein Verzeichnis außerhalb jedes Falls und außerhalb des Repositorys (in
 einer Welt `<welt>/linie`). Es trägt die Fassungen der
 [Zeichnungsordnung](#zeichnungsordnung) in ihrer Reihenfolge und die
 [Erstabnahmen](#erstabnahme). Jede Fassung heißt **Glied**; das jüngste
-Glied ist die **Spitze**. Jedes Glied zeichnet der Vorstand, die
-**Wurzelrolle**. Jeder Entscheid nennt die Linie und das Glied, unter dem
-er gezeichnet wurde.
+Glied ist die **Spitze**. Das erste Glied legt ein Mensch außerhalb jedes
+Gates an; es ist unsigniert und die Vertrauenswurzel der Linie. Jedes
+weitere Glied zeichnet der Vorstand, die **Wurzelrolle**. Jeder Entscheid
+nennt die Linie und das Glied, unter dem er gezeichnet wurde.
 
 ### Mandat
 
@@ -162,7 +179,7 @@ Zeichnungen enthält es nicht; wer nachfährt, zeichnet selbst.
 
 Die erfundenen Unternehmen der Vorführung. Die Pfefferminzia
 Lebensversicherung (PLV) ist das Zielsystem und übernimmt. Die Baldrian
-Leben gibt ihren Bestand ab.
+Lebensversicherung a. G., kurz Baldrian Leben, gibt ihren Bestand ab.
 
 ### Provenienz
 
@@ -180,16 +197,18 @@ zusätzlich eine laufende Nummer (Befund T22-02); die Runden G bis J
 gehören zur Durchsicht T27. Unter diesen Kennungen verweisen ADRs, Code
 und Tests auf die Regeln, die eine Runde hinzugefügt hat.
 
+### Regie
+
+Die Spielleitung einer [Vorführung](#vorführung): Drehbücher und die
+Auflösungen der noch nicht gefahrenen Fälle. Sie liegt nicht im
+Repository; die Auflösung eines gefahrenen Falls steht in seinem
+[Paket](#paket).
+
 ### Registrieren
 
 Der einzige Weg einer Datei in einen Fall.
 `python -m rechner_pipeline.fall registrieren` kopiert sie nach `eingang/`,
 hält ihre Prüfsumme fest und setzt sie schreibgeschützt.
-
-### Regie
-
-Die Spielleitung einer [Vorführung](#vorführung): Drehbücher und die
-Auflösungen der Fälle. Sie liegt nicht im Repository.
 
 ### Ring
 
@@ -216,6 +235,14 @@ abgenommenen [A-Box](#a-box) abgeleitet.
 
 Ein Code-Stand, benannt durch seinen Commit. Belege halten fest, auf welchem
 Stand sie entstanden sind.
+
+### Stands-Paket
+
+Der Export der geführten [Ablage](#ablage) für die Webseite
+(`python -m rechner_pipeline.betrieb.seite --paket`): die Tagesseite
+„Bestand heute“, die Berichte der Abschlüsse und `stand.json` mit der
+Prüfsumme jeder Datei. Ein Paket, dessen Stand nicht durch P-B1 ging,
+weisen die Werkzeuge der Seite ab.
 
 ### T-Box
 
@@ -250,6 +277,13 @@ Der erste, deterministische Schritt je Quelle: Excel-Mappen über das Gate
 `quellen.tarifplan_staging`, CSV-Bestandsabzüge über
 `quellen.bestand_profil`. Die Inhalte werden in lesbare Teile zerlegt,
 bevor ein Agent sie liest.
+
+### Vorzeige
+
+In ADR-017 und älteren Dokumenten das fiktive Unternehmen PLV mit
+Rechenkern, Produkten, Bestand und Bestandsführung, an dem sich das
+Migrationssystem zeigt (siehe [Ebene](#ebene)). Die Vorzeigeseite ist
+seine Webseite.
 
 ### Welt
 

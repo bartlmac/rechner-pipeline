@@ -15,7 +15,7 @@ beschrieben ist): Migration sei im Wesentlichen Parametrierung des
 vorhandenen Kerns. Das gilt nur für den konstruierten Sonderfall. Der
 reale Fall ist das Gegenteil: Ein übernommener Bestand bringt
 Tarifgenerationen mit Leistungsmerkmalen, die das Zielsystem nicht
-kennt — Migration ist im Normalfall eine intensive Code-Erweiterung
+kennt: Migration ist im Normalfall eine intensive Code-Erweiterung
 des Kerns, die sich über Monate zieht, während parallel die nächste
 Übernahme anläuft.
 
@@ -34,20 +34,20 @@ Randbedingungen:
 
 ## Entscheidung
 
-**Regel 1 — Ein Kern, ein Hauptzweig.** Es gibt weder Kern-Forks noch
+**Regel 1: Ein Kern, ein Hauptzweig.** Es gibt weder Kern-Forks noch
 langlebige Branches je Migration. Branches bleiben das Arbeitsvehikel,
 aber je Inkrement (Lebensdauer Tage, nicht Monate).
 
-**Regel 2 — Die Trennung leistet die Ontologie, nicht Git.** Eine
+**Regel 2: Die Trennung leistet die Ontologie, nicht Git.** Eine
 Migration erweitert den Kern um ihre Knoten (neue Generationen, im
 A-O1-Fall neue Familien). Neuer knotengebundener Code ist für alle
 anderen Fälle inert: Er wird erst wirksam, wenn die Spez eines Falls
 ihn parametriert. Die Frage „zu welcher unfertigen Migration gehört
 dieser Baustein?“ beantwortet der Knoten, nicht die Branch-Historie.
 
-**Regel 3 — Inkremente landen klein und früh auf dem Hauptzweig, und jede
+**Regel 3: Inkremente landen klein und früh auf dem Hauptzweig, und jede
 Landung beweist die Nicht-Berührung der anderen Fälle.** Ein
-Inkrement darf nur landen, wenn die Gesamt-Suite grün ist —
+Inkrement darf nur landen, wenn die Gesamt-Suite grün ist,
 einschließlich der Referenzwert- und P-K1-Läufe aller anderen offenen und
 abgeschlossenen Fälle. Dass Migration A Migration B nicht verändert
 hat, wird bei jeder Landung maschinell bewiesen, nicht per Disziplin
@@ -55,7 +55,7 @@ gehofft. Der fachliche Zustand einer laufenden Migration (A-Box,
 Entscheide, Spez, Abgleiche) lebt derweil vollständig im
 Fall-Arbeitsbereich `faelle/<name>/` (ADR-002).
 
-**Regel 4 — Knoten-Lebenszyklus.** Ein Generation-Knoten trägt einen
+**Regel 4: Knoten-Lebenszyklus.** Ein Generation-Knoten trägt einen
 Status: `in_migration` (mit Verweis auf den offenen Fall; Werte dürfen
 sich noch ändern) oder `abgenommen` (durch Referenzwerte gesichert, Werte
 eingefroren). Damit ist jederzeit ablesbar, welche Teile des Kerns zu
@@ -69,7 +69,7 @@ kein Git-Merge-Zufall:
   Bestand) brauchen die grünen Gates aller Fälle.
 
 **Konvention Archiv:** Abgeschlossene oder als Vorlauf beendete Fälle
-wandern nach `faelle/archiv/<name>/` — vollständig erhalten
+wandern nach `faelle/archiv/<name>/`, vollständig erhalten
 (insbesondere `eingang/` und die nicht regenerierbaren `entscheide/`),
 aber außerhalb der aktiven Scans (Impact-Fallsuche, P-K1-Zuordnung
 arbeiten auf `faelle/<name>/`, eine Ebene tief).
@@ -79,7 +79,7 @@ arbeiten auf `faelle/<name>/`, eine Ebene tief).
 * Der Tafel-Import bleibt die einzige zulässige dauerhafte
   Kern-Berührung vor der Abnahme (P-K1 muss rechnen können); er ist
   additiv, provenienzpflichtig, und gleicher Name mit anderen Werten
-  ist ein harter Fail-fast — das serialisiert konkurrierende Fälle
+  ist ein harter Fail-fast; das serialisiert konkurrierende Fälle
   automatisch.
 * Der Knoten-Status (Regel 4) ist bis heute nicht gebaut: Die T-Box
   kennt keinen Status `in_migration` oder `abgenommen` (Stand

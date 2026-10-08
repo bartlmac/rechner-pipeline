@@ -12,21 +12,21 @@ nur Familien-Granularität, Tests waren an keine Knoten gebunden, die
 Schichtenkarte war Prosa im Skill, und die Frage „welcher Teil der
 Suite muss nach dieser Änderung laufen?“ hatte keine berechnete
 Antwort. Bei ~10k LOC ist das egal (volle Suite: ~80 s); der Anspruch
-des Systems ist aber, dass der Skalenschmerz beherrschbar ist — das
+des Systems ist aber, dass der Skalenschmerz beherrschbar ist; das
 muss vorführbar sein, bevor er eintritt.
 
 ## Entscheidung
 
 1. **Knoten-IDs sind hierarchisch**: `familie[/generation[/zelle]]`
    (dieselbe Konvention wie `ontologie.ids.knoten_id`, die A-Box und
-   Gates schon nutzen — `klv/tg2015` ist im Index dieselbe ID wie im
+   Gates schon nutzen: `klv/tg2015` ist im Index dieselbe ID wie im
    Gate P-K1). Die Wurzel ist validiert: T-Box-Familie, registriertes
    Kern-Produkt (Produkte ohne Migrationsfall, wie BU) oder die
    System-Wurzel `system` (Werkzeug-Stränge: `system/assurance`,
    `system/skills`, `system/architektur`, ...). Tiefere Ebenen sind
    Instanzen und bewusst offen.
 2. **Code bindet an die gröbste Ebene, die er fachlich trägt.** Eine
-   neue Generation ist Parametrierung — kein Code; deshalb bleibt
+   neue Generation ist Parametrierung, kein Code; deshalb bleibt
    Produktcode familien-gebunden (`klv`, `bu`, Rückgrat `klv, bu`),
    und Generations-Bindung tragen die Artefakte, die wirklich
    generationsspezifisch sind: Tests (`test_tafel_import.py` ->
@@ -34,7 +34,7 @@ muss vorführbar sein, bevor er eintritt.
    Falldaten (A-Box), künftig Tafel-Einträge.
 3. **Jedes Testmodul erklärt seine Knoten-Bindung** (dieselbe
    `Knoten:`-Docstring-Zeile). Eine ungebundene Testdatei ist Drift
-   (maschinell gesichert) — ohne Bindung kann die Impact-Berechnung den Test
+   (maschinell gesichert): ohne Bindung kann die Impact-Berechnung den Test
    nur noch konservativ einplanen.
 4. **Die Schichtenkarte ist nachrechenbar** (`code_karte`): statischer
    Import-/Aufruf-Graph (ast, deterministisch, keine Ausführung) mit
@@ -42,22 +42,22 @@ muss vorführbar sein, bevor er eintritt.
    (`kommutationskern` konsumiert nur `qa`; entfallen mit ADR-013,
    Nachtrag 2026-10-04) und dem SDK-Verbot (über Namensfamilien, nicht
    exakte Namen). Eine neue Kante zwischen
-   Schichten — und ebenso eine neue Schicht, auch eine ganz ohne
-   Kanten — ist damit eine bewusste Architektur-Entscheidung, kein
+   Schichten (und ebenso eine neue Schicht, auch eine ganz ohne
+   Kanten) ist damit eine bewusste Architektur-Entscheidung, kein
    Nebeneffekt. Dynamische Importe (`__import__`,
    `importlib.import_module`) sind mitgeprüft: mit String-Literal wie
-   ein normaler Import, mit berechnetem Namen als eigener Befund —
+   ein normaler Import, mit berechnetem Namen als eigener Befund;
    sonst wäre die Kante ein Loch in allen Regeln.
 5. **Impact ist berechnet, nie geraten** (`impact`): ein Test läuft,
    wenn eine von zwei Kopplungen greift.
-   * **Fachliche Kopplung** — Lineage-Verwandtschaft der Knoten
+   * **Fachliche Kopplung**: Lineage-Verwandtschaft der Knoten
      (gleiche Linie ja: `klv` ~ `klv/tg2015`; Geschwister nein:
      `klv/tg2012` !~ `klv/tg2015`; fremde Familie nie).
-   * **Code-Kopplung** — der Test importiert das geänderte Modul
+   * **Code-Kopplung**: der Test importiert das geänderte Modul
      direkt, unabhängig von seiner Knoten-Linie. Ohne diese zweite
      Quelle entstehen echte Falsch-Negative (belegt: `fall.py` trägt
      `system/fall`, wird aber von klv-gebundenen Ontologie-Tests
-     benutzt — die reine Lineage-Selektion ließ sie liegen).
+     benutzt; die reine Lineage-Selektion ließ sie liegen).
    Bewusst nicht transitiv: die Schließung über `__init__`-
    Re-Exports zieht jede Änderung auf „alles“ (gemessen: `bu.py`
    5 -> 21 Tests) und ist Lade-Zeit-Kopplung, keine fachliche; dafür
@@ -67,11 +67,11 @@ muss vorführbar sein, bevor er eintritt.
    **Fail-safe**: lässt sich eine Änderung keinem Knoten zuordnen
    (globale Dateien, unannotierte Insel-Module, Artefakte unter
    `src/`/`tests/` ohne Bindung, nicht repo-relativ auflösbare
-   Pfade), ist der Impact die volle Suite — mit ausgewiesenem Grund.
+   Pfade), ist der Impact die volle Suite, mit ausgewiesenem Grund.
    Präzision ist verdient, nie vermutet. Zusätzlich nennt der Impact
    die Fälle, deren Generationen betroffen sind (Gate P-K1 erneut
    fahren).
-6. **Die Garantie heißt Entdeckung, nicht Vollständigkeit** — und
+6. **Die Garantie heißt Entdeckung, nicht Vollständigkeit**, und
    sie ist erzwungen: jedes geänderte Modul muss von mindestens einem
    selektierten Test geladen werden, sonst fällt die Auswahl
    konservativ auf die volle Suite. Damit kann kein Import-Bruch
@@ -81,18 +81,18 @@ muss vorführbar sein, bevor er eintritt.
    ein geändertes Modul laden, ohne fachlich betroffen zu sein,
    stehen als `weitere_lader` im Ergebnis (bei `bu.py` waren es bei
    Annahme 16 zu 5 selektierten). Ein reiner Verhaltens-Bruch über eine solche Kante
-   fällt erst in der vollen Suite auf — ausgewiesen, nicht versteckt.
+   fällt erst in der vollen Suite auf, ausgewiesen, nicht versteckt.
 
 ## Konsequenzen
 
 - „Wo lebt X, wer testet X, was muss nach dieser Änderung laufen?“
   sind Lookups über dieselben Knoten-IDs, die A-Box, Spez und Gates
-  verwenden — die Ontologie ist der Index der Codebasis; ein
+  verwenden: die Ontologie ist der Index der Codebasis; ein
   Graph-Store bleibt eine ableitbare Projektion.
 - Selektive Ausführung ist ein Informationswerkzeug (Exit 0), kein
   Gate: CI und Vor-Commit-Disziplin fahren weiter die volle Suite.
   Die Umstellung auf selektive Gates ist ein eigener, späterer
-  Beschluss — sie braucht Vertrauen in die Bindungsqualität, das
+  Beschluss; sie braucht Vertrauen in die Bindungsqualität, das
   erst durch Beobachtung entsteht.
 - Beleg am Stand der Annahme (2026-08-16): Eine Änderung an
   `kern/produkte/bu.py` selektierte 5 von 46 Testmodulen (keine reine
@@ -122,7 +122,7 @@ muss vorführbar sein, bevor er eintritt.
   Import-Brüche fangen die erzwungene Ladedeckung und die
   `weitere_lader`-Ausweisung ab; ein reiner Verhaltens-Bruch über
   eine solche Kante fällt erst in der vollen Suite auf. Die
-  Alternative — Selektion über die volle Import-Schließung — wurde
+  Alternative (Selektion über die volle Import-Schließung) wurde
   gemessen und verworfen (siehe unten).
 
 ## Warum Eigenbau und nicht ein fertiges Werkzeug
@@ -136,13 +136,13 @@ Cytoscape.js, vis-network/pyvis, Mermaid, viz.js.
 - **Parsing**: Pythons ``ast`` bleibt. Es ist der Parser, den CPython
   selbst benutzt, also für unseren Ein-Sprachen-Fall genauer als
   tree-sitter und ohne kompilierte Grammatik. tree-sitter wäre für
-  Altsystem-Quellen (VBA, COBOL) interessant — dort hält der Kern
+  Altsystem-Quellen (VBA, COBOL) interessant: dort hält der Kern
   unsere Randbedingungen, die verfügbaren Grammatiken aber nicht;
   erneut prüfen, wenn Stage 1 solche Quellen wirklich liest.
 - **Schichtregeln**: ``import-linter`` (2.13, über ``grimp``) ist die
   echte Überschneidung mit ``code_karte``. Zwei Punkte sprachen gegen
   einen Wechsel jetzt, keiner davon gegen das Werkzeug an sich:
-  (1) Sein ``forbidden``-Vertrag wertet transitive Erreichbarkeit —
+  (1) Sein ``forbidden``-Vertrag wertet transitive Erreichbarkeit:
   ``cli`` „importiert“ darin ``models``, weil ``gates`` es tut. Unsere
   Allowlist meint direkte Nachbarschaft (``cli`` darf ``gates``
   benutzen, und was ``gates`` intern braucht, ist dessen Sache). Beide
@@ -158,7 +158,7 @@ Cytoscape.js, vis-network/pyvis, Mermaid, viz.js.
   Umbau vor dem Push): ``ruff`` TID251 für verbotene Importe,
   ``deptry`` für unbenutzte/undeklarierte Abhängigkeiten.
 - **Test-Selektion**: coverage-basierte Werkzeuge (``pytest-testmon``)
-  beantworten eine andere Frage als wir — welche Tests den Code
+  beantworten eine andere Frage als wir: welche Tests den Code
   ausführen, nicht welchen Fachknoten eine Änderung betrifft. Sie
   können weder eine Generation (``klv/tg2015``) noch ein
   Migrationsfall-Gate (P-K1) benennen. Als Ergänzung gegen die
@@ -166,10 +166,10 @@ Cytoscape.js, vis-network/pyvis, Mermaid, viz.js.
 - **Visualisierung**: das Zeichnen macht fremdes Werkzeug. Der
   Generator gibt den Graphen als **Mermaid** (GitHub zeichnet es direkt
   in Markdown), **DOT** (Graphviz) und **GraphML** (Gephi, yEd,
-  Graph-Store-Import) aus — wir schreiben keine Layout-Logik.
+  Graph-Store-Import) aus; wir schreiben keine Layout-Logik.
   Entscheidend für das Zielbild ist nicht das Format, sondern der
   Ausschnitt: bei ~1 Mio. Zeilen gibt es kein Bild „der Codebasis“.
-  Drei Ausschnitte wachsen mit der Struktur statt mit der Codemenge —
+  Drei Ausschnitte wachsen mit der Struktur statt mit der Codemenge:
   Schichten-Überblick, fachliche Knotensicht, und der Blick in einen
   Knoten. Über 60 Kästen verweigert der Generator das Bild und nennt
   den engeren Weg (fail-fast statt Knäuel). In der Knotensicht
@@ -187,7 +187,7 @@ Der unvermeidbare Eigenanteil ist die Ontologie-Bindung: kein
 Fremdwerkzeug kennt ``klv/tg2015`` als Fachknoten oder kann sagen,
 welcher Migrationsfall und welches Gate P-K1 nach einer Änderung neu zu
 fahren ist. Genau diese Kopplung von Codebasis und A-Box ist die
-Architekturhypothese — sie ist domänenspezifisch und bleibt es.
+Architekturhypothese; sie ist domänenspezifisch und bleibt es.
 
 ## Verworfene Alternativen
 
@@ -195,7 +195,7 @@ Architekturhypothese — sie ist domänenspezifisch und bleibt es.
   Wahrheit neben der Ontologie; veraltet ohne Drift-Begriff.
 - **Impact über die volle Import-Schließung statt der Knoten der
   Änderung**: konservativer, aber via Registry-/Re-Export-Kanten
-  (`produkte/__init__`) kollabiert jede Änderung auf „alles“ — die
+  (`produkte/__init__`) kollabiert jede Änderung auf „alles“; die
   Selektion würde nie selektiv. Gemessen am heutigen Repo: `bu.py`
   5 -> 27 Testmodule (volle Rückwärts-Schließung), 5 -> 21
   (transitive Test-Ladekette), 5 -> 5 mit direkten Import-Kanten. Die
@@ -204,5 +204,5 @@ Architekturhypothese — sie ist domänenspezifisch und bleibt es.
 - **Annotationen so weit fassen, dass sie alle Importeure überdecken**
   (`model_point.py` wäre dann `klv, bu`): verschiebt denselben
   Präzisionsverlust in die Annotationen und macht die Knoten-Aussage
-  unwahr — ein Knoten benennt, was fachlich dort lebt, nicht wer
+  unwahr: ein Knoten benennt, was fachlich dort lebt, nicht wer
   zufällig importiert.

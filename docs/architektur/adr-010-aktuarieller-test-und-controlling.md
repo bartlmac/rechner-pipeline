@@ -6,7 +6,7 @@ E4 des Migrationskonzepts), umgesetzt am selben Tag:
 erzwungener Reihenfolge vor `A-M4`, Belegrollen je Gate.
 
 Normative Referenz: **Grundsatzdokumentation**
-(`docs/mathematik/grundsatzdokumentation.md`), Abschnitt 9.15 — die
+(`docs/mathematik/grundsatzdokumentation.md`), Abschnitt 9.15: die
 Trennung der beiden Prüfebenen und die Toleranzform. Dieses ADR
 instanziiert sie in unserer Gate-Architektur; es definiert nichts
 fachlich neu.
@@ -66,7 +66,7 @@ Die Reihenfolge wird über den Snapshot-Mechanismus abgebildet: Der
 A-M4-Snapshot pinnt die geltende, signierte A-M1-Annahme desselben Stands
 als Pflichtrolle ``am1_snapshot`` (das ``vorgaenger``-Feld der Kette
 bleibt gate-intern, ADR-008). Damit gilt
-der bestehende Kettenvertrag aus ADR-008 unverändert weiter — Schema,
+der bestehende Kettenvertrag aus ADR-008 unverändert weiter: Schema,
 kanonischer Hash, Freigabesignatur, Zyklenfreiheit, genau eine Spitze.
 
 ### 3. Rückschleife ist zulässig, Reihenfolge bleibt
@@ -102,16 +102,16 @@ mit ausgewiesener Grundgesamtheit.
 Es gibt zwei Profile. Beide sind aus einem konkreten Bedarf entstanden,
 keines auf Vorrat:
 
-**`vollbestand`** — die Stichprobe ist der ganze Bestand. Für einen
+**`vollbestand`**: die Stichprobe ist der ganze Bestand. Für einen
 Bestand in der Größenordnung des Showcase-Falls ist das die fachlich
 richtige Wahl und zugleich der Randfall der Parametrisierung.
 
-**`geschichtet`** (ergänzt 2026-08-28) — je Historientyp-Cluster aus
+**`geschichtet`** (ergänzt 2026-08-28): je Historientyp-Cluster aus
 Lieferobjekt 2 eine feste Anzahl, Ziehreihenfolge über einen Hash mit
 dokumentiertem Startwert, Abdeckung je Cluster im Beleg. Der Anlass ist
 der zweite Baldrian-Fall: Unter 500 Verträgen tragen 35 eine
 Herabsetzung. Eine ungeschichtete Ziehung kann diesen Cluster
-vollständig verfehlen — der Test bestünde dann, ohne den Vorgang je
+vollständig verfehlen: der Test bestünde dann, ohne den Vorgang je
 gerechnet zu haben, und das ist kein bestandener Test, sondern ein
 ungeprüftes Verfahren. Ist ein Cluster kleiner als die Sollzahl, wird er
 vollständig gezogen und die Untererfüllung ausgewiesen, statt sie zu
@@ -122,7 +122,7 @@ Weitere Profile bleiben offen. Die Erweiterungsstelle ist benannt
 
 ### 6. „Vollständig geprüft“ bedeutet auf den beiden Ebenen Verschiedenes
 
-Im Controlling heißt es: jeder Vertrag des Bestands wurde geprüft — ein
+Im Controlling heißt es: jeder Vertrag des Bestands wurde geprüft; ein
 ungeprüfter Vertrag ist eine Prüflücke. Im aktuariellen Test heißt es:
 die **Stichprobe** wurde vollständig abgearbeitet. Die Nichtprüfung der
 Nicht-Stichprobe ist dort kein Befund, sondern die Definition.
@@ -134,7 +134,7 @@ Test als unvollständig.
 
 * `P9_GATES` wächst um `A-M1`; das P9-Schema hebt seine Version an. Die
   scope-getriebene Pflichtbelegmenge aus ADR-009 wird **je Gate**
-  aufgelöst statt nur je Scope — A-M1 und A-M4 verlangen verschiedene
+  aufgelöst statt nur je Scope: A-M1 und A-M4 verlangen verschiedene
   Belege.
 * ADR-009 erhält einen Nachtrag: Die dortige Belegmenge beschreibt ab
   hier A-M4; A-M1 hat eine eigene.
@@ -155,8 +155,8 @@ Test als unvollständig.
 
 * Die **Korrekturschicht** und der Migrationszugang (Grundsatzdokumentation Abschnitt 9). Dieses
   ADR trennt die Prüfebenen; es baut die Methode nicht. Der aktuarielle
-  Test kann seine eigentliche Kennzahl — die Verteilung von
-  $R_{\mathrm{hist}}$ — erst rechnen, wenn es ein $R$ gibt. Bis dahin
+  Test kann seine eigentliche Kennzahl (die Verteilung von
+  $R_{\mathrm{hist}}$) erst rechnen, wenn es ein $R$ gibt. Bis dahin
   trägt er den vorhandenen Wertvergleich, nur am richtigen Zeitpunkt und
   ohne Summation.
 * Die **Überschussprojektion** im Controlling (Folgejahr). Als künftige

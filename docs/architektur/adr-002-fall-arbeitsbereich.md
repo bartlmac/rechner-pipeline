@@ -16,7 +16,7 @@ Bisher formulierten README und AGENTS.md den Einstieg als
 `--input examples/...` plus drei lose Verzeichnis-Flags. Das verwechselt
 Demo-Material mit dem Eingangskanal des Systems: einem Kunden lässt
 sich nicht erklären, dass `examples/` „das Input-Verzeichnis“ sei, und
-ob eine Quelle synthetisch oder echt ist, ist für den Code irrelevant —
+ob eine Quelle synthetisch oder echt ist, ist für den Code irrelevant;
 relevant ist nur, was in ein öffentliches Repo darf. Es fehlte der Ort,
 an dem ein Migrationsfall lebt.
 
@@ -26,11 +26,11 @@ Ein **Fall** (ein Migrationsprojekt) lebt in einem eigenen
 Arbeitsbereich mit zwei strikt getrennten Zonen:
 
 ```
-<arbeitsbereich>/            im echten Einsatz AUSSERHALB des Repos;
+<arbeitsbereich>/            im echten Einsatz außerhalb des Repos;
   fall.json                  faelle/ im Repo ist nur der gitignorierte
-  eingang.json               Default fuer lokale Demo-Faelle
-  eingang/                   registrierte Quellen — NICHT regenerierbar
-  entscheide/                P9-Snapshots menschlicher Gates — NICHT
+  eingang.json               Default für lokale Demo-Fälle
+  eingang/                   registrierte Quellen, nicht regenerierbar
+  entscheide/                P9-Snapshots menschlicher Gates, nicht
                              regenerierbar (wie der Eingang)
   abgeleitet/                alles Regenerierbare
     info_from_excel/  generated/  diagnostics/  berichte/
@@ -39,16 +39,16 @@ Arbeitsbereich mit zwei strikt getrennten Zonen:
 
 Einschränkung in v0.1: ``abgeleitet/abox/abox.json`` trägt nach dem
 Gate A-Q1 auch die menschlichen Diskrepanz-Entscheidungen und ist damit
-nicht mehr frei regenerierbar — bis die Entscheidungs-Wiederanwendung
+nicht mehr frei regenerierbar; bis die Entscheidungs-Wiederanwendung
 aus den P9-Snapshots gebaut ist, gilt: abox.json nicht löschen.
 
-- **Eingang:** Quellen werden registriert (`fall registrieren`) —
+- **Eingang:** Quellen werden registriert (`fall registrieren`):
   unter ihrem Namen schreibgeschützt abgelegt, mit SHA-256, Herkunft
   und Zeitpunkt im Register `eingang.json` (der Hash identifiziert den
   Inhalt, die Ablage bleibt namensbasiert; Eingangsnamen sind flach und
   ohne Pfadanteil). Hier beginnt die
-  Provenance-Kette (P1). Gleicher Name mit anderem Inhalt ist ein
-  harter Konflikt mit beiden Hashes in der Meldung — kein stiller
+  Provenienzkette (P1). Gleicher Name mit anderem Inhalt ist ein
+  harter Konflikt mit beiden Hashes in der Meldung, kein stiller
   Overwrite (P2). Kein Werkzeug dieses Repos räumt den Eingang auf.
 - **Abgeleitet:** darf jederzeit gelöscht und aus Eingang + System neu
   erzeugt werden.
@@ -60,12 +60,12 @@ aus den P9-Snapshots gebaut ist, gilt: abox.json nicht löschen.
 - **`examples/` ist Demo-Material:** öffentliche Beispielquellen, aus
   denen sich ein Demo-Fall instanziieren lässt, plus Test-Fixtures.
   Kein Eingangskanal. *(Nachtrag 2026-08-19: `examples/` wurde
-  aufgelöst — Bestands-Konfigurationen nach `configs/`,
+  aufgelöst; Bestands-Konfigurationen nach `configs/`,
   Extraktions-Fixtures nach `tests/fixtures/`, historische
   Quelldokumente aus dem Repo entfernt. Neu ist `lieferungen/`:
   versioniertes Frachtgut der Showcase-Migrationen, damit jeder Clone
   eine Migration selbst durchführen kann. Die Kein-Eingangskanal-Regel
-  gilt unverändert — kein Code liest `lieferungen/` implizit, in einen
+  gilt unverändert: kein Code liest `lieferungen/` implizit, in einen
   Fall gelangt eine Lieferung nur über die ausdrückliche
   Registrierung.)*
 
@@ -100,14 +100,14 @@ Systems, nicht der Ort der Daten).
 
 Nur eine Verzeichnis-Konvention ohne Werkzeug: die Struktur existierte
 dann, aber Registrierung, Hashes, Schreibschutz und die
-Vor-Lauf-Prüfung blieben Handarbeit und Prosa — nichts machte die
+Vor-Lauf-Prüfung blieben Handarbeit und Prosa; nichts machte die
 Regeln wahr.
 
 ## Nachtrag 2026-09-30: Auskünfte der Quelle sind registrierte Dateien
 
-Entscheid des Maintainers. Eine Auskunft der abgebenden Gesellschaft — der
+Entscheid des Maintainers. Eine Auskunft der abgebenden Gesellschaft (der
 fortgeführte Beitragsanteil einer Alt-Herabsetzung, dessen
-Beitragsgleichung entfällt — ist Eingang wie jede Lieferung: Sie wird
+Beitragsgleichung entfällt) ist Eingang wie jede Lieferung: Sie wird
 registriert (Register, SHA-256, Schreibschutz) und erreicht die Kommandos nur
 als `--red-anteile-datei <registrierter Name>`. Ein Kommandozeilenparameter
 je Police (`--red-anteil POLNR=ANTEIL`) war der Weg am Register vorbei: Die
@@ -154,7 +154,7 @@ Nachbesserung nach einer Prüfrunde:
 * `aktuartest_lauf` und `migrationssuite_lauf` führen die Auskunft im
   Ergebnis als `red_anteile_datei` (`null` ohne Auskunft). Der Abnahmebericht
   verlangt das Feld in der Suite, rechnet es gegen die Eingaben der Suite nach
-  und hält Suite und Führungsprobe auf derselben Auskunft — eine
+  und hält Suite und Führungsprobe auf derselben Auskunft. Das ist eine
   verschärfte Akzeptanzmenge (ADR-012): `GATE_VERSION` des Abnahmeberichts
   `6.0.0`.
 
@@ -205,8 +205,8 @@ Verweigerung.
 **Struktur** bestimmt: die registrierte Auskunft der Quelle je Ereignis (mit
 `BEZUG` auch eine dokumentierte Arbeits-Lesart des Aktuars). „Die Werte an
 den Bewertungspunkten stimmen“ ist keine Deckung: Nach dem Beitragsende sind
-A-M1, A-M2 und die Suite gegen die Zerlegung in Grund und Erhöhungen blind
-— jede Zerlegung mit derselben Summe erzeugt dieselben Werte bis auf die
+A-M1, A-M2 und die Suite gegen die Zerlegung in Grund und Erhöhungen blind:
+jede Zerlegung mit derselben Summe erzeugt dieselben Werte bis auf die
 Centrundung, und eine spätere Teilkündigung zahlte trotzdem falsch aus.
 Ein gedeckter Vertrag ist deshalb **Pflichtziehung** von A-M1, A-M2, A-M3
 (mit Geschäftsvorfall im Prüfzeitraum) und der Migrationssuite: Der
@@ -223,7 +223,7 @@ registrierte Auskunft, die *falsch* ist, bestimmt eine falsche Zerlegung mit
 richtiger Summe; nach dem Beitragsende sieht das keine Wertprüfung. Die
 Verantwortung liegt bei dem, der die Auskunft registriert; eine
 Strukturprüfung, die es fangen könnte, bräuchte einen Wert, der von der
-Zerlegung abhängt (etwa den Rückkaufswert je Baustein der Quelle) — die
+Zerlegung abhängt (etwa den Rückkaufswert je Baustein der Quelle); die
 Lieferung trägt keinen.
 
 Kein neuer Eingang: Die Auskunft ist die registrierte Datei des Nachtrags vom

@@ -25,7 +25,7 @@ sich um ein Zeichen unterschieden.
 `G1` in derselben Familie, denn `G-1` war etwas anderes.
 
 **Die Vorlagen doppelten.** `GA-vorlage.aktuarieller-test` erzeugte die
-Vorlage für Gate `G-A` — zwei Schreibweisen desselben Gates in einem
+Vorlage für Gate `G-A`: zwei Schreibweisen desselben Gates in einem
 System, das seine Belege über genau diese Namen bindet.
 
 **Die Suffixe mischten Sprachen.** `.abox-contract` und
@@ -48,14 +48,14 @@ Gates hinzu. Jedes Gate, das vor der Umstellung entsteht, verteuert sie.
 <Art>-<Gegenstand><Nummer>.<fachliche Kennung>
 ```
 
-**Art** — wer entscheidet:
+**Art** (wer entscheidet):
 
 | | |
 |---|---|
 | `P` | **Prüfung.** Maschinell, deterministisch, blockiert bei Rot. Kein Mensch beteiligt. |
 | `A` | **Abnahme.** Ein Mensch entscheidet und zeichnet; das Gate erzeugt die Vorlage und hält den Snapshot. |
 
-**Gegenstand** — worüber:
+**Gegenstand** (worüber):
 
 | | |
 |---|---|
@@ -67,7 +67,7 @@ Gates hinzu. Jedes Gate, das vor der Umstellung entsteht, verteuert sie.
 | `T` | Tarifwerk des Zielsystems (seit ADR-025) |
 | `Z` | Zeichnungsordnung (seit ADR-025) |
 
-**Nummer** — Reihenfolge innerhalb des Gegenstands, lückenlos vergeben.
+**Nummer**: Reihenfolge innerhalb des Gegenstands, lückenlos vergeben.
 Ein abgeschaltetes Gate hinterlässt eine Lücke; es rutscht nichts nach,
 weil Nachrutschen genau die Verwechslung erzeugt, die diese Ordnung
 abschafft.
@@ -104,7 +104,7 @@ die Belege lesen.
 
 **`A-O1.tbox-aenderung`** (Entscheid des Maintainers 2026-09-16) ist die
 Abnahme einer T-Box-Änderung. Sie hieß bis dahin `A-K1` und lag damit
-unter dem Gegenstand `K` — dem Rechenkern, mit dem sie nichts zu tun
+unter dem Gegenstand `K`, dem Rechenkern, mit dem sie nichts zu tun
 hat. Der Rechner rechnet; die T-Box legt fest, welche Begriffe das
 Zielsystem überhaupt kennt.
 
@@ -118,32 +118,32 @@ Dafür bekommt die Ontologie einen eigenen Gegenstand `O`, und `Q`
 schärft sich auf „Quellen und ihre A-Box“. Das ist keine Spitzfindigkeit:
 Die A-Box sind die Instanzen, die aus einer Quelle kommen, je Fall; die
 T-Box ist das Vokabular des Zielsystems, fallübergreifend. `P-Q1` bis
-`P-Q3` und `A-Q1` bleiben deshalb, wo sie sind — sie betreffen wirklich
+`P-Q3` und `A-Q1` bleiben deshalb, wo sie sind: sie betreffen wirklich
 die Quelle.
 
 Gezeichnet wird `A-O1` von `mensch/architektur`: Wer verantwortet, welche
 Begriffe das Zielsystem führt, verantwortet sein Datenmodell. Die
-fachliche Seite der Frage — ist das Feld tarif- oder bewertungswirksam,
-was geht verloren, wenn es entfällt — gehört aber dem Aktuariat, und
+fachliche Seite der Frage (ist das Feld tarif- oder bewertungswirksam,
+was geht verloren, wenn es entfällt) gehört aber dem Aktuariat, und
 deshalb verlangt der Belegvertrag zusätzlich dessen Stellungnahme.
 Dasselbe Muster wie bei `A-B1`: Die Unterschrift gehört einer Rolle,
 der Beleg kommt aus einer anderen. Eine Doppelunterschrift kennt das
-System nicht — geteilte Verantwortung ist keine.
+System nicht; geteilte Verantwortung ist keine.
 
 **`A-K2.kernaenderung`** (Entscheid des Maintainers 2026-09-16) nimmt
 eine Änderung an Code oder Dokumentation des Rechenkerns ab. Art `A`,
 weil ein Mensch zeichnet; Gegenstand `K`, weil der Rechenkern gemeint
-ist; Nummer 2, weil die 1 unter `K` vergeben war — sie gehörte dem
+ist; Nummer 2, weil die 1 unter `K` vergeben war: sie gehörte dem
 Gate, das heute `A-O1` heißt. Nach der Regel dieses ADR rutscht
 nichts nach: `A-K1` bleibt eine Lücke.
-Gezeichnet wird sie von `mensch/rechenkern` — bis dahin war das
+Gezeichnet wird sie von `mensch/rechenkern`; bis dahin war das
 folgenreichste, was am Zielsystem geschieht, nur durch Commit-Disziplin
 geregelt (Abnahme-Protokoll in `kern/__init__`): keine Zeichnung, kein
 Schlüssel, kein Snapshot.
 
 Auslöser ist die Änderung am Kern, gleich aus welchem Anlass. Eine
 neue Tarifgeneration löst sie ausdrücklich nicht aus: Sie ist
-Parametrierung (ADR-006 — „der Präzedenzfall TG2012 -> TG2015 lief ohne
+Parametrierung (ADR-006: „der Präzedenzfall TG2012 -> TG2015 lief ohne
 eine einzige Formeländerung durch“) und wird von `P-K1` deterministisch
 und von `A-M4` menschlich abgenommen, das `pk1_belege` in beiden Scopes
 pinnt. Machte man sie zum Auslöser, entstünde regelmäßig eine
@@ -151,7 +151,7 @@ Unterschrift über einen unveränderten Kern.
 
 Sie trägt `regression` als PFLICHTbeleg: jeder Vertrag mit altem und
 neuem Kern durchgerechnet, Differenz je Vertrag. Solange es den
-Produzenten dafür nicht gibt, ist A-K2 nicht zeichenbar — gewollt, denn
+Produzenten dafür nicht gibt, ist A-K2 nicht zeichenbar. Das ist gewollt, denn
 der geänderte Kern bewertet nach der Migration den laufenden Bestand
 weiter, und diese Wirkung sieht sonst niemand.
 
@@ -165,7 +165,7 @@ einen früher angenommenen A-K2-Snapshot. Dieselbe Regel gilt für
 `A-O1` und den T-Box-Stand (Pflichtrolle `tboxstand`; zusätzlich die
 Basislinie: eine Versionslinie mit einem Element hat keinen Übergang).
 Damit gilt der Satz oben „löst eine Tarifgeneration nicht aus“ weiter
-für den Anlass — eine Tarifgeneration erzwingt keine Kernänderung —,
+für den Anlass (eine Tarifgeneration erzwingt keine Kernänderung),
 aber jeder Fall rechnet auf einem abgenommenen Kernstand. Zwei Prüfungen: die
 qualitative Prüfung der Änderungen entlang der Module mit den Commits
 des Zweigs (Produzent `gates.kernstand_belegen`, das Gate rechnet nach)
@@ -182,8 +182,8 @@ Entwicklung im Fall läuft auf einem Branch, der produktive Kern liegt
 auf `main`. Damit ist die Vorher-Seite nicht erfunden, sondern
 benennbar, und der Beleg trägt beide Kern-Hashes plus den Git-Stand.
 Zwei Bedingungen machen den Vergleich erst ehrlich, und beide sperren:
-`dirty` muss `nein` sein — eine Regression gegen uncommittete
-Änderungen ist nicht reproduzierbar —, und der Zweig muss auf der
+`dirty` muss `nein` sein (eine Regression gegen uncommittete
+Änderungen ist nicht reproduzierbar), und der Zweig muss auf der
 Spitze von `main` liegen (`merge_base == referenz_commit`). Läuft
 `main` weiter, mischt die Differenz die eigene Änderung mit einer
 fremden; dann wird der Zweig auf die neue Spitze gesetzt und neu
@@ -195,14 +195,14 @@ Commit nennt, fällt auf (Befund T24-04).
 
 Zwei Kernstände in einem Lauf gibt es dabei nicht: Dynamische Lader
 sind in `src` ein Befund der Code-Karte, weil sie ein Modul an jeder
-Kante vorbeiholen. Der Produzent rechnet deshalb zweimal — im
-`main`-Worktree und im Branch — und ein Vergleicher, der nur Daten liest
+Kante vorbeiholen. Der Produzent rechnet deshalb zweimal (im
+`main`-Worktree und im Branch) und ein Vergleicher, der nur Daten liest
 und keinen Kern importiert, bildet die Differenz.
 
 **`A-B1.auslieferung`** (Entscheid des Maintainers 2026-09-16) ist die
 erste Abnahme mit Gegenstand `B`: Sie zeichnet den Moment, in dem ein
 Stands-Paket nach außen sichtbar wird. Die Nummer 1 ist frei, weil die
-Nummern je Art und Gegenstand laufen — `P-B1.bestandspruefung` ist eine
+Nummern je Art und Gegenstand laufen: `P-B1.bestandspruefung` ist eine
 Prüfung, `A-B1.auslieferung` eine Abnahme. Gezeichnet wird sie von
 `mensch/betrieb`, einer fachlichen Rolle (Kundenservice-Verantwortung
 für die Bestandsführung), nicht von der IT: Was ausgeliefert wird,
@@ -221,7 +221,7 @@ nichts nachrutscht.
 ### 3. Warum der Entscheid-Vollzug nicht mehr `P9` heißt
 
 Das Entscheid-Kommando baute seinen Ledger-Namen bisher dynamisch als
-`P9.<gate>` — `P9` ist das Kürzel des Prinzips „unveränderliche
+`P9.<gate>`; `P9` ist das Kürzel des Prinzips „unveränderliche
 Gate-Snapshots“ aus `prinzipien.md`. Mit `P` als Kürzel für Prüfung
 hätte `P9.A-M1` zwei verschiedene `P` in einem Namen.
 
@@ -262,12 +262,12 @@ Bisher musste man wissen, dass `G-A` vor `G-2` kommt.
 
 ## Nachtrag 2026-10-01: drei Namen der Erstabnahme (ADR-025)
 
-* **`A-T1.tarifwerk`** — ein neuer Gegenstand `T`, Nummer 1: Das Tarifwerk
+* **`A-T1.tarifwerk`**: ein neuer Gegenstand `T`, Nummer 1: Das Tarifwerk
   der PLV ist weder Rechenkern (`K`) noch Vokabular (`O`) noch eine Quelle
   (`Q`). Es lief bis hierher im Kernstand mit und wurde von der falschen
   Rolle gezeichnet; jetzt zeichnet `mensch/aktuariat`.
-* **`A-B3.anfangsbestand`** — Gegenstand `B`, die nächste freie Nummer.
-* **`A-Z1.ordnungsaenderung`** — ein neuer Gegenstand `Z` (die
+* **`A-B3.anfangsbestand`**: Gegenstand `B`, die nächste freie Nummer.
+* **`A-Z1.ordnungsaenderung`**: ein neuer Gegenstand `Z` (die
   Zeichnungsordnung), Nummer 1: die Zeichnung eines Glieds ihrer
   Versionslinie durch die Wurzelrolle. Kein P9-Snapshot, deshalb nicht im
   Entscheid-Kommando; aber eine Kennung, die eine Ordnung vergeben kann.
@@ -277,10 +277,10 @@ Fallabbruch vorbehalten.
 
 ## Nachtrag 2026-10-01: Auftrag und Abbruch eines Falls (ADR-026)
 
-* **`A-M5.fallabbruch`** — wie am 2026-09-16 vorgesehen: Art `A`, Gegenstand
+* **`A-M5.fallabbruch`**: wie am 2026-09-16 vorgesehen: Art `A`, Gegenstand
   `M` (die Migration als Ganzes), Nummer 5. Gezeichnet von der Programmleitung
   des Falls.
-* **`A-M6.fallauftrag`** — Art `A`, Gegenstand `M`, die nächste freie Nummer.
+* **`A-M6.fallauftrag`**: Art `A`, Gegenstand `M`, die nächste freie Nummer.
   Der Auftrag betrifft die Migration als Ganzes wie der Abbruch; beide Enden
   des Lebenslaufs stehen unter demselben Gegenstand. Die Nummer sagt die
   Reihenfolge der Vergabe, nicht die des Ablaufs: Der Auftrag kommt im Ablauf
@@ -307,13 +307,13 @@ Befund gemeldet. Jedes Gate trägt eine `GATE_VERSION` nach dieser Regel:
 * **Patch** (`0.0.x`) für Meldetexte und Summary-Felder ohne Wirkung
   auf das Urteil.
 
-Jede Änderung der Version nennt im Commit den Grund und in der
-Gate-Tabelle von `docs/architektur/gate-vertrag-und-versionen.md` (bis
-ADR-027 im README) die Zeile des Gates: Was hat sich geändert, warum
-dieser Sprung. `tests/test_gate_versionsregel.py` hält Version und Zeile
-zusammen: Trägt eine Zeile dieser Tabelle eine Version, muss sie der
+Jede Änderung der Version nennt im Commit den Grund und in
+`docs/architektur/gate-vertrag-und-versionen.md` (bis ADR-027 im README)
+im Abschnitt des Gates: Was hat sich geändert, warum dieser Sprung.
+`tests/test_gate_versionsregel.py` hält die Version der Tabellenzeile und
+das Modul zusammen: Trägt eine Zeile dieser Tabelle eine Version, muss sie der
 `GATE_VERSION` des Moduls entsprechen. Was die Regel nicht
-leistet: Sie erkennt eine geänderte Akzeptanzmenge nicht selbst —
+leistet: Sie erkennt eine geänderte Akzeptanzmenge nicht selbst;
 das bleibt Urteil des Autors und Gegenstand des Reviews.
 
 ## Verworfene Alternativen
@@ -328,7 +328,7 @@ das bleibt Urteil des Autors und Gegenstand des Reviews.
   Lesbar ohne Schlüssel, aber ohne kurzes Wort fürs Gespräch und ohne
   sichtbare Reihenfolge.
 * **Nur neue Gates auf die Systematik verpflichten, alte lassen.** Hätte
-  eine Umbenennung in signierten Ketten vermieden — aber es gibt keine
+  eine Umbenennung in signierten Ketten vermieden, aber es gibt keine
   solche Kette: nach außen ist nie eine Migration gelaufen. Der
   Mischzustand wäre dauerhaft gewesen und hätte die Verwechslung
   konserviert, die abgeschafft werden sollte.

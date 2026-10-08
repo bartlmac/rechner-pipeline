@@ -3,7 +3,7 @@
 Wer welches Gate zeichnet und worüber, steht in
 [ADR-012](adr-012-gate-namensordnung.md) (Namensordnung) und
 [ADR-018](adr-018-rollenmodell-und-schluesselklassen.md) (Rollen). Dieses
-Dokument trägt, was für jedes Prüf-Gate gleich gilt — seinen Vertrag — und je
+Dokument trägt, was für jedes Prüf-Gate gleich gilt (seinen Vertrag) und je
 Gate das Kommando, den Gegenstand der Prüfung und die Geschichte seiner
 Version.
 
@@ -72,7 +72,7 @@ Versionen:
 
 - `1.0.0`: Akzeptanzmenge geändert durch die Mandatspflicht und den Beleg der T-Box-Änderung, damals unter dem Gate-Namen A-K1, der entfallen ist (heute A-O1, ADR-012; Befunde T22-02 und T22-07).
 - `2.0.0`: A-M4 verlangt im Bestands-Scope die Führungsprobe als Pflichtbelegrolle `fuehrungsprobe` (Freischaltung des übernommenen Bestands, Schritt 6).
-- `3.0.0`: A-M4 verlangt in beiden Scopes, dass der Stand des Falls abgenommen ist: Kernstand (A-K2, Rolle `kernstand`) und T-Box-Stand (A-O1, Rolle `tboxstand`), nach einer Regel, nämlich im Fall gezeichnet, „keine Änderung seit Abnahme …“ über einen Verweis auf einen früher angenommenen Snapshot (`gates.stand_belegen verweisen`) oder für die T-Box die Basislinie. A-K2 nimmt den Kernstand ab (Änderungen entlang der Module mit Commits, `gates.kernstand_belegen`; Regression bis zu ihrem Werkzeug als benannte Ausnahme „nicht gefahren“). P9-Schema 8 mit `stand`, `ausnahmen` und `standabnahmen` (ADR-018, Nachtrag 2026-10-01).
+- `3.0.0`: A-M4 verlangt in beiden Scopes, dass der Stand des Falls abgenommen ist: Kernstand (A-K2, Rolle `kernstand`) und T-Box-Stand (A-O1, Rolle `tboxstand`), nach einer von drei Regeln: im Fall gezeichnet; als „keine Änderung seit Abnahme …“ über einen Verweis auf einen früher angenommenen Snapshot (`gates.stand_belegen verweisen`); für die T-Box die Basislinie. A-K2 nimmt den Kernstand ab (Änderungen entlang der Module mit Commits, `gates.kernstand_belegen`; Regression bis zu ihrem Werkzeug als benannte Ausnahme „nicht gefahren“). P9-Schema 8 mit `stand`, `ausnahmen` und `standabnahmen` (ADR-018, Nachtrag 2026-10-01).
 - `4.0.0`: A-M4 verlangt zusätzlich das Tarifwerk der PLV (A-T1, Rolle `tarifwerkstand`, `gates.tarifwerk_belegen`). Die Basislinie der T-Box fällt weg (Erstabnahme im Linienbereich, Verweis `stand_belegen verweisen --linie`). Mit `--linie` wird nur unter der Spitze der Versionslinie der Zeichnungsordnung gezeichnet, und jede Vorbedingung wird gegen die Ordnung gelesen, unter der sie gezeichnet wurde. P9-Schema 9 mit Scope `linie` und `zeichnung.ordnungsglied_sha256` (ADR-025).
 - `5.0.0`: Jede Annahme eines Falls außer dem Auftrag selbst verlangt den geltenden, vom Vorstand gezeichneten Fallauftrag `A-M6` auf der heutigen Lieferung (`eingang.json`, `fall.json`) und nennt ihn signiert (`fallauftrag`). Simulierte Rollen zeichnen nur unter dem Mandat, das der Auftrag ihnen nennt. Neu ist der Fallabbruch `A-M5`, gezeichnet von der Programmleitung mit dem Recht aus dem Auftrag; danach ist im Fall nichts mehr zeichenbar. P9-Schema 10 mit `auftrag`, `abbruch` und `fallauftrag` (ADR-026). Eine Annahme gründet nur auf Annahmen des Falls unter dem geltenden Auftrag, die Linie des Aufrufs ist die Linie des Auftrags, und A-M5 geht auch bei verletztem Eingang, mit dem Befund im Abbruch (ADR-026, Nachtrag Runde G). Zugleich ist die Linie Pflicht: Ohne `--linie` wird nicht entschieden, und keine Vorbedingung wird ohne sie gelesen (ADR-025, Nachtrag 2026-10-01).
 
@@ -124,5 +124,5 @@ Gate-Versionen folgen der Akzeptanzmenge (ADR-012, Nachtrag 2026-09-05): Major, 
 
 Dazu prüfen Hypothesis-Tests die aktuariellen Identitäten des Kerns
 (`tests/test_kern_algebraisch.py`: qx-Schranken, Barwert-Bilanz
-`A + d·ä = 1`, Rekursionen, Äquivalenzprinzip) — unabhängig von jeder
+`A + d·ä = 1`, Rekursionen, Äquivalenzprinzip), unabhängig von jeder
 Quell-Lieferung.

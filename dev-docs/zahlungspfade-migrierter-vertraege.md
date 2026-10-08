@@ -7,7 +7,7 @@ führt den herabgesetzten Vertrag als ZWEITEILUNG fort
 beitragspflichtig, fixierte beitragsfreie Summe auf dem bfr-Satz;
 komponiert aus vorhandenen, abgenommenen Kern-Größen). Suite und
 aktuarieller Test bewerten damit Herabsetzungen im Prüfzeitraum und
-als Anfangszustand; die Prueflücke `dk_stichtag_2_nach_red` bleibt nur
+als Anfangszustand; die Prüflücke `dk_stichtag_2_nach_red` bleibt nur
 noch ohne gelieferten Anteil. Der allgemeine Spektrum-Pfad dieses
 Vorhabens bleibt für die übrigen Verlaufänderungen (Zuzahlung,
 Teilrückkauf, Verlängerung) offen — die Zweiteilung ist der

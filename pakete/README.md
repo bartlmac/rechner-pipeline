@@ -49,16 +49,17 @@ entstehen beim Nachfahren neu, mit den Schlüsseln der jeweiligen Welt.
 In `erarbeitet/` und `nachlieferung/` steht, was im Fall erst gefunden,
 erfragt und entschieden werden musste: die Widersprüche der Quellen, die
 Antworten der abgebenden Gesellschaft, die Übersetzung ihres Datenmodells.
-Deshalb gilt: **Eine Sitzung, die einen dieser Fälle live führt, liest hier
-nicht.** Sonst führt sie nicht den Fall, sondern schreibt sein Ergebnis ab.
+Deshalb gilt: **Wer einen dieser Fälle live führt, ob Agent oder Mensch,
+liest hier nicht.** Sonst wird der Fall nicht geführt, sondern sein
+Ergebnis abgeschrieben.
 
 ## Nachfahren übernimmt Urteile
 
 Das Rezept zeichnet beim Nachfahren die Gates des Falls, ohne neu zu prüfen:
 Es übernimmt das Urteil der Zeichnung im festgehaltenen Fall. Das trägt nur,
 wenn der Gegenstand derselbe ist. Deshalb hält das Rezept vor jeder solchen
-Zeichnung den Gegenstand gegen den festgehaltenen Fall — Kern und Tarifwerk
-über ihre Fingerabdrücke, die Ergebnisse über `ERWARTUNG` — und hält an,
+Zeichnung den Gegenstand gegen den festgehaltenen Fall (Kern und Tarifwerk
+über ihre Fingerabdrücke, die Ergebnisse über `ERWARTUNG`) und hält an,
 wenn etwas abweicht.
 
 Wer an einem Haltepunkt selbst zeichnet, dessen Zeichnung gilt: Das Rezept
@@ -78,7 +79,7 @@ Paket auf dem neuen Stand nicht mehr nachfahrbar und wird neu festgehalten
 
 | Paket | Fall | Lieferung | Stand davor | Stand danach |
 |---|---|---|---|---|
-| `baldrian-klv-tg2015-fall3` | Übernahme des Bestands KLV TG2015 der Baldrian Lebensversicherung zum 01.01.2026, festgehalten am 02.10.2026: 834 Verträge, 112 Schritte | `lieferungen/baldrian-2` und die Nachlieferungen im Paket | Tag `fall3-vor` | Tag `fall3-nach` |
+| `baldrian-klv-tg2015-fall3` | Übernahme des Bestands KLV TG2015 der Baldrian Leben zum 01.01.2026, festgehalten am 02.10.2026: 834 Verträge, 112 Schritte | `lieferungen/baldrian-2` und die Nachlieferungen im Paket | Tag `fall3-vor` | Tag `fall3-nach` |
 
 Welche Fälle es außerdem gab und in welchem Verhältnis sie stehen:
 [docs/faelle/README.md](../docs/faelle/README.md).

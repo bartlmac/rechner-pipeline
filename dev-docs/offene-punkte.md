@@ -47,10 +47,10 @@ herabgesetzten Vertrags im Zielkern, jetzt in
 
 ## Vorgänge
 
-| Punkt | Anmerkung |
-|---|---|
-| **Showcase-Migrationsfall auf den aktuellen Entscheid-Vertrag heben** | Das Schema der Entscheid-Snapshots ist auf Version 10 gestiegen (gelesen werden 6 bis 10, `models/schemas.py`); Altketten werden revisionsfest archiviert und auf aktuellem Stand neu entschieden. Braucht einen Freigabeschlüssel außerhalb des Falls. |
-| **Doku-Engine**: `\Bigl`/`\Bigr` bricht die Umwandlung nach Typst | Am 2026-08-27 in allen Dokumenten ersetzt; die Engine selbst kennt die Einschränkung nicht. Ein Hinweis in der Doku-Konvention wäre sinnvoll. |
+| Punkt | Herkunft | Anmerkung |
+|---|---|---|
+| **Showcase-Migrationsfall auf den aktuellen Entscheid-Vertrag heben** | — | Das Schema der Entscheid-Snapshots ist auf Version 10 gestiegen (gelesen werden 6 bis 10, `models/schemas.py`); Altketten werden revisionsfest archiviert und auf aktuellem Stand neu entschieden. Braucht einen Freigabeschlüssel außerhalb des Falls. |
+| **Doku-Engine**: `\Bigl`/`\Bigr` bricht die Umwandlung nach Typst | — | Am 2026-08-27 in allen Dokumenten ersetzt; die Engine selbst kennt die Einschränkung nicht. Ein Hinweis in der Doku-Konvention wäre sinnvoll. |
 | **Quellsystem in Python (quellsystem/)** | Beschluss 2026-08-31 (Maintainer) | Eigene Bestandsführung der Quelle: KOPIE des Kommutationskerns (kein Import aus rechner_pipeline, Zielkern unerreichbar), abweichende Konventionen (StoAb je Scheibe, RED mit Abzug, Rundung je Zwischenschritt, Kalenderjahr-Logik, VS_bfr auf Vormonat), Export erzeugt die Lieferungen inkl. mehrfacher GeVos je Vertrag. Versioniertes Tooling OHNE ADR (Maintainer: ADRs gelten dem System, nicht dem Simulationswerkzeug); Baldrian-Regie bleibt in simulation/. Eigener Branch quellsystem. |
 | **Regie dokumentieren** | Auftrag des Maintainers 2026-08-31 | Die Spielleitung der Vorführung ist ein eigenes Konzept neben System und Simulation (Bereiche docs-local/ und simulation/, Rollen und Zeichnungsordnung, Abbruchkriterien, Laufdrehbücher; betrifft Migration UND tägliche Fortschreibung). Stub steht in dev-docs/regie.md; README-Komponentenbild trägt die Regie seit 2026-08-31 als Komponente (7), WIP-gekennzeichnet. Zu tun bleibt: das Kapitel ausformulieren und aus AGENTS/ONBOARDING verweisen. |
 | **AVB-Dokumente der Zielseite** | Quellsystem-Bau 2026-08-31 | Auch die PLV hat keine eingecheckten AVB; der Ziel-Tarifplan ist umfangreicher und deckt die Zusagen vorerst (Einordnung des Maintainers: erstmal egal). Nachziehen, wenn die Vorzeige-Story es braucht. |

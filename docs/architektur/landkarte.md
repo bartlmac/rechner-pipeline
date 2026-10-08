@@ -1,22 +1,26 @@
 # Landkarte des Zielsystems
 
-Erzeugt aus dem Code, nicht gepflegt. Neu bauen:
+Die Diagramme sind aus dem Code erzeugt, nicht gepflegt. Neu bauen:
 
 ```bash
-python -m rechner_pipeline.ontologie.landkarte --format mermaid --umfang schichten --out /dev/stdout
-python -m rechner_pipeline.ontologie.landkarte --format mermaid --umfang knoten    --out /dev/stdout
-python -m rechner_pipeline.ontologie.landkarte --format mermaid --umfang modul --auswahl kern --out /dev/stdout
+python -m rechner_pipeline.ontologie.landkarte --format mermaid --umfang schichten --out runs/landkarte-schichten.mmd
+python -m rechner_pipeline.ontologie.landkarte --format mermaid --umfang knoten --out runs/landkarte-knoten.mmd
+python -m rechner_pipeline.ontologie.landkarte --format mermaid --umfang modul --auswahl kern --out runs/landkarte-kern.mmd
 ```
+
+Die drei Dateien ersetzen die drei Diagramme unten, in dieser Reihenfolge.
+Nach `/dev/stdout` zu schreiben taugt nicht: Das Kommando gibt dort auch
+seinen JSON-Ergebnisrahmen aus.
 
 Ein Test hält diese Seite gegen den Generator: weicht sie ab, fällt die
 Suite. GitHub zeichnet die Diagramme direkt; für Graphviz, Gephi, yEd
 oder einen Graph-Store liefert derselbe Befehl `--format dot` bzw.
 `--format graphml`.
 
-Im Zielbild (~1 Mio. Zeilen) gibt es kein Bild "der Codebasis". Es gibt
+Im Zielbild (~1 Mio. Zeilen) gibt es kein Bild „der Codebasis“. Es gibt
 begrenzte Ausschnitte, und alle drei hier wachsen mit der Struktur statt
 mit der Codemenge: der Schichten-Überblick, die fachliche Knotensicht,
-und der Blick in EINEN Knoten. Überschreitet ein Ausschnitt 60 Kästen,
+und der Blick in einen einzelnen Knoten. Überschreitet ein Ausschnitt 60 Kästen,
 verweigert der Generator das Bild und nennt den engeren Weg.
 
 ## 1 Schichten — der Überblick
@@ -69,7 +73,7 @@ flowchart TD
 ## 2 Fachknoten — die Sicht der Ontologie
 
 Dieselben IDs wie in der A-Box eines Migrationsfalls und in Gate O3. Eine
-Kante entsteht nur bei einem ECHTEN Übergang: ein Rückgrat-Modul, das
+Kante entsteht nur bei einem echten Übergang: ein Rückgrat-Modul, das
 `klv, bu` trägt, macht KLV nicht von BU abhängig — beide stehen darauf.
 Deshalb sind KLV und BU hier korrekt unverbunden.
 

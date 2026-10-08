@@ -8,13 +8,13 @@ Nach einer Migration lebt der übernommene Bestand in den Büchern des
 aufnehmenden Unternehmens weiter. Er altert, storniert, wird beitragsfrei
 gestellt, läuft ab. Die Ereignis-Engine konnte das nicht.
 
-Sie nahm ausschließlich einen Ursprungsbestand — alle Verträge ``POL``
-mit ``status_id`` 1 — und simulierte jeden ab seinem Versicherungsbeginn
+Sie nahm ausschließlich einen Ursprungsbestand (alle Verträge ``POL``
+mit ``status_id`` 1) und simulierte jeden ab seinem Versicherungsbeginn
 (``for j in range(n)``). Ein übernommener Vertrag beginnt 2015 und
 gehört uns seit 2026; ab dem Beginn simuliert hätte die Engine elf
 Jahre erfunden, die beim abgebenden Unternehmen tatsächlich stattfanden,
 und sie als unsere Geschäftsvorfälle gebucht. Der Wachposten gegen
-diesen Fall (``Stamm ist kein Basisbestand``) war richtig — er machte die
+diesen Fall (``Stamm ist kein Basisbestand``) war richtig; er machte die
 Fortschreibung übernommener Bestände nur unmöglich statt falsch.
 
 Sichtbar wurde die Lücke an der Nachweisung. Im zusammengesetzten
@@ -63,7 +63,7 @@ Ein übernommener Vertrag mit Zustandswechsel nach dem Zugang ist bereits
 fortgeschrieben und wird abgewiesen; ein Vertrag in einem Endzustand wird
 gar nicht erst übernommen. Damit bleibt der Schutz gegen
 zurückgefütterte Zeitscheiben- und Journalsichten vollständig
-erhalten — er gilt jetzt in beiden Formen.
+erhalten; er gilt jetzt in beiden Formen.
 
 **Die Rechnungsgrundlagen kommen je Vertrag**, nicht je Generation:
 ``fortschreiben`` nimmt optional die Merkmalstabelle und löst die
@@ -85,7 +85,7 @@ Rekursion braucht den echten Beginn (ADR-014).
 Zufallsstrom bliebe identisch zu einem von Beginn an simulierten
 Vertrag. Verworfen: Es kostet Rechenzeit für Ergebnisse, die niemand
 sehen darf, und die verworfenen Ereignisse könnten den Vertrag
-terminieren — dann wäre ein übernommener Bestand teilweise schon tot,
+terminieren; dann wäre ein übernommener Bestand teilweise schon tot,
 bevor er ankommt.
 
 **Eine eigene Engine für übernommene Bestände.** Verworfen: zwei
@@ -101,7 +101,7 @@ ist ein Startpunkt, kein anderes Modell.
   3 eigene), 51 werden beitragsfrei umgebucht (40 mitgebrachte, 11
   eigene).
 * Der Zufallsstrom eigener Verträge ist unberührt (``ab_jahr`` 0
-  verbraucht dieselben Draws in derselben Reihenfolge) — bestehende
+  verbraucht dieselben Draws in derselben Reihenfolge); bestehende
   Läufe liefern dieselben Zahlen.
 * ``cli_fortschreibung`` nimmt ``--uebernahme <verzeichnis>`` (das
   Erzeugnis von ``gates.bestand_uebernehmen``) und fährt eigenen und
@@ -109,8 +109,8 @@ ist ein Startpunkt, kein anderes Modell.
   dem Fortschreibungs-Journal voran. Dazu ``--merkmale``; ohne die
   Tabelle bricht eine in Zellen aufgeteilte Generation hart ab
   (ADR-014-Muster), aus dem Übernahme-Verzeichnis kommt sie von selbst.
-* Die Übernahme (``gates.bestand_uebernehmen``) bucht Zugang und — bei
-  beitragsfrei ankommenden Verträgen — die Umbuchung, beide zum
+* Die Übernahme (``gates.bestand_uebernehmen``) bucht Zugang und (bei
+  beitragsfrei ankommenden Verträgen) die Umbuchung, beide zum
   Zugangsdatum. Die Engine setzt danach an; ihre Buchungen liegen
   sämtlich nach dem Zugang.
 * Regressionsproben in ``tests/test_bestand_uebernommen_fortschreiben.py``.

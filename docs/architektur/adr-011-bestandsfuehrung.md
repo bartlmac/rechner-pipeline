@@ -16,10 +16,10 @@ Die Komponenten (2) und (4) sind im Code vermischt, und zwar an der
 tragenden Stelle: **Es gibt keine Bestandsführung, sondern nur eine
 Simulation mit nachgelagerter Ableitung.** Der Stammsatz eines Vertrags
 trägt seinen URSPRUNGSzustand (status_id 1, POL, Statusdatum =
-Versicherungsbeginn — von validate_portfolio erzwungen); alles Spätere
+Versicherungsbeginn; von validate_portfolio erzwungen); alles Spätere
 liegt als Zeilen der Statushistorie daneben. Jede Bewertung baut daraus
 zuerst eine Mehrzeilen-Sicht (`bestand_mit_historie`) und wählt dann
-rückwirkend die jüngste Statuszeile zum Stichtag aus (`zeitscheibe`) —
+rückwirkend die jüngste Statuszeile zum Stichtag aus (`zeitscheibe`),
 an sechs Stellen in Auswertung, Kennzahlen und Bericht. Die Verweildauer
 im Zustand wird bei jeder Bewertung aus der Historie zurückgerechnet
 (`_bu_phasenbeginne`, `_pex_jahre`).
@@ -34,7 +34,7 @@ Die Vermischung war für den selbst erzeugten Schaubestand konsistent
 eigentlichen Zweck des Systems: Ein migrierter Vertrag kommt als
 Zustandsschnappschuss ohne Historie (Grundsatzdokumentation 9.12 und 9.14). Im heutigen
 Modell müsste man ihm eine Historie erfinden, damit die Ableitung
-funktioniert — das Replay-Surrogat, das die Methode ausdrücklich
+funktioniert: das Replay-Surrogat, das die Methode ausdrücklich
 ausschließt. Drei
 zuvor getrennt gemeldete Befunde haben diese eine Ursache: die
 fehlenden Verankerungsattribute (s_0, d_0, t_a), der gamma1-Defekt der
@@ -47,9 +47,9 @@ Scheibe) und die Ableitung des Zustands zur Bewertungszeit selbst.
 ### 1. Drei Komponenten, drei Rollen
 
 * **Bestandsführung** (`bestand/fuehrung.py`, neu): führt je Vertrag
-  den aktuellen Zustand — Status, seit wann (`status_date` = Beginn des
+  den aktuellen Zustand (Status, seit wann (`status_date` = Beginn des
   aktuellen Status), Summen, Beitrag, Schichten mit ihren eigenen
-  Rechnungsgrundlagen — und das **Journal** als vollständige, nur-anfügbare Aufzeichnung —
+  Rechnungsgrundlagen) und das **Journal** als vollständige, nur-anfügbare Aufzeichnung:
   das Statusjournal (Historie) führt die Zustandswechsel, das
   Betragsjournal (Ledger) die Geschäftsvorfälle mit ihren
   Kern-Beträgen; die Führung setzt den Stammzustand aus dem
@@ -59,7 +59,7 @@ Scheibe) und die Ableitung des Zustands zur Bewertungszeit selbst.
   ausschließlich aus dem geführten Zustand. Verweildauer =
   f(status_date, Stichtag); PEX-Jahr = f(insurance_start, status_date).
   **Kein Bewertungspfad liest das Journal.** Das ist dieselbe
-  Historienfreiheit, die die Grundsatzdokumentation (9.14) vom Rechenkern verlangt —
+  Historienfreiheit, die die Grundsatzdokumentation (9.14) vom Rechenkern verlangt,
   eine Ebene höher angewendet.
 * **Simulation** (`bestand/ereignisse.py`, Rolle geschärft): erzeugt
   den Vorzeigebestand einmalig, als Strom von Buchungen. Ihr Ergebnis
@@ -100,13 +100,13 @@ festgeschrieben je Stichtag, nie überschrieben")]
 Die zwei Invarianten stehen bewusst als Text statt als Kanten im Bild
 (ein Verbot als gemalte Kante läse sich wie ein Datenfluss): Kein
 Bewertungspfad liest das Journal, und der Stammzustand ist der
-jüngste Journalstand — Gate P-B1 erzwingt die Deckung.
+jüngste Journalstand; Gate P-B1 erzwingt die Deckung.
 
 ### 2. Ein Buchungsweg
 
 Zustandsänderungen laufen über genau eine Stelle
 (`fuehrung.fuehre_fort`): Sie nimmt das Journal entgegen und setzt daraus
-den neuen Stammzustand — der gemeinsame Trichter für die Simulation
+den neuen Stammzustand: der gemeinsame Trichter für die Simulation
 heute und für den Migrationszugang morgen. Die Journalzeilen selbst
 entstehen davor, bei der Simulation in `ereignisse.fortschreiben`. Zwei Schreibwege auf denselben Bestand sind der
 Mechanismus, aus dem Drift entsteht; der gamma1-Defekt war genau das im
@@ -116,20 +116,20 @@ Kleinen.
 
 Die Rückschau „Bestand am Tag X“ ist eine **Auskunftsfunktion aus dem
 Journal** (`fuehrung.bestand_am`): Sie rekonstruiert den geführten
-Zustand zu jedem früheren Datum — möglich, weil das Journal
+Zustand zu jedem früheren Datum. Das geht, weil das Journal
 vollständig gespeichert bleibt. Berichte (Verlaufe, Bewegungskonto,
 Nachweisungen) komponieren Auskunft + Bewertung: Zustand am Tag aus dem
-Journal, Werte aus dem Zustand. Auskunft darf das Journal lesen — das
+Journal, Werte aus dem Zustand. Auskunft darf das Journal lesen. Das
 ist ihr Zweck; nur die Bewertung darf es nicht.
 
-Das Modul `bestand/zeitscheibe.py` — die rückwirkende
-Simulations-Sicht — wird pensioniert. Die reinen Kalenderhelfer
+Das Modul `bestand/zeitscheibe.py` (die rückwirkende
+Simulations-Sicht) wird pensioniert. Die reinen Kalenderhelfer
 (`months_between`, `derived_age`) ziehen in die Führung um.
 
 ### 4. Schichten sind Vertragsbestandteil
 
 Erhöhungsscheiben tragen ihre Rechnungsgrundlagen selbst (zunächst:
-`gamma1`, per Tarifwerk-Regel 0 — Bezugsgröße bleibt die GrundVS).
+`gamma1`, per Tarifwerk-Regel 0; Bezugsgröße bleibt die GrundVS).
 Die Bewertung liest die Schicht, statt sie aus der Tarifgeneration zu
 rekonstruieren. Das behebt den gemessenen Defekt und ist zugleich die
 Richtung der Grundsatzdokumentation (9.11: Parameter persistieren, Werte
@@ -145,7 +145,7 @@ gültiger Status (auch terminal), `status_date` zwischen
 Versicherungsbeginn und Führungsstand, `status_id` = Nummer des
 jüngsten Statuswechsels; Gate P-B1 prüft zusätzlich die
 Deckungsgleichheit von Stamm und Journal. Die bisherige
-Ursprungszustands-Invariante gilt weiterhin — aber als Aussage über den
+Ursprungszustands-Invariante gilt weiterhin, aber als Aussage über den
 Journalanfang (erste Zeile je Vertrag), nicht über den Stammsatz.
 
 Damit hat auch der Migrationszugang seinen Platz, ohne dass hier gebaut
@@ -155,7 +155,7 @@ dem Übernahme-Ereignis beginnt statt mit dem Vertragsbeginn.
 
 ### 6. Abschlüsse sind festgeschrieben
 
-Berichte werden jederzeit neu gerechnet — ein abgeschlossener Stand
+Berichte werden jederzeit neu gerechnet, ein abgeschlossener Stand
 nicht: Der Bilanzwert eines Stichtags darf sich nachträglich nicht
 bewegen, auch wenn der Kern sich weiterentwickelt (Leitlinie des
 Auftraggebers: Logik eines funktionierenden Unternehmens). Deshalb
@@ -163,15 +163,15 @@ gehören Abschlüsse zum Datenhaushalt der Führung
 (`bestand/abschluss.py`, Tabellenfamilie `ABSCHLUSS_SPALTEN`):
 
 * Ein Abschluss friert die einzelvertraglichen Bewertungsergebnisse
-  eines Stichtags ein — gerechnet über dieselbe Strecke wie jede
+  eines Stichtags ein, gerechnet über dieselbe Strecke wie jede
   andere Bewertung (`auswertung.einzelwerte_am`); ein zweiter
   Rechenweg wäre der Drift-Mechanismus dieses ADRs.
 * Je Stichtag existiert genau ein Abschluss; ein zweiter Versuch ist
   ein harter Fehler, kein stilles Überschreiben. Jede Zeile trägt
   die `kern_version` ihres Entstehens.
 * Die Kontrolle (`pruefe_abschluss`) stellt die Neuberechnung gegen
-  den festgeschriebenen Stand: Abweichungen — etwa nach einem
-  Kern-Update — werden je Police und Größe ausgewiesen und ersetzen
+  den festgeschriebenen Stand: Abweichungen (etwa nach einem
+  Kern-Update) werden je Police und Größe ausgewiesen und ersetzen
   den Abschluss nie. Eine Korrektur eines festgeschriebenen Standes
   ist eine menschliche Entscheidung mit eigenem Vorgang.
 
@@ -179,7 +179,7 @@ gehören Abschlüsse zum Datenhaushalt der Führung
 
 Die Teile eines Laufs (Stamm, Journal, Ledger, Scheiben, Config)
 gehören nur zusammen, wenn sie nachweislich aus demselben Lauf
-stammen — und der Horizont, bis zu dem der GeVo-Strom simuliert wurde,
+stammen, und der Horizont, bis zu dem der GeVo-Strom simuliert wurde,
 ist eine Eigenschaft des Laufs, nicht des Aufrufs, der ihn später
 liest. Beides stand bisher nirgends: Die Konsumenten nahmen `--bis`
 als Behauptung entgegen, und ein Bundle aus Teilen zweier Läufe war,
@@ -188,12 +188,12 @@ Teil für Teil, wohlgeformt (externe Reviews T16, T18-02).
 Deshalb schreibt `cli_fortschreibung` zuletzt ein **Laufmanifest**
 (`laufmanifest.json`, `bestand/manifest.py`): Horizont,
 Neuzugangs-Stichtag, Kern-Stand, SHA-256 der Config und jeder
-geschriebenen Ausgabe — deterministisch wie die Ausgaben selbst.
+geschriebenen Ausgabe. Das Manifest ist deterministisch wie die Ausgaben selbst.
 
 * Der Abschluss-Produzent verlangt das Manifest: Ohne Manifest wird
   nichts festgeschrieben, `--bis` muss der belegte Horizont sein, und
   jede gelesene Datei muss bytegleich die vom Lauf geschriebene sein.
-  Pflicht und fail-fast, nicht „optional mit Vorbehalt“ — ein
+  Pflicht und fail-fast, nicht „optional mit Vorbehalt“: ein
   festgeschriebener Stand trägt keinen Vorbehalt.
 * Gate P-B1 bindet das Manifest auf Wunsch (`--manifest`) und trägt
   die Bindung im Beleg. Optional, weil das Gate auch einzelne Tabellen
@@ -207,8 +207,8 @@ geschriebenen Ausgabe — deterministisch wie die Ausgaben selbst.
 * Ausgewiesene Werte ändern sich dort, wo der gamma1-Defekt wirkte
   (Beiträge und Reserven der Erhöhungsscheiben im Bestandsbericht). Das
   ist die Behebung eines Fehlers, keine Modelländerung. *(Beziffert am
-  PLV-Gesamtbestand, 26.08.: Beitragssumme −0,20 % — rund 7.400 EUR am
-  Stichtag 2026 —, Deckungskapital +0,003 %; je Beispielscheibe
+  PLV-Gesamtbestand, 26.08.: Beitragssumme −0,20 % (rund 7.400 EUR am
+  Stichtag 2026), Deckungskapital +0,003 %; je Beispielscheibe
   Jahresbeitrag −2,0 %.)*
 * `bestand_mit_historie` + `zeitscheibe` als Bewertungs-Eingang
   entfallen; Leser des Bestands erhalten den geführten Stamm.
@@ -239,7 +239,7 @@ mit angebrochenen Jahreswerten machen?“ Gemessen war: Die eine
 Bewertungsstrecke (`auswertung.einzelwerte_am`) las Deckungskapital,
 Rückkaufswert und beitragsfreie Reserve aus der Zeile des angebrochenen
 Vertragsjahres (`zustand_am`, beim herabgesetzten Vertrag und nach einer
-Beitragsfreistellung ebenso — dorthin hatte die Prüfrunde T27 die
+Beitragsfreistellung ebenso; dorthin hatte die Prüfrunde T27 die
 Zweige vereinheitlicht). Der Abschluss zum 1.12. wies
 damit den Stand des letzten Jahrestags aus; am Referenzvertrag Monat 95
 26.060,73 statt 29.934,67, eine Treppe statt einer Fortschreibung.
@@ -249,7 +249,7 @@ Abschlusses (dem Monatsersten nach den gebuchten Vorfällen des Monats),
 nach den vollen Vertragsmonaten seit Versicherungsbeginn. Zwischen zwei
 Vertragsjahrestagen mischt die Strecke linear, wie der Kern es kann
 (`monatsreserve`, `monatsreserve_beitragsfrei`, `vertrags_monatsreserve`,
-`vertrags_monatsreserve_reduziert`; Tarifplan KLV, Abschnitt 6) — für
+`vertrags_monatsreserve_reduziert`; Tarifplan KLV, Abschnitt 6), für
 jeden Vertragstyp gleich: gewöhnlich, mit Scheiben, beitragsfrei,
 herabgesetzt, teilgekündigt, mit Korrekturschicht (auch der in die
 beitragsfreie Summe überführte Schichtwert, den der Kern nur je Jahr
@@ -264,12 +264,12 @@ geführt (`models.bestand.KONVENTION_JE_PRODUKT`).
 `bewertungskonvention` (`jahreszeile` oder `monatsgenau`). Was ein
 gelesener Abschluss ist, sagt eine Funktion
 (`models.bestand.abschluss_konvention`): der Spaltenwert, oder bei
-fehlender Spalte „Jahreszeile, vor der Umstellung geschrieben“ — das
+fehlender Spalte „Jahreszeile, vor der Umstellung geschrieben“; das
 Fehlen ist eine Aussage über den Schreiber, kein Rückfall. Jeder Leser
 einer Abschlussdatei geht über `bestand.abschluss.lies_abschluss`.
 Die 387 festgeschriebenen Abschlüsse der Laufzeit bleiben, wie sie sind
-(Abschnitt 6): `pruefe_abschluss` rechnet sie in ihrer Konvention nach —
-die Jahreszeile wortgleich wie vor der Umstellung — und meldet sie
+(Abschnitt 6): `pruefe_abschluss` rechnet sie in ihrer Konvention nach
+(die Jahreszeile wortgleich wie vor der Umstellung) und meldet sie
 deckungsgleich, nicht als Abweichung. Wer Abschlüsse verschiedener
 Konvention in eine Reihe legt, kennzeichnet den Bruch oder verweigert
 benannt (`models.bestand.konventionsbruch`): An der Naht springt das
@@ -297,8 +297,8 @@ konnte sagen, ob das die Konvention oder ein Fehler war.
 **Folgen.** Ab dem ersten Abschluss nach der Umstellung stehen die Werte
 unterjähriger Verträge höher (die Reserve wächst in den meisten
 Jahren); am Jahrestag ändert sich nichts. Die Migrationsabnahme A-M4
-weist zusätzlich den Führungswert aus — was dieser Abschluss für jeden
-Vertrag des Zugangs führen wird (`models.fuehrungswert`) —, und die
+weist zusätzlich den Führungswert aus: was dieser Abschluss für jeden
+Vertrag des Zugangs führen wird (`models.fuehrungswert`), und die
 Zugangsprobe hält die Abschlusszeilen des Betriebs dagegen (ADR-022,
 Nachtrag 2026-10-01). Ereignisse wirken weiter am Jahrestag
 (`ereignisse`, `ledger_bindung`, `migrationszugang` rechnen bewusst auf

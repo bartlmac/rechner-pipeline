@@ -53,7 +53,7 @@ Entscheidungen dahinter als ADRs unter `docs/architektur/`.
   Neuberechnung mit Korrekturschicht (Grundsatzdokumentation, Abschnitt 9).
 * **Geführter Bestand und Tagesbetrieb:** Der Bestand entsteht aus seinem
   Zugangsstrom (ADR-020) und wird mit Stammzustand und Journal geführt
-  (ADR-011). Die PLV läuft Tag für Tag — Neugeschäft, nächtliche
+  (ADR-011). Die PLV läuft Tag für Tag: Neugeschäft, nächtliche
   Fortschreibung, Monatsabschluss. Festgeschriebene Abschlüsse werden nie
   überschrieben.
 * **Berichte des Betriebs:** Zu jedem Monatsabschluss entsteht ein

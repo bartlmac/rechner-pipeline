@@ -65,43 +65,43 @@ Vorführung hält ihre Auftragsprofile (ADR-017).
 migrationsfall-durchfuehren
   |- Stufe 1 (Tarifparameter): n x extrahiere-quellfragment
   |     --> deterministischer Merge
-  |     Konflikt --> bereite-fachkonflikt-auf --> MENSCH (entscheide + A-Q1)
+  |     Konflikt --> bereite-fachkonflikt-auf --> Mensch (entscheide + A-Q1)
   |- Stufe 1b (Bestandsabzug): quellen/bestand_profil (Code, Vorverdichtung)
   |     --> transformiere-quellbestand --> TransformationsSpec
   |     --> ontologie/transformation validate_spec,
   |         gates/transformation_anwenden wende_an (Code)
-  |     offener Konflikt / fehlendes Zielfeld --> MENSCH (A-Q1 bzw. A-O1)
-  |- Stufe 2/3: Gates P-Q3/P-K1; Kern-Aenderung noetig?
+  |     offener Konflikt / fehlendes Zielfeld --> Mensch (A-Q1 bzw. A-O1)
+  |- Stufe 2/3: Gates P-Q3/P-K1; Kern-Änderung nötig?
   |     Parametrierung: quellen/tafel_import (Code, kein Skill)
-  |     mehr als Parametrierung: STOPP --> A-O1-Vorlage --> MENSCH
+  |     mehr als Parametrierung: Halt --> A-O1-Vorlage --> Mensch
   |         danach: entwickle-im-zielsystem (unter dem A-O1-Beschluss)
-  |     JEDER Fall: Stand abgenommen? Kernstand (A-K2) und T-Box-Stand
-  |         (A-O1) — unveraendert: Verweis (gates/stand_belegen, Code);
-  |         geaendert: vorlegen (gates/kernstand_belegen bzw.
-  |         stand_belegen tbox) --> MENSCH (mensch/rechenkern bzw.
+  |     jeder Fall: Stand abgenommen? Kernstand (A-K2) und T-Box-Stand
+  |         (A-O1) — unverändert: Verweis (gates/stand_belegen, Code);
+  |         geändert: vorlegen (gates/kernstand_belegen bzw.
+  |         stand_belegen tbox) --> Mensch (mensch/rechenkern bzw.
   |         mensch/architektur; Regression bis zu ihrem Werkzeug als
   |         benannte Ausnahme)
-  |- Stufe 3b (uebernommener Bestand), Reihenfolge erzwungen (ADR-010):
+  |- Stufe 3b (übernommener Bestand), Reihenfolge erzwungen (ADR-010):
   |     1. aktuartest-durchfuehren (qa/stichprobe, qa/testprofil,
   |        qa/aktuarieller_test, gates/aktuartest) --> je Abnahme eine
-  |        Vorlage --> MENSCH (A-M1, A-M2, A-M3 einzeln)
+  |        Vorlage --> Mensch (A-M1, A-M2, A-M3 einzeln)
   |     2. pruefe-migrationscontrolling (Gate P-B1, qa/migrationssuite,
-  |        gates/abnahmebericht) --> Abnahmebericht --> MENSCH (A-M4)
+  |        gates/abnahmebericht) --> Abnahmebericht --> Mensch (A-M4)
   |- jeder Implementierungs-Block: entwickle-im-zielsystem
   |     Abschluss: teste-adversarial --> Fixes --> Regressionstests
-  |     waehrend laufender Faelle: integriere-migrationsinkrement
+  |     während laufender Fälle: integriere-migrationsinkrement
   '- Doku-Pflichten: dokumentiere-system (ADR, README, AGENTS)
 ```
 
 Menschliche Gates (A-Q1/A-O1/A-K2/A-M1/A-M2/A-M3/A-M4, P9-Snapshots) sind
-keine Skills — sie sind Werkzeuge für Menschen (`ontologie.entscheide`,
+keine Skills; sie sind Werkzeuge für Menschen (`ontologie.entscheide`,
 `gates.gate_entscheid`); wer zeichnet, wird aus dem Schlüssel über die
 Zeichnungsordnung bestimmt (ADR-018). Skills bereiten sie vor und halten
 an ihnen an.
 
 ## Benannte, noch nicht gebaute Rollen (mit Auslöser)
 
-Nichts auf Vorrat — diese Rollen entstehen, wenn ihr Auslöser eintritt,
+Nichts auf Vorrat: diese Rollen entstehen, wenn ihr Auslöser eintritt,
 als eigener Skill mit demselben Muster:
 
 | Rolle (geplant) | Auslöser |
@@ -116,12 +116,12 @@ als eigener Skill mit demselben Muster:
 
 1. Skills sind aus Fällen destilliert: nach jedem abgeschlossenen Fall
    oder größeren Block werden die berührten Skills um die gelernten
-   Regeln ergänzt (kleiner, begründeter Commit — Skills sind Teil der
+   Regeln ergänzt (kleiner, begründeter Commit; Skills sind Teil der
    Nachweiskette, ihre Änderung ist sichtbar).
 2. Parität `.claude`/`.agents` hält der Test
-   `tests/test_agent_workflow_docs.py`; Kernregeln der Migrations-
-   Skills sind dort zusätzlich maschinell gesichert (Löschen fällt rot aus).
-3. Ein Skill nennt seine Grenze so präzise wie seinen Auftrag —
+   `tests/test_agent_workflow_docs.py`; Kernregeln der Migrations-Skills
+   sind dort zusätzlich maschinell gesichert (Löschen fällt rot aus).
+3. Ein Skill nennt seine Grenze so präzise wie seinen Auftrag:
    „Skip for“ ist Pflicht, Überlappungen zwischen Skills sind ein
    Befund.
 4. Prinzipien (P1-P10) werden in Skills zitiert, nicht dupliziert;

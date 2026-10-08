@@ -96,8 +96,9 @@ Build `.tmp/` fixtures and run the command for real (`.venv\Scripts\python.exe -
 (neue Pflichtpruefung, Verschaerfung, neue Pflichtrolle); **Minor** fuer
 eine optionale Rolle oder Pruefung, die bestehende Belege nicht
 beruehrt; **Patch** fuer Meldetexte und Summary-Felder ohne Wirkung auf
-das Urteil. Der Commit nennt den Grund, die README-Gate-Zeile den
-Sprung; `tests/test_gate_versionsregel.py` haelt Version und Zeile
+das Urteil. Der Commit nennt den Grund, der Abschnitt des Gates in
+`docs/architektur/gate-vertrag-und-versionen.md` den Sprung;
+`tests/test_gate_versionsregel.py` haelt Version und Tabellenzeile
 zusammen. Vor jeder Aenderung an einem Gate fragen: Kann ein
 bestehender Beleg damit anders ausgehen? Wenn ja: Major, und die
 Falldarstellung/A-M4-Neupruefung auf Altbelege pruefen.

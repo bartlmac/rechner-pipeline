@@ -64,8 +64,8 @@ Monatsberichte und den Jahresbericht 2025.
 DER MONATSBERICHT IST EIN EIGENES DOKUMENT, kein enger gestellter
 Jahresbericht. Der erste Versuch war einer: Er gab dem großen Renderer
 ein Zwölf-Monats-Stichtagsraster mit. Das Raster steuert dort aber nur
-Bestandsverlauf, Statusverlauf und die Auswertungstabellen; Ereignis-
-summen, Ereignis-Chart und Nachweisungen hängen nicht daran und zeigten
+Bestandsverlauf, Statusverlauf und die Auswertungstabellen; Ereignissummen,
+Ereignis-Chart und Nachweisungen hängen nicht daran und zeigten
 weiter die ganze Historie -- „Geschäftsvorfälle 1994 bis 2026“ unter
 einer Zwölf-Monats-Kurve. Dazu kürzen die Charts des großen Berichts
 jeden Stichtag auf sein Jahr, sodass die Achse zwölf Jahreszahlen trug.

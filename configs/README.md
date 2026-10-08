@@ -1,13 +1,13 @@
 # Bestands-Konfigurationen
 
 Konfigurationen der Bestandserzeugung und -fortschreibung
-(`rechner_pipeline.bestand`) für die fiktive Pfefferminzia LV — je
+(`rechner_pipeline.bestand`) für die fiktive Pfefferminzia LV, je
 Datei ein Bestand: Tarifgenerationen mit Rechnungsgrundlagen und
 Ontologie-Knoten, Erfahrungsannahmen (3. Ordnung), Seeds und Volumina.
 
-- `bestand_klv.toml` — KLV-Bestand (neun Generationen; Lehrbeispiel)
-- `bestand_bu.toml` — BU-Bestand (Lehrbeispiel)
-- `bestand_gesamt.toml` — beide Versicherungsarten in einem Bestand:
+- `bestand_klv.toml`: KLV-Bestand (neun Generationen; Lehrbeispiel)
+- `bestand_bu.toml`: BU-Bestand (Lehrbeispiel)
+- `bestand_gesamt.toml`: beide Versicherungsarten in einem Bestand,
   die operative Config der PLV mit den Generationen bis heute (KLV-2025,
   BU-2025 im Vertrieb) und dem Abschnitt `[tagesbetrieb]`
 
@@ -28,7 +28,7 @@ Ein Lauf ohne `--portfolio`, ohne `--uebernahme` und ohne
 
 Bis zum 2026-09-21 gab es daneben `sample_size`: einen auf einmal
 gezogenen Bestand ohne eine einzige Buchung. Er war nirgends mehr als
-Kulisse — gemessen: die Vorzeige holte daraus fünf Verträge, die
+Kulisse. Gemessen: die Vorzeige holte daraus fünf Verträge, die
 Prüfstrecke des Migrationsfalls 2220, und alle Gates blieben ohne sie
 grün (ADR-020). Eine Config, die den Schlüssel noch trägt, wird
 abgewiesen, nicht still anders gelesen.
@@ -36,8 +36,8 @@ abgewiesen, nicht still anders gelesen.
 ## `[annahmen]`: Beitragsherabsetzung und Teilkündigung
 
 Seit dem 2026-10-01 erzeugen `bestand_klv.toml` und `bestand_gesamt.toml`
-beide Vorgänge des Tarifplans KLV (7.1, 7.2), für alle Generationen gleich
-— damit der Bestand die Vorgänge enthält, die eine Migration antrifft:
+beide Vorgänge des Tarifplans KLV (7.1, 7.2), für alle Generationen gleich,
+damit der Bestand die Vorgänge enthält, die eine Migration antrifft:
 
 | Schlüssel | Wert | Bedeutung |
 |---|---|---|
@@ -49,7 +49,7 @@ beide Vorgänge des Tarifplans KLV (7.1, 7.2), für alle Generationen gleich
 Welche Bausteine eine Teilkündigung kürzt, ist ein Merkmal des Tarifwerks
 je Generation, `tku_umfang` (Tarifplan KLV 7.2): `alle_bausteine` für die
 eigenen Tarife (Vorgabe, wo `red_verfahren` ein Herabsetzungsverfahren
-nennt), `grundversicherung` für den übernommenen Tarif TG2015 — in
+nennt), `grundversicherung` für den übernommenen Tarif TG2015; in
 `bestand_gesamt.toml` ausdrücklich gesetzt, ein Wert stellt die Regel um.
 
 Es sind Annahmen der Vorführung, keine Tarifgrößen und keine Schätzung
@@ -65,21 +65,22 @@ Vorzeige führt eine eigene Kopie und wird dafür neu aufgesetzt
 
 Fachkonzept `docs/simulation/tagesbetrieb.md`. Der Abschnitt trägt den
 `betriebsbeginn` (ab diesem Tag verkauft der Tagesbetrieb Werktag für
-Werktag; der Batch besiedelt die Verkaufsfenster nur bis dahin), die
+Werktag; davor führt die PLV kein eigenes Geschäft, ADR-020), die
 `wochentagsgewichte` der Neugeschäftsverteilung (Wochenende 0, Montag
 1,3, sonst 1,0) und den `meldeverzug_tod` (lognormal, Median und
 95-Prozent-Quantil in Tagen). Je verkaufender Generation gibt
 `neuzugang_trend` den Jahresfaktor des Ziels an:
 `neuzugang_pro_jahr * (1 + neuzugang_trend)^(J - gueltig_von.year)`.
 Verkaufsfenster verkaufender Generationen desselben Produkts dürfen
-nicht überlappen — ein Tag verkauft je Produkt genau eine Generation;
+nicht überlappen: ein Tag verkauft je Produkt genau eine Generation;
 die Config prüft das. Die Werte für 2025 sind **vorläufig** (offene
 Fachentscheidungen des Konzepts, Abschnitt 10) und in der Config als
 solche markiert.
 
 `nummernkreis = k` legt den Nummernkreis einer Generation fest: Police-Nummern
-`k * 10 Mio + 1 ..`, mit festen Abschnitten für Batch, Jahresneuzugang und
-Tagesneugeschäft; auch die Seeds der Erzeuger hängen daran. Er ist eine
+`k * 10 Mio + 1 ..`, mit festen Abschnitten für Jahresneuzugang und
+Tagesneugeschäft (der frühere Abschnitt des Batch-Erzeugers bleibt frei,
+ADR-020); auch die Seeds der Erzeuger hängen daran. Er ist eine
 Eigenschaft der Generation, nicht ihrer Position in der Datei (Befund T22-09:
 vorher änderte eine umsortierte Liste die Identität jeder Police und damit
 jede Ereignishistorie). Entweder alle Generationen tragen ihn oder keine; ohne

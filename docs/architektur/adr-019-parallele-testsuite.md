@@ -20,7 +20,7 @@ Gemessen mit `pytest --durations` auf dem Entwicklungsrechner
 | Volle Suite, seriell | 1230 s (20:30) |
 | Volle Suite, `-n 12 --dist loadfile` | 446 s (7:25) |
 
-Beide Läufe: 2373 passed, 0 failed — gleiche Menge, gleiches Urteil.
+Beide Läufe: 2373 passed, 0 failed; gleiche Menge, gleiches Urteil.
 
 Die Last ist stark konzentriert. Die vierzig langsamsten Tests tragen
 rund die Hälfte der Laufzeit, und sie liegen fast alle in zwei Dateien:
@@ -46,13 +46,13 @@ leistet; mehr Prozesse als große Testdateien bringen nichts.
 
 **Warum `--dist loadfile` und nicht `--dist load`:** `loadfile` gibt eine
 ganze Testdatei an einen Arbeiter. Damit bleiben die 61
-modul-gebundenen Fixtures der Suite das, was sie sind — einmal gebaut je
+modul-gebundenen Fixtures der Suite das, was sie sind: einmal gebaut je
 Modul. Mit `load` würde jeder Arbeiter, der einen Test aus einem Modul
 bekommt, dessen Fixture neu bauen; bei den e2e-Ketten hieße das, die
 ganze Migrationskette mehrfach zu fahren.
 
 **Warum 12 und nicht 28:** Die Wand ist nicht die Kernzahl, sondern die
-größte Datei — `loadfile` kann sie nicht teilen. Mehr Arbeiter als
+größte Datei: `loadfile` kann sie nicht teilen. Mehr Arbeiter als
 teure Dateien bringen nichts und kosten Speicher; der Rechner hat heute
 schon zweimal einen Lauf wegen Speicherdrucks abgebrochen.
 
@@ -79,7 +79,7 @@ in einem Baum, nicht für die Arbeiter einer Suite.
 * Die Regel bleibt: volle Suite grün vor dem Commit. Sie dauert jetzt
   sieben statt zwanzig Minuten.
 * Ein Test, der von der Reihenfolge anderer Tests abhängt, fällt ab
-  jetzt auf — das ist ein Gewinn, kein Risiko.
+  jetzt auf; das ist ein Gewinn, kein Risiko.
 * Nachtrag 2026-10-03: Die CI fährt die volle Suite ebenso parallel
   (`-n auto --dist loadfile`, so viele Arbeiter, wie der Runner Kerne
   hat). Seriell war sie dort nie entschieden, nur nie umgestellt. Mit
@@ -90,7 +90,7 @@ in einem Baum, nicht für die Arbeiter einer Suite.
 ## Zwei Suiten auf einem Rechner: der Lock gehört in einen Aufruf
 
 Wer neben einer anderen Session arbeitet, klammert seinen Lauf in
-`flock /tmp/suite.lock`. Das allein reicht nicht — es muss ein Aufruf
+`flock /tmp/suite.lock`. Das allein reicht nicht; es muss ein Aufruf
 sein:
 
     # richtig
@@ -103,7 +103,7 @@ sein:
 
 `flock` ist nicht fair: Es gibt keine Warteschlange, sondern vergibt den
 Lock an irgendeinen Wartenden. Eine Folge kurzer Läufe gibt ihn jedes
-Mal frei und nimmt ihn sofort wieder — für einen langen Lauf daneben
+Mal frei und nimmt ihn sofort wieder; für einen langen Lauf daneben
 sieht das aus wie Dauerbesitz, und er verhungert.
 
 Gemessen am 2026-09-20: Zwei Sessions, beide korrekt mit `flock`, eine
@@ -117,7 +117,7 @@ Der Boden liegt bei der größten Datei. `test_betrieb_tageslauf.py`
 allein trägt über 337 s, davon rund 150 s in dreizehn
 Parametrisierungen desselben Wiederanlauf-Tests, die jede für sich den
 Ausgangszustand neu bauen. Ein gemeinsamer, einmal gebauter
-Ausgangszustand je `zustand`-Wert — kopiert statt neu gefahren — oder
+Ausgangszustand je `zustand`-Wert (kopiert statt neu gefahren) oder
 ein Schnitt der Datei in zwei Module senkt den Boden auf etwa die
 Hälfte. Das ist eine eigene Änderung mit eigener Messung und steht
 bewusst nicht in diesem ADR.
@@ -131,7 +131,7 @@ mehrfach gefunden hat.
 
 **Nur Teilläufe nach Impact.** `ontologie.impact` rechnet geänderte
 Dateien auf betroffene Testmodule um und gibt fertige `pytest_args`
-aus — ein sehr gutes Werkzeug für die Schleife beim Bauen, aber keine
+aus: ein sehr gutes Werkzeug für die Schleife beim Bauen, aber keine
 Commit-Vorbedingung: Es kennt Import- und Knoten-Kanten, nicht jede
 Wirkung.
 

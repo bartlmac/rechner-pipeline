@@ -40,8 +40,9 @@ außerhalb der T-Box und ihrer Version.
 3. **Katalog-Vokabular** (Geschäftsvorfälle, Vertragsstatus, Vertragsfelder
    einer Lieferung, rechnende Vorgänge der Vorgeschichte, Zustandsextrakt,
    Formfunktionen, Produktfamilien mit Zuständen und Rechnungsgrundlagen)
-   steht in der T-Box als Spiegel der Konstanten des Codes. Ein Test hält
-   jede Spiegelung mit `==`; die T-Box importiert die Konstanten nicht.
+   steht in der T-Box als Spiegel der Konstanten des Codes. Ein Test
+   verlangt, dass jede Spiegelung den Konstanten genau gleicht; die T-Box
+   importiert die Konstanten nicht.
 4. **Die BU ist Vokabular, nicht instanziierbar** (`ABOX_FAMILIEN =
    ("klv",)`).
 5. **Abdruck des Vokabulars** (`vokabular_sha256`), je Version im Test
@@ -219,7 +220,7 @@ Vokabular, und jede weitere Änderung hebt die Version.
 wenn sich nur der Hash des Moduls bewegt und nicht der Abdruck.
 `ontologie/tbox.py` trägt neben dem Vokabular die Prüfregeln von `P-Q3` und
 `P-K1`; eine geänderte Prüfregel ginge so ungezeichnet durch. Der Verweis
-hält deshalb alle drei Felder mit `==`. Lockern ließe sich das erst mit
+verlangt deshalb Gleichheit in allen drei Feldern. Lockern ließe sich das erst mit
 einem Register der öffentlichen Namen des Moduls, getrennt nach Vokabular
 und Regel.
 

@@ -19,12 +19,12 @@ Das war der **Übersetzungsbeleg** des Backbone-Wechsels: 6170 Werte, 0
 abweichend, größte relative Abweichung 4e-13, abgenommen am
 2026-08-12 (kern 2.0.0). Ein Übersetzungsbeleg ist seiner Natur nach
 einmalig. Seither läuft der Vergleich als stehende Doppelimplementierung
-mit — und kostet mehr als die Wartung zweier Pakete.
+mit, und kostet mehr als die Wartung zweier Pakete.
 
 **Er formt den Zielkern.** Damit der Zweitkern eingehängt werden kann,
 hält `ZustandsBarwerte` (`kern/zustandsmodell.py`) das
-`Barwerte`-Interface aufrecht: drei Einheits-Barwerte — Rente,
-Todesfall, Erleben. Mehr gibt die Kommutation nicht her; D/N/C/M können
+`Barwerte`-Interface aufrecht: drei Einheits-Barwerte (Rente,
+Todesfall, Erleben). Mehr gibt die Kommutation nicht her; D/N/C/M können
 keinen beliebigen Zahlungsverlauf ausdrücken. Der KLV-Produktcode
 multipliziert diese drei Werte mit Versicherungssumme und Beitrag, und
 in dieser Multiplikation steckt die Annahme, dass beide über die
@@ -32,14 +32,14 @@ Laufzeit konstant sind.
 
 Das ist die Grenze des Kommutationsmodells, verpflanzt in die
 Thiele-Welt. Sie blockiert konkret: Ein Vertrag, dessen Leistung oder
-Beitrag sich mitten im Verlauf geändert hat — Herabsetzung,
-Beitragsfreistellung, Erhöhung, Zuzahlung — ist so nicht darstellbar.
+Beitrag sich mitten im Verlauf geändert hat (Herabsetzung,
+Beitragsfreistellung, Erhöhung, Zuzahlung) ist so nicht darstellbar.
 Für einen Migrationskern ist das keine Randfrage, sondern der Normalfall
 eines Altbestands (dev-docs/zahlungspfade-migrierter-vertraege.md).
 
 ## Entscheidung
 
-Der Kreuz-Check wird außer Betrieb genommen — geschnitten werden die
+Der Kreuz-Check wird außer Betrieb genommen: geschnitten werden die
 Ansprüche des Zweitkerns an den lebenden Code, nicht der Zweitkern
 selbst. Was fällt:
 
@@ -48,24 +48,24 @@ selbst. Was fällt:
 * Die Einhängestelle `KLV(mp, barwerte=...)`
   (`kern/produkte/klv.py`). Sie war der eigentliche Anspruch: Über
   ein austauschbares `Barwerte`-Rückgrat kann nur kommen, was die
-  Kommutation liefern kann — Einheitsbarwerte, also konstante Summe
+  Kommutation liefern kann: Einheitsbarwerte, also konstante Summe
   und konstanter Beitrag. Nach dem Wegfall der Überleitung hatte sie
   keinen Aufrufer mehr.
 * Der Platz des Zweitkerns in der Hausordnung:
   `ZWEITKERN_KONSUMENTEN` steht auf `{"kommutationskern"}`, und der
   Schichtentest verlangt jetzt die Umkehrung seiner früheren
-  Behauptung — er forderte die Kante `qa -> Zweitkern`, er verbietet
+  Behauptung: er forderte die Kante `qa -> Zweitkern`, er verbietet
   sie nun.
 * Die Docstrings des Zielkerns, die den Zweitkern eine lebende
   Kreuz-Check-Schiene nannten.
 
 **Was bleibt: der Zweitkern selbst.** Er ist keine tote Last, sondern
-ein Zeuge — `tests/test_kern_algebraisch.py` hält die Durchreicher
+ein Zeuge: `tests/test_kern_algebraisch.py` hält die Durchreicher
 `pv_benefits`/`pv_premiums`/`net_premium` des Zielkerns gegen ihn. Der
-Docstring dieses Tests hält fest, warum: *"Früher stand hier
+Docstring dieses Tests hält fest, warum: *„Früher stand hier
 net_premium == pv_benefits/pv_premiums — der Methodenrumpf gegen sich
 selbst, also wahr für jede A_x. Jetzt entscheidet ein zweiter,
-unabhängig gebauter Kern."* Diese Unabhängigkeit aufzugeben wäre ein
+unabhängig gebauter Kern.“* Diese Unabhängigkeit aufzugeben wäre ein
 Rückschritt hinter einen Reviewbefund.
 
 Entscheidend ist die Art der Nutzung: Der Test baut den Zweitkern
@@ -82,14 +82,14 @@ braucht eine bewusste, fachlich begründete Abnahme.
 
 **Der Nachweis nach dem Muster von ADR-006**: Es wird keine geprüfte
 Eigenschaft des Zielsystems aufgegeben. Der Kreuz-Check prüft, dass
-zwei Implementierungen derselben Mathematik übereinstimmen — eine
+zwei Implementierungen derselben Mathematik übereinstimmen: eine
 Aussage über den abgeschlossenen Übergang, nicht über das Verhalten
 des Zielsystems. Dessen Verhalten sichern die Referenzwerte, und die
 bleiben.
 
 Der Zeitpunkt ist bewusst gewählt: Die anstehende Umstellung des
 Bewertungspfads auf Zahlungspfade braucht die Referenzwerte als
-Abnahme — sie sind dafür das schärfere Instrument als ein zweiter
+Abnahme; sie sind dafür das schärfere Instrument als ein zweiter
 lebender Kern, weil sie bit-exakt vergleichen statt auf Toleranz.
 
 ## Die allgemeine Regel
@@ -107,7 +107,7 @@ dieselbe Frage stellt sich erneut. Deshalb als Regel:
 > abgeschlossenen Übergangs.
 
 Der Kern der Regel ist die mittlere Bedingung. Ein ungenutztes Modul,
-das nur herumliegt, stört niemanden — was stört, sind seine
+das nur herumliegt, stört niemanden; was stört, sind seine
 **Ansprüche** an den lebenden Code: eine Schnittstelle, die seinetwegen
 gehalten wird, eine Hausregel, die ihm einen Platz einräumt, ein
 Docstring, der ihn lebendig nennt. Wer stilllegt, schneidet die
@@ -124,7 +124,7 @@ Ansprüche; der Code folgt dann von selbst.
   reine Effizienzschicht. Gemessen 2026-08-28 an 500 Verträgen trägt
   sie sich nicht mehr: Der Spalten-Cache bringt Faktor 14,5 gegenüber
   dem ungecachten Skalarweg, ein eigener Zahlungspfad je Vertrag ist mit
-  0,03 ms gegen 0,04 ms aber sogar schneller als der gecachte — er
+  0,03 ms gegen 0,04 ms aber sogar schneller als der gecachte: er
   rechnet eine Rekursion über die Vertragslaufzeit statt drei
   Einheitsspalten über den ganzen Altersbereich. Damit steht der
   Umstellung auf Zahlungspfade nichts mehr im Weg.

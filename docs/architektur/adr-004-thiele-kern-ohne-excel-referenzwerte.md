@@ -13,21 +13,21 @@
 ## Kontext
 
 Der Zielkern rechnet seit Version 2.0.0 auf einem
-(Semi-)Markov-Zustandsmodell mit Thiele-Rekursion — trug aber weiter
+(Semi-)Markov-Zustandsmodell mit Thiele-Rekursion, trug aber weiter
 drei Bezüge zur Excel-Historie mit sich:
 
 1. Die **617/617-Excel-Parität** (einmalige Übersetzungsabnahme vom
    22.07.2026) lief als dauerhafter Kern-Test mit eingecheckten
-   Erwartungswert-Fixtures weiter — als wäre sie ein laufender Referenzwert.
+   Erwartungswert-Fixtures weiter, als wäre sie ein laufender Referenzwert.
 2. **Kommutationswerte** (D/N/C/M) lebten als `kern/kommutation.py` im
    Kern, obwohl der produktive Pfad sie nirgends braucht: das
    Zustandsmodell konsumiert ausschließlich reine qx-Vektoren.
-3. Der Verlauf war **blattfest auf 51 Zeilen (0..50)** gedeckelt — die
+3. Der Verlauf war **blattfest auf 51 Zeilen (0..50)** gedeckelt: die
    Zeilenzahl des Quell-Verlaufsblatts als Domänengrenze des Kerns.
 
 Das widerspricht dem Zielbild: ein zielbildfähiges Gerät für die
 Bestandsmigration, dessen Abnahme je Migrationsfall gegen den
-jeweiligen Quell-Rechner läuft (Gate P-K1) — nicht dauerhaft gegen das
+jeweiligen Quell-Rechner läuft (Gate P-K1), nicht dauerhaft gegen das
 eine historische Workbook.
 
 ## Entscheidung
@@ -35,7 +35,7 @@ eine historische Workbook.
 1. **Der Kern ist vollständige Zustandsmodell-Welt.** Neue unterste
    Fachschicht `kern/tafeln.py`: `Tafelbasis` = reiner qx-Vektor je
    (Geschlecht, Tafel) samt Erschöpfungsgrenze (erstes Alter nach
-   qx >= 1 — nachweislich äquivalent zum früheren Dx=0-Kriterium),
+   qx >= 1; nachweislich äquivalent zum früheren Dx=0-Kriterium),
    gecacht, fail-fast bei fehlender Tafel oder Bereichsverletzung.
    `ZustandsBarwerte` und die Produkte konsumieren `Tafelbasis`,
    keine Kommutation.
@@ -53,7 +53,7 @@ eine historische Workbook.
 4. **Der Verlauf ist modellpunktgetrieben** (`verlaufswerte()` bis n,
    `verlaufszeile(a)` bis zur Tafel-Erschöpfung). Das 51-Zeilen-Fenster
    bleibt als expliziter Vergleichs-Contract der `berechne()`-View
-   erhalten — je Produkt deklariert (`contract_verlauf_bis`; KLV: 50,
+   erhalten, je Produkt deklariert (`contract_verlauf_bis`; KLV: 50,
    Zeilenformat des Quell-Verlaufsblatts; BU: n).
 
 ## Konsequenzen
@@ -77,5 +77,5 @@ eine historische Workbook.
 
 Kommutation als „tote“ Schicht im Kern belassen und nur den 617-Test
 streichen: ließe die irreführende Architekturaussage stehen, der
-Kern rechne auf Kommutationswerten — genau die Verwechslung von
+Kern rechne auf Kommutationswerten: genau die Verwechslung von
 Übersetzungshistorie und Zielbild, die dieses ADR beendet.

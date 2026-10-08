@@ -84,14 +84,14 @@ Eingangs-, A-Box-, Code-, Bestands- und Stichtagsstand beschreiben.
   unveränderliche Versuchshistorie gibt es weiterhin nur für grüne
   P-K1-Belege.
 
-  *(Nachtrag 2026-08-24: ToDo 10.12 ist im selben Stand umgesetzt und nicht
-  mehr offen — jeder Gate-Lauf ersetzt den alten Beleg vor der Facharbeit
+  *(Nachtrag 2026-08-24: Der rote Startbeleg ist im selben Stand
+  umgesetzt. Jeder Gate-Lauf ersetzt den alten Beleg vor der Facharbeit
   durch einen roten Startbeleg und publiziert den Abschluss atomar
   (`gates._common.begin_gate_ledger_attempt` / `finalize_gate_ledger`). Was
   bleibt, ist die fehlende Attempt-Historie; das Latest-Ledger ist weiterhin
   überschreibbar. Eine bewusste Ausnahme liegt in `gates.abnahmebericht`:
   Kollidiert der Ledger-Pfad kanonisch mit einer Artefaktrolle, wird gar kein
-  Ledger geschrieben, damit der Lauf das Pflichtartefakt nicht zerstört —
+  Ledger geschrieben, damit der Lauf das Pflichtartefakt nicht zerstört;
   dann kann ein älterer grüner Beleg stehen bleiben. Der Aufruf ist rot und
   A-M4 revalidiert ohnehin vollständig; wer das Abnahme-Ledger automatisiert
   auswertet, darf sich aber nicht allein auf seine Aktualität verlassen.)*
@@ -100,13 +100,13 @@ Eingangs-, A-Box-, Code-, Bestands- und Stichtagsstand beschreiben.
 
 - Ein vollständiger E2E-Durchlauf durch den Transformationsproduzenten sowie
   die Bindung von registrierter Quelle, Transformationsspec,
-  Transformationsergebnis und Ziel werden separat in ToDo 10.13 korrigiert.
-- Transformationsbefunde, Zeilenverlust und andere Prüflücken blockieren seit
-  ToDo 10.5 den Berichtserfolg. Ein weitergehendes vierstufiges Statusmodell
+  Transformationsergebnis und Ziel werden separat korrigiert.
+- Transformationsbefunde, Zeilenverlust und andere Prüflücken blockieren
+  den Berichtserfolg. Ein weitergehendes vierstufiges Statusmodell
   wurde nicht eingeführt; der bestehende Gate-Vertrag bleibt binär und
   blockierend.
 - Der Scope-Vertrag ersetzt den fachlichen Innenvertrag der Suite nicht.
-  `gates.abnahmebericht` berechnet seit ToDo 10.4 Residuen, Einzel-,
+  `gates.abnahmebericht` berechnet Residuen, Einzel-,
   Vertrags- und Suiteurteile aus den atomaren Fakten neu und lehnt
   widersprüchliche Ableitungen als Contract-Fehler ab.
 
@@ -117,22 +117,22 @@ Eingangs-, A-Box-, Code-, Bestands- und Stichtagsstand beschreiben.
 - Den Scope aus vorhandenen CSV-/Parquet-Dateien erraten: verworfen, weil
   Dateiexistenz kein fachlicher Entscheid ist und durch Löschen die
   Gate-Pflicht abschaltbar wäre.
-- Einen allgemeinen Gate-DAG einführen: verworfen, weil T6-03 nur die drei
-  fehlenden Bestandsbelege nachgewiesen hat und ToDo 6.2 den Fehlerfix bewusst
-  auf diesen Befund begrenzt.
+- Einen allgemeinen Gate-DAG einführen: verworfen, weil der Befund
+  (T6-03) nur die drei fehlenden Bestandsbelege nachgewiesen hat und die
+  Behebung bewusst auf diesen Befund begrenzt ist.
 
 ## Nachtrag 2026-08-26 (ADR-010)
 
 Die Pflichtbelegmenge dieses ADR beschreibt ab hier das Gate A-M4. Mit
 ADR-010 wird die scope-getriebene Belegmenge je Gate aufgelöst
 (`fall.BELEGROLLEN`, seit ADR-021 `models.belegrollen.BELEGROLLEN`): Das neue menschliche Gate A-M1 (aktuarielle
-Abnahme) trägt eine eigene Rollenmenge — im Bestands-Scope das
+Abnahme) trägt eine eigene Rollenmenge: im Bestands-Scope das
 Testergebnis und der Bericht des aktuariellen Tests, im Tarif-Scope
 keine eigenen Rollen. A-M4 verlangt zusätzlich den geltenden
 A-M1-Snapshot als Pflichtrolle (`am1_snapshot`); die erzwungene
 Reihenfolge A-M1 vor A-M4 läuft über den unveränderten Kettenvertrag
 aus ADR-008. Das P9-Schema hebt seine Version auf 5 (Gate-Version
-0.6.0); v4-Snapshots sind keine gültigen Belege des neuen Vertrags —
+0.6.0); v4-Snapshots sind keine gültigen Belege des neuen Vertrags;
 Altketten werden nach dem Verfahren dieses ADR revisionsfest archiviert
 und neu entschieden. Die hier verworfene Alternative eines allgemeinen
 Gate-DAG bleibt verworfen: Auch die Je-Gate-Auflösung ist eine

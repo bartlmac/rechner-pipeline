@@ -14,7 +14,7 @@ Pin-Dateien. Auf andere Betriebssysteme wird der Code nicht angepasst; dort
 läuft die Suite im Entwicklungs-Container.
 
 Das Image der Laufzeit (`ghcr.io/bartlmac/rechner-pipeline-plv`, gebaut,
-wenn ein Push auf `main` den Code, die Pin-Dateien oder `deploy/plv/`
+wenn ein Push auf `main` den Code, `requirements.txt` oder `deploy/plv/`
 ändert) ist kein Entwicklungswerkzeug. Es enthält nur das
 Paket und führt den Tageslauf einer bestehenden Ablage aus
 ([deploy/plv/README.md](deploy/plv/README.md)). Zum Entwickeln, Testen und
@@ -107,8 +107,8 @@ Mit `--bis <haltepunkt>` hält der Lauf an einer Stelle, an der man selbst
 liest und zeichnet; derselbe Aufruf ohne `--bis` (oder mit einem späteren
 Haltepunkt) fährt danach weiter. Die Haltepunkte nennt
 [pakete/README.md](pakete/README.md). Der Fall liegt danach im Klon unter
-`faelle/`; ein zweites Nachfahren braucht einen frischen Klon oder den Fall
-vorher unter `faelle/archiv/` (README, Schnellstart). Erprobt ist das
+`faelle/`; ein zweites Nachfahren braucht einen frischen Klon, oder der
+Fall wird vorher nach `faelle/archiv/` verschoben (README, Schnellstart). Erprobt ist das
 Nachfahren unter Linux, aus einem Klon mit `.venv`, im Entwicklungs-Container
 bisher nicht. Einzelheiten stehen in
 [deploy/welt/README.md](deploy/welt/README.md).
@@ -118,8 +118,9 @@ Tarif also bereits. Den Stand vor dem Fall trägt der Tag `fall3-vor`. Die
 Skripte unter `deploy/welt/` gibt es dort noch nicht, sie nehmen den
 Codebaum aber über die Variable `BAUM` entgegen. Wer den Fall live mit
 Agenten auf dem alten Stand führen will, legt einen zweiten Klon auf
-`fall3-vor` an und ruft die Skripte aus `main` mit `BAUM=<zweiter Klon>` auf.
-Eine eigene Anleitung dafür gibt es noch nicht.
+`fall3-vor` an und ruft die Skripte aus `main` mit `BAUM=<zweiter Klon>` auf
+(mit `PYTHON=<Interpreter>`, wenn der zweite Klon keine eigene `.venv`
+hat). Eine eigene Anleitung dafür gibt es noch nicht.
 
 **Einen Fall anlegen.** Eine Datei kommt nur durch Registrieren in einen
 Fall:

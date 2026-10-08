@@ -11,8 +11,8 @@ Quelle aufgedeckt und in die Prüfstrecke eingebaut: Erhöhungsscheiben
 mit voller Beitragsformel (Korrektur 6, Kern 3.2.0), Stornoabzug je
 Baustein (Korrektur 7, Kern 3.3.0), Teilkündigung als
 Herabsetzungsverfahren (Korrektur 16). Dazu die Korrekturschicht auf
-dem Verankerungsresiduum. Alle drei Abnahmen und das Migrations-
-controlling rechnen damit, 834 von 834 Verträgen bestehen. Die
+dem Verankerungsresiduum. Alle drei Abnahmen und das Migrationscontrolling
+rechnen damit, 834 von 834 Verträgen bestehen. Die
 Bestandsführung, die diese Verträge seit dem 2026-01-01 führt, rechnet
 NICHTS davon. Sie kennt weder die Bausteine der Verträge noch die
 Schalter noch die Schicht. Was abgenommen wurde, ist nicht das, was
@@ -27,9 +27,9 @@ Werte zu bilden.
 `gates.migrationssuite_lauf`, `qa.migrationssuite`,
 `gates.verankerung_belegen`) baut je Vertrag aus den transformierten
 Lieferzeilen und der registrierten Vorgeschichte einen
-**Anfangszustand**: die Ursprungs- oder Grundsumme, die Alt-Erhöhungs-
-scheiben aus dem belegten Dynamiksatz, das Jahr einer Beitragsfrei-
-stellung, den Anteil einer Herabsetzung
+**Anfangszustand**: die Ursprungs- oder Grundsumme, die Alt-Erhöhungsscheiben
+aus dem belegten Dynamiksatz, das Jahr einer Beitragsfreistellung,
+den Anteil einer Herabsetzung
 (`migrationssuite_lauf.anfangszustaende_je_police`, Ableitungen in
 `bestand.migrationszugang`). Auf diesem Zustand rechnet sie mit den
 Lauf-Schaltern `--scheiben-mit-gamma1`, `--stoab-je-baustein`,
@@ -273,8 +273,8 @@ Gesamt-Versicherungssumme über alle Bausteine. Ein Vertrag ohne
 ableitbaren Anfangszustand wird wie in der Prüfstrecke als
 Grundvertrag geführt und im Übernahmebeleg namentlich ausgewiesen;
 still ist daran nichts, und die Führungsprobe trägt dieselbe Liste.
-Ein Herabsetzungs-
-Zustand, den die Führung nicht tragen kann (jedes Verfahren außer
+Ein Herabsetzungs-Zustand,
+den die Führung nicht tragen kann (jedes Verfahren außer
 Teilkündigung, die zustandslos weiterführt), hält ebenfalls an:
 „nicht freigeschaltet“ ist ein benannter Zustand, keine Näherung.
 Die Schalter, mit denen übernommen wurde, schreibt die Übernahme in
@@ -316,8 +316,8 @@ denselben Feldern wie `Schichtparameter.als_beleg()`
 (Grundsatzdokumentation 9.11: Parameter, keine Zwischenwerte). Die
 Führung liest sie mit `verankerung.parquet` zusammen und wendet den
 Katalog der Ausgestaltung an: Storno zahlt Basiswert plus Schichtwert
-(`schichtwert_bei`, dieselbe Funktion wie in beiden Vergleichs-
-Engines), Beitragsfreistellung absorbiert (rho danach null), Tod und
+(`schichtwert_bei`, dieselbe Funktion wie in beiden Vergleichs-Engines),
+Beitragsfreistellung absorbiert (rho danach null), Tod und
 Ablauf sind unberührt (feste Summe beziehungsweise Terminalbedingung),
 eine Erhöhung lässt die Schicht stehen. Der Abschluss weist die
 Schicht je Vertrag als eigene Position aus, nie unsichtbar im

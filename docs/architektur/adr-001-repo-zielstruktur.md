@@ -15,12 +15,12 @@ Schritten: Schnitt von `src/` und Zusammenlegung der Laufdaten unter
 Das Repo wird zur Plattform für KI-gestützte Bestandsmigrationen
 ausgebaut (drei Stufen: Quellen-Analyse, Rechenkern-Implementierung,
 Test/Abnahme; eine Ontologie als einziges Interface zwischen den
-Stufen — Entwurf folgt in diesem Verzeichnis). Die gewachsene Struktur
+Stufen; Entwurf folgt in diesem Verzeichnis). Die gewachsene Struktur
 passte nicht dazu: vier gitignorierte Laufverzeichnisse auf Top-Level
 plus ein teilgetracktes output/, und ein src-Schnitt entlang der
 Historie (extract/, adapters/, orchestrate/, toolbox/ mit 15 flachen
 CLIs) statt entlang der Aufgabe. Vor dem Push lernt das Team die
-Struktur genau einmal — deshalb jetzt.
+Struktur genau einmal; deshalb jetzt.
 
 ## Entscheidung
 
@@ -56,7 +56,7 @@ Kommando-Aufrufe ändern sich entsprechend:
 - Explizite `--*-dir`-Argumente verhalten sich unverändert; nur die
   Fallback-Defaults zeigen auf `runs/`.
 - `ontologie/` und `spez/` sind bewusst leere, dokumentierte
-  Platzhalter — Inhalt kommt mit dem Architektur-Entwurf, nicht auf
+  Platzhalter; Inhalt kommt mit dem Architektur-Entwurf, nicht auf
   Vorrat.
 - Die weitere Struktur unterhalb von `runs/` (lauffallweise
   Unterverzeichnisse, Schutz echter Läufe vor Aufräum-Aktionen)

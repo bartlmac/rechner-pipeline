@@ -3511,7 +3511,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--schluessel", required=True,
         help="Betriebsschluessel (Rolle betrieb/<name>, Schluesselklasse betrieb), "
         "mit dem jede Protokollzeile gezeichnet und die Kette geprueft wird. Er "
-        "liegt ausserhalb der Ablage beim Menschen (0600, ein Hardlink).")
+        "liegt ausserhalb der Ablage beim Menschen (0600, keine weiteren Hardlinks).")
     parser.add_argument(
         "--zeichnungsordnung", required=True,
         help="Zeichnungsordnung (Schema 2), die dem Schluessel seine Rolle gibt; "

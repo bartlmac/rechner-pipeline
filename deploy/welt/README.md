@@ -3,16 +3,16 @@
 Eine **Welt** ist alles, was neben dem Code nötig ist, damit die PLV läuft
 und ein Migrationsfall geführt werden kann: die Ablage des Tagesbetriebs
 (`daten/`), die Linie mit ihrer Ordnungslinie und den Erstabnahmen (`linie/`)
-und — außerhalb von beidem — die Schlüssel der Rollen, die
+und (außerhalb von beidem) die Schlüssel der Rollen, die
 Zeichnungsordnung und das Mandat. Die Welt startet ohne übernommenen
 Bestand; ein Fall bringt ihn hinein. Je Fall eine eigene Welt: So berührt
 kein Fall die Laufzeit eines anderen. Der Arbeitsbereich des Falls liegt
 nicht in der Welt, sondern im Codebaum unter `faelle/<name>`; ein zweiter
-Lauf desselben Falls braucht deshalb einen eigenen Codebaum oder den Fall
-vorher unter `faelle/archiv/`.
+Lauf desselben Falls braucht deshalb einen eigenen Codebaum, oder der Fall
+wird vorher nach `faelle/archiv/` verschoben.
 
 Die Skripte hier fahren die Bedienfolgen, die in ADR-025 (Erstabnahmen),
-ADR-026 (Fallauftrag) und `deploy/plv/README.md` (Ablage) beschrieben sind —
+ADR-026 (Fallauftrag) und `deploy/plv/README.md` (Ablage) beschrieben sind:
 jeden Schritt als Systemkommando, mit Halt beim ersten Fehler und einem
 Protokoll in der Welt. Sie rechnen und prüfen nichts selbst.
 
@@ -62,6 +62,9 @@ steht `WELT STEHT: ...` mit den vier Abnahmen; das Protokoll liegt unter
 Was die Phase `schluessel` festlegt, lässt sich beim Aufruf setzen:
 `SCHLUESSEL` (Verzeichnis der Schlüssel), `BIS` (letzter Tag der Ablage),
 `VON` (Vergleichsstand der Erstabnahme), `MANDATGEBER`, `ENTSCHEIDER`.
+Alle Skripte nehmen außerdem `BAUM` (der Codebaum, auf dem gerechnet
+wird; Vorgabe ist der Klon, in dem das Skript liegt) und `PYTHON` (der
+Interpreter; Vorgabe ist `$BAUM/.venv/bin/python`).
 
 - **Kein Schlüssel wird überschrieben, keiner verlässt den Rechner.**
   Trägt das Schlüsselverzeichnis schon eine Ordnung, hält das Skript an;
@@ -109,7 +112,7 @@ deploy/welt/fall_zeichnen.sh <welt> ring <gate>
 ```
 
 Das Skript reicht je Gate den Ring: zuerst die Schlüssel, gegen die das
-Gate fremde Ketten prüft (immer der des Vorstands — Fallauftrag und Glieder
+Gate fremde Ketten prüft (immer der des Vorstands: Fallauftrag und Glieder
 der Linie), zuletzt den zeichnenden.
 
 | Gate | zeichnet | davor im Ring |
@@ -235,7 +238,7 @@ zuletzt angenommen hat.
   zeichnet, hält es deshalb vorher den Gegenstand gegen den festgehaltenen
   Fall: mit `erwarte` (Spez, Tabellen, Abnahmebericht) oder mit einem
   Schritt, der Fingerabdrücke vergleicht (Kern, Tarifwerk). Weicht der
-  Gegenstand ab, hält der Lauf — dann urteilt ein Mensch.
+  Gegenstand ab, hält der Lauf; dann urteilt ein Mensch.
 - **Wer selbst zeichnet, dessen Zeichnung gilt.** An einem Haltepunkt kann
   ein Mensch die Vorlage lesen und das Gate selbst zeichnen
   (`fall_zeichnen.sh <welt> <gate> angenommen "<begruendung>"`, für den
@@ -244,7 +247,7 @@ zuletzt angenommen hat.
   k-te Zeichnung eines Gates im Rezept gilt als geleistet, wenn im Fall k
   Annahmen liegen; der Anfangsbestand, wenn eine Annahme genau den Beleg
   pinnt, der in der Linie liegt. Ist die jüngste Zeichnung des Gates eine
-  **Ablehnung**, hält der Lauf — über eine Ablehnung zeichnet das Rezept
+  **Ablehnung**, hält der Lauf: über eine Ablehnung zeichnet das Rezept
   nie hinweg; danach führt ein Mensch den Fall weiter. Das ist eine
   Anzeige, kein Urteil: Ob eine Zeichnung gilt, prüfen die Gates der
   folgenden Schritte.
@@ -256,7 +259,7 @@ zuletzt angenommen hat.
 - **Zwei Stände des Codebaums.** Hat der Fall das Zielsystem geändert
   (Kern, Tafeln, Config), wird die Welt auf dem Stand vor dem Fall
   aufgestellt und der Fall auf dem Stand danach nachgefahren. Die Änderung
-  selbst baut das Rezept nicht — sie liegt als Commits im Codebaum, das
+  selbst baut das Rezept nicht: sie liegt als Commits im Codebaum, das
   Rezept belegt und zeichnet sie.
 - **Der Fall der Welt.** Führt die Welt schon einen anderen Fall, hält
   das Skript an. `--wechseln` legt dessen Falldatei beiseite
@@ -274,7 +277,7 @@ Stellt die Welt auf dem Stand auf, den das Paket nennt (`STAND`), und fährt
 danach das Paket auf dem Stand dieses Baums nach. Der Stand vor dem Fall
 liegt dabei als eigener Baum in der Welt (`<welt>/baum-vor`, ein Klon dieses
 Baums auf dem Commit); der Codebaum selbst wird nicht bewegt. Der Commit muss
-ein Vorfahr des Baums sein — ein Paket aus einer anderen Geschichte des
+ein Vorfahr des Baums sein; ein Paket aus einer anderen Geschichte des
 Repositorys hält das Skript an, bevor es etwas anlegt.
 
 Die Schlüssel der Welt liegen dabei unter `~/.plv-schluessel/<name der
@@ -286,7 +289,7 @@ hält ein Lauf in einer neuen Welt an: Ein Fall wird nie überschrieben.
 
 Derselbe Aufruf ist wiederholbar: Steht die Welt schon, fährt er nur das
 Paket weiter, hinter dem letzten erledigten Schritt. So wird aus dem Stand
-des Repositorys und einem Paket eine Laufzeit mit übernommenem Bestand —
+des Repositorys und einem Paket eine Laufzeit mit übernommenem Bestand,
 oder, mit `--bis`, eine Welt an der Stelle des Falls, an der eine Übung
 beginnen soll.
 
@@ -318,7 +321,7 @@ Paket seine Datei bzw. seinen Eintrag haben, sonst entsteht kein Paket.
 Zeichnungen (`entscheide/`) nimmt es nie auf, und ein vorhandenes Paket
 überschreibt es nie.
 
-Was als Erwartung taugt: Ergebnisse, die nur vom Inhalt abhängen — Tabellen,
+Was als Erwartung taugt: Ergebnisse, die nur vom Inhalt abhängen: Tabellen,
 übersetzte Zeilen, die Spez, Berichte. Belege, die Zweig und Commit des
 Codebaums nennen (die Ergebnisse der Tests, der Suite, der Führungsprobe),
 sind nur auf dem festgehaltenen Stand selbst byte-gleich, nicht auf einem
@@ -331,11 +334,11 @@ Entscheider oder Pfade des Rechners trägt, ist es nie.
   Anfangsbestand der Ablage. Die Veröffentlichung eines Stands (A-B1) und
   ein Glied der Ordnungslinie sind hier nicht gefasst.
 - Eine Welt führt einen Fall zur Zeit. Ein zweiter bekommt eine zweite
-  Welt — oder löst den ersten ab, wenn er nachgefahren wird (`--wechseln`).
+  Welt, oder löst den ersten ab, wenn er nachgefahren wird (`--wechseln`).
 - Das Skript zum Nachfahren fährt ein Paket. Das Paket von Fall 3 liegt
   unter `pakete/`. Es trägt die Auflösung des Falls und ist zum Nachfahren
-  da, nicht als Lesestoff für eine Sitzung, die denselben Fall live mit
-  Agenten führt (`pakete/README.md`).
+  da, nicht als Lesestoff für Agenten oder Menschen, die denselben Fall
+  live führen (`pakete/README.md`).
 - Ein Rezept ist an ein Paket gebunden: Wird es geändert, gilt der Stand
   eines begonnenen Laufs nicht mehr, und das neue Paket braucht eine neue
   Welt.

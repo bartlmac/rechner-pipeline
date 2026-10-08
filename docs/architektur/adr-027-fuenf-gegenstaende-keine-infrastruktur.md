@@ -53,7 +53,7 @@ Auflösungen noch nicht gefahrener Fälle. Die PLV und die Baldrian sind
 erfunden; ihre Welt wird reproduziert, nicht abgelöst.
 
 **Regel für Pull Requests.** Mehrere Gegenstände gehen nur dann in einen
-Pull Request, wenn sie eine Transaktion sind — wenn `main` mit nur einem
+Pull Request, wenn sie eine Transaktion sind: wenn `main` mit nur einem
 Teil davon unerklärt wäre. Beispiel: Rückbau, dritter Fall und Routine
 kamen zusammen. Die Webseite geht nie im selben Pull Request wie die
 Gegenstände 1 bis 4: Sie zieht `main` nach und wird eigenständig
@@ -75,7 +75,7 @@ Verschoben wird dafür nichts. Die Dokumentation sagt es an Ort und Stelle.
 ## Verhältnis zu ADR-017
 
 ADR-017 bleibt in Kraft. Die beiden Einteilungen beantworten verschiedene
-Fragen: Die vier Ebenen sagen, wer im Paket wen importieren darf — die
+Fragen: Die vier Ebenen sagen, wer im Paket wen importieren darf; die
 Schichtenkarte misst es je Modul. Die fünf Gegenstände sagen, was im
 Repository liegt und wozu.
 

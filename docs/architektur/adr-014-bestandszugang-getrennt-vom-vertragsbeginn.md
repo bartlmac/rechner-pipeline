@@ -7,7 +7,7 @@
 Der Bestandsbericht führte den übernommenen Baldrian-Bestand ab 2015 in
 den Büchern der Pfefferminzia. Am Fall gemessen: zu jedem Stichtag ab
 2015 standen dort alle 500 Verträge mit 38,46 Mio Euro
-Versicherungssumme — elf Jahre bevor die Übernahme stattfand. Das
+Versicherungssumme, elf Jahre bevor die Übernahme stattfand. Das
 Jahresraster des Berichts begann 2015-01-01, der Migrationsstichtag ist
 2026-01-01.
 
@@ -16,7 +16,7 @@ Unterscheidung. Der Stamm kannte genau ein Anfangsdatum,
 `insurance_start`. Das ist der **Vertragsbeginn**, und er ist bei einem
 übernommenen Vertrag korrekt 2015: Der Vertrag wurde damals
 geschlossen, die Thiele-Rekursion zählt ab dort, das Eintrittsalter
-bezieht sich darauf. Was nirgends stand, ist der **Bestandszugang** —
+bezieht sich darauf. Was nirgends stand, ist der **Bestandszugang**:
 wann der Vertrag in diese Bücher kam. Beim eigenen Geschäft fallen
 beide zusammen; bei übernommenem liegen elf Jahre dazwischen, in denen
 der Vertrag beim abgebenden Unternehmen stand.
@@ -29,7 +29,7 @@ Eine Teilkorrektur war vorausgegangen: Die ZUG-Buchung im Ledger wurde
 auf den Migrationsstichtag gelegt und die historischen PEX-Ledgerzeilen
 entfernt. Sie erreichte die Bewertung nicht, weil diese den Stamm liest
 und nicht das Ledger. Zwei Ableitungen desselben Sachverhalts aus
-verschiedenen Quellen — genau die Drift, die ADR-011 an anderer Stelle
+verschiedenen Quellen: genau die Drift, die ADR-011 an anderer Stelle
 beseitigt hat.
 
 ## Entscheidung
@@ -62,13 +62,13 @@ Wer liest was:
 
 **Zugangsdatum an der Tarifgeneration** (`zugang_ab` in der
 Bestand-Config). Billiger, ohne Schemabruch. Verworfen: Der Zugang ist
-eine Eigenschaft des Vertrags, nicht des Tarifs — eine Generation kann in
+eine Eigenschaft des Vertrags, nicht des Tarifs: eine Generation kann in
 mehreren Tranchen übernommen werden, und der Bericht bräuchte die
 Config auch für die Strukturansichten, wo sie heute optional ist.
 
 **Aus dem ZUG-Ereignis ableiten.** Der Ledger führt die Zugangsbuchung
 bereits richtig. Verworfen: Die Grundsicht des Berichts hängt dann am
-Ledger, der dort optional ist — ein Bericht ohne Ledger fällt still auf
+Ledger, der dort optional ist; ein Bericht ohne Ledger fällt still auf
 den falschen Zeitraum zurück. Außerdem ist es dieselbe
 Zwei-Quellen-Ableitung, die den Fehler erzeugt hat.
 

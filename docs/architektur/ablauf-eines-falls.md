@@ -95,6 +95,29 @@ Vorzeigeseite, zeichnet der Betrieb die Auslieferung `A-B1`. Sie bindet genau
 den Stand, der hinausgeht. Was fachlich abgenommen ist, steht bereits
 gezeichnet im Paket; `A-B1` zeichnet den Akt der Auslieferung.
 
+## Wer zeichnet welches Gate
+
+| Gate | Gegenstand | zeichnet |
+|---|---|---|
+| `A-Z1` | neue Fassung der Zeichnungsordnung (Glied der Linie) | `mensch/vorstand` |
+| `A-M6` | Fallauftrag | `mensch/vorstand` |
+| `A-M5` | Fallabbruch | `mensch/programmleitung`, mit dem Recht aus dem Fallauftrag |
+| `A-Q1` | Entscheidung der Widersprüche zwischen Quellen | `mensch/aktuariat` |
+| `A-K2` | Kernstand | `mensch/rechenkern` |
+| `A-O1` | T-Box-Stand | `mensch/architektur` |
+| `A-T1` | Tarifwerk | `mensch/aktuariat` |
+| `A-M1` bis `A-M3` | aktuarielle Tests: Stichtag, Verlauf, Geschäftsvorfälle | `mensch/aktuariat` |
+| `A-M4` | Migrationsabnahme | `mensch/aktuariat` |
+| `A-B2` | Zugangsabnahme | `mensch/betrieb` |
+| `A-B3` | Anfangsbestand einer neuen Ablage | `mensch/betrieb` |
+| `A-B1` | Auslieferung eines Stands | `mensch/betrieb` |
+
+Die geltende Zuordnung steht in der Zeichnungsordnung; Rollen und ihre
+Gegenstücke unter den Agenten in ADR-025, Abschnitt 9. Agenten bereiten
+jede dieser Abnahmen vor; zeichnen können sie keine, ablehnen schon. In
+einer Vorführung zeichnen simulierte Rollen (Schlüsselklasse `simulation`)
+unter Mandat.
+
 ## Bedienung
 
 | Wer | Wo |

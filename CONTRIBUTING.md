@@ -12,8 +12,8 @@ willkommen.
   Beobachtungen der Art „das hat mich überrascht“.
 - **Pull Requests aus Forks** sind willkommen. Vor größeren Änderungen
   bitte ein Issue eröffnen, um den Umfang vorher abzustimmen.
-- Der Maintainer pusht auf Themenzweige und führt sie über `main`
-  zusammen.
+- Der Maintainer arbeitet auf Themenzweigen und führt sie nach der
+  Durchsicht in `main` zusammen.
 
 ## Pull Requests schneiden
 

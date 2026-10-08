@@ -24,8 +24,9 @@ Routinen, mit denen sich jeder Stand nachbauen lässt.
 
 ## Schnellstart
 
-Voraussetzungen: Linux mit Python 3.11 und git. Unter Windows und macOS
-läuft die Suite im Entwicklungs-Container, siehe
+Voraussetzungen: Linux mit Python 3.11 und git (die CI und das Image
+laufen unter 3.11; neuere Versionen sind nicht erprobt). Unter Windows
+und macOS läuft die Suite im Entwicklungs-Container, siehe
 [ONBOARDING](ONBOARDING.md); das Nachfahren eines Falls ist bisher nur
 unter Linux erprobt. Ein Schlüssel für ein Sprachmodell ist nicht nötig.
 
@@ -59,7 +60,9 @@ Bestand unter `~/plv-welt/daten/`. Der Fall selbst liegt im Klon unter
 `abgeleitet/berichte/migrationsabnahme.html`. Beim Nachfahren zeichnet das
 Rezept alle Gates selbst, mit Schlüsseln der Klasse `simulation`, die der
 Aufruf neu erzeugt: Jede Zeichnung weist sich als simuliert aus, und das
-Urteil des festgehaltenen Falls wird übernommen, nicht neu gefällt.
+Urteil des festgehaltenen Falls wird übernommen, nicht neu gefällt. Die
+Schlüssel legt der Aufruf außerhalb des Klons ab, unter
+`~/.plv-schluessel/<name der Welt>`.
 
 Ein zweites Nachfahren in einer neuen Welt hält an, solange der Fall im Klon
 liegt. Dann einen frischen Klon nehmen oder den Fall vorher nach
@@ -67,8 +70,8 @@ liegt. Dann einen frischen Klon nehmen oder den Fall vorher nach
 Haltepunkt anhält und selbst entscheidet, steht in
 [deploy/welt/README.md](deploy/welt/README.md).
 
-**Das Container-Image.** Ändert ein Push auf `main` den Code, die
-Pin-Dateien oder `deploy/plv/`, baut die CI das Image
+**Das Container-Image.** Ändert ein Push auf `main` den Code,
+`requirements.txt` oder `deploy/plv/`, baut die CI das Image
 `ghcr.io/bartlmac/rechner-pipeline-plv`. Es dient dem Betrieb einer
 Laufzeit, nicht der Entwicklung: Es enthält nur das Paket und führt den
 Tageslauf einer bestehenden Ablage aus, im Betrieb jede Nacht über einen
@@ -158,6 +161,9 @@ Daten, das Hosting der Seite und die Einrichtung einzelner Rechner.
   oder Tarifpläne ändert, braucht eine neue Abnahme.
 - **Gepinnte Abhängigkeiten:** die direkten in `pyproject.toml`, die
   transitive Hülle in `requirements*.txt`; ein Test hält sie geschlossen.
+
+Was daraus für die Arbeit am Code folgt, steht in
+[ONBOARDING](ONBOARDING.md), Abschnitt 4.
 
 ## Mitwirken
 

@@ -28,8 +28,8 @@ beides, in dieser Reihenfolge:
    Bestand kommt über `--uebernahme` dazu. Einen auf einmal gezogenen
    Anfangsbestand gibt es nicht mehr (ADR-020): Jeder Vertrag trägt
    seinen Zugang im Journal, kein Zustand steht ohne Geschichte da. Ohne
-   Quelle — weder `--neuzugang-ab` noch `--uebernahme` noch
-   `--portfolio` — hat der Lauf nichts zu führen und sagt das (Exit 2),
+   Quelle (weder `--neuzugang-ab` noch `--uebernahme` noch
+   `--portfolio`) hat der Lauf nichts zu führen und sagt das (Exit 2),
    statt still einen Bestand zu erfinden.
 2. **Fortschreibung.** Ein Strom datierter Geschäftsvorfälle
    (Storno, Tod, Beitragsfreistellung, dynamische Erhöhungen,
@@ -78,7 +78,7 @@ Ansammlung von Dateien.
   projiziert werden.
 - `--stichtag` gehört zum Bericht und markiert dort nur die
   Grenze zwischen Historie und Projektion. Er ist optional: Ohne ihn
-  nimmt der Bericht `meta.referenzstichtag` aus der Config — der
+  nimmt der Bericht `meta.referenzstichtag` aus der Config; der
   Referenzstichtag ist eine Eigenschaft des Bestands, das Flag
   übersteuert ihn nur.
 
@@ -92,7 +92,7 @@ der Zugangsstrom je Generation und Jahrgang seine Verträge, jeder als
 eigener `ZUG`-Geschäftsvorfall im Journal. Voreingestellt ist der
 `referenzstichtag` der Config; wer den ganzen Verlauf aus dem Strom
 baut, setzt ihn auf den ersten Verkaufstag (hier `1994-07-01`). Der Lauf
-weist die Abweichung vom Referenzstichtag dann als Hinweis aus — sie
+weist die Abweichung vom Referenzstichtag dann als Hinweis aus; sie
 gehört begründet, weil der Referenzstichtag sonst der Beginn des
 simulierten Neuzugangs ist. Einen Batch, der das Verkaufsfenster still
 auf einmal auffüllt, gibt es nicht mehr (ADR-020): `0 Neuzugänge` im
@@ -120,7 +120,7 @@ Der erste Lauf erzeugt und bewegt den Bestand, der zweite liest die
 Tabellen und schreibt den Bestandsbericht. `--merkmale` gibt nur mit,
 wer Tarifzellen führt (ein übernommener Bestand); Schicht, Verankerung
 und Herabsetzungen sucht `cli_report` selbst im Verzeichnis neben
-`--scheiben` — wer sie weglässt, bekommt keinen Fehler, sondern einen
+`--scheiben`; wer sie weglässt, bekommt keinen Fehler, sondern einen
 Bericht ohne sie. `runs/` ist Wegwerf-Arbeitsfläche: Was bleiben soll,
 lebt im Fall oder als schreibgeschützter Abschluss.
 

@@ -8,11 +8,11 @@ Laufzeitumgebung). Das KI-Tool selbst wird nicht verändert.
 
 ## 1 Ziel
 
-Bis heute ist der PLV-Bestand ein Lauf: Er wird bis zu einem Horizont
+Ohne Tagesbetrieb wäre der PLV-Bestand ein Lauf: bis zu einem Horizont
 simuliert, geprüft, abgeschlossen und vorgeführt. Ein Versicherer lebt
 aber. Er verkauft jeden Werktag Neugeschäft, bucht jeden Tag
 Geschäftsvorfälle, schließt jeden Monat ab und weiß jederzeit, wie sein
-Bestand gestern Abend aussah. Genau das soll die PLV künftig tun:
+Bestand gestern Abend aussah. Das leistet der Tagesbetrieb der PLV:
 
 - Der Bestand steht jeden Morgen auf dem Stand von gestern. Ein
   nächtlicher Lauf um 23:00 Uhr simuliert den heutigen Tag, schreibt die
@@ -49,13 +49,13 @@ heutigen Tages verlängert.
 Deshalb baut der Tagesbetrieb **keine zweite, tagesgranulare Engine**.
 Der Stand von heute ist die deterministische Fortschreibung bis heute;
 das Tagesjournal ist die Differenz zweier Stände. Alles, was Beträge
-bestimmt, bleibt beim Rechenkern und bei der bestehenden Engine — der
+bestimmt, bleibt beim Rechenkern und bei der bestehenden Engine; der
 Tagesbetrieb entscheidet nur, **welche Buchungen an welchem Kalendertag
 sichtbar werden** und **wie viel Neugeschäft ein Tag bringt**.
 
 Das hält drei Invarianten des Systems unangetastet:
 
-1. Determinismus: Gleicher Seed, gleiche Config, gleicher Kalendertag —
+1. Determinismus: Gleicher Seed, gleiche Config, gleicher Kalendertag:
    gleicher Stand, byteidentisch (Laufmanifest).
 2. Beträge aus dem Kern: Das Simulationswerkzeug rechnet nichts
    Aktuarielles selbst (docs/simulation/README.md).
@@ -78,7 +78,7 @@ Der Buchungstag wird deterministisch aus dem Wirkungstag abgeleitet:
 - Tod: Wirkungstag plus Meldeverzug (deterministisch gezogen aus einer
   Verteilung mit Median etwa zwei Wochen, Seed aus Police und Jahr), auf
   den nächsten Werktag gerundet. Die Leistung wirkt am Wirkungstag, das
-  Unternehmen erfährt es später — so sieht der Bestand von gestern
+  Unternehmen erfährt es später; so sieht der Bestand von gestern
   Verträge noch als aktiv, die es aktuariell nicht mehr sind. Das ist
   kein Fehler, das ist ein Versicherer.
 - Neugeschäft: Antrags- und Policierungstag ist der Buchungstag (ein
@@ -89,7 +89,7 @@ Der Buchungstag wird deterministisch aus dem Wirkungstag abgeleitet:
 Das Tagesjournal ist eine neue, nur-anfügbare Tabelle
 `tagesjournal.parquet`: `buchungsdatum`, `police_id`, `ereignis`,
 `status_date` (Wirkungstag), `betrag`, `betrag_art`, `herkunft`
-(`fortschreibung`, `neugeschaeft` oder `uebernahme`) — je Zeile ein
+(`fortschreibung`, `neugeschaeft` oder `uebernahme`); je Zeile ein
 Verweis auf genau eine Ledger-Zeile (Police, Ereignis, Wirkungstag,
 Betragsart). Die Betragsart gehört in den Schlüssel, weil ein Vorfall mehr
 als eine Größe bewegt: Ein Zugang bucht die Versicherungssumme **und** den
@@ -97,8 +97,8 @@ Bruttojahresbeitrag, eine Erhöhung die Erhöhungssumme und den Beitrag der
 neuen Scheibe. So wird Neugeschäft gemessen, in Summe und in Beitrag. Der
 Beitrag wird aus dem Kern derselben Police hergeleitet, nicht geliefert;
 P-B1 rechnet ihn nach wie jeden anderen Betrag. Wer über einen Vorfall
-summiert, nennt deshalb die Betragsart — die Bewegungsrechnung führt
-Versicherungssummen, nicht Beiträge —, und wer Vorfälle zählt, zählt
+summiert, nennt deshalb die Betragsart (die Bewegungsrechnung führt
+Versicherungssummen, nicht Beiträge), und wer Vorfälle zählt, zählt
 Vorfälle und nicht Zeilen. Noch offen und bewusst nicht in diesem Schritt:
 Die Abgänge (Storno, Tod, Ablauf) und die Beitragsfreistellung führen ihre
 Beitragswirkung noch nicht. Der Ledger selbst ändert sein Schema nicht;
@@ -133,7 +133,7 @@ und trifft das Jahresziel im Erwartungswert exakt; die Schwankung eines
 Tages ist höchstens ein Vertrag.
 
 **Vertragsmerkmale** kommen wie bisher aus den Verteilungen der Generation
-(Alter, Laufzeit, Summe, Zahlweise), gezogen mit dem Tagesseed —
+(Alter, Laufzeit, Summe, Zahlweise), gezogen mit dem Tagesseed,
 reproduzierbar je Tag, unabhängig von der Reihenfolge der Läufe.
 
 **Generationenwechsel.** Ein Tag verkauft die Generation, deren
@@ -168,7 +168,7 @@ sondern kam als Zugang.
 
 Ein Zugang liegt in der **geführten Zeit**: zwischen dem ersten Tag, den
 das Unternehmen führt, und heute. Er fällt nicht mit dem Betriebsbeginn
-zusammen und muss es nicht — die PLV führt seit dem 1. Juli 1994, Baldrian
+zusammen und muss es nicht: die PLV führt seit dem 1. Juli 1994, Baldrian
 tritt am 1. Januar 2026 ein, also mitten im laufenden Betrieb. Die Engine
 trägt das ohnehin: Sie simuliert einen übernommenen Vertrag erst ab seinem
 Bestandszugang, weil alles davor beim abgebenden Unternehmen geschah. Vor
@@ -216,16 +216,16 @@ Ein Befund im laufenden Betrieb, der den übernommenen Bestand betrifft,
 hat zwei mögliche Wege. Das Kriterium ist eine Frage: **Falsifiziert der
 Befund ein gezeichnetes Artefakt des Falls?**
 
-- Wenn ja — etwa weil der Bestandsbericht nach der Migration, den A-M4
-  gebunden hat, falsche Beträge trägt —, dann ist es der
+- Wenn ja (etwa weil der Bestandsbericht nach der Migration, den A-M4
+  gebunden hat, falsche Beträge trägt), dann ist es der
   **Entwicklerweg**: Das System wird korrigiert, das Artefakt im Fall neu
   erzeugt, der Korrekturvermerk in das Korrektur-Protokoll des Falls
   geschrieben, und das Gate wird neu gezeichnet (mit Vermerk, welcher
   Befund die Neuzeichnung ausgelöst hat). Der Fall bleibt die Wahrheit
   über die Migration; ein Betrieb, der etwas anderes rechnet als der
   gezeichnete Fall, ist nicht „korrigiert“, sondern abgekoppelt.
-- Wenn nein — der Befund liegt im Betrieb selbst (Tageslauf, Ablage,
-  Kennzahlen), das gezeichnete Artefakt bleibt richtig —, dann ist es der
+- Wenn nein (der Befund liegt im Betrieb selbst (Tageslauf, Ablage,
+  Kennzahlen), das gezeichnete Artefakt bleibt richtig), dann ist es der
   **Betriebsweg**: Das System wird korrigiert, und der Betrieb wird aus
   der Übernahme neu aufgesetzt: alte Ablage archivieren, Eingang erneut
   einspielen, Stand ab Betriebsbeginn neu fahren, Stands-Paket neu
@@ -250,7 +250,7 @@ schon fest (ADR-022). Seitdem hat der Zugang drei Schritte:
    dann fahren beide deterministisch vom geführten Tag über den
    Zugangsstichtag bis zum nächsten Monatsabschluss (oder weiter). Die
    Differenz der Abschlüsse „mit“ minus „ohne“ muss exakt der abgenommene
-   Bestand sein — am Stichtag Anzahl, Versicherungssumme (Übernahme) und
+   Bestand sein: am Stichtag Anzahl, Versicherungssumme (Übernahme) und
    Jahresbeitrag (Migrationssuite) je Summe und je Vertrag über den
    ganzen Zugang, am Folgetermin die Anzahl in Kraft; dazu die Zugänge,
    die Zugangsbuchungen gegen den Ledger der Übernahme, das Bewegungskonto
@@ -259,7 +259,7 @@ schon fest (ADR-022). Seitdem hat der Zugang drei Schritte:
    seit 2026-10-01 je Vertrag gegen den **Führungswert** der
    Migrationssuite gehalten: den Wert, den der Monatsabschluss in der Welt
    der Abnahme für den Vertrag führen wird, über dieselbe
-   Bewertungsstrecke gerechnet und von A-M4 mit abgenommen — am
+   Bewertungsstrecke gerechnet und von A-M4 mit abgenommen, am
    Zugangsstichtag und am Folgestichtag (dort ohne Verträge mit einem
    gebuchten Vorfall im Fenster, die namentlich ausgenommen sind). Vorher
    stand das Deckungskapital „nicht vergleichbar“ im Beleg, weil der
@@ -287,14 +287,14 @@ schon fest (ADR-022). Seitdem hat der Zugang drei Schritte:
    Rollen nicht neu.
 
 Der **geführte Stand** ist die letzte grüne Protokollzeile, das Manifest
-des Stands und die Config — ein roter Lauf bewegt ihn nicht, ein grüner
+des Stands und die Config; ein roter Lauf bewegt ihn nicht, ein grüner
 schon. Der Tageslauf hält die Abnahme beim **Eintritt** gegen ihn: beim
 ersten grünen Lauf, der den Eingang aufnimmt, geführt oder wartend (ein
 Zugang mit künftigem Stichtag tritt mit seiner Aufnahme als wartender
 Eingang ein; die Zeile nennt seinen Hash). Tritt ein wartender Eingang an
 seinem Stichtag tatsächlich in die Bücher, hält der Tageslauf zusätzlich
 fest, was sich durch den Betrieb nicht ändert: Config, Kern-Version und
-Code-Stand müssen die der Probe sein. Danach fragt kein Lauf mehr — der
+Code-Stand müssen die der Probe sein. Danach fragt kein Lauf mehr; der
 Stand läuft dann weiter, weil der Eingang geführt wird.
 
 ## 7 Der Tageslauf
@@ -316,11 +316,11 @@ gesetzt.
 4. **Tagesjournal**: Differenz zum gestrigen Stand, Buchungstage nach
    Abschnitt 3; anfügen, nie überschreiben.
 5. **Wache**: Gate P-B1 mit Config, Manifest und jeder Nebentabelle, die
-   der Stand trägt (Merkmale, Korrekturschicht, Verankerung — aus der
+   der Stand trägt (Merkmale, Korrekturschicht, Verankerung; aus der
    Rollentabelle des Erzeugers, nicht abgetippt), auf dem neuen Stand.
    Rot heißt: Der Stand wird nicht übernommen, der gestrige bleibt
-   der geführte, der Fehler steht im Tagesprotokoll. Ein Bestandsführungs-
-   system, das einen roten Stand still übernimmt, wäre die schlechteste
+   der geführte, der Fehler steht im Tagesprotokoll. Ein Bestandsführungssystem,
+   das einen roten Stand still übernimmt, wäre die schlechteste
    Variante.
 6. **Monatsabschluss** im Lauf des Ersten des Folgemonats (der erste Lauf,
    der den Monatsersten führt, schreibt ihn; beim Nachholen jeder
@@ -340,7 +340,7 @@ gesetzt.
    Stichtag zu verschiedenen Zeiten verschiedene Antworten; ihn dann
    schreibgeschützt festzuhalten friert einen beliebigen Moment ein. Nur
    mit dem Schnitt am Stichtag ist der Abschluss eine Funktion seines
-   Stichtags allein — und erst damit gilt die Zusage aus Punkt 1, dass ein
+   Stichtags allein, und erst damit gilt die Zusage aus Punkt 1, dass ein
    nachgeholter Lauf denselben Stand ergibt wie jede Nacht.
 
    Für die Wache P-B1 und die Tagesseite gilt das Gegenteil: Sie berichten
@@ -365,7 +365,7 @@ gesetzt.
    bis zu 11/12 des Jahreszuwachses zu wenig aus, und die Konvention war
    nie entschieden, sondern ein Erbe der jährlichen Fortschreibung. Ebenso
    verworfen, die Zugangsprobe den Abnahmewert in die Treppe umrechnen zu
-   lassen — das hätte die falsche Konvention zementiert.
+   lassen: das hätte die falsche Konvention zementiert.
 7. **Tagesprotokoll**: eine JSON-Zeile je Lauf (Datum, Neugeschäft,
    Buchungen je Art, Bestandszahlen, P-B1-Urteil, Manifest-Hash,
    Kern-Version, Image-Digest). Das Protokoll ist der Nachweis, dass das
@@ -388,13 +388,14 @@ gesetzt.
    Ablage liegen. `eingang.json` selbst zeichnet die Registrierung mit
    demselben Schlüssel.
 
-   **Aufschaltung.** Eine Ablage, die vor dem Betriebsschlüssel geführt
-   wurde, wird nicht neu aufgesetzt: Beim ersten Lauf nach dem Umstieg
-   schaltet der Mensch sie einmal ausdrücklich auf (`--aufschalten`), und
+   **Aufschaltung.** Eine Ablage, die vor der Einführung des
+   Betriebsschlüssels geführt wurde, wird nicht neu aufgesetzt: Beim ersten
+   Lauf mit Betriebsschlüssel schaltet der Mensch sie einmal ausdrücklich
+   auf (`--aufschalten`), und
    die erste gezeichnete Zeile pinnt den ungezeichneten Vorlauf
    (`vorlauf`: Zahl und SHA-256 der rohen Zeilen); eine spätere Änderung
    darin bricht den Pin. Ohne den Schalter verweigern Lauf, Export und
-   Neuaufsetzen ein Protokoll ohne gezeichnete Zeile — es könnte ebenso
+   Neuaufsetzen ein Protokoll ohne gezeichnete Zeile: es könnte ebenso
    ein ohne Schlüssel herabgestuftes sein; auf ein gezeichnetes Protokoll
    verweigert der Schalter selbst. Ungezeichnete Eingänge bleiben geführt,
    solange eine gezeichnete Zeile oder der gepinnte Vorlauf sie bezeugt.
@@ -422,10 +423,12 @@ Ein Dockerfile im Repo (`deploy/plv/Dockerfile`): `python:3.11-slim`,
 Installation exakt wie die CI (`requirements.txt`, dann `pip install -e .
 --no-deps`), kein Entwicklungswerkzeug, keine Schlüssel, ein
 unprivilegierter Benutzer. Ein GitHub-Workflow `plv-image.yml` baut bei
-jedem Push auf `main` das Image `ghcr.io/<owner>/rechner-pipeline-plv`
-mit zwei Tags: dem Commit-Kurzhash und `latest`. Das Muster existiert
+einem Push auf `main`, der `src/`, `requirements.txt`, `pyproject.toml`
+oder `deploy/plv/` ändert, das Image
+`ghcr.io/<owner>/rechner-pipeline-plv` mit zwei Tags: den ersten zwölf
+Stellen des Commits und `latest`. Das Muster existiert
 bereits für die Doku-Engine (`docs-image.yml`). Der Image-Digest steht in
-jedem Tagesprotokoll — der Stand ist damit auf den Code rückführbar, aus
+jedem Tagesprotokoll; der Stand ist damit auf den Code rückführbar, aus
 dem er entstand (dieselbe Provenienzdisziplin wie die Gate-Ledger).
 
 ### 8.2 Laufzeitumgebung `~/apps/plv`
@@ -441,7 +444,7 @@ Start nachgeholt wird; das Nachholen selbst leistet der Tageslauf
 ist ein neuer Image-Tag in `.env` und ein `docker compose pull`; der
 erste Lauf mit neuem Image protokolliert den Digest-Wechsel. Wechselt
 die Kern-Version, weisen Monatsabschluss-Kontrollen die Abweichungen aus,
-wie ADR-011 es verlangt — der Tagesbetrieb schreibt nichts um.
+wie ADR-011 es verlangt; der Tagesbetrieb schreibt nichts um.
 
 Das Repository liefert unter `deploy/plv/` Compose-Datei, Timer, Service
 und eine README mit dem Einrichtungsweg; die Laufzeitumgebung selbst ist
@@ -454,7 +457,7 @@ seiner Generation das Band ab `k * 10 Mio + 1`; weil `k` mindestens eins
 ist, kann kein Erzeuger unter oder auf zehn Millionen vergeben. Genau
 dieser Bereich steht übernommenen Beständen offen, ohne mit dem
 Eigengeschäft zu kollidieren. Ohne Kreise fallen die Nummern auf die
-Position der Generation zurück, und dann liegt kein Band fest — die
+Position der Generation zurück, und dann liegt kein Band fest; die
 Zusicherung wäre eine Annahme. Der Tagesbetrieb ist der Ort, an dem
 fremder Bestand als Zugang eintritt, also gilt die Pflicht dort. Eine
 Config der Fall-Welt darf ohne Kreise bleiben: Ihre Bytes sind eine
@@ -469,23 +472,23 @@ der Zielseite, und es ist ihre Aufgabe, sie kollisionsfrei zu machen.
 Der freie Bereich `1 .. 10 Mio` wird dafür in **Nummernbänder** geteilt,
 eines je Übernahme. Ein Band bekommt, was seine Lieferung braucht,
 aufgerundet auf volle Tausend, und wird monoton hinter dem höchsten
-belegten vergeben — bewusst kein festes Raster, denn eine feste Bandgröße
+belegten vergeben, bewusst kein festes Raster, denn eine feste Bandgröße
 wäre immer eine willkürliche Obergrenze: entweder für die Zahl der Fälle
 oder für ihre Größe. Bedarfsgerecht trägt derselbe Raum hundert kleine
 Migrationstranchen genauso wie wenige große Bestände. Ist er erschöpft,
 bricht das Registrieren ab und nennt den Ausweg (ein eigener
-Nummernkreis für Übernahmen) — kein stilles Überlaufen.
+Nummernkreis für Übernahmen), kein stilles Überlaufen.
 
 Ein Band je Fall und nicht ein gemeinsamer Bereich: Der freie Raum ist
 frei von *Eigengeschäft*, nicht frei von *anderen Fällen*. Kollidierten
 zwei Übernahmen miteinander, fiele das später auf als die Kollision mit
-dem eigenen Geschäft — beide Seiten sind fremd, und keine Zusicherung
+dem eigenen Geschäft: beide Seiten sind fremd, und keine Zusicherung
 trennt sie.
 
 Die **Übersetzungstabelle** `policennummern.parquet` liegt im Eingang,
 ist dort registriert wie jede andere Datei und beantwortet die Rückfrage
 an die Quelle: Was ist aus eurer Police 7000487 geworden? Sie ist der
-Träger der Nachvollziehbarkeit — und damit auch die Trennlinie zwischen
+Träger der Nachvollziehbarkeit, und damit auch die Trennlinie zwischen
 zwei Welten: **Die Belege des Falls** (`uebernahme.json`, der
 A-M4-Snapshot, die Abnahmeberichte) **sprechen weiter in Quellnummern,
 die Tabellen des Betriebs in Zielnummern.** Ein Beleg, den der Betrieb
@@ -493,14 +496,14 @@ umschreibt, bezeugt nicht mehr den Fall.
 
 Eine Folge, die man kennen muss: Die Fortschreibung würfelt je
 `police_id`. Ein umnummerierter Vertrag bekommt damit eine andere
-simulierte Zukunft als unter seiner Quellnummer — seine gelieferte
+simulierte Zukunft als unter seiner Quellnummer: seine gelieferte
 Vergangenheit bleibt, was sie ist, sein künftiges Storno oder sein
 Todesfall verschieben sich. Für die Bewertung ist das folgenlos, für
 Fixtures, die auf einen bestimmten Vertrag abgestimmt sind, nicht.
 
 Der `betriebsbeginn` der Config ist der **erste Verkaufstag**: Der
 Stand beginnt leer, und jeder Vertrag der PLV entsteht Werktag für
-Werktag als eigener Zugang im Journal — die PLV hat ihre ganze
+Werktag als eigener Zugang im Journal: die PLV hat ihre ganze
 Geschichte, ab dem 1. Juli 1994. Kein Bericht kennt einen Zeitraum „vor
 dem Betriebsbeginn“. Eine vollständige Neugenerierung ist damit ein
 Neuaufsetzen (Abschnitt 8.5) und ein Lauf: rund eine Viertelstunde,
@@ -509,7 +512,7 @@ davon der größte Teil die Monatsabschlüsse seit 1994.
 Bis zum 2026-09-21 stellte bis zum Betriebsbeginn ein Batch-Erzeuger den
 Bestand (`sample_size`, gezogen ohne Buchungen). Weil die PLV den
 Betriebsbeginn an den Anfang ihrer Geschichte setzt, lieferte er genau
-die Verträge des Grenztages — fünf, mit Beginn am 1. Juli 1994. Ein
+die Verträge des Grenztages: fünf, mit Beginn am 1. Juli 1994. Ein
 Bestand ohne Geschichte hat in einem Unternehmen, dessen Zweck die
 Nachrechenbarkeit ist, keinen Platz; der Erzeuger ist entfernt
 (ADR-020).
@@ -517,8 +520,8 @@ Nachrechenbarkeit ist, keinen Platz; der Erzeuger ist entfernt
 ### 8.2a Der Betriebsbericht kennt keine Prognose
 
 Der Bestandsbericht des Monatsabschlusses endet am **Berichtsstichtag**:
-Er zeigt die geführte Geschichte des Bestands bis dahin — Zugang, Bewegung
-und Abgang, wie sie gebucht wurden — und nichts darüber hinaus. Das ist
+Er zeigt die geführte Geschichte des Bestands bis dahin (Zugang, Bewegung
+und Abgang, wie sie gebucht wurden) und nichts darüber hinaus. Das ist
 keine weggelassene Prognose, sondern eine andere Aussage: Der Betrieb
 kennt die Zukunft nicht, er entdeckt sie jeden Tag neu. Eine
 Prognosekurve wäre hier eine Behauptung über Tage, die noch nicht
@@ -528,7 +531,7 @@ Der Fallbericht behält seine Projektion. Im Migrationsfall ist der
 prognostizierte Verlauf der Gegenstand: Er zeigt, wie sich der
 übernommene Bestand nach der Migration entwickelt. Beide Formen sind
 derselbe Renderer mit zwei verschiedenen Fragen, und sie schließen
-einander aus — `berichtsstichtag` für den Betrieb, `stichtag` plus `bis`
+einander aus: `berichtsstichtag` für den Betrieb, `stichtag` plus `bis`
 für den Fall.
 
 ### 8.3 Vorzeigeseite aus der Laufzeitumgebung
@@ -540,27 +543,26 @@ Wege, die sich nicht ausschließen:
 - **Interne Sicht, täglich.** Der Tageslauf rendert nach
   `daten/seite/` einen Abschnitt „Bestand heute“ (Kennzahlen, Neugeschäft
   der Woche, letzte Buchungen, Monatsabschlüsse) mit den bestehenden
-  Renderern. Ein Caddy auf dem Betriebsrechner liefert das Verzeichnis
-  read-only aus; die Sichtung läuft dort, wo der Maintainer sie ohnehin
-  macht.
+  Renderern. Ein statischer Webserver (nicht Teil des Repositorys)
+  liefert das Verzeichnis read-only aus.
 - **Öffentliche Sicht, gestempelt.** Die GitHub-Pages-Seite bleibt eine
   vom Menschen veröffentlichte Momentaufnahme mit Datum und Manifest-Hash
   („Stand 2026-09-30“). Der Auftritt (`werkzeuge/auftritt.py`) liest die
   Kennzahlen dann aus einem exportierten Stands-Paket der
-  Laufzeitumgebung statt aus einem Fall — eine neue Quelle für
+  Laufzeitumgebung statt aus einem Fall; eine neue Quelle für
   `falldaten`, dieselbe Drift-Regel: erzeugt, nie abgetippt.
 
 Das Paket trägt seine **Belege** mit (seit Paketschema 3, heute Schema 5):
 `protokoll.jsonl` mit der Kette, `laufmanifest.json` des Stands und
 `tagesjournal.parquet`. Die ersten beiden kamen zuerst und belegten
-die protokollgespeisten Blöcke von `stand.json`; die journalgespeisten —
-Geschäftsentwicklung, `buchungen.*`, Neugeschäft der Woche — standen
+die protokollgespeisten Blöcke von `stand.json`; die journalgespeisten
+(Geschäftsentwicklung, `buchungen.*`, Neugeschäft der Woche) standen
 daneben als bloße Behauptung. Ein Konsument, der sie las, musste dem
 Feld glauben. Jetzt leitet er sie aus Zeilen ab.
 
 Das volle Journal und nicht ein Auszug: Ein Auszug wäre eine zweite
 Serialisierungsregel und damit ein Vertrag, den ein Konsument ändert,
-sobald jemand einen Block ergänzt — das volle Journal ist einer, den nur
+sobald jemand einen Block ergänzt; das volle Journal ist einer, den nur
 der Produzent ändert.
 
 Daraus folgt eine Unterscheidung, die vorher nicht nötig war: **Das Paket
@@ -570,7 +572,7 @@ veröffentlicht das nicht, und die Vorzeige soll ein Muster sein, kein
 Sonderfall, der sich das leisten kann, weil die Daten erfunden sind. Das
 vollständige Paket geht deshalb an den Menschen, der es exportiert; in
 den veröffentlichten Baum wandern Tagesseite, Berichte, Protokoll und
-Manifest — Letztere tragen keine Vertragsebene und sind genau das, woran
+Manifest; Letztere tragen keine Vertragsebene und sind genau das, woran
 die Seite ihre Kette zeigt.
 
 Die Veröffentlichung nach außen bleibt menschlich (werkzeuge/README.md);
@@ -618,21 +620,21 @@ prüft. Die Linie ist Pflicht
 (ADR-025, Nachtrag 2026-10-01): Jede Abnahme wird gegen den Stand der
 Zeichnungsordnung gelesen, unter dem sie gezeichnet wurde; ohne `--linie`
 gründet kein Kommando des Betriebs auf einer Abnahme. Der Nachtlauf selbst
-braucht sie nicht — er gründet auf keinem Snapshot und hält seinen
+braucht sie nicht: er gründet auf keinem Snapshot und hält seinen
 Schlüssel gegen die gezeichnete Bindung des Anfangsbestands.)
 
-Sie prüft, bevor sie etwas anlegt (keine Lauf-Sperre; die Tarifwerk-
-Schalter der Config stimmen mit dem Übernahmebeleg des Falls überein; eine
-Zugangsabnahme A-B2 liegt vor — gerechnet auf einer leeren Ablage mit der
+Sie prüft, bevor sie etwas anlegt (keine Lauf-Sperre; die Tarifwerk-Schalter
+der Config stimmen mit dem Übernahmebeleg des Falls überein; eine
+Zugangsabnahme A-B2 liegt vor, gerechnet auf einer leeren Ablage mit der
 neuen Config, denn das ist der geführte Stand der neuen Ablage, Abschnitt
 6.2, `--zugangsabnahme`; A-M4 und A-B2 samt Rolle und Schlüsselklasse
 gegen die Ordnung, Tabellen und Beleg gegen die Abnahme). Was sich nur
 gegen die neue Ablage prüfen lässt, scheitert nach dem Anlegen; dann
-entfernt sie ihre eigene, nie veröffentlichte Vorbereitung wieder — eine
+entfernt sie ihre eigene, nie veröffentlichte Vorbereitung wieder: eine
 Verweigerung hinterlässt nichts neben der Ablage. Danach
-baut sie die neue Ablage vollständig neben der alten auf (Config, Übernahme-
-Eingang mit Stamm, Journal, Ledger, Merkmalen, Bausteinen, Korrektur-
-schicht, Verankerung und Übernahmebeleg, dazu `neuaufsetzen.json` als
+baut sie die neue Ablage vollständig neben der alten auf (Config, Übernahme-Eingang
+mit Stamm, Journal, Ledger, Merkmalen, Bausteinen, Korrekturschicht,
+Verankerung und Übernahmebeleg, dazu `neuaufsetzen.json` als
 Provenienz), archiviert die alte Ablage durch eine Umbenennung
 (`daten.archiv-<Zeit>`; Journal, Protokollkette, Abschlüsse und Berichte
 bleiben vollständig erhalten) und setzt die neue an ihre Stelle. Den
@@ -661,7 +663,7 @@ dieselbe Welt wie die Führungsprobe vor A-M4.
 **Reihenfolge beim Aufsetzen: die Abnahme des Anfangsbestands vor dem
 ersten produktiven Lauf** (ADR-025). Der erste Tageslauf einer neuen
 Ablage ist ihr Aufbaulauf; er baut den Anfangsbestand und läuft ohne
-Abnahme. Bevor der nächste Lauf — der erste produktive — läuft, nimmt die
+Abnahme. Bevor der nächste Lauf (der erste produktive) läuft, nimmt die
 Betriebsverantwortung (`mensch/betrieb`) diesen Anfangsbestand ab:
 `betrieb.anfangsbestand belegen` (Tabellen, Config, Code-Stand, ein neu
 gefahrener P-B1-Befund, Kennzahlen und die Abweichung zum zuletzt
@@ -680,9 +682,9 @@ braucht deshalb ein Glied der Linie und eine neue Bindung.
 
 Die Laufzeitumgebung führt eine **eigene Kopie** der Config
 (`daten/configs/bestand.toml`); eine Änderung im Repository berührt sie
-nicht. Wird die Kopie nachgezogen — etwa mit den Annahmen für
+nicht. Wird die Kopie nachgezogen, etwa mit den Annahmen für
 Beitragsherabsetzung und Teilkündigung vom 2026-10-01
-([Erfahrungsannahmen](erfahrungsannahmen.md), Abschnitt 4) —, gilt das
+([Erfahrungsannahmen](erfahrungsannahmen.md), Abschnitt 4), gilt das
 für die ganze Geschichte: Jeder Tageslauf rechnet den Stand vom
 Betriebsbeginn an neu, die neuen Raten wirken also ab 1994, und die
 Vorgänge fallen auch in Jahre, deren Monatsabschlüsse schon
@@ -693,7 +695,7 @@ Deshalb hält der Tageslauf an, sobald die Config einer geführten Ablage
 eine andere ist als die, mit der der letzte grüne Tag gerechnet wurde
 (Config-Hash der Protokollzeile): Exit 2, Stand und Journal bleiben, eine rote Protokollzeile nennt
 beide Hashes und den Ausweg. Das gilt für jede Änderung, auch eine ohne
-Wirkung — ob sie wirkt, wüsste der Lauf erst nach dem Rechnen. Die
+Wirkung: ob sie wirkt, wüsste der Lauf erst nach dem Rechnen. Die
 Ablage wird **neu aufgesetzt**, nicht nachträglich umgerechnet
 (Abschnitt 8.5, mit `--config <neue Config>`): Zugangsprobe und A-B2 auf
 einer leeren Ablage mit der neuen Config, Neuaufsetzen, Erstbefüllung,

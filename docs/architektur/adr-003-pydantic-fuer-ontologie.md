@@ -24,7 +24,7 @@ Spez-Schema. Das übrige Paket bleibt beim dataclasses-Idiom; die
 Grenze ist die Ontologie-/Spez-Schicht. Semantische Constraints, die
 über Feldvalidierung hinausgehen (Kreuz-Objekt-Regeln, Coverage),
 bleiben im Repo-Idiom `validate() -> List[str]` auf den
-Pydantic-Objekten — Pydantic trägt Struktur und Serialisierung, nicht
+Pydantic-Objekten: Pydantic trägt Struktur und Serialisierung, nicht
 die Fachlogik.
 
 ## Konsequenzen
@@ -34,10 +34,10 @@ die Fachlogik.
 - JSON-Schemata für Structured Output werden generiert
   (`model_json_schema()`), nie von Hand gepflegt.
 - Deterministische Serialisierung bleibt Pflicht (sortierte Schlüssel,
-  feste Feldreihenfolge) — Tests sichern das ab.
+  feste Feldreihenfolge); Tests sichern das ab.
 
 ## Verworfene Alternative
 
 dataclasses + eigener JSON-Schema-Generator: machbar, aber wir bauten
-Pydantic-Funktionalität nach und pflegten sie selbst — Minimalismus
+Pydantic-Funktionalität nach und pflegten sie selbst; Minimalismus
 heißt hier, das Werkzeug zu nehmen, nicht es nachzubauen.

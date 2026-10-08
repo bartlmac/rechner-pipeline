@@ -1,8 +1,9 @@
 # Baut und veroeffentlicht das Laufzeit-Image des PLV-Tagesbetriebs
-# (deploy/plv/Dockerfile) als ghcr-Image — bei jedem Push auf main mit zwei
-# Tags: Commit-Kurzhash und latest (Fachkonzept docs/simulation/tagesbetrieb.md,
-# Abschnitt 8.1). Muster: docs-image.yml. Der Kontext ist das Repo (src/ und
-# Pin-Dateien); Aenderungen an Doku oder Faellen loesen keinen Bau aus.
+# (deploy/plv/Dockerfile) als ghcr-Image — bei einem Push auf main, der einen
+# der Pfade unten aendert, mit zwei Tags: Commit-Kurzhash und latest
+# (Fachkonzept docs/simulation/tagesbetrieb.md, Abschnitt 8.1). Muster:
+# docs-image.yml. Der Kontext ist das Repo (src/ und Pin-Dateien); Aenderungen
+# an Doku oder Faellen loesen keinen Bau aus.
 name: plv-image
 
 on:

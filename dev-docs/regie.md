@@ -21,16 +21,12 @@ wie die Simulation NICHT Teil des Systems. Heute gehören dazu:
   Laufs, Nacharbeit — liegt als README im Bereich selbst). Operative
   Migrations-Sessions lesen keinen der drei Bereiche; die Vorzeigeseite bricht ab, wenn
   etwas davon in die Veröffentlichung geriete.
-* **Rollenbesetzung je Fall** (Modell Lauf 2, 2026-09-01):
-  `programmleiter` (Orchestrator der PLV, führt den Fall E2E; in
-  Personalunion PLV-IT mit eigenem Schlüssel für A-O1 und die
-  Katalog-Erweiterungen), `plv-aktuar` (unabhängige zeichnende
-  Fachinstanz: A-Q1, A-M1..M4, eigener Schlüssel — wer den Prozess
-  fährt, nimmt ihn nicht selbst fachlich ab), `quelle-experte`
-  (Baldrian-Aktuar: Lieferungen und Auskünfte, bewusst knapp
-  gehalten, kein Schlüssel), `mensch` (Eskalation nach
-  Abbruchkriterien). Technisch getragen von der Zeichnungsordnung
-  (`gate_entscheid --zeichnungsordnung`).
+* **Rollenbesetzung je Fall:** seit ADR-018 die Rollen der
+  Zeichnungsordnung (`mensch/vorstand`, `mensch/aktuariat`,
+  `mensch/architektur`, `mensch/rechenkern`, `mensch/betrieb`; in der
+  Vorführung simuliert und unter Mandat) und die fünf Agentenrollen unter
+  `.claude/agents/`. Die Besetzung von Lauf 2 (2026-09-01: Programmleiter,
+  PLV-Aktuar, Quellexperte, Mensch) ist damit abgelöst.
 * **Abbruchkriterien**, nach denen der Mensch einsteigt: klarer
   Systemfehler (durch Agenten/Operatoren nicht heilbar),
   Zirkelreferenz, drei fruchtlose Q&A-Schleifen zum selben Thema,
@@ -45,13 +41,12 @@ ein Tag bringt, welche Störungen inszeniert werden).
 
 ## Was zu dokumentieren bleibt
 
-1. ~~README-Diagramm erweitern~~ — geschehen 2026-08-31: Komponente
-   (7) „Regie — WIP“ im Komponentenbild, gestrichelt wie das geplante
-   Tooling, mit Verweis hierher.
-2. Ein eigenes Kapitel (dieses Dokument ausbauen): Abgrenzung
+1. Ein eigenes Kapitel (dieses Dokument ausbauen): Abgrenzung
    System / Simulation / Regie, die Bereiche, die Rollen, die
-   Abbruchkriterien, der Umgang mit Auflösungen.
-3. Verweise aus AGENTS.md/ONBOARDING dorthin, sobald das Kapitel steht.
+   Abbruchkriterien, der Umgang mit Auflösungen. Das frühere
+   Komponentenbild des README mit der Regie als Komponente 7 ist mit
+   ADR-027 entfallen.
+2. Verweise aus AGENTS.md/ONBOARDING dorthin, sobald das Kapitel steht.
 
 Siehe `dev-docs/offene-punkte.md` (Eintrag „Regie dokumentieren“).
 

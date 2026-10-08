@@ -9,7 +9,7 @@ geschrieben.
 | Durchgang | Lieferung | Was er ist | Im Repository | Nachfahren |
 |---|---|---|---|---|
 | **Lauf 1** (Fall `baldrian-uebernahme`) | `lieferungen/baldrian/` | der erste durchgängige Fall | die Lieferung | von Hand und mit Agenten; ob er auf dem heutigen Stand durchläuft, ist nicht gemessen |
-| **Lauf 2** (Fall `baldrian-klv-tg2015-lauf2`) | `lieferungen/baldrian-2/` | derselbe Bestand auf einer neuen, umfangreicheren Lieferung; gezeichnet am 02.09.2026 | die Lieferung, der [Abschlussbericht](baldrian-lauf2.md), [was die Übernahme verändert hat](baldrian-lauf2-veraenderungen.md) | auf dem Stand, auf dem er gezeichnet wurde: [baldrian-lauf2-wiederholen.md](baldrian-lauf2-wiederholen.md) |
+| **Lauf 2** (Fall `baldrian-klv-tg2015-lauf2`) | `lieferungen/baldrian-2/` | derselbe Bestand auf einer neuen, umfangreicheren Lieferung; gezeichnet am 02.09.2026 | die Lieferung, der [Abschlussbericht](baldrian-lauf2.md), [was die Übernahme verändert hat](baldrian-lauf2-veraenderungen.md) | nicht aus dem Repository allein: Die Anleitung [baldrian-lauf2-wiederholen.md](baldrian-lauf2-wiederholen.md) braucht ein Paket, das nicht im Repository liegt |
 | **Fall 3** (`baldrian-klv-tg2015-fall3`) | dieselbe Lieferung `lieferungen/baldrian-2/`, dazu die Nachlieferungen des Falls | die Neufassung, vom Auftrag des Vorstands bis zum gebundenen Anfangsbestand in der Ablage; geführt am 02.10.2026 | das Paket `baldrian-klv-tg2015-fall3` ([pakete/](../../pakete/README.md)) | mit einem Aufruf, ohne Agenten |
 
 ## Warum es Fall 3 gibt
@@ -18,7 +18,7 @@ Lauf 2 hatte dem Zielsystem beigebracht, den übernommenen Tarif zu rechnen.
 Damit ein neuer Fall zeigt, was eine Übernahme am Zielsystem verändert,
 wurde das wieder zurückgebaut: Das Zielsystem stand danach so da, als hätte
 es diesen Tarif nie gerechnet. Auf diesem Stand begann Fall 3 und führte die
-Übernahme von vorn — mit dem Fallauftrag des Vorstands (ADR-026), der Linie
+Übernahme von vorn: mit dem Fallauftrag des Vorstands (ADR-026), der Linie
 der Erstabnahmen (ADR-025) und dem Zugang in die Ablage (ADR-022), die es
 bei Lauf 2 noch nicht gab.
 
@@ -40,8 +40,8 @@ das Dokument zur Migrations-Pipeline v0.1 nennen.
 | Ablage nach dem Zugang | 388 Monatsabschlüsse, der jüngste zum 01.10.2026 |
 | Schritte des Rezepts | 112 |
 
-Die Ergebnisse des Falls — Abnahmebericht, die drei Berichte der
-aktuariellen Tests, die Bestandsberichte vor und nach — entstehen beim
+Die Ergebnisse des Falls (Abnahmebericht, die drei Berichte der
+aktuariellen Tests, die Bestandsberichte vor und nach) entstehen beim
 Nachfahren im Fall-Arbeitsbereich (`faelle/baldrian-klv-tg2015-fall3/`) und
 in der Ablage der Welt.
 

@@ -21,7 +21,7 @@ Klon auf dem Commit des Image-Tags, mit `.venv/bin/python` (siehe
 | `compose.yml` | ein Dienst `tageslauf`, Volume `daten/`, kein Netz |
 | `env.beispiel` | Vorlage für `.env`: Image-Tag, Owner, Digest, Zeitzone, Verzeichnis des Betriebsschlüssels; keine Geheimnisse |
 | `tageslauf.service`, `tageslauf.timer` | systemd `--user`: täglich 23:00, `Persistent=true` |
-| `.github/workflows/plv-image.yml` | baut bei einem Push auf `main`, der `src/`, die Pin-Dateien, `pyproject.toml` oder `deploy/plv/` ändert, das Image `ghcr.io/<owner>/rechner-pipeline-plv` mit den Tags `latest` und den ersten zwölf Stellen des Commits |
+| `.github/workflows/plv-image.yml` | baut bei einem Push auf `main`, der `src/`, `requirements.txt`, `pyproject.toml` oder `deploy/plv/` ändert, das Image `ghcr.io/<owner>/rechner-pipeline-plv` mit den Tags `latest` und den ersten zwölf Stellen des Commits |
 
 ## Ablage unter `~/apps/plv/daten`
 
@@ -32,27 +32,40 @@ Klon auf dem Commit des Image-Tags, mit `.venv/bin/python` (siehe
 | `stand/` | Symlink auf den geführten Stand (`stand-<manifest-kennung>/`; der Pfad `daten/stand/` führt durch den Symlink dorthin): die sechs Ausgaben der Fortschreibung, `laufmanifest.json`, ggf. `merkmale.parquet` und `verankerung.parquet` der Übernahmen. Der Stand ist die gebuchte Sicht: Ereignisse mit Buchungstag nach heute (Meldeverzug, Werktagsregel) stehen noch nicht darin und kommen an ihrem Buchungstag, damit Stand, Seite und Journal dasselbe sagen | wechselt nur durch einen grünen Lauf, in einem atomaren Schritt (Symlink-Tausch; es gibt keinen Moment ohne Stand); das alte Verzeichnis wird danach entfernt |
 | `lauf.lock` | Prozess-Sperre: zwei gleichzeitige Läufe auf derselben Ablage gibt es nicht, der zweite bricht sofort ab; ebenso der `seite`-Befehl (Rendern und Export) neben einem laufenden Tageslauf | — |
 | `journal/tagesjournal.parquet` | die Buchungstage, nur angefügt | Bijektion zum Ledger wird bei jedem Lauf geprüft |
-| `journal/protokoll.jsonl` | eine JSON-Zeile je Lauf, verkettet (jede Zeile nennt den SHA-256 ihrer Vorgängerin; eine entfernte, veränderte oder umsortierte Zeile bricht die Kette, und der nächste Lauf verweigert) und mit dem Betriebsschlüssel gezeichnet (Schema 3; eine veränderte, herabgestufte oder zweite grüne Zeile für denselben Tag hält den Lauf an). Das Entfernen der letzten Zeile ist ohne Bezug nach außen nicht erkennbar, wenn sie rot war — eine grüne bindet Manifest und Journal des Stands und fällt beim nächsten Lauf auf; den Bezug nach außen liefert der Anker beim Export. Eine vollständige letzte Zeile ohne Zeilenumbruch wird abgeschlossen, nicht entfernt; geschnitten wird nur ein Fragment, das nie eine Zeile war. Die letzte grüne Zeile bindet Manifest- und Journal-Hash des Stands: Tag, nachgeholte Tage, Neugeschäft, Buchungen, Bestandszahlen, P-B1-Urteil, Manifest-Hash, Kern-Version, Image-Revision (Commit des Baus), Image-Tag und -Digest | nur angefügt; auch ein roter Lauf steht drin |
+| `journal/protokoll.jsonl` | eine JSON-Zeile je Lauf, verkettet und mit dem Betriebsschlüssel gezeichnet (Schema 3); Einzelheiten unter der Tabelle | nur angefügt; auch ein roter Lauf steht drin |
 | `abschluesse/` | `abschluss_<Monatserster>.parquet`, festgeschrieben 0444, genau einmal (ADR-011) | nie überschrieben |
 | `berichte/` | `bestandsbericht_<Monatserster>.html` je Monatsabschluss (dazu je Übernahme ein Teilbestand-Bericht, solange `teilbestand_getrennt` steht) | jederzeit neu renderbar |
-| `seite/index.html` | „Bestand heute“: Kennzahlen, Neugeschäft der Woche, letzte Buchungen, Monatsabschlüsse, Übernahmen mit der Zeichnung ihrer A-M4-Annahme — nach jedem grünen Lauf aus Protokoll und Journal gerendert — erst nach dem Anfügen der Protokollzeile ersetzt (vorbereitet wird unter `seite.neu/`, nie in `seite/`): die Seite nennt nie einen Tag, den das Protokoll nicht grün führt; mit Banderole, Stand, Manifest-Hash und Lücken-Block | jederzeit neu renderbar (unter der Lauf-Sperre; eine ältere Lesung ersetzt keine jüngere Seite); ein statischer Webserver (nicht Teil des Repositorys) liefert das Verzeichnis read-only aus |
+| `seite/index.html` | „Bestand heute“: Kennzahlen, Neugeschäft der Woche, letzte Buchungen, Monatsabschlüsse, Übernahmen mit der Zeichnung ihrer A-M4-Annahme, dazu Banderole, Stand, Manifest-Hash und Lücken-Block. Nach jedem grünen Lauf aus Protokoll und Journal gerendert und erst nach dem Anfügen der Protokollzeile ersetzt (vorbereitet unter `seite.neu/`, nie in `seite/`): Die Seite nennt nie einen Tag, den das Protokoll nicht grün führt | jederzeit neu renderbar (unter der Lauf-Sperre; eine ältere Lesung ersetzt keine jüngere Seite); ein statischer Webserver (nicht Teil des Repositorys) liefert das Verzeichnis read-only aus |
+
+**Das Protokoll.** Jede Zeile von `journal/protokoll.jsonl` nennt den
+SHA-256 ihrer Vorgängerin; eine entfernte, veränderte oder umsortierte
+Zeile bricht die Kette, und der nächste Lauf verweigert. Eine veränderte,
+herabgestufte oder zweite grüne Zeile für denselben Tag hält den Lauf an.
+Die letzte grüne Zeile bindet Manifest- und Journal-Hash des Stands und
+trägt Tag, nachgeholte Tage, Neugeschäft, Buchungen, Bestandszahlen,
+P-B1-Urteil, Manifest-Hash, Kern-Version, Image-Revision (Commit des
+Baus), Image-Tag und Image-Digest. Das Entfernen der letzten Zeile ist ohne
+Bezug nach außen nicht erkennbar, wenn sie rot war; eine grüne fällt beim
+nächsten Lauf auf. Den Bezug nach außen liefert der Anker beim Export.
+Eine vollständige letzte Zeile ohne Zeilenumbruch wird abgeschlossen,
+nicht entfernt; geschnitten wird nur ein Fragment, das nie eine Zeile war.
 
 ## Einrichtung (einmalig, Mensch)
 
 ```
 mkdir -p ~/apps/plv/daten/configs
 cp deploy/plv/compose.yml deploy/plv/env.beispiel ~/apps/plv/
-mv ~/apps/plv/env.beispiel ~/apps/plv/.env      # und ausfuellen
+mv ~/apps/plv/env.beispiel ~/apps/plv/.env      # und ausfüllen
 cp configs/bestand_gesamt.toml ~/apps/plv/daten/configs/bestand.toml
 ```
 
 **Betriebsschlüssel** (ADR-018, Nachtrag 2026-09-30). Jede Zeile des
 Tagesprotokolls und jede `eingang.json` ist mit dem Schlüssel des Betriebs
-gezeichnet — Rolle `betrieb/tageslauf`, Schlüsselklasse `betrieb`, leere
-gates-Liste: Der Betrieb zeichnet Urheberschaft, nie ein Gate. Verwahrt wird
+gezeichnet (Rolle `betrieb/tageslauf`, Schlüsselklasse `betrieb`, leere
+gates-Liste): Der Betrieb zeichnet Urheberschaft, nie ein Gate. Verwahrt wird
 er wie die Rollenschlüssel der Abnahmen: beim Menschen, außerhalb von
 `daten/` (sonst schriebe, wer die Ablage beschreiben kann, Zeilen und
-Zeichnung gleich mit), Modus 0600, genau ein Hardlink, 32 bis 4096 Byte.
+Zeichnung gleich mit), Modus 0600, keine weiteren Hardlinks, 32 bis 4096 Byte.
 Sein Fingerabdruck steht in einer Zeichnungsordnung (Schema 2) daneben:
 
 ```
@@ -76,11 +89,11 @@ gegen den Stand gelesen, unter dem sie entstand; ohne Linie zeichnet kein
 Gate und gründet kein Kommando des Betriebs auf einer Abnahme. Die Linie ist
 nicht eingecheckt (Entscheidernamen, installationsgebundene Fingerabdrücke)
 und wird im Datenbereich der Laufzeit angelegt, neben `daten/`, nicht darin:
-`~/apps/plv/linie`. Sie gehört in dieselbe Sicherung wie die Schlüssel — ihr
+`~/apps/plv/linie`. Sie gehört in dieselbe Sicherung wie die Schlüssel: ihr
 Verlust macht jede Zeichnung unprüfbar, die ein Glied pinnt (also alle).
 `ordnung/` und `entscheide/` sind nur-anfügbar, kein Kommando löscht dort.
 Den Ort nennt jeder Aufruf ausdrücklich (`--linie ~/apps/plv/linie`): kein
-Default, keine Umgebungsvorgabe — ein Schalter, der fehlen kann, wäre wieder
+Default, keine Umgebungsvorgabe; ein Schalter, der fehlen kann, wäre wieder
 eine abschaltbare Wurzel.
 
 ```
@@ -103,7 +116,7 @@ Klassenwechsel, Rolle entfällt), ist je geminderter Rolle
 `--fruehere-zeichnungen <rolle>=gueltig|verfallen` Pflicht; es gibt keine
 Vorgabe. Erst die Folge lesen, dann anhängen: Die Vorschau rechnet für genau
 dieses Glied die Änderungen, die geminderten Rollen und je Rolle die Folge
-von `gueltig` und `verfallen` (bzw. der genannten Erklärung) — sie schreibt
+von `gueltig` und `verfallen` (bzw. der genannten Erklärung); sie schreibt
 nichts, zeichnet nichts und braucht keinen Schlüssel; das Anhängen danach
 nennt dieselbe Folge (`summary.fruehere_zeichnungen`, dieselben Zeilen in
 `linie.md`):
@@ -118,8 +131,8 @@ python -m rechner_pipeline.gates.stand_belegen ordnung --linie ~/apps/plv/linie 
 
 `gueltig` lässt gelten, was vor dem Glied gezeichnet wurde (Rollenwechsel,
 Umbenennung); `verfallen` verlangt, jede frühere Abnahme der Linie dieser
-Rolle neu zu zeichnen — auch die unter ihren früheren Namen und Schlüsseln,
-auch wenn ein früheres Glied sie für `gueltig` erklärt hat —, beim Vorstand
+Rolle neu zu zeichnen (auch die unter ihren früheren Namen und Schlüsseln,
+auch wenn ein früheres Glied sie für `gueltig` erklärt hat), beim Vorstand
 jeden Fallauftrag und alles, was darauf gründet. Ein Glied wird nie früher
 datiert als sein Vorgänger und nie später als die Uhr des Aufrufs
 (`--eingetragen-am` weglassen heißt: die Uhr). Zwei gleichzeitige Einträge
@@ -137,7 +150,7 @@ Die Ordnung der PLV führt den Vorstand (`mensch/vorstand`, Gates `A-Z1` und
 `A-M6`), die zeichnenden Rollen und die Betriebsrolle `betrieb/tageslauf`.
 **Welche Kommandos die Linie verlangen**
 (`betrieb.tageslauf.KOMMANDOS_MIT_LINIE`): Registrierung, Zugangsprobe,
-Neuaufsetzen und Anfangsbestand (belegen, binden) — sie gründen auf einer
+Neuaufsetzen und Anfangsbestand (belegen, binden): sie gründen auf einer
 Abnahme oder binden eine. **Der Nachtlauf nicht** (`KOMMANDOS_OHNE_LINIE`):
 Er zeichnet Protokollzeilen, hält beim Eintritt nur die betriebsgezeichneten
 Sätze der Registrierung und gründet auf keinem Snapshot. Seinen Schlüssel
@@ -154,28 +167,29 @@ dem ersten gegen den Schlüssel, den die Spitze davor dem Vorstand gibt: Ein
 Glied, das jemand mit Schreibrecht auf `linie/ordnung/`, aber ohne diesen
 Schlüssel angehängt hat, wird verweigert, und darunter gründet nichts. Der
 Schlüssel kommt auf demselben Weg wie jeder andere, mit dem ein Kommando
-prüft — als weiterer `--freigabe-schluessel` (Datei 0600 außerhalb von
+prüft: als weiterer `--freigabe-schluessel` (Datei 0600 außerhalb von
 `daten/`, wie die anderen unter `~/apps/plv/schluessel/`): in
 `gate_entscheid` (jede Annahme; im Fall stand er schon im Ring, der
 Fallauftrag wird damit geprüft), in der Registrierung, der Zugangsprobe, dem
 Neuaufsetzen und in `anfangsbestand binden`. Fehlt er, verweigert das
-Kommando mit dem Ausweg — nicht still. Solange die Linie nur ihr erstes
+Kommando mit dem Ausweg, nicht still. Solange die Linie nur ihr erstes
 Glied trägt, gibt es nichts zu prüfen (die Wurzel ist unsigniert). Der
 Nachtlauf liest die Linie nicht und braucht den Schlüssel nicht. Grenze
-(HMAC): Wer prüfen kann, kann auch zeichnen — der Schlüssel des Vorstands
+(HMAC): Wer prüfen kann, kann auch zeichnen; der Schlüssel des Vorstands
 liegt damit in diesen Ringen (ADR-025, ADR-026).
 
 **`--repo-root` ist der Baum des Pakets, das rechnet** (seit dem Nachtrag zu
 Prüfrunde G in ADR-025). Jedes Kommando der Gates hält den Baum unter
 `--repo-root` gegen das ausgeführte Paket (Hash von `src/rechner_pipeline`)
-und verweigert einen Baum mit anderem Code — der lebende Stand von Kern und
+und verweigert einen Baum mit anderem Code; der lebende Stand von Kern und
 Tarifwerk und der Systemstand der Snapshots wären sonst die eines anderen
 Codes. Im Image ist das `/opt/rechner-pipeline`; auf dem Host der Klon, aus
 dem die `.venv` installiert ist.
 
-**Einmaliger Schritt beim ersten Lauf nach dem Umstieg.** Eine Ablage, die
-schon vor dem Betriebsschlüssel geführt wurde, trägt ein Protokoll ohne
-gezeichnete Zeile. Darauf verweigern Tageslauf, Export und Neuaufsetzen
+**Einmaliger Schritt für eine Ablage aus der Zeit vor dem
+Betriebsschlüssel.** Eine Ablage, die schon vor der Einführung des
+Betriebsschlüssels geführt wurde, trägt ein Protokoll ohne gezeichnete
+Zeile. Darauf verweigern Tageslauf, Export und Neuaufsetzen
 (Exit 2), bis sie einmal ausdrücklich aufgeschaltet ist: Die erste
 gezeichnete Zeile pinnt dann den ungezeichneten Vorlauf (Zahl und Hash der
 Zeilen), neu aufgesetzt wird nichts. Am ersten noch nicht geführten Tag, bei
@@ -195,7 +209,7 @@ stehen alle da; lokal:
 Schalter gehört nie in den Timer: Auf ein schon gezeichnetes (oder leeres)
 Protokoll verweigert der Lauf mit ihm. Verweigert ein Lauf später mit „keine
 gezeichnete Zeile“, ist das kein zweiter Aufschaltfall, sondern ein
-Kettenbruch — jemand hat das gezeichnete Protokoll ohne Schlüssel
+Kettenbruch: jemand hat das gezeichnete Protokoll ohne Schlüssel
 herabgestuft. Dann das Protokoll aus der Sicherung wiederherstellen, nicht
 aufschalten; die Ablage allein kann beides nicht unterscheiden, der Anker
 des nächsten Exports schon.
@@ -203,19 +217,19 @@ des nächsten Exports schon.
 **Übernahme-Eingang** (je Migrationsfall, aus dem Fall-Arbeitsbereich
 heraus; verlangt die Generation des Falls in `bestand.toml` und den
 A-M4-Snapshot des Falls: ohne angenommene Migrationsabnahme gibt es keine
-Übernahme; der Snapshot wird strukturell geprüft — Schema,
-Selbstadressierung, Gate, Entscheid, Fall — und seine Freigabesignatur mit
+Übernahme; der Snapshot wird strukturell geprüft (Schema,
+Selbstadressierung, Gate, Entscheid, Fall) und seine Freigabesignatur mit
 dem Freigabeschlüssel, der außerhalb des Falls liegt. Ohne Schlüssel wird
 nichts registriert: Der Tagesbetrieb nimmt nur einen Eingang mit
 verifizierter Signatur an). Der Eingang kommt von außen ins Volume: Die
 Kommandos laufen auf dem Betriebsrechner mit Zugriff auf den Fall, nicht im
-Container — der Container hat kein Netz und liest den Eingang nur.
+Container; der Container hat kein Netz und liest den Eingang nur.
 
 **Der Zugang hat drei Schritte** (ADR-022): Zugangsprobe, Zugangsabnahme
 A-B2, Registrierung. Ohne angenommene A-B2 wird nichts registriert, und ein
 Eingang ohne sie tritt nicht ein.
 
-1. **Zugangsprobe** — zieht unter der Lauf-Sperre zwei Kopien der Ablage
+1. **Zugangsprobe**: zieht unter der Lauf-Sperre zwei Kopien der Ablage
    (das Original wird nicht beschrieben; die Kopien liegen außerhalb von
    `daten/`), registriert den Eingang in der einen und fährt beide vom
    geführten Tag über den Zugangsstichtag bis zum nächsten Monatsabschluss
@@ -224,23 +238,24 @@ Eingang ohne sie tritt nicht ein.
    Bestand sein: am Stichtag Anzahl, Versicherungssumme (Übernahme) und
    Jahresbeitrag (Migrationssuite) je Vertrag über den ganzen Zugang, am
    Folgetermin die Anzahl in Kraft; dazu Zugänge, Zugangsbuchungen,
-   Bewegungskonto und Gleichheit von allem anderen. Das Deckungskapital
-   steht mit dem Grund „nicht vergleichbar: Konvention Jahreswert vs.
-   Monatsreserve, Entscheid offen“ im Beleg, bis der Maintainer die
-   Konvention entscheidet. Das Soll liest die Probe nur aus den Bytes, die
+   Bewegungskonto und Gleichheit von allem anderen. Deckungskapital,
+   Rückkaufswert und Korrekturschicht hält sie je Vertrag gegen den
+   Führungswert der Migrationssuite, am Zugangsstichtag und am
+   Folgestichtag (dort ohne Verträge mit einem gebuchten Vorfall im
+   Fenster). Das Soll liest die Probe nur aus den Bytes, die
    die geltenden Abnahmen pinnen (`aktuartest.json` über A-M1,
-   `migrationssuite.json` über A-M4) — sonst verweigert sie. Der Beleg
+   `migrationssuite.json` über A-M4); sonst verweigert sie. Der Beleg
    `abgeleitet/berichte/zugangsprobe.json` trägt die Betriebszeichnung und
    bindet den geführten Stand der Ablage, den Eingang und die Abnahmen
    (Exit 0 bestanden, 1 nicht bestanden, 2 Bedienfehler oder
-   Ein-/Ausgabefehler, auch beim Schreiben des Belegs — der feste Ort behält
+   Ein-/Ausgabefehler, auch beim Schreiben des Belegs; der feste Ort behält
    dann, was vorher dort lag). Die Kopien unter `--arbeit` sind und bleiben
    Probenkopien: Jede Protokollzeile, die die Probe dort schreibt, ist als
    Probezeile gezeichnet, und kein Tageslauf, Export, Neuaufsetzen oder
-   Registrieren nimmt eine solche Ablage an — auch nicht ohne ihr
+   Registrieren nimmt eine solche Ablage an, auch nicht ohne ihr
    Kennzeichen. Der Zugangsstichtag ist ein Monatserster. Die Probe hält
-   ihren Code-Stand gegen die letzte grüne Protokollzeile: Image- Digest und
-   Revision (soweit dort erfasst) und den Hash des Pakets — also im
+   ihren Code-Stand gegen die letzte grüne Protokollzeile: Image-Digest und
+   Revision (soweit dort erfasst) und den Hash des Pakets; also im
    produktiven Image fahren bzw. `--image-digest` wie im Tageslauf angeben;
    jede Abweichung ist ein Befund.
 
@@ -258,7 +273,7 @@ python -m rechner_pipeline.betrieb.zugangsprobe --stand ~/apps/plv/daten \
    Schlüssel der Rolle, die beide signiert hat (`mensch/aktuariat`), und den
    des Vorstands für die Glieder der Linie.
 
-2. **Zugangsabnahme A-B2** — `mensch/betrieb` zeichnet (in der Vorführung
+2. **Zugangsabnahme A-B2**: `mensch/betrieb` zeichnet (in der Vorführung
    mit Schlüsselklasse `simulation` unter Mandat); `agent/betrieb` legt vor
    und kann nur ablehnen. Die Zeichnungsordnung des Maintainers gibt
    `mensch/betrieb` dafür `A-B2` in seine gates-Liste. Das Gate rechnet das
@@ -289,7 +304,7 @@ python -m rechner_pipeline.gates.gate_entscheid --fall faelle/<fall> \
    A-B2 den Fallauftrag voraus (ADR-026): Der Schlüssel des Vorstands steht
    deshalb im Ring.
 
-3. **Registrierung** — auf derselben Ablage, ohne dass dazwischen ein
+3. **Registrierung**: auf derselben Ablage, ohne dass dazwischen ein
    Tageslauf den geführten Stand bewegt oder die Config getauscht wird, mit
    denselben Angaben wie die Probe (`--fall`, `--quelle`, Stichtag,
    Betriebsschlüssel): Die Registrierung hält ihre eigene `eingang.json` und
@@ -301,7 +316,7 @@ python -m rechner_pipeline.gates.gate_entscheid --fall faelle/<fall> \
    2026-10-01): Die Freigabe des Snapshots muss von einem Schlüssel stammen,
    dessen Rolle die Zeichnungsordnung für genau dieses Gate berechtigt, und
    der Snapshot muss genau diese Rolle tragen (die Rolle ist die des
-   Schlüssels, nicht die behauptete) — Registrierung und Zugangsprobe
+   Schlüssels, nicht die behauptete); Registrierung und Zugangsprobe
    verweigern sonst. Die Ordnung unter `--zeichnungsordnung` nennt deshalb
    neben `betrieb/tageslauf` auch die Rolle mit A-B2 und die Rolle(n), deren
    Schlüssel A-M1 und A-M4 signiert haben, jeweils mit diesen Gates und
@@ -325,21 +340,21 @@ python -m rechner_pipeline.betrieb.uebernahme --stand ~/apps/plv/daten \
 
 Der Schalter steht dreifach, weil die Registrierung die Signaturen aller
 drei Abnahmen prüft: A-M1 und A-M4 (Schlüssel von `mensch/aktuariat`) und
-A-B2 (Schlüssel von `mensch/betrieb`) — und die Glieder der Linie (Schlüssel
+A-B2 (Schlüssel von `mensch/betrieb`), und die Glieder der Linie (Schlüssel
 des Vorstands). Fehlt einer, verweigert sie am Snapshot bzw. Glied, das ihn
 braucht („nicht bereitgestellter Schlüssel“, „nicht im Ring“). Auch die
 Schlüsselklasse ist die der Ordnung: Gibt sie einer Rolle `simulation`, muss
 der Snapshot das sagen und sein Mandat tragen.
 
-Beim Eintritt — dem ersten grünen Lauf, der den Eingang aufnimmt, geführt
-oder (bei einem Stichtag in der Zukunft) wartend — hält der Tageslauf die
+Beim Eintritt, dem ersten grünen Lauf, der den Eingang aufnimmt, geführt
+oder (bei einem Stichtag in der Zukunft) wartend, hält der Tageslauf die
 Abnahme noch einmal gegen den Stand, auf dem er läuft. Lief die Ablage nach
 der Probe weiter, verweigert er (Exit 2, der Stand bleibt). Ausweg: Der
 Eingang ist nie eingetreten; ihn aus `uebernahme/` nehmen (sichern), die
 Probe auf dem heutigen Stand wiederholen, A-B2 neu zeichnen und neu
 registrieren. Ein roter Lauf bewegt den geführten Stand nicht.
 
-Die Registrierung zeichnet `eingang.json` mit dem Betriebsschlüssel — über
+Die Registrierung zeichnet `eingang.json` mit dem Betriebsschlüssel, über
 alle Felder, auch die geprüfte Freigabesignatur der A-M4-Annahme. Sie hält
 dazu die Tarifwerk-Schalter der Config gegen den Übernahmebeleg und
 verweigert bei Abweichung mit dem Config-Abschnitt als Ausweg: Registriert
@@ -348,7 +363,7 @@ wird nur, was der Tageslauf annimmt.
 **Image ziehen und Digest eintragen.** Der Container kennt seinen Digest zur
 Laufzeit nicht (kein Netz, kein Docker-Socket); er kommt aus `.env`, vom
 Menschen nach jedem Pull eingetragen. Ohne Eintrag steht im Protokoll
-`nicht erfasst` — ein benannter Zustand, kein leeres Feld. Revision (Commit
+`nicht erfasst`: ein benannter Zustand, kein leeres Feld. Revision (Commit
 des Baus) und Tag trägt das Image selbst.
 
 ```
@@ -369,7 +384,7 @@ geschieht genau einmal je Ablage; jeder weitere Lauf findet die Abschlüsse
 vor und rechnet sie nicht neu.
 
 Was jeder Lauf tut, auch der nächtliche: Er zieht den Tagesstrom seit dem
-Betriebsbeginn neu und schreibt den Bestand von dort bis heute fort — der
+Betriebsbeginn neu und schreibt den Bestand von dort bis heute fort: der
 Stand entsteht jede Nacht aus derselben deterministischen Geschichte, nicht
 aus dem Stand von gestern. Das kostet derzeit rund eine halbe Minute und
 wächst mit der Geschichte des Unternehmens; nur die Monatsabschlüsse sind
@@ -382,7 +397,7 @@ tail -n 1 daten/journal/protokoll.jsonl
 
 Fährt der Timer am selben Tag noch einmal (Erstbefüllung am Tag des ersten
 Timers, ein Neustart), ist das kein Fehler: Der bereits geführte Tag ist ein
-benannter No-op — Exit 0,
+benannter Leerlauf: Exit 0,
 `tageslauf: <Tag> bereits gefuehrt, nichts zu tun`, keine Protokollzeile,
 Stand unverändert. Das gilt nur mit der Config, mit der der Tag gerechnet
 wurde: Ist die Kopie inzwischen eine andere, hält auch dieser Lauf an wie
@@ -393,7 +408,7 @@ ab.
 **Abnahme des Anfangsbestands A-B3** (ADR-025). Der erste Lauf einer Ablage
 ist ihr Aufbaulauf: Er baut den Anfangsbestand und läuft ohne Abnahme. Jeder
 weitere Lauf verlangt, dass die Betriebsverantwortung (`mensch/betrieb`)
-diesen Anfangsbestand abgenommen hat — die gezeichnete Bindung
+diesen Anfangsbestand abgenommen hat: die gezeichnete Bindung
 `anfangsbestand.json` in der Ablage, deren Stand eine grüne Zeile dieser
 Ablage ist; sonst hält der Lauf an (Exit 2, rote Protokollzeile, Ausweg in
 der Meldung). Das gilt auch für eine Ablage, die schon vor dieser Regel
@@ -423,12 +438,12 @@ nach einem Neuaufsetzen zeigt die Sicht die Abweichung zum zuletzt
 abgenommenen Anfangsbestand (aus der Bindung im Archiv der alten Ablage).
 Ist diese Bindung da, aber nicht lesbar oder nicht prüfbar (oder fehlt das
 Archiv, das `neuaufsetzen.json` nennt), verweigert `belegen` mit Exit 2 und
-Ausweg — „erste Abnahme“ sagt die Sicht nur, wenn es keine abgenommene
+Ausweg; „erste Abnahme“ sagt die Sicht nur, wenn es keine abgenommene
 Vorgängerin gibt. A-B3 zeichnet das Gate nur, wenn die Sicht am festen Ort
 die aus dem Beleg erzeugte ist (ADR-025, Nachtrag „Beleg und Sicht“); nach
 einem Ausfall beim Belegen (Code `sicht` beim Zeichnen) `belegen`
 wiederholen und erneut ansehen. `binden` hält den Stand des A-B3-Snapshots
-per Gleichheit gegen den der Ablage — liegt zwischen Belegen und Binden ein
+per Gleichheit gegen den der Ablage: liegt zwischen Belegen und Binden ein
 Lauf, verweigert es. Danach baut es den Beleg auf den Bytes der Ablage neu,
 mit denselben Funktionen wie `belegen` (Bestandswache P-B1, Kennzahlen,
 Vorgängerin), und hält jedes Feld gegen den gezeichneten Beleg am festen
@@ -497,7 +512,7 @@ Anlegen der Vorbereitung, vor der ersten Umbenennung), kann sie nichts mehr
 abräumen: `daten` steht unverändert, daneben liegt `daten.neu-<Zeit>`. Das
 ist nie still. Jeder Aufruf, der die Ablage betritt (Tageslauf,
 Registrierung, Zugangsprobe, Anfangsbestand, Export), hält dann mit Exit 2
-an und nennt die Vorbereitung — auch der Timer: Ob die Ablage ersetzt werden
+an und nennt die Vorbereitung, auch der Timer: Ob die Ablage ersetzt werden
 soll, entscheidet der Betrieb, nicht der nächste Lauf; verpasste Tage holt
 der Tageslauf danach nach. Ausweg: dieselbe Routine erneut fahren; sie
 entfernt ihre nie veröffentlichte Vorbereitung (und sagt das), bevor sie neu
@@ -505,7 +520,7 @@ aufbaut, auch mit festem `--archiv`. Ist das Neuaufsetzen nicht mehr
 gewollt, die genannte Vorbereitung von Hand entfernen. Grenze: Im Container
 sieht der Tageslauf nur `daten`, nicht dessen Geschwister; der Timer hält
 dort also nicht an. Den Rest nennt dann der nächste Aufruf auf dem Host
-(Anfangsbestand, Registrierung, Zugangsprobe, Export, Neuaufsetzen) — nach
+(Anfangsbestand, Registrierung, Zugangsprobe, Export, Neuaufsetzen); nach
 einem Abbruch der Routine deshalb vor dem Timer `ls ~/apps/plv` ansehen.
 „Nie veröffentlicht“ steht fest, wenn ihre Provenienz fehlt, nicht lesbar
 ist oder ein Archiv nennt, das es nicht gibt, und kein Journal in ihr liegt.
@@ -527,9 +542,9 @@ angehaltenem Timer:
    steht in jeder Protokollzeile; die Zugangsprobe hält ihren eigenen
    dagegen.
 2. **Linie** anlegen bzw. bereitstellen (oben) und die Ordnung der Spitze
-   eintragen — ohne sie zeichnet kein Gate (`gate_entscheid`) und läuft
+   eintragen; ohne sie zeichnet kein Gate (`gate_entscheid`) und läuft
    keines der Kommandos unten.
-3. Im Fall: **Fallauftrag** (A-M6, ADR-026) und die Abnahmen bis A-M4 —
+3. Im Fall: **Fallauftrag** (A-M6, ADR-026) und die Abnahmen bis A-M4,
    unter der Linie gezeichnet.
 4. **Zugangsprobe und A-B2** je Eingang auf der neuen Config: auf einem
    leeren Verzeichnis, das nur die neue `configs/bestand.toml` trägt
@@ -537,10 +552,10 @@ angehaltenem Timer:
    mit geltender A-B2.
 5. **Neu aufsetzen** (`--linie`, `--zugangsabnahme`). Es legt die alte
    Ablage selbst als `daten.archiv-<Zeit>` ab, bevor die neue an ihre Stelle
-   tritt — das Archiv ist Teil dieses Schritts, kein eigener am Ende.
+   tritt; das Archiv ist Teil dieses Schritts, kein eigener am Ende.
 6. **Aufbaulauf** (`docker compose run --rm tageslauf`): Er läuft ohne
    Abnahme und erzeugt erst den geführten Stand, den A-B3 abnimmt.
-7. **Anfangsbestand** belegen, A-B3 zeichnen, binden (oben) — vorher
+7. **Anfangsbestand** belegen, A-B3 zeichnen, binden (oben); vorher
    verweigert jeder weitere Lauf.
 8. Export (`betrieb.seite`) mit neuem Ankerverzeichnis, Timer einschalten.
 
@@ -550,7 +565,7 @@ Abschnitt 4). Die Ablage führt ihre eigene Kopie; das Repository ändert sie
 nicht. Eine neue Config gilt von Beginn der Simulation an: Jeder Lauf
 rechnet die Geschichte ab 1994 neu, die neuen Raten treffen also auch Jahre,
 deren Monatsabschlüsse festgeschrieben sind und deren Buchungen im Journal
-stehen — eine bestehende Ablage reproduziert danach nicht mehr. Der
+stehen: eine bestehende Ablage reproduziert danach nicht mehr. Der
 Tageslauf hält deshalb an, sobald die Kopie nicht mehr die ist, mit der der
 letzte grüne Tag gerechnet wurde (Config-Hash der Protokollzeile). Er endet
 dann mit Exit 2, Stand und Journal bleiben, und eine rote Protokollzeile
@@ -581,7 +596,7 @@ mkdir -p ~/.config/systemd/user
 cp deploy/plv/tageslauf.service deploy/plv/tageslauf.timer ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now tageslauf.timer
-loginctl enable-linger "$USER"     # der Timer laeuft auch ohne Sitzung
+loginctl enable-linger "$USER"     # der Timer läuft auch ohne Sitzung
 ```
 
 ## Betrieb
@@ -600,19 +615,19 @@ loginctl enable-linger "$USER"     # der Timer laeuft auch ohne Sitzung
 * **Update** = neuer `IMAGE_TAG` in `.env`, `docker compose pull`, Digest
   eintragen. Der erste Lauf mit neuem Image protokolliert den Wechsel.
   Wechselt die Kern-Version, weisen die Abschluss-Kontrollen
-  (`bestand.cli_abschluss --pruefen`) die Abweichungen aus — der
+  (`bestand.cli_abschluss --pruefen`) die Abweichungen aus; der
   Tagesbetrieb schreibt nichts um.
 * **Sichtung:** `daten/seite/index.html` zeigt den Bestand heute, der
   Bestandsbericht des letzten Monatsabschlusses liegt unter
   `daten/berichte/`. Die öffentliche Seite bleibt eine vom Menschen
   veröffentlichte Momentaufnahme (`werkzeuge/README.md`): Ihre Quelle ist
-  das **Stands-Paket**, das der Mensch exportiert und dem Auftritt übergibt
-  — nichts wird automatisch veröffentlicht. Das Paket trägt seine Belege
+  das **Stands-Paket**, das der Mensch exportiert und dem Auftritt übergibt;
+  nichts wird automatisch veröffentlicht. Das Paket trägt seine Belege
   (Protokoll mit Kette, Manifest, Berichte, je mit SHA-256); der Auftritt
   prüft sie und veröffentlicht kein Paket, das sich selbst widerspricht.
 
   Das genügt aber nicht: Die Protokollkette bindet jede Zeile an ihre
-  Vorgängerin und schützt damit alles außer der letzten — und genau aus der
+  Vorgängerin und schützt damit alles außer der letzten, und genau aus der
   letzten leitet `stand.json` ab. Wer beide zusammen umschreibt, bekommt ein
   Paket, das sich selbst bestätigt. Deshalb schreibt der Export einen Anker
   in den Fall-Datenraum (den der Tagesbetrieb nicht anfasst) und nennt ihn

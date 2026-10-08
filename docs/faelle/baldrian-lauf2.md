@@ -17,8 +17,8 @@ Versicherers.
 
 Der Migrationsfall ist vollständig geprüft und abgenommen. Alle
 fünf Abnahme-Gates wurden von der Rolle des Verantwortlichen Aktuars
-auf demselben Systemstand gezeichnet (Stand f7c545d; die Quelltext-
-Prüfsumme jedes Snapshots entspricht diesem Stand). Während des
+auf demselben Systemstand gezeichnet (Stand f7c545d; die Quelltext-Prüfsumme
+jedes Snapshots entspricht diesem Stand). Während des
 Laufs wurden 25 Korrekturen am System vorgenommen und die betroffenen
 Gates jeweils neu gezeichnet; der Umbaubericht des Falls weist sie aus
 (Abschnitt 7).
@@ -54,8 +54,8 @@ Lieferumfang der abgebenden Gesellschaft: Bestandsabzüge zu beiden
 Stichtagen, Vorgeschichts-Metadaten (2750 Geschäftsvorfall-Zeilen
 2016-2025), Geschäftsvorfall-Protokoll des Migrationsjahres,
 Erwartungswerte für Stichtags-, Verlaufs- und Vorfallprüfung samt
-Ziehungsbeleg der Referenzstichprobe, Tarifwerk (Versicherungs-
-bedingungen, Mitteilung Nr. 143, Tarifrechner-Arbeitsmappe) sowie
+Ziehungsbeleg der Referenzstichprobe, Tarifwerk (Versicherungsbedingungen,
+Mitteilung Nr. 143, Tarifrechner-Arbeitsmappe) sowie
 vier im Laufe des Falls registrierte Auskunftsschreiben.
 
 Bestandsstruktur nach Vorgeschichte: 257 Verträge ohne Vorgeschichte,
@@ -89,8 +89,8 @@ Verantwortlichen Aktuar bestätigt:
    deren Tarifmitteilung die Stückkosten auf der Grundsumme beließ.
 4. **Stornoabzug je Baustein**: Mindest- und Höchstbetrag werden für
    Grundversicherung und jede Erhöhung einzeln erhoben; der
-   Rückkaufswert des Vertrags ist die Summe der Baustein-
-   Rückkaufswerte (Ziffer 4).
+   Rückkaufswert des Vertrags ist die Summe der Baustein-Rückkaufswerte
+   (Ziffer 4).
 5. **Herabsetzung als Teilkündigung mit Auszahlung** (Ziffer 6): Der
    gekündigte Anteil der Grundversicherung verlässt den Vertrag,
    die Erhöhungsbausteine bleiben unberührt, der Vertrag läuft
@@ -166,8 +166,8 @@ des KI-Tools; entschieden und gezeichnet hat die Rolle des
 Verantwortlichen Aktuars der Pfefferminzia. Diese Rolle war im Lauf
 nicht durch eine natürliche Person besetzt, sondern durch eine
 KI-Sitzung, die im Mandat des Maintainers handelte und die Abnahmen
-nach Prüfung der Vorlagen zeichnete. Der Fall trägt 25 Entscheid-
-Snapshots: die fünf geltenden (Neuzeichnung nach Korrektur 25 am
+nach Prüfung der Vorlagen zeichnete. Der Fall trägt 25 Entscheid-Snapshots:
+die fünf geltenden (Neuzeichnung nach Korrektur 25 am
 7. September 2026, Stand f7c545d) und zwanzig Vorgänger aus den
 Neuzeichnungen nach früheren Korrekturen. Die fünf geltenden tragen
 die Rolle in der heutigen Schreibweise (``mensch/plv-aktuar``) mit der

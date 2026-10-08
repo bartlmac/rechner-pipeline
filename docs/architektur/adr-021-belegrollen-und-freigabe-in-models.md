@@ -33,7 +33,7 @@ Schichten.
    im Betrieb mit ``erwartete_rollen``, und zwar auf Gleichheit, nicht mit
    ``>=``.
 2. **``models.freigabe``** lädt den Schlüsselring (außerhalb von Fall und
-   Ablage, Modus 0600, keine Hardlinks, Länge in festen Grenzen) und trägt
+   Ablage, Modus 0600, keine weiteren Hardlinks, Länge in festen Grenzen) und trägt
    ``freigabe_fuer`` und ``pruefe_freigabe``. Das Gate delegiert unter
    seinen alten Namen. Der Betriebseingang prüft die Signatur bei der
    Registrierung (``--freigabe-schluessel``), verlangt Schema 7

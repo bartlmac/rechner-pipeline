@@ -36,8 +36,9 @@
 #
 # Voraussetzung: Der Codebaum ist sauber (git status leer) und wird waehrend
 # des Aufstellens nicht bewegt — die Abnahmen pinnen seinen Stand.
-# Alle Schluessel dieser Welt haben die Klasse simulation: Jede Zeichnung
-# weist sich als simuliert aus und nennt das Mandat.
+# Die Schluessel der menschlichen Rollen dieser Welt haben die Klasse
+# simulation: Jede Zeichnung weist sich als simuliert aus und nennt das
+# Mandat. Der Schluessel des Tageslaufs hat die Klasse betrieb.
 
 HIER="$(cd "$(dirname "$0")" && pwd)"
 WELT="${1:-}"; PHASE="${2:-alles}"
@@ -128,7 +129,7 @@ BETRIEB_MENSCH_KEY="$K/betrieb-mensch.key"
 PROGRAMMLEITUNG_KEY="$K/programmleitung.key"
 PROGRAMMLEITUNG_KLASSE=simulation
 EOF
-  echo "ok   Schluessel, Zeichnungsordnung und Mandat erzeugt: $K (sechs Rollen, Klasse simulation), $EINST"
+  echo "ok   Schluessel, Zeichnungsordnung und Mandat erzeugt: $K (sechs Rollen: fuenf der Klasse simulation, der Tageslauf der Klasse betrieb), $EINST"
 }
 
 lade_einstellungen() {
