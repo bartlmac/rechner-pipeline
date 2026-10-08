@@ -584,7 +584,7 @@ def _aufwand_abschnitt(modell: Dict[str, Any], link: Callable[[str], Optional[st
     from falldaten import AUFWAND_DATEI  # noqa: E402 — Nachbarwerkzeug
 
     auf = modell["aufwand"]
-    z = ["# Dauer und Aufwand {: #aufwand }", ""]
+    z = ["# Dauer und Aufwand {#aufwand}", ""]
     dauer = auf.get("dauer")
     if dauer:
         ort = ZoneInfo("Europe/Berlin")
@@ -913,7 +913,7 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
     # Gate-Kette.
     lage = darstellung.stationslage(modell)
     if any(x["urteil"] for x in lage):
-        z.append("## Der Weg im Überblick {: #ueberblick }")
+        z.append("## Der Weg im Überblick {#ueberblick}")
         z.append("")
         if unterseite:
             z.append("Als Schaubild mit beiden Wegen, Tarif und Bestand:")
@@ -1122,7 +1122,7 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
         s_bestand.append("")
 
     # ------------------------------------------ Was herauskam
-    s_ergebnis.append("# Was herauskam {: #das-ergebnis }")
+    s_ergebnis.append("# Was herauskam {#das-ergebnis}")
     s_ergebnis.append("")
     if not (abnahmen or controlling):
         s_ergebnis.append("*(noch keine Berichte im Fall)*")
@@ -1198,7 +1198,7 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
         stolper = umbau.get("stolperdraehte") or []
         gesamt = umbau.get("gesamt") or {}
         umbaubericht = link("abgeleitet/berichte/umbaubericht.html")
-        s_umbau.append("# Was sich am System änderte {: #umbau }")
+        s_umbau.append("# Was sich am System änderte {#umbau}")
         s_umbau.append("")
         s_umbau.append("Eine Übernahme darf unser System erweitern, nicht nebenbei")
         s_umbau.append("ersetzen. Wie weit dieser Lauf es verändert hat, wird")
@@ -1252,7 +1252,7 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
         s_umbau.append("")
 
     # --------------------------- Nachschlagestoff: Laeufe und Zeichnungen
-    s_anlaeufe.append("## Alle Prüfläufe und ihre Ledger {: #wie-es-lief }")
+    s_anlaeufe.append("## Alle Prüfläufe und ihre Ledger {#wie-es-lief}")
     s_anlaeufe.append("")
     if gates:
         laeufe = sum(int(g.get("versuch") or 1) for g in gates)
@@ -1272,7 +1272,7 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
     else:
         s_anlaeufe.append("*(noch keine Prüfschritte im Fall)*")
         s_anlaeufe.append("")
-    s_anlaeufe.append("## Die Entscheid-Snapshots {: #zeichnungen }")
+    s_anlaeufe.append("## Die Entscheid-Snapshots {#zeichnungen}")
     s_anlaeufe.append("")
     _n = len(entscheide)
     _final = sum(1 for e in entscheide if e.get("geltend") or e.get("in_finaler_kette"))
@@ -1289,7 +1289,7 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
         # sondern die Aenderungsbelege von Kern und Tarifwerk, die je ein
         # Mensch abnimmt. Gezeigt wird je Datei, was dazukam und wegfiel —
         # die Einzelheiten je Commit stehen im lesbaren Beleg.
-        s_umbau.append("# Was sich am System änderte {: #umbau }")
+        s_umbau.append("# Was sich am System änderte {#umbau}")
         s_umbau.append("")
         s_umbau.append("Eine Übernahme darf unser System erweitern, nicht nebenbei")
         s_umbau.append("ersetzen. Was sich für diesen Fall geändert hat, steht in")
@@ -1328,7 +1328,7 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
             s_umbau.append("")
 
     # ------------------------------------------ Grenzen des Laufs
-    s_grenzen.append("# Grenzen dieses Laufs {: #grenzen }")
+    s_grenzen.append("# Grenzen dieses Laufs {#grenzen}")
     s_grenzen.append("")
     s_grenzen.append(_grenzen(modell, unterseite))
     s_grenzen.append("")
@@ -1382,7 +1382,7 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
     if b_liste or z_liste:
         # Die Seite sagt offen, wo sie nicht die gebundenen Bytes zeigt
         # (Entscheid des Maintainers, 03.10.2026; werkzeuge/bereinigung.py).
-        s_belege.append("## Bereinigt veröffentlicht {: #bereinigt }")
+        s_belege.append("## Bereinigt veröffentlicht {#bereinigt}")
         s_belege.append("")
     if b_liste:
         regeln_t = ", ".join(f"`{r['platzhalter']}` für {r['steht_fuer']}"
@@ -1434,7 +1434,7 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
         s_belege.append("")
     s_belege.extend(s_anlaeufe)
     if verlauf:
-        s_belege.append("## Der Verlauf des Laufs {: #verlauf }")
+        s_belege.append("## Der Verlauf des Laufs {#verlauf}")
         s_belege.append("")
         s_belege.append("Der Ablauf des Laufs, aus dem Sitzungstranskript erzeugt:")
         s_belege.append("[verlauf.md](verlauf.md).")
@@ -1767,7 +1767,7 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
         register_pfad = "../pruefgates.html" if unterseite else "migrationen/pruefgates.html"
         for nummer, titel, kennung in darstellung.WEG_STATIONEN:
             anker = darstellung.STATION_ABSCHNITT[nummer]
-            aus += [f"## Station {nummer} · {titel} {{: #{anker} }}", ""]
+            aus += [f"## Station {nummer} · {titel} {{#{anker}}}", ""]
             # Das Gate der Station, dann die Abnahmen, die sie mittraegt —
             # soweit der Fall sie beruehrt (Entscheid, Lauf oder Abnahme
             # des Stands). Was der Fall nicht kennt, steht hier nicht.
@@ -1818,7 +1818,7 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
     # Das Verzeichnis der Belege ist eine eigene Seite (Maintainer 06.10.2026:
     # Dateien, Pruefsummen und Ledger gehoeren nicht in den Lesefluss); die
     # Fallseite verweist darauf.
-    z += ["## Verzeichnis der Belege {: #belege }", "",
+    z += ["## Verzeichnis der Belege {#belege}", "",
           "Alle Berichte und Dateien dieses Falls nach Station, alle Prüfläufe und",
           "die Entscheide: [Verzeichnis der Belege](belege.html).", ""]
     z.extend(fuss())

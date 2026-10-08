@@ -16,7 +16,8 @@ Datenbestand.
 Die Vorschau ist eine LESEHILFE, kein Abbild des Pages-Themas: Inhalt,
 Zahlen, Tabellen und Links sind pruefbar; die Optik der Live-Seite
 entsteht erst beim Bau. Gerendert wird mit ``python3-markdown``
-(Debian-Paket, auf dem System vorhanden), Erweiterung ``tables``.
+(Debian-Paket, auf dem System vorhanden), Erweiterungen ``tables`` und
+``attr_list``; die Ueberschriften bekommen die ids, die Pages ihnen gibt.
 
 Aufruf::
 
@@ -31,7 +32,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 #: Verzeichnisse, die als Ganzes in die Vorschau verlinkt werden —
 #: Artefakt-Belege und Seiten-Assets; ihr Inhalt wird nicht gerendert.
@@ -83,6 +84,60 @@ def _mathe_zurueck(html: str, formeln: List[str]) -> str:
     for i, roh in enumerate(formeln):
         html = html.replace(_PLATZHALTER.format(i), roh)
     return html
+
+
+def _gfm_ids(texte: List[str]) -> List[str]:
+    """Die ids, die Pages den Ueberschriften einer Seite gibt, in ihrer
+    Reihenfolge.
+
+    Pages rendert mit kramdown, Eingabe GFM (Vorgabe in
+    ``github-pages``), und das gibt jeder Ueberschrift ohne eigene id eine
+    aus ihrem Text (``generate_gfm_header_id`` in kramdown-parser-gfm):
+    klein geschrieben, alles ausser Wortzeichen, Bindestrich, Leerzeichen
+    und Tab gestrichen, jedes Leerzeichen und jeder Tab einzeln ein
+    Bindestrich. Kehrt eine id wieder, bekommt sie ``-1``, ``-2`` angehaengt.
+    Aus ``T-Box`` wird ``t-box``, aus ``Schlüssel`` wird ``schlüssel``; ein
+    Verweis wie ``[T-Box](#t-box)`` traegt live. Ohne diese ids liefe er in
+    der Vorschau ins Leere (Glossar, Bau vom 08.10.2026).
+    """
+    gezaehlt: Dict[str, int] = {}
+    ids: List[str] = []
+    for text in texte:
+        kennung = re.sub(r"[^\w\- \t]", "", text.lower()).replace(" ", "-").replace("\t", "-")
+        gezaehlt[kennung] = gezaehlt.get(kennung, -1) + 1
+        ids.append(f"{kennung}-{gezaehlt[kennung]}" if gezaehlt[kennung] else kennung)
+    return ids
+
+
+#: Eine eigene id am Ende einer Ueberschrift, so wie kramdown sie liest
+#: (``HEADER_ID``); attr_list setzt sie in der Vorschau ebenso.
+_EIGENE_ID = re.compile(r"[\t ]\{#[A-Za-z_:][\w.:-]*\}$")
+
+
+def _ids_erweiterung(markdown, formeln: List[str]):
+    """Die Markdown-Erweiterung, die jeder Ueberschrift ohne eigene id die id
+    aus :func:`_gfm_ids` gibt.
+
+    Sie laeuft vor der Inline-Verarbeitung: kramdown rechnet aus der Quelle
+    der Ueberschrift (``raw_text``), nicht aus dem, was sie anzeigt, und die
+    Formeln stehen dort noch als Formeln, nicht als Platzhalter."""
+    from markdown.extensions import Extension
+    from markdown.treeprocessors import Treeprocessor
+
+    class Ids(Treeprocessor):
+        def run(self, wurzel):
+            koepfe = [el for el in wurzel.iter()
+                      if el.tag in ("h1", "h2", "h3", "h4", "h5", "h6")
+                      and "id" not in el.attrib and not _EIGENE_ID.search(el.text or "")]
+            texte = [_mathe_zurueck((el.text or "").strip(), formeln) for el in koepfe]
+            for el, kennung in zip(koepfe, _gfm_ids(texte)):
+                el.set("id", kennung)
+
+    class Erweiterung(Extension):
+        def extendMarkdown(self, md):
+            md.treeprocessors.register(Ids(md), "gfm_ids", 30)   # "inline" hat 20
+
+    return Erweiterung()
 
 #: Die Vorschau zeigt, was Jekyll zeigen wird: dasselbe Stylesheet, dasselbe
 #: Geruest (werkzeuge/../vorzeige-seite/_layouts/default.html). Ein eigenes
@@ -146,7 +201,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             roh, formeln = _mathe_herausnehmen(
                 quelle.read_text(encoding="utf-8"))
             rumpf = _mathe_zurueck(
-                markdown.markdown(roh, extensions=["tables", "attr_list"]),
+                markdown.markdown(roh, extensions=[
+                    "tables", "attr_list", _ids_erweiterung(markdown, formeln)]),
                 formeln)
             # Jekyll (jekyll-relative-links, auf Pages vorgegeben) macht
             # aus einem Link auf eine .md-Datei den Link auf ihr

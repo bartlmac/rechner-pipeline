@@ -9,7 +9,7 @@ zuständige Rolle.
 Diese Seite sagt, was die Agenten bei uns dürfen, und zeigt an der
 Übernahme Baldrian, wie es aussieht.
 
-## Was ein Agent darf und was nicht {: #was-agenten-duerfen }
+## Was ein Agent darf und was nicht {#was-agenten-duerfen}
 
 Der Unterschied zwischen Vorschlag und Urteil ist bei uns keine
 Hausregel, sondern in der Bauart festgelegt: Ein Agent kann einen Lauf
@@ -20,7 +20,7 @@ Rolle und Schlüsselklasse. Ob je eine Agentenrolle einen Entscheid
 trägt, ist an den Snapshots gemessen, nicht behauptet — die Antwort
 muss nein lauten.
 
-## Wer legt vor, wer zeichnet {: #rollen }
+## Wer legt vor, wer zeichnet {#rollen}
 
 Das KI-Werkzeug arbeitet mit Agentenrollen, versioniert mit Aufgabe,
 Fähigkeiten und Werkzeugliste; die Liste unten ist aus den Definitionen
@@ -36,7 +36,7 @@ liest, und welche Rolle welches Gate zeichnet — für die Gates der
 
 Wo die Rollen im Ablauf stehen, zeigt [Der Prozess in dreizehn Stationen](./#prozess).
 
-## Wie ein Gate heißt {: #kennung }
+## Wie ein Gate heißt {#kennung}
 
 Eine Bestandsübernahme durchläuft bei uns Stationen, und an den meisten
 sitzt ein Gate. Sein Name ist eine Kennung aus vier Teilen:
@@ -66,7 +66,7 @@ rückt nichts nach, sonst entstünde genau die Verwechslung, die diese
 Ordnung abschaffen soll. Deshalb gibt es A-M1 und A-M4, und A-M2 und
 A-M3 dazwischen sind eigene Gates.
 
-## An einer gefahrenen Übernahme {: #beispiel }
+## An einer gefahrenen Übernahme {#beispiel}
 
 Wie das bei der Übernahme Baldrian aussieht — an jeder
 Station das Gate, was es prüft, was es hinterlässt und was der Lauf dort
@@ -74,7 +74,7 @@ ergab —, zeigt [Die Übernahme Baldrian](baldrian/): eine Seite, von der
 Lieferung bis zum Zugang in die Bücher, mit den Zahlen und Belegen jeder
 Station.
 
-## Feststellungen des Aktuariats {: #feststellungen }
+## Feststellungen des Aktuariats {#feststellungen}
 
 Die Feststellungen zu den gelieferten Unterlagen und die Entscheidung zu
 jeder Diskrepanz stehen auf der Seite der Übernahme an der Station

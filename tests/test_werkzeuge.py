@@ -884,7 +884,7 @@ def test_die_seite_sagt_offen_was_bereinigt_und_was_zurueckgehalten_ist(tmp_path
     seite = _fallseite(fall, modell, tmp_path, kopiert, None, unterseite=True, bereinigt=bericht)
     seiten = vz._seiten(fall, modell, tmp_path, kopiert, None, unterseite=True, bereinigt=bericht)
     # Das Verzeichnis ist eine eigene Seite; die Fallseite verweist nur.
-    assert "## Bereinigt veröffentlicht {: #bereinigt }" in seiten["belege.md"]
+    assert "## Bereinigt veröffentlicht {#bereinigt}" in seiten["belege.md"]
     assert "Bereinigt veröffentlicht" not in seiten["index.md"]
     assert "[Verzeichnis der Belege](belege.html)" in seiten["index.md"]
     assert f"[Bereinigungsmanifest](artefakte/{br.MANIFEST})" in seite
@@ -1579,6 +1579,20 @@ def test_die_vorschau_verlinkt_das_stands_paket_ganz(tmp_path: Path):
     assert (tmp_path / "vorschau" / "plv" / "index.html").read_text(encoding="utf-8") == "<p>Bestand heute</p>"
 
 
+def test_die_vorschau_gibt_ueberschriften_die_ids_von_pages():
+    """Die Regel aus kramdown-parser-gfm (generate_gfm_header_id), mit der
+    Pages jeder Ueberschrift ohne eigene id eine gibt: klein, Wortzeichen
+    (auch Umlaute), Bindestrich, Leerzeichen und Tab bleiben, jedes
+    Leerzeichen und jeder Tab einzeln ein Bindestrich, nichts zusammengefasst,
+    nichts abgeschnitten; eine wiederkehrende id zaehlt -1, -2. Das Glossar
+    verweist so auf seine Begriffe ([T-Box](#t-box))."""
+    import vorschau
+    assert vorschau._gfm_ids(["Schlüssel", "T-Box", "PLV und Baldrian", "T-Box", "T-Box",
+                              "A-M4: die Abnahme (Gate)", "a  b\tc", " x "]) == [
+        "schlüssel", "t-box", "plv-und-baldrian", "t-box-1", "t-box-2",
+        "a-m4-die-abnahme-gate", "a--b-c", "-x-"]
+
+
 def test_die_pruefgates_seite_kommt_aus_dem_register(tmp_path: Path):
     """Generiert, nicht gepflegt: Die Seite traegt jedes Gate des Registers
     mit seinem Ledger-Namen und die erzwungenen Vorgaenger von A-M4."""
@@ -1730,7 +1744,7 @@ def test_die_fallseite_erzaehlt_jede_station_mit_gate_und_geschehen(tmp_path: Pa
     # Jede Station EINMAL, mit Ueberschrift, Anker und Gate-Kasten.
     for nummer, titel, _ in darstellung.WEG_STATIONEN:
         anker = darstellung.STATION_ABSCHNITT[nummer]
-        marke = f"## Station {nummer} · {titel} {{: #{anker} }}"
+        marke = f"## Station {nummer} · {titel} {{#{anker}}}"
         assert seite.count(marke) == 1, marke
     assert "`P-Q3` **Fachliche Prüfung**" in seite
     assert "Bestanden nach 25 Anläufen" in seite
@@ -2814,7 +2828,7 @@ def test_die_vertiefung_dauer_und_aufwand_steht_auf_der_fallseite(tmp_path):
                    "sekunden": 13109},
          "agenten": {"summe": _SUMME_FALL3, "je_rolle": _JE_ROLLE_FALL3}}
     z = "\n".join(vz._aufwand_abschnitt({"aufwand": a}, lambda ref: f"artefakte/{ref}"))
-    assert z.startswith("# Dauer und Aufwand {: #aufwand }")
+    assert z.startswith("# Dauer und Aufwand {#aufwand}")
     assert ("Vom ersten Fallauftrag am 02.10.2026 um 14:56 Uhr bis zur Zugangsabnahme um 18:35 Uhr: "
             "**3 h 38 min**") in z
     zeilen = [x for x in z.splitlines() if x.startswith("| ") and "Rolle" not in x]
@@ -2845,6 +2859,6 @@ def test_der_aufwand_kommt_ueber_das_modell_als_beleg_auf_die_fallseite(tmp_path
     assert "artefakte/abgeleitet/aufwand.json" in kopiert
     assert (tmp_path / "seite" / "artefakte" / "abgeleitet" / "aufwand.json").is_file()
     seite = _fallseite(fall, modell, tmp_path, kopiert, None)
-    assert "## Dauer und Aufwand {: #aufwand }" in seite
+    assert "## Dauer und Aufwand {#aufwand}" in seite
     assert "Beleg: [`aufwand.json`](artefakte/abgeleitet/aufwand.json)." in seite
 

@@ -9,7 +9,7 @@ Ermessen — den Maßstab setzen Aufsichtsrecht und Marktpraxis. Er ist
 unter [Woran sich eine Bestandsübernahme messen lassen muss](massstab.html)
 zusammengefasst. Diese Seite sagt, wie wir ihn erfüllen.
 
-## Der Prozess in dreizehn Stationen {: #prozess }
+## Der Prozess in dreizehn Stationen {#prozess}
 
 Den Fall führt die Programmleitung, ein KI-Agent, von der Lieferung bis
 zum Zugang. Sie verteilt die Arbeit an die anderen Agentenrollen und
@@ -43,7 +43,7 @@ eine frühere Abnahme. Welcher Weg es bei der Übernahme Baldrian war, steht an
 [Station 7](baldrian/#rechenkern-gegen-quellrechner) wörtlich so, wie
 der Entscheid es festhält.
 
-## So läuft eine Übernahme ab {: #ablauf }
+## So läuft eine Übernahme ab {#ablauf}
 
 1. **Auftrag, Lieferung und Registrierung.** Unser Vorstand beauftragt
    die Übernahme. Sie übergeben Bestandsabzug, Tarifbeschreibung und
@@ -80,7 +80,7 @@ Auskünfte zu Unklarheiten.
 Entscheids, den Abschlussbericht des Aktuariats, die Belege mit
 Prüfsummen.
 
-## Die aktuariellen Abnahmen {: #abnahmen }
+## Die aktuariellen Abnahmen {#abnahmen}
 
 Jede Übernahme durchläuft vier Abnahmen des Aktuariats; keine kann eine
 andere ersetzen. Kein Agent nimmt etwas ab.
@@ -97,14 +97,14 @@ nicht nachgerechnet werden kann, ist eine ausgewiesene Prüflücke. Die
 Ergebnisse jeder Abnahme mit Verteilung der Abweichungen, Stichprobe und
 Bericht stehen unter [Das Ergebnis der Übernahme](baldrian/#das-ergebnis).
 
-## Widersprüche und Entscheide {: #widersprueche }
+## Widersprüche und Entscheide {#widersprueche}
 
 Widersprechen sich Tarifbeschreibung und Tarifrechner der abgebenden
 Gesellschaft, wird das je Tarifzelle festgehalten und vom Aktuariat
 entschieden — mit beiden Lesarten, Quelle und Begründung
 ([Der Widerspruch](baldrian/#der-widerspruch)).
 
-## Kontrollen und Schranken {: #kontrollen }
+## Kontrollen und Schranken {#kontrollen}
 
 * **Menschliche Entscheide, signiert.** Kein Agent nimmt etwas ab. Jede
   Abnahme ist ein Entscheid unseres Aktuariats, an die Prüfsummen genau

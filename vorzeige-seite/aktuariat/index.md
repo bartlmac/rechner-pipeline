@@ -7,7 +7,7 @@ Sie erfolgt nach Dokumentation und in fachlicher Rollentrennung: Das
 Aktuariat verantwortet, was gerechnet wird, die Rechenkernentwicklung, wie
 es gerechnet wird. In beiden Rollen unterstützt KI die Menschen.
 
-## Was der Kern rechnet {: #rechenkern }
+## Was der Kern rechnet {#rechenkern}
 
 Der Kern bewertet mehrere Tarifgenerationen nebeneinander, übernommene
 Tarifwerke eingeschlossen. Eine Übernahme bringt kein zweites System
@@ -21,7 +21,7 @@ produktive Änderung am Kern muss eine Suite von Charakterisierungstests
 mit eingefrorenen Referenzwerten unverändert bestehen; ändert sich ein
 Wert, ist das ein Befund und keine Anpassung.
 
-## Tarifwerk {: #tarifwerk }
+## Tarifwerk {#tarifwerk}
 
 Die Bewertung jedes Vertrags folgt einem dokumentierten Tarifplan mit
 Zustandsmodell, Rechnungsgrundlagen und den Formeln des Rechenkerns.
@@ -34,7 +34,7 @@ Baldrian) und die Berufsunfähigkeitsversicherung.
 * [Grundsatzdokumentation](mathematik/grundsatzdokumentation.html) —
   Zustandsraum, Thiele-Rekursion, Rechnungsgrundlagen, Numerik.
 
-## Was der Kern für den Bestand leistet {: #im-bestand }
+## Was der Kern für den Bestand leistet {#im-bestand}
 
 Die Zahlen, die der Kern für den geführten Bestand rechnet, stehen unter
 [Bestandsführung](../geschaeftsentwicklung/): der Bestand am Stichtag und

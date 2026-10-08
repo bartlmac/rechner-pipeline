@@ -1,4 +1,4 @@
-"""Pruefung der gebauten Seite vor der Veroeffentlichung — vier Pruefungen
+"""Pruefung der gebauten Seite vor der Veroeffentlichung — fuenf Pruefungen
 mit einem Aufruf.
 
 Bis zum 08.10.2026 lagen diese Pruefungen nur im Arbeitsordner der
@@ -10,6 +10,9 @@ Veroeffentlichung sie faehrt.
   trifft eine Datei, jedes Sprungziel ``#x`` eine id oder einen name in
   ihr. Ein absoluter Pfad ab ``/`` gilt als tot: Die Sichtung liefert unter
   einem Pfad-Praefix aus.
+* ``ueberschriften``: Keine Ueberschrift im Push-Baum endet auf eine
+  Attributliste ``{: ...}``. Die Vorschau liest sie als id, Pages zeigt sie
+  als Text; eine eigene id heisst ``{#x}``, das lesen beide.
 * ``paket``: Jede Datei des Stands-Pakets unter ``plv/`` traegt die
   Pruefsumme, die ``stand.json`` fuer sie nennt; unter ``plv/`` liegt nichts
   ohne Eintrag; was nicht veroeffentlicht ist, sind nur die Parquet-Tabellen;
@@ -29,14 +32,15 @@ Veroeffentlichung sie faehrt.
   Vorrang. Braucht Playwright (Werkstattausruestung wie bei ``schau.py``);
   fehlt es, sagt ``alle`` das ausdruecklich, statt still zu ueberspringen.
 
-Aufruf (``alle`` faehrt alle vier, Exit 1 bei einem Befund)::
+Aufruf (``alle`` faehrt alle fuenf, Exit 1 bei einem Befund)::
 
     python werkzeuge/seitenpruefung.py alle --seite runs/<bau>/seite \\
         --vorschau runs/<bau>/vorschau --fall faelle/<fall> --name <kurzname> \\
         --paket <stands-paket> --anker <anker>/anker.jsonl \\
         --daten runs/<bau>/falldaten.json --repo .
 
-Jede Pruefung einzeln: ``verweise <vorschau>``, ``paket <seite> <paket>``,
+Jede Pruefung einzeln: ``verweise <vorschau>``, ``ueberschriften <seite>``,
+``paket <seite> <paket>``,
 ``pruefsummen ...`` (dieselben Angaben wie ``alle`` ohne ``--vorschau``),
 ``breite <vorschau> --name <kurzname>``.
 """
@@ -121,6 +125,40 @@ def verweise(vorschau: Path) -> Tuple[List[str], str]:
     zusammen = (f"{gesamt} relative Verweise in {len(seiten)} HTML-Seiten, "
                 f"{len(befunde)} Befunde; extern: {dict(sorted(extern.items()))}")
     return befunde, zusammen
+
+
+# --------------------------------------------------------------------------- #
+# Ueberschriften
+# --------------------------------------------------------------------------- #
+
+#: Eine Attributliste ``{: ...}`` am Ende einer Ueberschrift.
+_KOPF_MIT_LISTE = re.compile(r"^#{1,6}[ \t].*\{:[^}]*\}[ \t]*$")
+
+
+def ueberschriften(seite: Path) -> Tuple[List[str], str]:
+    """Befunde und Zusammenfassung der Ueberschriften im Push-Baum.
+
+    Die Vorschau (Python-Markdown, attr_list) liest ``## Titel {: #x }`` als
+    Ueberschrift mit der id ``x``. Pages (kramdown) kennt am Ende einer
+    Ueberschrift nur ``{#x}``: Eine Attributliste hinter Text uebergeht es
+    ("Found span IAL after text - ignoring it") und zeigt sie als Text, die
+    id entsteht dann aus dem ganzen Text. Live stuende also ``Titel {: #x }``
+    da, und jeder Verweis auf ``#x`` liefe ins Leere, waehrend Vorschau und
+    ``verweise`` nichts merken (47 Ueberschriften bis zum Bau vom
+    08.10.2026). Codebloecke zaehlen nicht."""
+    befunde: List[str] = []
+    gelesen = 0
+    for md in sorted(seite.rglob("*.md")):
+        gelesen += 1
+        rel = md.relative_to(seite).as_posix()
+        im_code = False
+        for nr, zeile in enumerate(md.read_text(encoding="utf-8").splitlines(), 1):
+            if zeile.lstrip().startswith(("```", "~~~")):
+                im_code = not im_code
+            elif not im_code and _KOPF_MIT_LISTE.match(zeile):
+                befunde.append(f"{rel}:{nr}: {zeile.strip()} — Pages zeigt die Liste als Text, "
+                               f"die id nur aus {{#...}}")
+    return befunde, f"{gelesen} Markdown-Dateien, {len(befunde)} Befunde"
 
 
 # --------------------------------------------------------------------------- #
@@ -323,6 +361,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     q = teil.add_parser("verweise", help="Verweise und Sprungziele der Vorschau")
     q.add_argument("vorschau")
+    q = teil.add_parser("ueberschriften", help="Ueberschriften, die Pages anders liest als die Vorschau")
+    q.add_argument("seite")
     q = teil.add_parser("paket", help="plv/ und berichte/ gegen stand.json")
     q.add_argument("seite")
     q.add_argument("paket")
@@ -331,13 +371,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     q = teil.add_parser("breite", help="Breite auf dem Telefon (braucht Playwright)")
     q.add_argument("vorschau")
     q.add_argument("--name", required=True, help="Kurzname des Falls (auftritt.py --name)")
-    q = teil.add_parser("alle", help="alle vier Pruefungen")
+    q = teil.add_parser("alle", help="alle fuenf Pruefungen")
     gemeinsam(q)
     q.add_argument("--vorschau", required=True, help="gerenderte Vorschau (auftritt.py --vorschau)")
     args = p.parse_args(argv)
 
     if args.pruefung == "verweise":
         return _melde("Verweise", verweise(Path(args.vorschau)))
+    if args.pruefung == "ueberschriften":
+        return _melde("Ueberschriften", ueberschriften(Path(args.seite)))
     if args.pruefung == "paket":
         return _melde("Paket", paket(Path(args.seite), Path(args.paket)))
     if args.pruefung == "breite":
@@ -352,6 +394,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.pruefung == "pruefsummen":
         return _melde("Pruefsummen", pruefsummen(*summen))
     rc = _melde("Verweise", verweise(Path(args.vorschau)))
+    rc |= _melde("Ueberschriften", ueberschriften(Path(args.seite)))
     rc |= _melde("Paket", paket(Path(args.seite), Path(args.paket)))
     rc |= _melde("Pruefsummen", pruefsummen(*summen))
     try:

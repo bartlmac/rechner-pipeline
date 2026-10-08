@@ -13,8 +13,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "werkzeuge"))
@@ -60,6 +63,39 @@ def test_verweise_findet_tote_ziele_fehlende_sprungziele_und_absolute_pfade(tmp_
         "index.html: a.html#fehlt — kein Sprungziel",
         "index.html: b.html — kein Ziel",
         "teil/s.html: nix.html — kein Ziel"])
+
+
+def test_ueberschriften_findet_eine_attributliste_am_ende(tmp_path: Path):
+    """Pages (kramdown) zeigt ``{: #x }`` am Ende einer Ueberschrift als Text
+    und gibt ihr eine andere id; die Vorschau merkt es nicht. ``{#x}`` lesen
+    beide, und in einem Codeblock ist es kein Befund."""
+    seite = tmp_path / "seite"
+    _schreibe(seite / "index.md", "# Start\n\n## Über uns {#ueber-uns}\n\n```\n## Beispiel {: #x }\n```\n")
+    assert sp.ueberschriften(seite)[0] == []
+    _schreibe(seite / "unter" / "a.md", "## Über uns {: #ueber-uns }\n### Weiter {:.klasse}\n")
+    befunde, _ = sp.ueberschriften(seite)
+    assert [b.split(" — ")[0] for b in befunde] == [
+        "unter/a.md:1: ## Über uns {: #ueber-uns }", "unter/a.md:2: ### Weiter {:.klasse}"]
+
+
+def test_ein_sprung_auf_eine_fehlende_ueberschrift_bleibt_ein_befund(tmp_path: Path):
+    """Gegenprobe zu den ids, die die Vorschau den Ueberschriften gibt (wie
+    Pages): Sprungziele auf vorhandene Ueberschriften tragen, auch mit Umlaut,
+    eigener id oder Formel im Titel; ein Sprung auf eine Ueberschrift, die es
+    nicht gibt, bleibt ein Befund. Gerendert wird wie im Bau: vorschau.py mit
+    dem System-python3 und seinem python3-markdown."""
+    if subprocess.run(["python3", "-c", "import markdown"], capture_output=True).returncode:
+        pytest.skip("python3-markdown fehlt im System-python3")
+    seite = tmp_path / "seite"
+    _schreibe(seite / "assets" / "stil.css", "")
+    _schreibe(seite / "index.md", "# Glossar\n\n### T-Box\n\n### Schlüssel\n\n### Über uns {#ueber-uns}\n\n"
+              "### Barwert zu $t_a$\n\n[T-Box](#t-box), [Schlüssel](#schlüssel), [wir](#ueber-uns), "
+              "[Barwert](#barwert-zu-t_a), [Ebene](#ebene)\n")
+    lauf = subprocess.run(["python3", str(ROOT / "werkzeuge" / "vorschau.py"), "--seite", str(seite),
+                           "--out", str(tmp_path / "vorschau")], capture_output=True, text=True)
+    assert lauf.returncode == 0, lauf.stderr
+    befunde, _ = sp.verweise(tmp_path / "vorschau")
+    assert befunde == ["index.html: #ebene — kein Sprungziel"], befunde
 
 
 def _paket_und_seite(tmp_path: Path):

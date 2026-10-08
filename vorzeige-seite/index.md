@@ -1,6 +1,6 @@
 # Pfefferminzia Lebensversicherung AG
 
-## Über uns {: #ueber-uns }
+## Über uns {#ueber-uns}
 
 <ul class="gross">
 <li>Lebensversicherer seit 1907, Sitz Minzheim</li>
@@ -11,14 +11,14 @@
 <li>Migrationen durch KI-Agenten</li>
 </ul>
 
-## Unser Bestand {: #unser-bestand }
+## Unser Bestand {#unser-bestand}
 
 Verträge in Kraft zum jüngsten Monatsabschluss. Beitrag und Deckungskapital in der
 [Vertiefung](geschaeftsentwicklung/#bestand-heute).
 
 {{svg:bestand_vergleich}}
 
-## Geschäftsentwicklung {: #geschaeftsentwicklung }
+## Geschäftsentwicklung {#geschaeftsentwicklung}
 
 Laufendes Jahr gegen denselben Zeitraum im Vorjahr.
 
@@ -28,7 +28,7 @@ Laufendes Jahr gegen denselben Zeitraum im Vorjahr.
 
 [Vertiefung: Bestandsführung](geschaeftsentwicklung/)
 
-## Bestandsmigrationen {: #bestandsmigrationen }
+## Bestandsmigrationen {#bestandsmigrationen}
 
 <ul class="gross">
 <li>Agenten lesen und schlagen vor</li>
@@ -55,7 +55,7 @@ Baldrian.</span></a>
 
 [Vertiefung: Bestandsmigrationen](migrationen/)
 
-## Unser Know-how {: #know-how }
+## Unser Know-how {#know-how}
 
 <div class="kacheln gross">
 <a class="kachel" href="geschaeftsentwicklung/"><b>Laufende Bestandsführung</b>

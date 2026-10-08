@@ -4,7 +4,7 @@ Dieselbe Eingabe ergibt dasselbe Ergebnis, und unsere Prüfungen liegen
 offen. Diese Seite zeigt, wie die Systeme der Pfefferminzia
 Lebensversicherung AG gebaut sind und woran sie sich prüfen lassen.
 
-## Dasselbe Ergebnis, jedes Mal {: #reproduzierbar }
+## Dasselbe Ergebnis, jedes Mal {#reproduzierbar}
 
 Reproduzierbarkeit ist bei uns keine Eigenschaft einzelner Programme,
 sondern der Bauart. Jeder Lauf bekommt seine Eingaben mit Prüfsumme und
@@ -18,6 +18,6 @@ Was daraus folgt, ist unbequem und gewollt: Ein Wert, der sich nicht
 nachrechnen lässt, wird als Prüflücke ausgewiesen und nicht geschätzt.
 Ein Lauf, dessen Eingaben sich geändert haben, gilt als anderer Lauf.
 
-## Techstack {: #techstack }
+## Techstack {#techstack}
 
 [Techstack](techstack.html) — Sprache, Bibliotheken, Versionen.

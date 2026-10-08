@@ -25,7 +25,7 @@ gekennzeichnete Beispielanbindung bleibt, steht in
 | `falldaten.py` | Datenmodell einer Falldarstellung aus den Artefakten |
 | `fallbericht.py` | Darstellung aus dem Datenmodell rendern |
 | `vorschau.py` | den Entwurf der Seite lokal ansehen, vor dem Schieben |
-| `seitenpruefung.py` | die gebaute Seite prüfen: Verweise, Paket gegen `stand.json`, jede angezeigte Kennung mit Quelle, Breite auf dem Telefon (läuft im Bau mit) |
+| `seitenpruefung.py` | die gebaute Seite prüfen: Verweise, Überschriften, Paket gegen `stand.json`, jede angezeigte Kennung mit Quelle, Breite auf dem Telefon (läuft im Bau mit) |
 | `schau.py` | Screenshots der gebauten Vorschau in drei Breiten (1280, 720 und 390 px; braucht Playwright) |
 | `bereinigung.py` | veröffentlichte Belege von Pfaden des Rechners befreien und die gebaute Seite auf solche Pfade und gesperrte Wörter prüfen |
 | `naht.py` | meldet Bausteine, die ohne Abstand aneinanderkleben (braucht Playwright) |
@@ -490,6 +490,7 @@ python werkzeuge/seitenpruefung.py alle --seite runs/<bau>/seite \
 | Prüfung | Befund |
 |---|---|
 | `verweise` | ein relativer Verweis ohne Ziel, ein Sprungziel ohne id, ein absoluter Pfad |
+| `ueberschriften` | eine Überschrift, die auf eine Attributliste `{: ...}` endet: Die Vorschau liest sie als id, Pages zeigt sie als Text. Eine eigene id heißt `{#x}`, das lesen beide. |
 | `paket` | eine Datei unter `plv/`, die von `stand.json` abweicht oder dort fehlt; ein nicht veröffentlichter Eintrag außer Parquet; ein Bericht unter `berichte/` ohne bytegleiche Datei im Paket |
 | `pruefsummen` | eine angezeigte Kennung ohne Quelle (Datei des Falls, Manifest, Snapshot, Lieferregister, Paket, Anker, Protokoll, Commit) |
 | `breite` | eine Hauptseite, die auf dem Telefon (390 px) breiter ist als der Bildschirm; die übrigen Seiten stehen als Hinweis da (Ansicht am Schreibtisch hat Vorrang, Entscheid 04.10.2026) |

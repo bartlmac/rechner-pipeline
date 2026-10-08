@@ -10,7 +10,7 @@ Woche und die letzten Buchungen mit Wirkungstag und Buchungstag. Die
 Seite wird vom System selbst erzeugt und sieht deshalb anders aus als
 die übrigen.
 
-## Bestand heute {: #bestand-heute }
+## Bestand heute {#bestand-heute}
 
 Zum jüngsten Monatsabschluss.
 
@@ -22,7 +22,7 @@ abgelaufen, storniert oder durch Tod beendet worden, wie im eigenen
 Geschäft auch. Wie viele zum Übernahmestichtag eintraten, steht unter
 [Zugänge aus Übernahmen](#zugaenge-aus-uebernahmen).
 
-## Wie der Bestand geführt wird {: #fuehrung }
+## Wie der Bestand geführt wird {#fuehrung}
 
 Der Bestand ist ein geführter Zustand mit Journal. Jeder
 Geschäftsvorfall trägt zwei Daten: den Wirkungstag, zu dem er gilt, und
@@ -41,7 +41,7 @@ laufen danach im selben Strom weiter wie das eigene Geschäft. Ein
 eigener und ein übernommener Vertrag unterscheiden sich in unseren
 Büchern nur durch die Tarifgeneration, nach der sie bewertet werden.
 
-## Zugänge und Leistungen {: #zugaenge-und-leistungen }
+## Zugänge und Leistungen {#zugaenge-und-leistungen}
 
 Je Kennzahl die Anzahl und der Betrag — letztes Jahr, aktuelles Jahr,
 aktueller Monat. Die Beträge sind Bewegungsgrößen des Zeitraums; den
@@ -55,7 +55,7 @@ seit {{datum:betrieb.gefuehrt_seit}}:
 
 {{tabelle:buchungen_je_art}}
 
-## Zugänge aus Übernahmen {: #zugaenge-aus-uebernahmen }
+## Zugänge aus Übernahmen {#zugaenge-aus-uebernahmen}
 
 {{tabelle:uebernahmen_im_stand}}
 
@@ -72,7 +72,7 @@ Größen der abgebenden Gesellschaft:
 Wie eine Übernahme abläuft und woran sie sich messen lassen muss, steht
 unter [Bestandsmigrationen](../migrationen/).
 
-## Monatsberichte {: #monatsberichte }
+## Monatsberichte {#monatsberichte}
 
 Jeder Monatserste wird festgeschrieben. Gezeigt werden die letzten zwölf
 Monatsberichte mit dem Bestand am Stichtag und den Geschäftsvorfällen des
