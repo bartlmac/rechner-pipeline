@@ -533,7 +533,11 @@ def test_ein_abschluss_der_den_eingang_traegt_macht_ihn_nicht_neu(eingang, monke
     def _kein_bericht(*_a, **_k):
         raise OSError(5, "I/O error")
 
-    monkeypatch.setattr(tl, "_bericht", _kein_bericht)
+    # Der gemeinsame Schreiber beider Berichtsarten: Seit den Berichtsarten
+    # entsteht der Monatsbericht je Abschluss ueber _monatsbericht, _bericht
+    # schreibt nur noch Jahres- und Teilbestandsbericht. Der Lauf scheitert
+    # am ersten Bericht nach dem ersten neuen Abschluss.
+    monkeypatch.setattr(tl, "_schreibe_bericht", _kein_bericht)
     code, zeile = tageslauf(ablage, dt.date(2026, 1, 9))
     monkeypatch.undo()
     assert code != EXIT_OK and zeile["uebernommen"] is False

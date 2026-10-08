@@ -2655,15 +2655,22 @@ def _monatsbericht(
     seine Zeile; erfunden wird keine.
     """
     abschluesse = {}
+    konventionen = {}
     for tag in monatsraster(stichtag, BERICHT_MONATE):
         pfad = ablage.abschluesse / f"abschluss_{tag.isoformat()}.parquet"
         if pfad.is_file():
-            abschluesse[tag] = lies_abschluss(pfad)[0]   # die EINE Lesefunktion (Ratsche)
+            # Die EINE Lesefunktion, und ihr Urteil wird verwendet: Eine Reihe
+            # ueber die Naht jahreszeile/monatsgenau zeichnet der Bericht nicht
+            # still (Befund 08.10.2026: [0] verwarf die Konvention).
+            tabelle, konvention = lies_abschluss(pfad)
+            abschluesse[tag] = tabelle
+            konventionen[tag] = konvention.name
     html = monatsbericht_html(
         abschluesse, journal, stichtag, monate=BERICHT_MONATE, stand=heute,
         titel=f"Monatsbericht zum {stichtag.isoformat()}",
         quelle_hash=quelle_hash,
         hinweis=config.tagesbetrieb.berichtshinweis,
+        konventionen=konventionen,
     )
     return _schreibe_bericht(html, ziel)
 

@@ -316,8 +316,41 @@ def _chart_leistung_je_monat(
     return _svg(fig)
 
 
+def nahtstellen(reihe: List[Dict[str, Any]]) -> List[int]:
+    """Die Stellen der Reihe, an denen die Bewertungskonvention wechselt.
+
+    Die Konvention eines Abschlusses sagt ``models.bestand.abschluss_konvention``
+    (gelesen ueber ``bestand.abschluss.lies_abschluss``); hier steht nur ihr
+    Name. Ein leerer Abschluss traegt keine (``None``) und ist KEINE Naht:
+    verglichen wird mit dem letzten Abschluss, der eine traegt.
+    """
+    naehte: List[int] = []
+    letzte: Optional[str] = None
+    for i, r in enumerate(reihe):
+        k = r.get("konvention")
+        if k is None:
+            continue
+        if letzte is not None and k != letzte:
+            naehte.append(i)
+        letzte = k
+    return naehte
+
+
+def _vergleichbar(a: Optional[Dict[str, Any]], b: Optional[Dict[str, Any]]) -> bool:
+    """Zwei Abschluesse sind im Deckungskapital vergleichbar, wenn sie es in
+    derselben Konvention fuehren — oder einer keine nennt (fehlt, leer)."""
+    ka, kb = (a or {}).get("konvention"), (b or {}).get("konvention")
+    return ka is None or kb is None or ka == kb
+
+
+#: Groessen, die in der Bewertungskonvention stehen: Ueber eine Naht hinweg
+#: ist ihre Differenz keine Bewegung des Bestands.
+_DK_SCHLUESSEL = ("deckungskapital", "deckungskapital_bfr", "korrekturschicht")
+
+
 def _chart_deckungskapital_je_monat(reihe: List[Dict[str, Any]]) -> str:
-    """Deckungskapital je Monatserster, getrennt nach Beitragsstatus."""
+    """Deckungskapital je Monatserster, getrennt nach Beitragsstatus. An
+    jeder Naht der Konvention steht eine Trennlinie, der Titel sagt es."""
     x = list(range(len(reihe)))
     fig, ax = plt.subplots(figsize=(3.6, 2.8))
     bpfl = [(r["deckungskapital"] - r["deckungskapital_bfr"]) / 1e6 for r in reihe]
@@ -326,7 +359,11 @@ def _chart_deckungskapital_je_monat(reihe: List[Dict[str, Any]]) -> str:
     ax.bar(x, bfr, bottom=bpfl, label="beitragsfrei", color=_STATUS_FARBEN["PEX"], width=0.75)
     ax.set_xticks(x, _monatslabels([r["stichtag"] for r in reihe]), fontsize=7)
     ax.set_ylabel("Deckungskapital (Mio.)", fontsize=8)
-    ax.set_title("Deckungskapital", fontsize=9)
+    naehte = nahtstellen(reihe)
+    for i in naehte:
+        ax.axvline(i - 0.5, color="#b48a00", linestyle="--", linewidth=1.2)
+    ax.set_title("Deckungskapital" + (" — Konventionswechsel (gestrichelt)" if naehte else ""),
+                 fontsize=9)
     _legende_unter(ax, 2)
     return _svg(fig)
 
@@ -363,13 +400,18 @@ def _stand_tabelle(
         a = jetzt.get(schluessel, 0)
         b = vor.get(schluessel) if vor else None
         c = jahr.get(schluessel) if jahr else None
+        dk = schluessel in _DK_SCHLUESSEL
+        d_vor = (_delta(a, b, dezimal) if not dk or _vergleichbar(jetzt, vor)
+                 else "Konvention gewechselt")
+        d_jahr = (_delta(a, c, dezimal) if not dk or _vergleichbar(jetzt, jahr)
+                  else "Konvention gewechselt")
         zeilen.append(
             f"<tr><td>{_html.escape(name)}</td>"
             f"<td class='num'>{_zahl(a, dezimal)}</td>"
             f"<td class='num'>{_zahl(b, dezimal) if b is not None else '—'}</td>"
-            f"<td class='num'>{_delta(a, b, dezimal)}</td>"
+            f"<td class='num'>{d_vor}</td>"
             f"<td class='num'>{_zahl(c, dezimal) if c is not None else '—'}</td>"
-            f"<td class='num'>{_delta(a, c, dezimal)}</td></tr>"
+            f"<td class='num'>{d_jahr}</td></tr>"
         )
 
     zeile("Verträge in Kraft", "vertraege")
@@ -594,8 +636,15 @@ def render_html(
     stand: Optional[_dt.date] = None,
     unternehmen: str = "Pfefferminzia Lebensversicherung AG",
     hinweis: str = "",
+    konventionen: Optional[Mapping[_dt.date, Optional[str]]] = None,
 ) -> str:
     """Der Monatsbericht als selbst-enthaltenes HTML.
+
+    ``konventionen`` nennt je Stichtag die Bewertungskonvention seines
+    Abschlusses, wie ``bestand.abschluss.lies_abschluss`` sie sagt (``None``
+    fuer einen leeren Abschluss). Ueberspannt das Fenster zwei Konventionen,
+    zeichnet der Bericht die Reihe nicht still: Trennlinie an der Naht,
+    keine Veraenderung des Deckungskapitals ueber sie hinweg, ein Satz dazu.
 
     ``abschluesse`` sind die festgeschriebenen Monatsabschluesse des
     Rasters (:func:`monatsraster`), mindestens der zum ``stichtag``.
@@ -632,13 +681,23 @@ def render_html(
     gruppen = produkt_gruppen(abschluesse[stichtag])
 
     kennzahlen = {
-        tag: abschluss_kennzahlen(abschluesse[tag], gruppen)
+        tag: dict(abschluss_kennzahlen(abschluesse[tag], gruppen),
+                  konvention=(konventionen or {}).get(tag))
         for tag in stichtage if tag in abschluesse
     }
     reihe = [dict(kennzahlen[t], stichtag=t.isoformat())
              for t in stichtage if t in kennzahlen]
     gevo = ereignisse_je_monat(journal, stichtage)
     jetzt = kennzahlen[stichtag]
+    bekannte = sorted({str(r["konvention"]) for r in reihe if r.get("konvention") is not None})
+    konvention_hinweis = (
+        "<p class=\"hinweis\">Das Deckungskapital dieses Zeitraums steht in zwei "
+        f"Konventionen ({', '.join(_html.escape(k) for k in bekannte)}): Abschlüsse "
+        "vor der Umstellung führen den Wert des letzten Jahrestags, spätere den "
+        "monatsgenauen. Festgeschriebene Abschlüsse werden nicht nachträglich "
+        "geändert. Die Stufe am Wechsel ist deshalb keine Bewegung des Bestands; "
+        "Veränderungen über den Wechsel hinweg sind nicht ausgewiesen.</p>"
+        if len(bekannte) > 1 else "")
 
     with plt.rc_context(_RC):
         svg_bestand = _chart_bestand_je_monat(reihe)
@@ -683,6 +742,7 @@ Bewegung im Berichtsmonat, Entwicklung der letzten {monate} Monate.</p>
 <h2>Bestand am {stichtag.isoformat()}</h2>
 {_stand_tabelle(jetzt, kennzahlen.get(vormonat), kennzahlen.get(von),
                 gruppen, stichtage)}
+{konvention_hinweis}
 <p class="hinweis">Alle Zahlen stammen aus dem festgeschriebenen
 Monatsabschluss des jeweiligen Stichtags; sie sind nicht nachgerechnet. Die
 Vergleichsspalten zeigen denselben Abschluss einen Monat und
