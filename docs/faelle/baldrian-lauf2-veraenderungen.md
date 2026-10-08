@@ -9,7 +9,7 @@ Umbaubericht des Falls.
 
 ## 1 Tarifwerks-Ausgestaltung: der Zieltarif blieb, die Quell-Ausgestaltung kam hinzu
 
-Die wichtigste Veränderung ist eine, die bewusst NICHT stattfand:
+Die wichtigste Veränderung ist eine, die bewusst nicht stattfand:
 Der Tarifplan der Pfefferminzia wurde durch die Übernahme nicht
 umgebaut. Der übernommene Bestand behält seine eigene
 Bedingungswelt — sie wird seit Lauf 2 als **Ausgestaltung des
@@ -29,7 +29,7 @@ wurde je Eigenschaft, nie unterstellt:
 
 Die einzige Änderung am Zieltarif selbst — die anteilige Herabsetzung
 geschichteter Verträge — war eine eigene Zusage der Pfefferminzia
-und lag VOR dem Lauf (Tarifplan klv.md, Abschnitt 7.1).
+und lag vor dem Lauf (Tarifplan klv.md, Abschnitt 7.1).
 
 ## 2 Rechenkern: welche Fähigkeit fehlte, was er jetzt kann
 
@@ -48,16 +48,16 @@ begründet. In Fähigkeiten gesprochen:
   Grundversicherung verlässt den Vertrag, der Rest läuft zustandslos
   weiter; seit 3.4.0 auch im beitragsfreien Nachlauf definiert.
 
-Nicht zu diesem Fall gehoert die Regel zum Abschlusskostenrest nach
+Nicht zu diesem Fall gehört die Regel zum Abschlusskostenrest nach
 einer Herabsetzung (Kern 3.8.0): Sie behebt einen Fehler im eigenen
 Kern, der vor dem Fall entstand, und bleibt bei einer Wiederholung des
-Falls stehen. Fuer die Teilkuendigung gilt dieselbe Regel (klv.md 13).
+Falls stehen. Für die Teilkündigung gilt dieselbe Regel (klv.md 13).
 - **Es fehlte** eine saubere Terminalbedingung der Korrekturschicht —
   **jetzt** endet die Amortisation am Ablauf (Zahlungsjahre bis n-1),
   statt in das Ablaufjahr hineinzurechnen.
 - **Es fehlte** die Verankerung von Zustands-Welten — **jetzt**
   verankern beitragsfreie, herabgesetzte und Serien-Verträge auf dem
-  GEFUEHRTEN Wert ihrer tatsächlichen Welt, nicht auf dem
+  geführten Wert ihrer tatsächlichen Welt, nicht auf dem
   Stamm-Modellpunkt.
 
 Alle bestehenden Rechenwerte blieben dabei unverändert: Die neuen
@@ -107,13 +107,13 @@ oder als dokumentierte Lesart mit Auflage geführt:
 |---|---|---|---|
 | Vierzehn Diskrepanz-Einzelentscheide der Quellenauswertung | drei Typen über sechs Tarifzellen: Rechnungszins 1,25 % statt des Rechner-Arbeitsstands 1,75 % (6), Tafel-Basisname mit separater Unisex-Mischung statt doppelter Verankerung (6), Verwaltungskostensatz der Bestandsgruppe Haus 0,01 statt 0,0 (2) | Verantwortlicher Aktuar, je Entscheid gezeichnet | A-Box-Journal des Falls; Gate A-Q1, Snapshot fd793260 |
 | Unisex-Feststellung | Mischtafel 70/30 für die Generation | Verantwortlicher Aktuar | Golden Master 616/616 exakt; 251/616-Abweichungsbeleg ohne die Feststellung |
-| Reichweite der Rückkaufswert-Plausibilisierung | NICHT auf dynamische Verträge ausgeweitet — der Beleg der Quelle trägt nur die Herabsetzungs-Vorfälle | Verantwortlicher Aktuar | Fall-Chronik der Tarifplan-Ausgestaltung |
+| Reichweite der Rückkaufswert-Plausibilisierung | Nicht auf dynamische Verträge ausgeweitet — der Beleg der Quelle trägt nur die Herabsetzungs-Vorfälle | Verantwortlicher Aktuar | Fall-Chronik der Tarifplan-Ausgestaltung |
 | Herabsetzungsanteile der Vorgeschichte | keine Punktschätzung: Beitragsgleichung für beitragszahlende, Ankerwert für beitragsfreie Serien, Unerheblichkeits-Ausweis wo die Ist-Welt den Anteil nicht braucht | Verantwortlicher Aktuar | Abschlussbericht Abschnitt 5; Auskünfte Nr. 2 und 4 |
 | Arbeits-Lesart f = 0,60 für die Policen 7000679 und 7000396 | bei nachgewiesener Bewertungsinvarianz aller Prüfpunkte; mit Falsifizierbarkeits-Auflage: der erste Verlaufspunkt vor dem Beitragsende ist dort zu rechnen und zu würdigen | Verantwortlicher Aktuar, dokumentierte Lesart | Tarifplan-Ausgestaltung des Falls, Testfallkatalog |
 | Verfahrenswahl der Herabsetzung | Teilkündigungs-Semantik der Quelle statt der Verfahren des Zielsystems — als Eigenschaft des Falls, nicht des Tarifplans | Verantwortlicher Aktuar | Nachtrag der Tarifplan-Ausgestaltung |
 
 Zusammen mit dem Abschlussbericht (Ergebnis und Methodik) und dem
 Umbaubericht (Umfang der Systemarbeit in Zahlen) ergibt dieses
-Dokument das vollständige Bild: WAS die Übernahme ergab, WIE
+Dokument das vollständige Bild: Was die Übernahme ergab, wie
 geprüft wurde — und was sich dafür am System und am Verständnis
 des Quell-Tarifwerks ändern musste.

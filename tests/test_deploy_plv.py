@@ -74,8 +74,8 @@ def test_workflow_baut_bei_push_auf_main_mit_zwei_tags():
 
 def test_readme_beschreibt_die_erstbefuellung_und_die_ablage():
     readme = _text("README.md")
-    for pflicht in ("Erstbefuellung", "uebernahme/", "stand/", "journal/protokoll.jsonl",
-                    "von AUSSEN ins Volume", "nicht erfasst",
+    for pflicht in ("Erstbefüllung", "uebernahme/", "stand/", "journal/protokoll.jsonl",
+                    "von außen ins Volume", "nicht erfasst",
                     "abschluesse/", "betrieb.tageslauf", "betrieb.uebernahme",
                     "systemctl --user enable --now tageslauf.timer", "Exit 3"):
         assert pflicht in readme, pflicht

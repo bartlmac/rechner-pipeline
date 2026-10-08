@@ -460,7 +460,7 @@ def test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt():
     ).read_text(encoding="utf-8")
     assert "kein Subprozess" in onboarding
     assert "gates/_provenienz._git_lesen" in onboarding
-    assert "genau EINE Subprozess-Ausnahme" in onboarding
+    assert "genau eine Subprozess-Ausnahme" in onboarding
     assert (
         "test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt"
         in onboarding

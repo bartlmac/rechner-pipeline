@@ -1,8 +1,8 @@
 # ADR-001: Repo-Zielstruktur entlang der Migrations-Pipeline
 
-Status: akzeptiert (Maintainer, 2026-08-14). Umgesetzt in zwei Commits
-(src-Schnitt, runs/-Konsolidierung) vor dem Push des Branches
-`feat/bestandsdaten-modul`.
+**Status:** angenommen am 2026-08-14 (Maintainer), umgesetzt in zwei
+Schritten: Schnitt von `src/` und Zusammenlegung der Laufdaten unter
+`runs/`.
 
 > **Teilweise abgelöst durch [ADR-006](adr-006-portierung-ausser-betrieb.md)**
 > (2026-08-17): `gates/orchestrate/`, `models/kern_output.py` und die
@@ -25,7 +25,7 @@ Struktur genau einmal — deshalb jetzt.
 ## Entscheidung
 
 Der src-Schnitt folgt den Pipeline-Stufen; Laufartefakte liegen in
-EINEM Verzeichnis.
+einem Verzeichnis.
 
 | Neu | Inhalt | Vorher |
 |---|---|---|
@@ -36,7 +36,7 @@ EINEM Verzeichnis.
 | `models/` | geteilte, paketübergreifende Datenverträge (Bundle, Manifest, Gate-Schemata, Bestand-Schema, `kern_output` = Sechs-Datei-Contract) | `models/`, `generate/output.py` |
 | `ontologie/` | T-Box/A-Box der Migrations-Pipeline (Platzhalter, Entwurf folgt) | — |
 | `spez/` | Tarif-Spezifikationen: typisierte Parametrierung des Zustandsmodell-Rückgrats (Platzhalter, Entwurf folgt) | — |
-| `runs/` | EIN gitignoriertes Laufverzeichnis: `runs/info_from_excel`, `runs/generated`, `runs/diagnostics`, `runs/migrationsstaging`, `runs/berichte` | `info_from_excel/`, `generated/`, `diagnostics/`, `migrationsstaging/`, `output/` |
+| `runs/` | Ein gitignoriertes Laufverzeichnis: `runs/info_from_excel`, `runs/generated`, `runs/diagnostics`, `runs/migrationsstaging`, `runs/berichte` | `info_from_excel/`, `generated/`, `diagnostics/`, `migrationsstaging/`, `output/` |
 | `docs/architektur/` | Architektur-Dokumente und ADRs (team-sichtbar) | verstreut/privat |
 
 Kommando-Aufrufe ändern sich entsprechend:

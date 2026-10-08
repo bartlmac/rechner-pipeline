@@ -1,6 +1,6 @@
 # ADR-015: Übernommenen Bestand fortschreiben — ab dem Zugang
 
-Status: akzeptiert (Auftraggeber, 2026-08-31); umgesetzt in diesem Branch.
+**Status:** angenommen am 2026-08-31 (Maintainer), umgesetzt.
 
 ## Kontext
 
@@ -8,7 +8,7 @@ Nach einer Migration lebt der übernommene Bestand in den Büchern des
 aufnehmenden Unternehmens weiter. Er altert, storniert, wird beitragsfrei
 gestellt, läuft ab. Die Ereignis-Engine konnte das nicht.
 
-Sie nahm ausschliesslich einen Ursprungsbestand — alle Verträge ``POL``
+Sie nahm ausschließlich einen Ursprungsbestand — alle Verträge ``POL``
 mit ``status_id`` 1 — und simulierte jeden ab seinem Versicherungsbeginn
 (``for j in range(n)``). Ein übernommener Vertrag beginnt 2015 und
 gehört uns seit 2026; ab dem Beginn simuliert hätte die Engine elf
@@ -45,7 +45,7 @@ Drei Teile:
    keine Storno- oder Erhöhungsereignisse mehr. Beim BU-Produkt
    entsprechend: Zustand ``BU`` mit der Verweildauer seit der
    Invalidisierung.
-3. **Statusnummern.** Die Fortschreibung zählt je Police NACH dem
+3. **Statusnummern.** Die Fortschreibung zählt je Police nach dem
    mitgebrachten ``status_id`` weiter, nicht wieder ab 2. Ein
    beitragsfrei übernommener Vertrag trägt bereits eine 2; ohne den
    Versatz gäbe es zwei Zeilen mit derselben Nummer, und der Stamm
@@ -59,7 +59,7 @@ sie zu vermischen:
 | eigenes Geschäft | ``bestandszugang == insurance_start`` | nur ``POL``/``status_id`` 1 — der alte Wachposten, unverändert |
 | übernommen | ``bestandszugang > insurance_start`` | aktiver Zustand (``POL``/``PEX``/``BU``) mit ``status_date <= bestandszugang`` |
 
-Ein übernommener Vertrag mit Zustandswechsel NACH dem Zugang ist bereits
+Ein übernommener Vertrag mit Zustandswechsel nach dem Zugang ist bereits
 fortgeschrieben und wird abgewiesen; ein Vertrag in einem Endzustand wird
 gar nicht erst übernommen. Damit bleibt der Schutz gegen
 zurückgefütterte Zeitscheiben- und Journalsichten vollständig
@@ -105,7 +105,7 @@ ist ein Startpunkt, kein anderes Modell.
   Läufe liefern dieselben Zahlen.
 * ``cli_fortschreibung`` nimmt ``--übernahme <verzeichnis>`` (das
   Erzeugnis von ``gates.bestand_uebernehmen``) und fährt eigenen und
-  übernommenen Bestand in EINEM Lauf; die Übernahmebuchungen stellt es
+  übernommenen Bestand in einem Lauf; die Übernahmebuchungen stellt es
   dem Fortschreibungs-Journal voran. Dazu ``--merkmale``; ohne die
   Tabelle bricht eine in Zellen aufgeteilte Generation hart ab
   (ADR-014-Muster), aus dem Übernahme-Verzeichnis kommt sie von selbst.

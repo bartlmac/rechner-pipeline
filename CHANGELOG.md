@@ -6,7 +6,7 @@ Dokument sagt, was der Stand kann und was er bewusst nicht kann. Die
 einzelnen Änderungen stehen in der Geschichte des Repositorys, die
 Entscheidungen dahinter als ADRs unter `docs/architektur/`.
 
-## Stand 2026-10-04 — nach dem dritten Fall
+## Stand 2026-10-08 — nach dem dritten Fall
 
 ### Was das System kann
 
@@ -56,6 +56,12 @@ Entscheidungen dahinter als ADRs unter `docs/architektur/`.
   (ADR-011). Die PLV läuft Tag für Tag — Neugeschäft, nächtliche
   Fortschreibung, Monatsabschluss. Festgeschriebene Abschlüsse werden nie
   überschrieben.
+* **Berichte des Betriebs:** Zu jedem Monatsabschluss entsteht ein
+  Monatsbericht mit dem Stand am Monatsende und dem Verlauf der zwölf
+  Monate davor, gelesen aus den festgeschriebenen Abschlüssen. Zum
+  Jahresende kommt der Jahresbericht mit der Entwicklung seit
+  Betriebsbeginn dazu. Wechselt die Bewertungskonvention der Abschlüsse im
+  Berichtszeitraum, weist der Monatsbericht den Wechsel aus.
 * **Zugang und Auslieferung sind abgenommen:** Der Betrieb nimmt den
   Zugang eines übernommenen Bestands mit einer Zugangsprobe ab (`A-B2`,
   ADR-022) und zeichnet, wenn ein Stand nach außen geht (`A-B1`).

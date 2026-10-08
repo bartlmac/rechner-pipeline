@@ -1,8 +1,8 @@
 # ADR-027: Fünf Gegenstände des Repositorys — keine Infrastruktur
 
-**Status:** angenommen, 2026-10-04
-**Entscheidung des Maintainers** vom 2026-10-03; Umsetzung in Schritten,
-dieses ADR ist Schritt 0.
+**Status:** angenommen am 2026-10-04 (Maintainer, Entscheidung vom
+2026-10-03). Die Umsetzung erfolgt in Schritten; dieses ADR ist
+Schritt 0.
 
 ## Anlass
 

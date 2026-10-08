@@ -1,21 +1,17 @@
 # Simulation — wie die Vorzeigebestände entstehen
 
-Das System braucht Bestände, an denen es sich zeigen kann: den
-geführten Zielbestand der Pfefferminzia und die Quellbestände der
-fiktiven abgebenden Unternehmen. Beide sind **simuliert**. Diese Doku
-beschreibt, wie.
+Das System braucht Bestände, an denen es sich zeigen kann: den geführten
+Bestand der Pfefferminzia und die Quellbestände der erfundenen abgebenden
+Unternehmen. Beide sind simuliert. Diese Dokumente beschreiben, wie.
 
-Das ist bewusst von der Fachdokumentation getrennt. Die
-[Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md) und
-die [Tarifpläne](../tarifplaene/) beschreiben, wie ein
-Versicherungsunternehmen **bewertet** — Rechnungsgrundlagen erster
-Ordnung, prospektive Reserven, Migrationszugang. Wie ein Bestand über
-die Zeit **entsteht und sich entwickelt**, ist dagegen eine Eigenschaft
-des Simulationswerkzeugs: In einem echten Unternehmen tut das die
-Wirklichkeit, nicht ein Modell.
-
-Diese Trennung ist nicht verhandelbar: Eine Simulationsannahme darf nie
-in die Bewertung zurückwirken.
+Das ist von der Fachdokumentation getrennt. Die
+[Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md) und die
+[Tarifpläne](../tarifplaene/) beschreiben, wie ein Versicherer bewertet:
+Rechnungsgrundlagen erster Ordnung, prospektive Reserven,
+Migrationszugang. Wie ein Bestand über die Zeit entsteht und sich
+entwickelt, ist dagegen eine Eigenschaft des Simulationswerkzeugs; in einem
+echten Unternehmen tut das die Wirklichkeit. Eine Annahme der Simulation
+wirkt deshalb nie in die Bewertung zurück.
 
 | Dokument | Inhalt |
 |---|---|
@@ -32,5 +28,5 @@ in die Bewertung zurückwirken.
 | `betrieb.neugeschaeft` + `betrieb.tageslauf` (Konzept: [tagesbetrieb.md](tagesbetrieb.md)) | den Tagesbetrieb der Pfefferminzia: Neugeschäft je Werktag, nächtliche Fortschreibung, Tagesjournal, Monatsabschluss — der Punkt, ab dem das Unternehmen zu leben beginnt |
 
 Jeder Betrag kommt auch in der Simulation aus dem Rechenkern; das
-Simulationswerkzeug rechnet nichts Aktuarielles selbst. Es entscheidet
-nur, **wann** etwas passiert.
+Simulationswerkzeug rechnet nichts Aktuarielles selbst. Es entscheidet nur,
+wann etwas passiert.

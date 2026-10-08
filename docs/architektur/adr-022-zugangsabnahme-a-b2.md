@@ -1,493 +1,325 @@
 # ADR-022: Zugangsabnahme A-B2 — der Betrieb nimmt den Migrationszugang mit einer Zugangsprobe ab
 
-**Status:** umgesetzt, 2026-10-01 (angenommen 2026-09-30, Entscheid des
-Maintainers im Dialog; Umsetzung siehe Nachtrag unten).
+**Status:** angenommen am 2026-09-30 (Maintainer), umgesetzt am 2026-10-01.
 
-## Anlass
+## Kontext
 
-Die Abnahmen A-Q1 bis A-M4 und die Fuehrungsprobe urteilen im Fall:
-Sie belegen, dass der uebernommene Bestand richtig gerechnet ist und dass
-Uebernahme und Fortschreibung bis zum Folgestichtag dieselbe Welt
-benutzen wie die Pruefstrecke. Was danach geschieht — die Registrierung
-des Eingangs in der produktiven Ablage und sein Eintritt in den
-Tagesbetrieb — hat bisher keine Abnahme. ``betrieb.uebernahme`` verlangt
-den A-M4-Snapshot, prueft Struktur und Signatur, und der Tageslauf fuehrt
-den Zugang am Stichtag ein. Ob der Zugang in der produktiven Ablage genau
-das bewirkt, was abgenommen wurde, sieht niemand; der erste
-Monatsabschluss danach ist die erste Gelegenheit, und dann steht er schon
-fest.
+Die Abnahmen `A-Q1` bis `A-M4` und die Führungsprobe urteilen im Fall. Sie
+belegen, dass der übernommene Bestand richtig gerechnet ist und dass
+Übernahme und Fortschreibung bis zum Folgestichtag dieselbe Welt benutzen
+wie die Prüfstrecke. Was danach geschieht, die Registrierung des Eingangs
+in der produktiven Ablage und sein Eintritt in den Tagesbetrieb, hatte
+keine Abnahme. `betrieb.uebernahme` verlangte den A-M4-Snapshot und prüfte
+Struktur und Signatur, dann führte der Tageslauf den Zugang am Stichtag
+ein. Ob der Zugang in der Ablage genau das bewirkt, was abgenommen wurde,
+sah niemand. Die erste Gelegenheit war der folgende Monatsabschluss, und
+der steht dann schon fest.
 
-Mit dem Betriebsschluessel (ADR-018, Nachtrag 2026-09-30) zeichnet der
-Tageslauf Urheberschaft. Eine Abnahme ist etwas anderes: Sie gehoert einer
-Rolle, die dafuer einsteht. Die Rollen dafuer gibt es bereits —
-``mensch/betrieb`` (zeichnet A-B1) und ``agent/betrieb`` (legt vor,
-zeichnet nie) —, sie hatten nur diesen Gegenstand noch nicht.
+Mit dem Betriebsschlüssel (ADR-018, Nachtrag 2026-09-30) zeichnet der
+Tageslauf Urheberschaft. Eine Abnahme gehört dagegen einer Rolle, die
+dafür einsteht. Diese Rollen gab es schon: `mensch/betrieb` zeichnet
+`A-B1`, `agent/betrieb` legt vor. Ihnen fehlte nur dieser Gegenstand.
 
 ## Entscheidung
 
-1. **Ein Producer ``betrieb.zugangsprobe``** faehrt auf einer Kopie der
-   produktiven Ablage (unter der Lauf-Sperre gezogen; das Original wird
-   nie beschrieben), mit dem produktiven Image und der produktiven
-   Config, zwei Laeufe vom gefuehrten Tag ueber den Zugangsstichtag bis
-   zum naechsten Monatsabschluss, auf Wunsch bis zum naechsten Jahrestag:
-   einmal **ohne** den Eingang, einmal **mit** ihm. Beide Laeufe sind
-   deterministisch (ADR-020: der Bestand entsteht aus dem gesaeten
-   Zugangsstrom), also ist ihre Differenz eine Rechnung, keine Messung mit
+1. **Die Zugangsprobe** (`betrieb.zugangsprobe`) fährt auf einer Kopie der
+   produktiven Ablage, unter der Lauf-Sperre gezogen; das Original wird nie
+   beschrieben. Mit dem produktiven Image und der produktiven Config fährt
+   sie zwei Läufe vom geführten Tag über den Zugangsstichtag bis zum
+   nächsten Monatsabschluss, auf Wunsch bis zum nächsten Jahrestag: einmal
+   ohne den Eingang, einmal mit ihm. Beide Läufe sind deterministisch
+   (ADR-020), ihre Differenz ist also eine Rechnung, keine Messung mit
    Rauschen.
-2. **Die Differenz der beiden Abschluesse ist der Beleg.** Sie muss
-   exakt der abgenommene Bestand sein:
-   - am Zugangsstichtag: Anzahl in Kraft, Versicherungssumme,
-     Deckungskapital und Jahresbeitrag gleich den Werten, die die
-     Uebernahme geschrieben und A-M1 gezeichnet hat (``bestand.parquet``
-     der Uebernahme, Stichtagswerte des aktuariellen Tests);
-   - am Folgetermin: dieselben Groessen gleich dem, was die
-     Migrationssuite fuer den Folgestichtag belegt (``dk_stichtag_2`` je
-     Vertrag, aggregiert), soweit der Termin gedeckt ist;
-   - Bewegungskonto: Anfang + Zugang - Abgang = Ende mit Zugang gleich
-     der Anzahl der uebernommenen Vertraege, und keine Buchung, die sich
-     zwischen "mit" und "ohne" unterscheidet, ausser den Buchungen der
-     uebernommenen Vertraege selbst.
-   Der Beleg (``zugangsprobe.json``) bindet: Hash des Ablage-Stands, den
-   Eingang (``eingang.json`` mit Betriebszeichnung), den A-M4-Snapshot des
-   Falls, Manifest und Journal beider Laeufe, Config und Kern-Version,
-   Systemstand; je Groesse Soll, Ist, Differenz.
-3. **Ein Gate ``A-B2.zugangsabnahme``** (Namensordnung ADR-012 wie
-   ``A-B1.auslieferung``): ``gates.gate_entscheid --gate A-B2`` verlangt
-   als Pflichtbelege den Zugangsprobe-Beleg, den A-M4-Snapshot und den
-   Eingang; ``agent/betrieb`` bereitet vor und darf nur ablehnen,
-   ``mensch/betrieb`` zeichnet; in der Vorfuehrung mit der
-   Schluesselklasse ``simulation`` unter Mandat (Regie-Modus), wie bei den
-   anderen menschlichen Rollen.
-4. **``betrieb.uebernahme`` registriert nur mit angenommenem A-B2**, so
-   wie es heute den A-M4 verlangt; der Tageslauf prueft beim Eintritt des
-   Eingangs, dass der A-B2-Snapshot denselben Eingang und denselben
-   Ablage-Stand bindet, auf dem die Probe lief. Ein Eingang ohne A-B2
-   tritt nicht ein.
+2. **Die Differenz der beiden Abschlüsse ist der Beleg.** Sie muss genau
+   der abgenommene Bestand sein: am Zugangsstichtag Anzahl,
+   Versicherungssumme, Deckungskapital und Jahresbeitrag wie in Übernahme
+   und Abnahme; am Folgetermin, soweit er im Fenster liegt, dieselben
+   Größen wie in der Migrationssuite; im Bewegungskonto Anfang + Zugang −
+   Abgang = Ende, mit dem Zugang gleich der Zahl der übernommenen Verträge,
+   und keine Buchung, die sich zwischen beiden Läufen unterscheidet, außer
+   denen der übernommenen Verträge. Der Beleg (`zugangsprobe.json`) bindet
+   den Stand der Ablage, den Eingang, den A-M4-Snapshot, Manifest und
+   Journal beider Läufe, Config, Kern-Version und Systemstand und nennt je
+   Größe Soll, Ist und Differenz.
+3. **Das Gate `A-B2.zugangsabnahme`** (Namensordnung nach ADR-012)
+   verlangt als Pflichtbelege die Zugangsprobe, den A-M4-Snapshot und den
+   Eingang. `agent/betrieb` bereitet vor und darf nur ablehnen,
+   `mensch/betrieb` zeichnet; in der Vorführung mit der Schlüsselklasse
+   `simulation` unter Mandat.
+4. **Registriert wird nur mit angenommener `A-B2`**, wie bisher nur mit
+   `A-M4`. Der Tageslauf prüft beim Eintritt des Eingangs, dass der
+   A-B2-Snapshot denselben Eingang und denselben Stand der Ablage bindet,
+   auf dem die Probe lief. Ein Eingang ohne `A-B2` tritt nicht ein.
 
-## Was es kostet, wenn es falsch ist
+**Aufwand und Nutzen.** Die Probe verdoppelt die Fortschreibung über
+einen kurzen Zeitraum. Sie ersetzt nicht die Führungsprobe: Die rechnet im
+Fall mit der Config des Falls, die Zugangsprobe in der Ablage mit Config,
+Bestand und Kern, die produktiv laufen. Der zweite Baldrian-Lauf hat
+gezeigt, dass beide auseinanderlaufen können.
 
-Die Probe verdoppelt die Fortschreibung ueber wenige Tage bis zu einem
-Jahrestag; das sind Minuten, keine Stunden. Ein A-B2, das den falschen
-Stand bindet (Probe auf einer Ablage, die danach weiterlief), ist der
-Nachbarfall — deshalb bindet der Snapshot den Ablage-Stand, und der
-Tageslauf haelt ihn beim Eintritt dagegen. Wer die Probe fuer nutzlos
-haelt, weil die Fuehrungsprobe schon geprueft hat: Die Fuehrungsprobe
-rechnet im Fall, mit der Config des Falls; die Zugangsprobe rechnet in
-der Ablage, mit der Config, dem Bestand und dem Kern, die produktiv
-laufen. Der zweite Baldrian-Lauf hat gezeigt, dass beide Welten
-auseinanderlaufen koennen (Korrektur 24).
+## Umsetzung
 
-## Bauauftrag
-
-1. ``models.zeichnung.GUELTIGE_GATES`` um ``A-B2``; ``models.belegrollen``
-   um die Pflichtbelegrollen von A-B2 (``zugangsprobe``, ``am4_snapshot``,
-   ``eingang``); Zeichnungsordnung: ``mensch/betrieb`` bekommt ``A-B2``
-   in seine gates-Liste (Ordnung des Maintainers, nicht Code).
-2. ``betrieb/zugangsprobe.py``: Kopie der Ablage unter Sperre, zwei
-   Laeufe, Differenz, Beleg; CLI ``python -m rechner_pipeline.betrieb.zugangsprobe
-   --stand <dir> --fall <fall> --stichtag <iso> [--bis <iso>] --schluessel
-   <betriebsschluessel> --zeichnungsordnung <ordnung> --out <beleg>``.
-   Der Beleg traegt die Betriebszeichnung (Urheberschaft), nicht die
-   Abnahme.
-3. ``gates.gate_entscheid``: A-B2 mit Pflichtbelegen und der Bindung an
-   Eingang und Ablage-Stand; ``betrieb.uebernahme`` und der Eintritt im
-   Tageslauf verlangen den Snapshot.
-4. Tests nach dem Muster der drei Instrumente: Ratsche ueber die
-   Belegrollen, Zaehltest ueber jede verglichene Groesse (Mutation je
-   Groesse: ein Cent im Ledger der "mit"-Kopie -> Probe rot), ein
-   adversarialer Angriff auf Probe und Gate vor dem Merge.
-5. ``deploy/plv/README.md`` und ``docs/simulation/tagesbetrieb.md``:
-   der Zugang hat drei Schritte — Probe, Abnahme A-B2, Registrierung.
+`models.zeichnung.GUELTIGE_GATES` führt `A-B2`, `models.belegrollen` die
+Pflichtrollen `zugangsprobe`, `am4_snapshot` und `eingang` (nur im
+Bestands-Scope). Der Belegvertrag der Probe liegt in `models.zugangsprobe`,
+damit Probe, Gate und Registrierung ihn ohne neue Schichtkante lesen. Die
+Probe ist `betrieb.zugangsprobe`, das Gate `gates.gate_entscheid`;
+`betrieb.uebernahme` und der Tageslauf verlangen die Abnahme. Die Bedienung
+steht in `deploy/plv/README.md` („Der Zugang hat drei Schritte“), für eine
+Welt in `deploy/welt/zugang.sh`. Die Tests stehen in
+`tests/test_zugangsabnahme_ab2.py`.
 
 ## Bezug
 
-ADR-012 (Namensordnung der Gates), ADR-018 (Rollen und
-Schluesselklassen, Nachtrag Betriebsschluessel), ADR-020 (Bestand aus dem
-Zugangsstrom, Determinismus), ADR-021 (Belegrollen in ``models``);
-``gates.fuehrungsprobe`` als Vorbild fuer einen Beleg, den ein Gate
-bindet und ein Konsument nachrechnet.
+ADR-012 (Namensordnung der Gates), ADR-018 (Rollen und Schlüsselklassen,
+Nachtrag Betriebsschlüssel), ADR-020 (Bestand aus dem Zugangsstrom),
+ADR-021 (Belegrollen in `models`); `gates.fuehrungsprobe` als Vorbild für
+einen Beleg, den ein Gate bindet und ein Konsument nachrechnet.
+
+## Nachträge
+
+Die Nachträge sind nach Datum und Überschrift adressiert. Die Herleitung im
+Einzelnen steht in der Geschichte dieser Datei.
 
 ## Nachtrag 2026-10-01: Umsetzung und was dabei festgelegt wurde
 
-Gebaut nach dem Bauauftrag: ``models.zeichnung.GUELTIGE_GATES`` fuehrt
-``A-B2``, ``models.belegrollen`` die Pflichtrollen ``zugangsprobe``,
-``am4_snapshot``, ``eingang`` (nur Bestands-Scope); der Beleg-Vertrag der
-Probe wohnt in ``models.zugangsprobe`` (Producer, Gate und Registrierung
-lesen ihn, keine neue Schichtkante); der Producer ist
-``betrieb.zugangsprobe``; ``gates.gate_entscheid`` nimmt A-B2 ab;
-``betrieb.uebernahme`` und der Tageslauf verlangen sie. Tests:
-``tests/test_zugangsabnahme_ab2.py`` (Ratsche, Zaehltest je Groesse,
-Positivkontrolle, Registrierung und Eintritt, Gate). Was der Bauauftrag
-offenliess und hier festgelegt wurde — jeweils mit Grund:
+Was der Beschluss offenließ, wurde beim Bau so festgelegt:
 
-1. **Der Stand der Ablage ist der GEFUEHRTE Stand**
-   (``tageslauf.ablage_stand``): letzte gruene Protokollzeile (ueber die
-   Kette alles davor), Manifest des Stands, Config. Ein roter Lauf bewegt
-   ihn nicht — der Wiederanlauf nach einem gescheiterten Bericht (T26-02)
-   bleibt auf demselben Stand. Registrierte, noch nicht aufgenommene
-   Eingaenge gehoeren nicht dazu: Jeder bringt seine eigene Abnahme mit,
-   und zwei Registrierungen vor demselben Lauf entziehen einander nicht
-   die Abnahme; die Bindung an den Eingang (sein Nummernband) faengt, wenn
-   ein anderer dazwischen registriert wurde.
-2. **Aufnahme und Eintritt sind zwei Fragen.** Die Stand-Bindung gilt
-   der ersten Aufnahme durch einen gruenen Lauf — gefuehrt oder, bei einem
-   Stichtag nach dem Lauftag, wartend. Wartende Eingaenge tragen dafuer
-   ihren Hash in der Protokollzeile (``wartende_uebernahmen[].eingang_sha256``).
-   Sonst liefe ein vorausdatierter Zugang an seinem Stichtag gegen einen
-   laengst vergangenen Stand und traete nie ein. Am TATSAECHLICHEN Eintritt
-   (dem ersten Lauf, der ihn fuehrt) haelt der Tageslauf, was sich durch
-   den Betrieb nicht aendert, gegen die Abnahme: Config-Hash, Kern-Version
-   und Code-Stand (Image-Digest und Revision, soweit die Probe sie erfasst
-   hat, und der Hash des Pakets, ``quellcode_sha256``). Abweichung heisst
-   Verweigerung mit Ausweg (Probe und A-B2 neu). Danach fragt kein Lauf
-   mehr.
-3. **Die Bindung liegt in der Ablage** als ``zugangsabnahme.json`` neben
-   ``eingang.json``, gezeichnet mit dem Betriebsschluessel — der Tageslauf
-   kennt den Fall nicht und haelt keinen Freigabeschluessel. Sie steht
-   nicht in ``dateien`` von eingang.json: Die Abnahme bindet den Hash von
-   eingang.json, eingang.json kann ihren Hash nicht zugleich tragen.
-4. **Derselbe Eingang heisst dieselben Bytes.** Die Probe registriert in
-   ihrer Kopie ueber dieselbe Funktion und dieselbe Serialisierung wie die
-   Registrierung; die Betriebszeichnung ist deterministisch. Deshalb
-   braucht die Registrierung dieselben Angaben wie die Probe (``--fall``,
-   ``--quelle``, Stichtag, Betriebsschluessel); die Meldung nennt die
-   abweichenden Felder.
-5. **Das Soll sind die SYSTEMWERTE der geltenden Abnahmen**, gebunden an
-   ihre Bytes: ``aktuartest.json`` muss das Testergebnis sein, das der
-   A-M1-Snapshot pinnt, den der A-M4-Snapshot pinnt, ``migrationssuite.json``
-   die Suite, die der A-M4-Snapshot pinnt — beide Snapshots geltend und
-   angenommen. Probe, Beleg-Vertrag, Gate und Registrierung halten das
-   gegen dieselbe Regel (``models.zugangsprobe.soll_bindung_fehler``); das
-   Gate zusaetzlich die Bytes am festen Ort. Abweichung ist Verweigerung:
-   Die Dateien liegen ohne Schluessel beschreibbar im Fall, und gegen ein
-   fremdes Soll gibt es nichts zu rechnen. Verglichen werden Anzahl,
-   Versicherungssumme (aus der Uebernahme) und Jahresbeitrag
-   (``bjb_stichtag_1`` der Migrationssuite) je Summe UND je Vertrag ueber
-   den GANZEN Zugang, am Folgetermin die Anzahl in Kraft; dazu Zugaenge,
-   Zugangsbuchungen, Bewegungskonto und alles ausserhalb des Zugangs.
-   Toleranz ein halber Cent. Jede Bewertungsspalte des Abschlusses ist
-   entweder einer verglichenen Groesse zugeordnet oder mit Grund als
-   "nicht belegt" ausgenommen (``ABSCHLUSS_VERGLICHEN``,
-   ``ABSCHLUSS_NICHT_BELEGT``, Ratsche mit ``==`` gegen
-   ``models.bestand.ABSCHLUSS_ZAHLEN``).
-6. **Benannte Grenzen und der Code-Stand.** Der Zugangsstichtag ist ein
-   Monatserster (nur dort gibt es einen Abschluss, an dem die Differenz
-   gegen die Uebernahme zu halten ist). Der Folgetermin wird verglichen,
-   wenn er ein Abschluss im Fenster ist (sonst ``--bis``). Die Probe haelt
-   ihren Code-Stand gegen die letzte gruene Protokollzeile der Ablage:
-   Image-Digest und Revision, soweit die Zeile sie erfasst hat, und den
-   Hash des Pakets (``quellcode_sha256``, seit dieser Nachbesserung in
-   jeder Zeile), dazu die Kern-Version. Jede Abweichung ist ein Befund,
-   ebenso eine Zeile, die gar keinen Code-Stand belegt. Ein
-   Versionsstring allein ist keine Identitaet.
-7. **Die Kopie ist gekennzeichnet** (``zugangsprobe-kopie.json``): Nur auf
-   ihr registriert die Probe ohne Abnahme und laesst ihren Eingang ohne
-   Abnahme eintreten; auf einer echten Ablage verweigern beide Wege, und
-   auf der Kopie verweigert jeder echte Lauf. Das Kennzeichen entsteht vor
-   dem ersten kopierten Byte (Runde F, F6). Weil es eine ungezeichnete
-   Datei ist, traegt zusaetzlich jede Protokollzeile eines Probelaufs
-   gezeichnet das Feld ``zugangsprobe`` (Fall, Kennung, Kopie, Zeitpunkt;
-   Runde F, F9): Tageslauf, Export, Tagesseite und Konsument verweigern
-   eine Kette mit einer Probezeile als Kettenbruch ("Probenkopie"),
-   Registrierung, Neuaufsetzen und die Probe selbst verweigern Kennzeichen
-   oder Probezeile. Entfernt jemand das Feld ohne Schluessel, bricht die
-   Signatur. Die Ausnahme vom A-B2 haengt am Zeichner des Probelaufs, nicht
-   an einem Parameter: Ein Eingang tritt ohne Abnahme nur in einer Zeile
-   ein, die als Probezeile gezeichnet ist.
-8. **Neuaufsetzen**: Der Eingang der neuen Ablage braucht seine eigene
-   A-B2, gerechnet auf einer leeren Ablage mit der neuen Config (deren
-   gefuehrter Stand ist genau das), uebergeben mit ``--zugangsabnahme``.
-9. **Tests**: Die Suite registriert an vielen Stellen, deren Gegenstand
-   nicht A-B2 ist. Fuer sie legt eine sessionweite Naht
-   (``uebernahme._STANDARD_ZUGANGSABNAHME``, Muster der Naht des
-   Betriebsschluessels) einen synthetischen, gezeichneten Probenbeleg und
-   einen signierten A-B2-Snapshot im Fall an; geprueft wird er danach wie
-   jeder andere. Produktiv ist sie leer.
+1. **Der Stand der Ablage ist der geführte Stand**
+   (`tageslauf.ablage_stand`): die letzte grüne Protokollzeile (über die
+   Kette alles davor), das Manifest des Stands und die Config. Ein roter
+   Lauf bewegt ihn nicht. Registrierte, noch nicht aufgenommene Eingänge
+   gehören nicht dazu: Jeder bringt seine eigene Abnahme mit, und die
+   Bindung an den Eingang (sein Nummernband) fängt, wenn ein anderer
+   dazwischen registriert wurde.
+2. **Aufnahme und Eintritt sind zwei Fragen.** Die Bindung an den Stand
+   gilt der ersten Aufnahme durch einen grünen Lauf, geführt oder, bei
+   einem Stichtag nach dem Lauftag, wartend. Wartende Eingänge tragen dafür
+   ihren Hash in der Protokollzeile
+   (`wartende_uebernahmen[].eingang_sha256`); sonst liefe ein
+   vorausdatierter Zugang an seinem Stichtag gegen einen längst vergangenen
+   Stand und träte nie ein. Beim tatsächlichen Eintritt hält der Tageslauf,
+   was sich im Betrieb nicht ändert, gegen die Abnahme: Config-Hash,
+   Kern-Version und Code-Stand (Image-Digest und Revision, soweit die Probe
+   sie erfasst hat, und `quellcode_sha256`). Eine Abweichung wird mit
+   Ausweg verweigert: Probe und `A-B2` neu.
+3. **Die Bindung liegt in der Ablage,** als `zugangsabnahme.json` neben
+   `eingang.json`, gezeichnet mit dem Betriebsschlüssel; der Tageslauf
+   kennt den Fall nicht und hält keinen Freigabeschlüssel. Sie steht nicht
+   in `dateien` von `eingang.json`, denn die Abnahme bindet den Hash von
+   `eingang.json`.
+4. **Derselbe Eingang heißt dieselben Bytes.** Die Probe registriert in
+   ihrer Kopie über dieselbe Funktion und Serialisierung wie die echte
+   Registrierung, und die Betriebszeichnung ist deterministisch. Die
+   Registrierung braucht deshalb dieselben Angaben wie die Probe (`--fall`,
+   `--quelle`, Stichtag, Betriebsschlüssel); die Meldung nennt abweichende
+   Felder.
+5. **Das Soll sind die Systemwerte der geltenden Abnahmen,** gebunden an
+   ihre Bytes: `aktuartest.json` muss das Testergebnis sein, das der
+   A-M1-Snapshot pinnt, den der A-M4-Snapshot pinnt, und
+   `migrationssuite.json` die Suite, die der A-M4-Snapshot pinnt; beide
+   Snapshots geltend und angenommen. Probe, Belegvertrag, Gate und
+   Registrierung halten das mit derselben Regel
+   (`models.zugangsprobe.soll_bindung_fehler`). Verglichen werden Anzahl,
+   Versicherungssumme und Jahresbeitrag je Summe und je Vertrag über den
+   ganzen Zugang, am Folgetermin die Anzahl in Kraft, dazu Zugänge,
+   Zugangsbuchungen, Bewegungskonto und alles außerhalb des Zugangs, mit
+   einer Toleranz von einem halben Cent. Jede Bewertungsspalte des
+   Abschlusses ist einer verglichenen Größe zugeordnet oder mit Grund als
+   nicht belegt ausgenommen (`ABSCHLUSS_VERGLICHEN`,
+   `ABSCHLUSS_NICHT_BELEGT`, gehalten gegen
+   `models.bestand.ABSCHLUSS_ZAHLEN`).
+6. **Grenzen und Code-Stand.** Der Zugangsstichtag ist ein Monatserster,
+   denn nur dort gibt es einen Abschluss, an dem die Differenz zu halten
+   ist. Der Folgetermin wird verglichen, wenn er ein Abschluss im Fenster
+   ist (sonst `--bis`). Die Probe hält ihren Code-Stand gegen die letzte
+   grüne Protokollzeile der Ablage: Image-Digest und Revision, soweit
+   erfasst, `quellcode_sha256` und Kern-Version. Jede Abweichung ist ein
+   Befund, ebenso eine Zeile ohne Code-Stand; ein Versionsstring allein ist
+   keine Identität.
+7. **Die Kopie ist gekennzeichnet** (`zugangsprobe-kopie.json`). Nur auf ihr
+   registriert die Probe ohne Abnahme und lässt ihren Eingang ohne Abnahme
+   eintreten; auf einer echten Ablage verweigern beide Wege, und auf der
+   Kopie verweigert jeder echte Lauf. Das Kennzeichen entsteht vor dem
+   ersten kopierten Byte. Weil es eine ungezeichnete Datei ist, trägt
+   zusätzlich jede Protokollzeile eines Probelaufs gezeichnet das Feld
+   `zugangsprobe`. Tageslauf, Export, Tagesseite und Konsument verweigern
+   eine Kette mit einer Probezeile als Kettenbruch („Probenkopie“). Die
+   Ausnahme von `A-B2` hängt damit am Zeichner des Probelaufs, nicht an
+   einem Parameter.
+8. **Neuaufsetzen.** Der Eingang der neuen Ablage braucht seine eigene
+   `A-B2`, gerechnet auf einer leeren Ablage mit der neuen Config und
+   übergeben mit `--zugangsabnahme`.
+9. **Tests.** Die Suite registriert an vielen Stellen, deren Gegenstand
+   nicht `A-B2` ist. Für sie legt eine Naht für die ganze Sitzung
+   (`uebernahme._STANDARD_ZUGANGSABNAHME`) einen synthetischen,
+   gezeichneten Probenbeleg und einen signierten A-B2-Snapshot im Fall an,
+   die danach wie jeder andere geprüft werden. Produktiv ist die Naht leer.
+10. **Wer `A-B2` zeichnet, prüft die Registrierung.** Sie hält den
+    Fingerabdruck der Freigabe gegen die Zeichnungsordnung des Betriebs: Die
+    Rolle muss `A-B2` in ihrer `gates`-Liste tragen. Das Gate `A-B2` hält
+    den Betriebsschlüssel nicht; es prüft Form und Rolle der
+    Betriebszeichnung der Probe und sagt in seiner Ausgabe, dass es die
+    Signatur nicht verifiziert hat (`betriebssignatur`). Die Registrierung
+    rechnet sie nach.
 
-10. **Wer A-B2 zeichnet, prueft die Registrierung.** Sie haelt den
-    Fingerabdruck der Freigabe gegen die Zeichnungsordnung des Betriebs
-    (``--zeichnungsordnung``): Die Rolle muss A-B2 in ihrer gates-Liste
-    tragen (seit dem Nachtrag 2026-10-01 dieselbe Regel fuer A-M4 und
-    A-M1). Das Gate A-B2 dagegen haelt den Betriebsschluessel nicht; es
-    prueft Form und Rolle der Betriebszeichnung der Probe und sagt in
-    seiner Ausgabe, dass es die Signatur nicht verifiziert hat
-    (``betriebssignatur``) — die Registrierung rechnet sie nach.
+Das Deckungskapital verglich die Probe zunächst nicht, weil Monatsabschluss
+und Abnahme verschiedene Größen führten. Das ist mit dem Nachtrag „die
+Probe vergleicht das Deckungskapital“ entschieden und gebaut.
 
-**Offen, fachlich (nicht entschieden):** Das Deckungskapital eines
-Monatsabschlusses ist der Jahreswert zum letzten Vertragsjahrestag
-(``zustand_am``), der Systemwert des aktuariellen Tests und der
-Migrationssuite am Stichtag die Monatsreserve plus Schicht. Bis zum
-Entscheid des Maintainers vergleicht die Probe das Deckungskapital NICHT;
-sie fuehrt es an jedem Termin mit dem Grund "nicht vergleichbar:
-Konvention Jahreswert vs. Monatsreserve, Entscheid offen" im Beleg
-(``models.zugangsprobe.NICHT_VERGLICHEN``). Ein Beleg, der es gruen
-verglichen fuehrt, besteht nicht — ein Vergleich ungleicher Groessen ist
-kein Nachweis. Die Stelle, an der danach je Vertrag ueber den ganzen
-Zugang verglichen wird, ist vorbereitet
-(``DK_KONVENTION_ENTSCHIEDEN``), der Test dafuer ebenso (xfail, strict).
-Ob Abschluss oder Abnahme die Konvention wechselt, entscheidet das
-Aktuariat, nicht die Probe. *(Entschieden am 2026-10-01: der Abschluss
-wechselt, die Abnahme weist den Fuehrungswert aus — Nachtrag "die Probe
-vergleicht das Deckungskapital" unten; die Konstanten oben sind
-entfallen.)*
+## Nachtrag 2026-10-01: eine Rollenregel für jede Abnahme, auf der etwas gründet
 
-## Nachtrag 2026-10-01: eine Rollenregel fuer jede Abnahme, auf der etwas gruendet
-
-Entscheid des Maintainers: Die Rollenpruefung der A-M4-Freigabe wird an
-die der A-B2-Freigabe angeglichen, als Klasse. Die Invariante: **Wer einen
-Abnahme-Snapshot liest, um darauf etwas zu gruenden, haelt die ZEICHNENDE
-Rolle gegen die Ordnung — und die Rolle ist die des Schluessels, nicht die
-behauptete.**
+Entscheid des Maintainers: Wer einen Abnahme-Snapshot liest, um darauf
+etwas zu gründen, hält die zeichnende Rolle gegen die Ordnung, und die Rolle
+ist die des Schlüssels, nicht die behauptete.
 
 Vorher hielt nur die Registrierung den Fingerabdruck der A-B2-Freigabe
-gegen die Zeichnungsordnung (Punkt 10). A-M4 und den A-M1-Snapshot, den
-A-M4 pinnt, las der Betrieb mit Schema, Kette, Belegrollenmenge und
-Freigabesignatur — aber nicht mit der Frage, ob der signierende Schluessel
-einer Rolle gehoert, die das Gate zeichnen darf. Ein gueltig signierter
-A-M4-Snapshot eines Schluessels, dem die Ordnung nur A-B2 gibt,
-begruendete eine Uebernahme. Das Gate A-B2 las A-M4 und A-M1 fuer die
-Soll-Bindung der Probe ganz ohne Rollenpruefung, das Gate A-M4 seine
-Vorbedingungen (A-Q1, A-M1, im Bestands-Scope A-M2, A-M3) mit Rollen-,
-aber ohne Rollenfeldpruefung. Und kein Leser verglich das Rollenfeld eines
-Snapshots mit der Rolle seines Schluessels.
+gegen die Ordnung. `A-M4` und den A-M1-Snapshot, den `A-M4` pinnt, las der
+Betrieb ohne die Frage, ob der signierende Schlüssel einer Rolle gehört, die
+das Gate zeichnen darf. So begründete ein gültig signierter A-M4-Snapshot
+eines Schlüssels, dem die Ordnung nur `A-B2` gibt, eine Übernahme. Und kein
+Leser verglich das Rollenfeld eines Snapshots mit der Rolle seines
+Schlüssels.
 
-Die Menge (Gate x Lesestelle):
+Die Lesestellen:
 
 | Lesestelle | A-Q1 | A-M1 | A-M2/A-M3 | A-M4 | A-B2 |
 |---|---|---|---|---|---|
-| Registrierung (``uebernahme.eingang_anlegen``) | — | ja (Soll-Bindung, unter der Sperre) | — | ja | ja |
-| Registrierung in der Probenkopie (``probe_kopie``) | — | — | — | ja | — |
-| Zugangsprobe (``zugangsprobe.lies_soll``) | — | ja | — | ja | — |
-| Neuaufsetzen, vor dem Anlegen (``registrierung_vorbedingungen``) | — | — | — | ja | ja (``--zugangsabnahme`` oder Gate-Ledger) |
-| Gate A-B2 (``gates.gate_entscheid``, Soll-Bindung der Probe) | — | ja | — | ja | — |
+| Registrierung (`uebernahme.eingang_anlegen`) | — | ja (Soll-Bindung, unter der Sperre) | — | ja | ja |
+| Registrierung in der Probenkopie (`probe_kopie`) | — | — | — | ja | — |
+| Zugangsprobe (`zugangsprobe.lies_soll`) | — | ja | — | ja | — |
+| Neuaufsetzen, vor dem Anlegen (`registrierung_vorbedingungen`) | — | — | — | ja | ja (`--zugangsabnahme` oder Gate-Ledger) |
+| Gate A-B2 (`gates.gate_entscheid`, Soll-Bindung der Probe) | — | ja | — | ja | — |
 | Gate A-M4 (Vorbedingungen) | ja | ja | ja (Bestand) | — | — |
 | Eintritt im Tageslauf | — | — | — | — | — |
 
-In der Probenkopie gibt es noch keine A-B2 und keine Soll-Bindung; A-M1
-liest dort erst ``lies_soll``. Nach der Vorpruefung registriert das
-Neuaufsetzen wie jede Registrierung (erste Zeile).
+**Die Regel** ist eine Funktion, `models.zeichnung.zeichnende_rolle_fehler`,
+in `models`, weil Gates und Betrieb sie lesen. Sie stellt vier Fragen: Gibt
+die Ordnung dem Fingerabdruck der Freigabe eine Rolle? Darf diese Rolle das
+Gate zeichnen? Tragen `rolle` und `zeichnung.rolle` des Snapshots genau
+diese Rolle? Ist `zeichnung.schluesselklasse` die Klasse, die die Ordnung
+der Rolle gibt, und trägt eine simulierte Rolle ihr Mandat? Ein Verstoß
+wird mit Meldung und Ausweg verweigert. Der Betrieb ruft die Regel über
+`uebernahme.zeichnende_rolle` in seinem einen Leser `lies_abnahme_snapshot`
+auf (`ordnung` ist Pflicht ohne Default), das Gate an jeder fremden
+Abnahme, auf die es gründet.
 
-**Die Regel** ist EINE Funktion, ``models.zeichnung.zeichnende_rolle_fehler``
-— in ``models``, weil zwei Schichten sie lesen (Gates und Betrieb; keine
-neue Kante, ``code_karte`` befundfrei). Vier Fragen: Gibt die Ordnung dem
-Fingerabdruck der Freigabe eine Rolle (ohne Ordnung: keine Antwort, keine
-Abnahme)? Darf die Rolle das Gate zeichnen? Tragen ``rolle`` und
-``zeichnung.rolle`` des Snapshots genau diese Rolle? Ist
-``zeichnung.schluesselklasse`` die Klasse, die die Ordnung der Rolle gibt,
-und traegt eine laut Ordnung simulierte Rolle ihr Mandat? Verstoss ist
-Verweigerung mit Meldung (beide Rollen bzw. Klassen, die laut Ordnung
-berechtigten Rollen) und Ausweg. Die vierte Frage kam in der Angriffsrunde
-desselben Tages dazu: Vorher kam die Klasse aus dem Snapshot. Gab die
-Ordnung ``simulation`` und behauptete der Snapshot ``mensch`` ohne Mandat,
-wurde registriert, die Mandatspflicht griff nie, und Eingang und Seite
-meldeten eine menschliche Zeichnung. Das Gate schreibt beim Zeichnen die
-Klasse der Ordnung (``zeichnung_fuer``); der Leser ist auch hier die
-zweite Haelfte. Der Betrieb ruft sie ueber
-``uebernahme.zeichnende_rolle`` in seinem einen Leser
-``lies_abnahme_snapshot`` (``ordnung`` Pflicht ohne Default), das Gate an
-jeder fremden Abnahme, auf die es gruendet.
+Beim Zeichnen bestimmt das Gate die Rolle aus dem Schlüssel und schreibt sie
+in beide Felder; jeder echte Produzent erfüllt die Gleichheit also. Der
+Leser hält sie gegen seine Ordnung, und das ist nicht immer dieselbe: Das
+Gate hält gegen die Ordnung, unter der es gerade zeichnet, der Betrieb
+gegen die Ordnung, die dem Betriebsschlüssel seine Rolle gibt. Eine Abnahme
+muss also unter jeder Ordnung, die auf ihr gründet, von einer berechtigten
+Rolle mit demselben Namen stammen. Nennen zwei Ordnungen dieselbe Rolle
+verschieden, verweigert der Leser. Für den Betrieb heißt das: Seine Ordnung
+nennt neben `betrieb/tageslauf` und `mensch/betrieb` auch die Rollen, deren
+Schlüssel A-M1 und A-M4 signiert haben, unter demselben Namen wie die
+Ordnung des Falls.
 
-**Die dritte Frage ist die zweite Haelfte einer Regel, die es schon gab.**
-Beim Zeichnen bestimmt das Gate die Rolle aus dem Schluessel und schreibt
-sie in beide Felder (``gates.gate_entscheid``: ``rolle = bestimmt``;
-``zeichnung_fuer``; ein widersprechendes ``--rolle`` ist ein
-Bedienfehler). Jeder echte Produzent erfuellt die Gleichheit also. Der
-Leser haelt sie gegen SEINE Ordnung — und das ist nicht immer dieselbe:
+**Maßgeblich für den Eintritt ist die Ordnung zum Zeitpunkt der
+Registrierung.** Die Registrierung hält die Rolle jeder Abnahme gegen die
+Ordnung, schreibt das Ergebnis in `eingang.json` und `zugangsabnahme.json`
+und zeichnet beides mit dem Betriebsschlüssel. Ein späterer Entzug der
+Berechtigung wirkt nicht zurück, und der Eintritt liest keinen Snapshot.
+*Verworfen:* die Neuprüfung beim Eintritt gegen die dann geltende Ordnung;
+derselbe Eingang träte sonst je nach Tag ein oder nicht.
 
-* Das Gate haelt gegen die Ordnung, unter der es gerade zeichnet
-  (``--zeichnungsordnung`` des Gate-Aufrufs: bei A-B2 die Ordnung der
-  zeichnenden Rolle ``mensch/betrieb``, bei A-M4 die des Aktuars).
-* Der Betrieb haelt gegen die Ordnung, die dem Betriebsschluessel seine
-  Rolle gibt (``--zeichnungsordnung`` von Registrierung und Probe).
-
-Eine Abnahme muss also unter JEDER Ordnung, die auf ihr gruendet, von
-einer berechtigten Rolle mit demselben Namen stammen. Nennen zwei
-Ordnungen dieselbe Rolle verschieden, verweigert der Leser — er kann
-nicht wissen, welche recht hat. Fuer den Betrieb heisst das: Seine Ordnung
-nennt neben ``betrieb/tageslauf`` und ``mensch/betrieb`` (A-B2) auch die
-Rolle(n), deren Schluessel A-M1 und A-M4 signiert haben, unter demselben
-Namen wie die Ordnung des Falls. Bereits registrierte Eingaenge sind nicht
-betroffen; Neuregistrierung und Neuaufsetzen schon.
-
-**Konvention fuer den Eintritt (entschieden, nicht gebaut).** Massgeblich
-ist die Ordnung zum Zeitpunkt der Registrierung. Die Registrierung haelt
-die Rolle jeder Abnahme gegen die Ordnung, schreibt das Ergebnis in
-``eingang.json`` (A-M4: Rolle, die nach der Regel die des Schluessels IST,
-und Praefix des Fingerabdrucks) und ``zugangsabnahme.json`` (A-B2:
-``freigabe_rolle``) und zeichnet beides mit dem Betriebsschluessel. Ein
-spaeterer Entzug der Berechtigung wirkt nicht zurueck — wie bei jeder
-Zeichnung. Der Eintritt liest keinen Snapshot; eine Ratsche haelt das.
-*Verworfen:* die Neupruefung beim Eintritt gegen die dann geltende Ordnung.
-Sie machte einen bereits gezeichneten Satz von einer spaeter geaenderten
-Datei abhaengig: Derselbe Eingang traete je nach Tag ein oder nicht, und
-der Betrieb haette zwei Wahrheiten ueber dieselbe Registrierung.
-
-*Der 16-Zeichen-Praefix* (``eingang.json``, ``zeichnung.schluessel_sha256``)
-ist dabei keine Schwaeche: Er ist Anzeige, kein Pruefanker. Gebunden ist
-der volle Fingerabdruck ueber den vollen Snapshot-Hash im gezeichneten
-Eingang — der Snapshot traegt ihn in seiner signierten Freigabe. Eine
-Verwechslung zweier Schluessel ueber 64 Bit setzte voraus, dass jemand
-einen zweiten Schluessel mit gleichem Praefix erzeugt UND der Leser den
-Praefix als Anker nimmt; keiner tut das. Ein Feld mit dem vollen
-Fingerabdruck waere eine zusaetzliche Angabe im Eingang (ohne Schemabruch
-moeglich), wird aber erst gebraucht, wenn jemand aus der Ablage allein
-ohne den Fall pruefen soll — dann als eigener Vorschlag.
-
-**Test-Schluessel.** Die Suite bildet die produktive Lage ab: getrennte
-Schluessel fuer ``mensch/aktuariat`` (A-M1 bis A-M4) und ``mensch/betrieb``
-(A-B2), die Snapshots tragen das Rollenfeld ihres Schluessels
-(``tests/freigabe_testschluessel.py``). Die Standardrolle der Gate-Tests
-zeichnet die Gates des Falls, nicht A-B1/A-B2.
-
-Kein Vertrag aendert sich: Snapshot, ``eingang.json`` und
-``zugangsabnahme.json`` behalten Form und Schema-Version; verschaerft ist,
-welche Snapshots Gate und Betrieb als Grundlage annehmen. Die Felder
-``rolle`` und ``schluesselklasse`` im Eingang behalten Form und
-Wertebereich; fuer neu registrierte Eingaenge sind sie zusaetzlich die der
-Ordnung zum Zeitpunkt der Registrierung. Ein Eingang aus der Zeit davor
-traegt die Angabe seines Snapshots; kein Leser behandelt beide
-verschieden, deshalb keine neue Schema-Version.
+Der Präfix des Fingerabdrucks in `eingang.json` (16 Zeichen) ist Anzeige,
+kein Prüfanker. Gebunden ist der volle Fingerabdruck über den vollen
+Snapshot-Hash im gezeichneten Eingang.
 
 **Neuaufsetzen.** Die Vorbedingungen der Registrierung, die keinen Ort
-brauchen (``uebernahme.registrierung_vorbedingungen``: A-M4 und A-B2 samt
-Regel, Schema, Tabellen und Uebernahmebeleg gegen den Beleggraphen), prueft
-``betrieb.neuaufsetzen`` VOR dem Anlegen der neuen Ablage — dieselbe
-Funktion, die ``eingang_anlegen`` ruft. Was nur gegen die neue Ablage
-pruefbar ist (Bindung der A-B2 an Eingang und Stand, A-M1 der
-Soll-Bindung, Nebentabellen, P-B1, Lesbarkeit), scheitert danach; dann
-entfernt die Routine ihre eigene, nie veroeffentlichte Vorbereitung
-(``betrieb._loeschen``, Name dieses Aufrufs, ohne Provenienz). Vorher blieb
-``<stand>.neu-<stempel>`` liegen, und der naechste Aufruf verweigerte mit
-"Rest eines abgebrochenen Aufbaus". ``tageslauf.SCHREIBZIELE`` deckt dieses
-Staging nicht ab: Die Tabelle gilt den atomaren Schreibern UNTER der
-Ablage; die Vorbereitung liegt daneben und gehoert keinem Lauf.
+brauchen (`uebernahme.registrierung_vorbedingungen`), prüft
+`betrieb.neuaufsetzen` vor dem Anlegen der neuen Ablage. Was nur gegen die
+neue Ablage prüfbar ist, scheitert danach; dann entfernt die Routine ihre
+eigene, nie veröffentlichte Vorbereitung, statt einen Rest liegen zu
+lassen.
 
-**Grenze der Aussage.** Die Freigabe ist ein HMAC. Wer registriert und den
-Ring haelt, kann jedes Rollenfeld und jede Klasse gueltig neu signieren:
-Die Regel schuetzt gegen abweichende Ordnungen und fremde Snapshots, nicht
-gegen den Inhaber des Rings.
+**Grenze.** Die Freigabe ist ein HMAC. Wer registriert und den Ring hält,
+kann jedes Rollenfeld und jede Klasse gültig neu signieren. Die Regel
+schützt gegen abweichende Ordnungen und fremde Snapshots, nicht gegen den
+Inhaber des Rings.
 
-Instrumente (``tests/test_abnahme_rolle_klasse.py``,
-``tests/test_neuaufsetzen_vorbedingungen_klasse.py``): je Gate und
-Lesestelle Angriffe (Ordnung ohne das Gate; gefaelschtes, neu signiertes
-Rollenfeld oder Klasse; eine Ordnung, die die Rolle anders nennt oder ihr
-eine andere Klasse gibt; Schluessel ohne Rolle) mit Positivkontrollen; ein
-Zaehltest, der Registrierung, Probe, Eintritt, Export und Neuaufsetzen
-faehrt und jedes lesende Oeffnen unter ``entscheide/`` seinem Aufrufer
-zuschreibt (``==`` gegen die erlaubten Leser; Positivkontrolle: ein
-kuenstlicher Leser mit Konkatenation und glob); Ratschen mit ``==`` ueber
-die Leseraufrufe des Betriebs, die Regel- und Kettenaufrufe im Gate, jede
-Erwaehnung von ``entscheide`` im Betrieb und die Test-Ordnungen (kein
-Schluessel fuer Fall- und Betriebsabnahmen zugleich, kein neuer ``'*'``),
-je mit Positivkontrolle; je Verweigerungsursache des Neuaufsetzens ein
-Zaehltest der Reste (``==``); Mutationsproben je Regelstelle.
+Die Tests (`tests/test_abnahme_rolle_klasse.py`,
+`tests/test_neuaufsetzen_vorbedingungen_klasse.py`) greifen je Gate und
+Lesestelle an (Ordnung ohne das Gate, neu signiertes Rollenfeld oder neu
+signierte Klasse, abweichend benannte Rolle, Schlüssel ohne Rolle), jeweils
+mit Positivkontrolle, und halten jedes lesende Öffnen unter `entscheide/`
+gegen die erlaubten Leser.
 
 ## Nachtrag 2026-10-01: die Probe vergleicht das Deckungskapital
 
-Bis hierher stand das Deckungskapital im Beleg der Probe "nicht
-vergleichbar": Der Monatsabschluss fuehrte den Wert des letzten
-Vertragsjahrestags, A-M1 und die Migrationssuite rechneten am Stichtag
-die Monatsreserve — zwei verschiedene Groessen. Der Entscheid des
-Maintainers hat beide Seiten auf dieselbe gebracht: "Abschluss umbauen,
-UND die neue Bezugsgroesse in den Controlling-Test nehmen."
+Bis dahin führte der Monatsabschluss das Deckungskapital zum letzten
+Vertragsjahrestag, A-M1 und die Migrationssuite rechneten am Stichtag die
+Monatsreserve. Der Maintainer entschied, beide Seiten auf dieselbe Größe zu
+bringen:
 
 * Der Abschluss bewertet monatsgenau (ADR-011, Nachtrag 2026-10-01) und
   nennt seine Konvention.
-* Die Migrationssuite (Beleg von A-M4, Fassung 2) traegt je Vertrag des
-  Zugangs den **Fuehrungswert**: Deckungsrueckstellung, Rueckkaufswert
-  und Korrekturschicht, die der Abschluss am Zugangsstichtag und am
-  Folgestichtag fuer den Vertrag fuehren wird — gerechnet ueber die
-  Bewertungsstrecke des Abschlusses, aus dem Bestand der Uebernahme und
-  der Config der Fuehrung (`bestand.migrationszugang.fuehrungswerte`,
-  ueber die bestehende Kante `gates.migrationssuite_lauf ->
-  bestand.migrationszugang`; keine neue Kante). Er ist ein Systemwert,
-  kein Vergleich mit der Lieferung, und haengt an demselben
-  Vertragszustand, den der Vergleich mit der Lieferung bestaetigt. A-M4
-  (`abnahmebericht` 8.0.0) nimmt im Bestands-Scope keine Suite ohne ihn
-  ab.
-* Die Probe (Beleg Fassung 2) haelt Deckungskapital, Rueckkaufswert und
-  Korrekturschicht der Abschlusszeilen des Zugangs je Vertrag ueber den
-  ganzen Zugang gegen den Fuehrungswert der gepinnten Suite, am
-  Zugangsstichtag und am Folgestichtag; dort ohne die Vertraege mit einem
-  gebuchten Vorfall im Fenster, die namentlich als ausgenommen im
-  Vergleich stehen. Stehen Abschluss und Fuehrungswert in verschiedenen
-  Konventionen, verweigert sie den Vergleich benannt. Kein Beleg fuehrt
-  mehr eine Groesse "nicht vergleichbar"; ein Beleg der Fassung 1 ist
-  keiner.
+* Die Migrationssuite (Beleg von `A-M4`, Fassung 2) trägt je Vertrag des
+  Zugangs den Führungswert: Deckungsrückstellung, Rückkaufswert und
+  Korrekturschicht, die der Abschluss am Zugangs- und am Folgestichtag für
+  den Vertrag führen wird, gerechnet über die Bewertungsstrecke des
+  Abschlusses (`bestand.migrationszugang.fuehrungswerte`). Er ist ein
+  Systemwert, kein Vergleich mit der Lieferung. `A-M4` nimmt im
+  Bestands-Scope keine Suite ohne ihn ab.
+* Die Probe (Beleg Fassung 2) hält Deckungskapital, Rückkaufswert und
+  Korrekturschicht je Vertrag über den ganzen Zugang gegen den Führungswert
+  der gepinnten Suite, am Zugangs- und am Folgestichtag; dort ohne die
+  Verträge mit einem gebuchten Vorfall im Fenster, die als ausgenommen
+  benannt werden. Stehen Abschluss und Führungswert in verschiedenen
+  Konventionen, verweigert sie den Vergleich.
 
-Was die Probe damit sieht, was sie vorher nicht sah: eine Fuehrung, die
-einen anderen Vertrag fuehrt als den abgenommenen, ohne dass Summe oder
-Beitrag sich bewegen — eine Korrekturschicht, die die Abnahme nicht
-kennt, oder ein verschobener Vertragsbeginn. Auch wenn Ablage und
-Abschluss in sich stimmig verfaelscht sind (die Nachrechnung des
-Abschlusses gegen die Ablage ist deckungsgleich), kommt das Soll aus der
-gepinnten Abnahme und nicht aus der Ablage.
+Damit sieht die Probe auch eine Führung, die einen anderen Vertrag führt
+als den abgenommenen, ohne dass sich Summe oder Beitrag bewegen, etwa eine
+unbekannte Korrekturschicht oder einen verschobenen Vertragsbeginn. Das
+Soll kommt aus der gepinnten Abnahme, nicht aus der Ablage.
 
-Verworfen: die Probe rechnet den Abnahmewert selbst in die Konvention des
-Abschlusses um. Sie haette die Treppe zementiert und ein zweites
-Rechenwissen neben der Strecke aufgebaut — genau die Drift, die ADR-011
-beseitigt.
-
-Instrumente (``tests/test_zugangsabnahme_ab2.py``): je Mutation an
-Deckungskapital, Rueckkaufswert und Schicht die Probe rot (vorher
-erwartet rot, xfail), in Rueckrichtung unbemerkt, sobald der Vergleich in
-einer Kopie des Codes ausgebaut ist, und unbemerkt mit unendlicher
-Toleranz (Positivkontrolle); je Angriffsart auf die Ablagekopie
-(Tarifparameter, Erhoehungsscheibe, Korrekturschicht, Vertragsbeginn) ein
-Zaehltest mit ``==`` ueber die roten Groessen; die maximale Manipulation
-(alle vier, Abschluss stimmig neu geschrieben).
+**Verworfen:** Die Probe rechnet den Abnahmewert selbst in die Konvention
+des Abschlusses um. Das hätte ein zweites Rechenwissen neben der
+Bewertungsstrecke aufgebaut, genau die Drift, die ADR-011 beseitigt.
 
 ## Nachtrag 2026-10-01: Anfangsbestand und Versionslinie der Ordnung (ADR-025)
 
 **Der Anfangsbestand ist abgenommen, bevor ein Zugang abgenommen wird.**
-Die Zugangsprobe bindet den gefuehrten Stand der Ablage. Seit ADR-025
-laeuft auf einer Ablage nach ihrem Aufbaulauf kein Tag ohne die
+Seit ADR-025 läuft auf einer Ablage nach ihrem Aufbaulauf kein Tag ohne die
 gezeichnete Abnahme ihres Anfangsbestands (`A-B3`, Bindung
-`anfangsbestand.json`); die Probe faehrt den Tageslauf auf einer Kopie der
-Ablage und verlangt deshalb dieselbe Bindung — eine A-B2 entsteht nur auf
-einer Ablage, deren Anfangsbestand abgenommen ist. Auf der LEEREN Ablage
-eines Neuaufsetzens (Punkt 8) gibt es noch keinen Anfangsbestand; der
-Zugang wird dort Teil des Anfangsbestands und mit ihm abgenommen.
+`anfangsbestand.json`). Die Probe fährt den Tageslauf auf einer Kopie und
+verlangt deshalb dieselbe Bindung. Auf der leeren Ablage eines
+Neuaufsetzens gibt es noch keinen Anfangsbestand; der Zugang wird dort Teil
+des Anfangsbestands und mit ihm abgenommen.
 
-**Die Konvention fuer den Eintritt wird pruefbar.** "Massgeblich ist die
-Ordnung zum Zeitpunkt der Registrierung" (Nachtrag 2026-10-01, oben) gilt
-im Ergebnis unveraendert. Mit der Versionslinie der Zeichnungsordnung ist
-der Stand, unter dem eine Abnahme gezeichnet wurde, auffindbar: Jede
-Zeichnung pinnt ihr Glied, und der Leser haelt Rolle, Klasse und Gate gegen
-DIESEN Stand ("wer durfte damals zeichnen") — ein spaeterer Entzug wirkt
-nicht zurueck, eine spaetere Erweiterung entwertet nichts. Der Leser des
+**Die Ordnung zum Zeitpunkt der Registrierung wird prüfbar.** Mit der
+Versionslinie der Zeichnungsordnung ist der Stand, unter dem eine Abnahme
+gezeichnet wurde, auffindbar: Jede Zeichnung pinnt ihr Glied, und der Leser
+hält Rolle, Klasse und Gate gegen diesen Stand. Ein späterer Entzug wirkt
+nicht zurück, eine spätere Erweiterung entwertet nichts. Der Leser des
 Betriebs (`uebernahme.lies_abnahme_snapshot`) nimmt die Linie als
-Parameter; Registrierung, Zugangsprobe und Neuaufsetzen reichen sie mit
-`--linie` durch, die Bindung des Anfangsbestands mit `--ordnungslinie`.
+Parameter; Registrierung, Zugangsprobe, Neuaufsetzen und die Bindung des
+Anfangsbestands bekommen sie mit `--linie`.
 
-## Nachtrag 2026-10-01: A-M4 rechnet den Fuehrungswert nach und weist ihn aus (Pruefrunde G)
+## Nachtrag 2026-10-01: A-M4 rechnet den Führungswert nach und weist ihn aus (Prüfrunde G)
 
-Der Nachtrag "die Probe vergleicht das Deckungskapital" stellt fest, dass
-das Soll der Zugangsprobe aus der gepinnten Abnahme kommt und nicht aus der
-Ablage. Geprueft hatte A-M4 den Fuehrungswert aber nur der Form nach
-(Felder, endliche Zahlen, bekannte Konvention, Bindungshashes): Ein
-verdoppeltes Deckungskapital, die Konvention `jahreszeile` bei monatsgenauen
-Werten und ein Vertrag, der am Folgestichtag "nicht mehr in Kraft" sein
-sollte, gingen durch (Fund G03). Die Zugangsprobe haette die Abweichung
-spaeter gesehen; gepinnt und gezeichnet war ein falsches Soll.
+`A-M4` prüfte den Führungswert nur der Form nach: Felder, endliche Zahlen,
+bekannte Konvention, Bindungshashes. Ein verdoppeltes Deckungskapital, eine
+falsche Konvention und ein Vertrag, der am Folgestichtag nicht mehr in
+Kraft sein sollte, gingen durch (G03). Die Zugangsprobe hätte die
+Abweichung später gesehen, aber gepinnt und gezeichnet war ein falsches
+Soll.
 
-**Regel.** A-M4 pinnt nur einen Fuehrungswert, den es selbst nachgerechnet
-hat: ueber denselben Weg wie die Suite
+**Regel.** `A-M4` pinnt nur einen Führungswert, den es selbst
+nachgerechnet hat, über denselben Weg wie die Suite
 (`gates.migrationssuite_lauf.fuehrungswert_rechnen` ->
 `bestand.migrationszugang.fuehrungswerte`), auf den gebundenen Bytes
-(Bestand mit `bestand_sha256`, jede Nebentabelle neben ihm, Config mit
-`config_sha256`), mit den Stichtagen der Suite und dem Tarifwerk der Spez,
-die A-M4 bindet; in der Konvention, die der Kopf nennt. Die Vorlage weist ihn
-aus: Summary `fuehrungswert` (Art, Konvention, Bindungen, je Stichtag Anzahl
-in Kraft und nicht in Kraft, Summen von Deckungskapital, Rueckkaufswert und
-Korrekturschicht) und im HTML je Vertrag und Termin. Bericht und Entscheid
-rufen dieselbe Pruefung (`abnahmebericht._bestands_suite_fehler`, der Fall
-ist Pflichtparameter); `abnahmebericht` 10.0.0. Die Zugangsprobe bleibt
-Leser des Solls, nicht Pruefer.
+(Bestand, Nebentabellen, Config), mit den Stichtagen der Suite und dem
+Tarifwerk der Spez. Die Vorlage weist ihn aus, in der Zusammenfassung
+(`fuehrungswert`) und im HTML je Vertrag und Termin. Bericht und Entscheid
+rufen dieselbe Prüfung (`abnahmebericht._bestands_suite_fehler`);
+`abnahmebericht` steht seitdem auf 10.0.0. Die Zugangsprobe bleibt Leserin
+des Solls, nicht Prüferin.
 
-**Verworfen.** *Den Fuehrungswert nur ausweisen*: Die Vorlage zeigte dann
-dem Zeichnenden einen Wert, den niemand nachgerechnet hat. *Die ganze Suite
-in A-M4 neu fahren* (Auftrags-Echo): fuer den Fuehrungswert genuegen die
-gebundenen Eingaben; der Neulauf der Lieferungsvergleiche bleibt der offene
-Punkt der AT-Schicht. Details und die uebrigen Funde der Runde: ADR-024,
-vierter Nachtrag.
+**Verworfen:** den Führungswert nur auszuweisen, denn dann zeigte die
+Vorlage einen Wert, den niemand nachgerechnet hat. Ebenso, die ganze Suite
+in `A-M4` neu zu fahren: Für den Führungswert genügen die gebundenen
+Eingaben. Die übrigen Befunde der Runde stehen in ADR-024, vierter
+Nachtrag.

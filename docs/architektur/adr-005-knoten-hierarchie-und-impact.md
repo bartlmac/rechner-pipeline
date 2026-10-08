@@ -1,8 +1,8 @@
 # ADR-005: Knoten-Hierarchie, Test-Bindung, Code-Karte und berechneter Impact
 
-Status: akzeptiert (Maintainer, 2026-08-16). Umgesetzt:
-`ontologie/code_index` (erweitert), `ontologie/code_karte` (neu),
-`ontologie/impact` (neu); alle Testmodule gebunden.
+**Status:** angenommen am 2026-08-16 (Maintainer), umgesetzt in
+`ontologie/code_index` (erweitert), `ontologie/code_karte` und
+`ontologie/impact` (neu); alle Testmodule sind gebunden.
 
 ## Kontext
 
@@ -12,7 +12,7 @@ nur Familien-Granularität, Tests waren an keine Knoten gebunden, die
 Schichtenkarte war Prosa im Skill, und die Frage "welcher Teil der
 Suite muss nach dieser Änderung laufen?" hatte keine berechnete
 Antwort. Bei ~10k LOC ist das egal (volle Suite: ~80 s); der Anspruch
-des Systems ist aber, dass der Skalenschmerz BEHERRSCHBAR ist — das
+des Systems ist aber, dass der Skalenschmerz beherrschbar ist — das
 muss vorführbar sein, bevor er eintritt.
 
 ## Entscheidung
@@ -48,19 +48,19 @@ muss vorführbar sein, bevor er eintritt.
    ein normaler Import, mit berechnetem Namen als eigener Befund —
    sonst wäre die Kante ein Loch in allen Regeln.
 5. **Impact ist berechnet, nie geraten** (`impact`): ein Test läuft,
-   wenn EINE von zwei Kopplungen greift.
+   wenn eine von zwei Kopplungen greift.
    * **Fachliche Kopplung** — Lineage-Verwandtschaft der Knoten
      (gleiche Linie ja: `klv` ~ `klv/tg2015`; Geschwister nein:
      `klv/tg2012` !~ `klv/tg2015`; fremde Familie nie).
    * **Code-Kopplung** — der Test importiert das geänderte Modul
-     DIREKT, unabhängig von seiner Knoten-Linie. Ohne diese zweite
+     direkt, unabhängig von seiner Knoten-Linie. Ohne diese zweite
      Quelle entstehen echte Falsch-Negative (belegt: `fall.py` trägt
      `system/fall`, wird aber von klv-gebundenen Ontologie-Tests
-     benutzt — die reine Lineage-Selektion liess sie liegen).
-   Bewusst NICHT transitiv: die Schliessung über `__init__`-
+     benutzt — die reine Lineage-Selektion ließ sie liegen).
+   Bewusst nicht transitiv: die Schließung über `__init__`-
    Re-Exports zieht jede Änderung auf "alles" (gemessen: `bu.py`
    5 -> 21 Tests) und ist Lade-Zeit-Kopplung, keine fachliche; dafür
-   steht die volle Suite in CI. Die Rückwärts-Schliessung bleibt
+   steht die volle Suite in CI. Die Rückwärts-Schließung bleibt
    Transparenz (`abhaengige_module`) und Knoten-Fallback für
    unannotierte Module.
    **Fail-safe**: lässt sich eine Änderung keinem Knoten zuordnen
@@ -70,25 +70,25 @@ muss vorführbar sein, bevor er eintritt.
    Präzision ist verdient, nie vermutet. Zusätzlich nennt der Impact
    die Fälle, deren Generationen betroffen sind (Gate P-K1 erneut
    fahren).
-6. **Die Garantie heisst Entdeckung, nicht Vollständigkeit** — und
-   sie ist erzwungen: jedes geänderte Modul MUSS von mindestens einem
+6. **Die Garantie heißt Entdeckung, nicht Vollständigkeit** — und
+   sie ist erzwungen: jedes geänderte Modul muss von mindestens einem
    selektierten Test geladen werden, sonst fällt die Auswahl
    konservativ auf die volle Suite. Damit kann kein Import-Bruch
    unsichtbar bleiben (heute hält die Deckung für alle 79 Module,
-   maschinell gesichert). Was die Selektion NICHT verspricht, ist die
+   maschinell gesichert). Was die Selektion nicht verspricht, ist die
    vollständige Liste aller Tests, die brechen könnten: Tests, die
    ein geändertes Modul laden, ohne fachlich betroffen zu sein,
    stehen als `weitere_lader` im Ergebnis (bei `bu.py` heute 16 zu 5
-   selektierten). Ein reiner VERHALTENS-Bruch über eine solche Kante
+   selektierten). Ein reiner Verhaltens-Bruch über eine solche Kante
    fällt erst in der vollen Suite auf — ausgewiesen, nicht versteckt.
 
 ## Konsequenzen
 
 - "Wo lebt X, wer testet X, was muss nach dieser Änderung laufen?"
-  sind Lookups über DIESELBEN Knoten-IDs, die A-Box, Spez und Gates
+  sind Lookups über dieselben Knoten-IDs, die A-Box, Spez und Gates
   verwenden — die Ontologie ist der Index der Codebasis; ein
   Graph-Store bleibt eine ableitbare Projektion (D3).
-- Selektive Ausführung ist ein INFORMATIONSWERKZEUG (Exit 0), kein
+- Selektive Ausführung ist ein Informationswerkzeug (Exit 0), kein
   Gate: CI und Vor-Commit-Disziplin fahren weiter die volle Suite.
   Die Umstellung auf selektive Gates ist ein eigener, späterer
   Beschluss — sie braucht Vertrauen in die Bindungsqualität, das
@@ -120,7 +120,7 @@ muss vorführbar sein, bevor er eintritt.
   Import-Brüche fangen die erzwungene Ladedeckung und die
   `weitere_lader`-Ausweisung ab; ein reiner Verhaltens-Bruch über
   eine solche Kante fällt erst in der vollen Suite auf. Die
-  Alternative — Selektion über die volle Import-Schliessung — wurde
+  Alternative — Selektion über die volle Import-Schließung — wurde
   gemessen und verworfen (siehe unten).
 
 ## Warum Eigenbau und nicht ein fertiges Werkzeug
@@ -134,41 +134,41 @@ Cytoscape.js, vis-network/pyvis, Mermaid, viz.js.
 - **Parsing**: Pythons ``ast`` bleibt. Es ist der Parser, den CPython
   selbst benutzt, also für unseren Ein-Sprachen-Fall genauer als
   tree-sitter und ohne kompilierte Grammatik. tree-sitter wäre für
-  ALTSYSTEM-Quellen (VBA, COBOL) interessant — dort hält der Kern
+  Altsystem-Quellen (VBA, COBOL) interessant — dort hält der Kern
   unsere Randbedingungen, die verfügbaren Grammatiken aber nicht;
   erneut prüfen, wenn Stage 1 solche Quellen wirklich liest.
 - **Schichtregeln**: ``import-linter`` (2.13, über ``grimp``) ist die
   echte Überschneidung mit ``code_karte``. Zwei Punkte sprachen gegen
-  einen Wechsel JETZT, keiner davon gegen das Werkzeug an sich:
-  (1) Sein ``forbidden``-Vertrag wertet TRANSITIVE Erreichbarkeit —
+  einen Wechsel jetzt, keiner davon gegen das Werkzeug an sich:
+  (1) Sein ``forbidden``-Vertrag wertet transitive Erreichbarkeit —
   ``cli`` "importiert" darin ``models``, weil ``gates`` es tut. Unsere
   Allowlist meint direkte Nachbarschaft (``cli`` darf ``gates``
   benutzen, und was ``gates`` intern braucht, ist dessen Sache). Beide
   Semantiken sind vertretbar, aber es sind verschiedene Fragen.
-  (2) Die ILLUSTRATIONEN im Report (welche Beispielkette gezeigt wird)
-  schwanken zwischen identischen Läufen; die URTEILE selbst sind
+  (2) Die Illustrationen im Report (welche Beispielkette gezeigt wird)
+  schwanken zwischen identischen Läufen; die Urteile selbst sind
   stabil (nachgemessen: drei ``--no-cache``-Läufe, Verdikt-Block
   byte-identisch, 11 kept / 1 broken). Für unseren Gate-Contract
-  hiesse das: Urteil hashen, nicht den Fliesstext.
+  hieße das: Urteil hashen, nicht den Fließtext.
   Der Rest unserer Regeln (Zweitkern-Regel, SDK-Namensfamilien,
-  dynamische Importe) liesse sich nur teilweise abbilden.
+  dynamische Importe) ließe sich nur teilweise abbilden.
 - **Ergänzen statt ersetzen** (Kandidaten für später, kein
   Umbau vor dem Push): ``ruff`` TID251 für verbotene Importe,
   ``deptry`` für unbenutzte/undeklarierte Abhängigkeiten.
 - **Test-Selektion**: coverage-basierte Werkzeuge (``pytest-testmon``)
   beantworten eine andere Frage als wir — welche Tests den Code
-  AUSFUEHREN, nicht welchen FACHKNOTEN eine Änderung betrifft. Sie
+  ausführen, nicht welchen Fachknoten eine Änderung betrifft. Sie
   können weder eine Generation (``klv/tg2015``) noch ein
   Migrationsfall-Gate (P-K1) benennen. Als Ergänzung gegen die
   dokumentierte Verhaltens-Restlücke bleiben sie denkbar.
-- **Visualisierung**: das ZEICHNEN macht fremdes Werkzeug. Der
+- **Visualisierung**: das Zeichnen macht fremdes Werkzeug. Der
   Generator gibt den Graphen als **Mermaid** (GitHub zeichnet es direkt
   in Markdown), **DOT** (Graphviz) und **GraphML** (Gephi, yEd,
   Graph-Store-Import) aus — wir schreiben keine Layout-Logik.
   Entscheidend für das Zielbild ist nicht das Format, sondern der
-  AUSSCHNITT: bei ~1 Mio. Zeilen gibt es kein Bild "der Codebasis".
+  Ausschnitt: bei ~1 Mio. Zeilen gibt es kein Bild "der Codebasis".
   Drei Ausschnitte wachsen mit der Struktur statt mit der Codemenge —
-  Schichten-Überblick, fachliche Knotensicht, und der Blick in EINEN
+  Schichten-Überblick, fachliche Knotensicht, und der Blick in einen
   Knoten. Über 60 Kästen verweigert der Generator das Bild und nennt
   den engeren Weg (fail-fast statt Knäuel). In der Knotensicht
   entsteht eine Kante nur bei einem echten Übergang: ein
@@ -178,10 +178,10 @@ Cytoscape.js, vis-network/pyvis, Mermaid, viz.js.
   Layouts (D3, vis-network, pyvis) sind nicht reproduzierbar und damit
   nicht diffbar; Cytoscape scheitert an der Graphgröße, nicht an
   unseren Regeln. ``ontologie/landkarte`` rendert deshalb Tabellen,
-  Matrix und Listen in EINE selbsttragende HTML-Datei, ohne neue
+  Matrix und Listen in eine selbsttragende HTML-Datei, ohne neue
   Abhängigkeit und byte-stabil.
 
-Der unvermeidbare Eigenanteil ist die ONTOLOGIE-BINDUNG: kein
+Der unvermeidbare Eigenanteil ist die Ontologie-Bindung: kein
 Fremdwerkzeug kennt ``klv/tg2015`` als Fachknoten oder kann sagen,
 welcher Migrationsfall und welches Gate P-K1 nach einer Änderung neu zu
 fahren ist. Genau diese Kopplung von Codebasis und A-Box ist die
@@ -191,13 +191,13 @@ Architekturhypothese — sie ist domänenspezifisch und bleibt es.
 
 - **Embeddings-/Vektor-Suchindex**: zweite, nicht auditierbare
   Wahrheit neben der Ontologie; veraltet ohne Drift-Begriff.
-- **Impact über die volle Import-Schliessung statt der Knoten der
+- **Impact über die volle Import-Schließung statt der Knoten der
   Änderung**: konservativer, aber via Registry-/Re-Export-Kanten
   (`produkte/__init__`) kollabiert jede Änderung auf "alles" — die
   Selektion würde nie selektiv. Gemessen am heutigen Repo: `bu.py`
-  5 -> 27 Testmodule (volle Rückwärts-Schliessung), 5 -> 21
+  5 -> 27 Testmodule (volle Rückwärts-Schließung), 5 -> 21
   (transitive Test-Ladekette), 5 -> 5 mit direkten Import-Kanten. Die
-  Knoten-Semantik trägt die fachliche Aussage; die Schliessung bleibt
+  Knoten-Semantik trägt die fachliche Aussage; die Schließung bleibt
   als Fallback, als Transparenz und als erzwungene Ladedeckung.
 - **Annotationen so weit fassen, dass sie alle Importeure überdecken**
   (`model_point.py` wäre dann `klv, bu`): verschiebt denselben

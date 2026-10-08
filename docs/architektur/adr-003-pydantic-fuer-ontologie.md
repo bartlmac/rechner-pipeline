@@ -1,8 +1,8 @@
 # ADR-003: Pydantic für T-Box und A-Box
 
-Status: akzeptiert (Maintainer, D1-Entscheidung der Architektur-Fragerunde
-2026-08-14). Betrifft ausschliesslich `rechner_pipeline.ontologie` und
-`rechner_pipeline.spez`.
+**Status:** angenommen am 2026-08-14 (Maintainer, Frage D1 der
+Architektur-Fragerunde). Betrifft ausschließlich
+`rechner_pipeline.ontologie` und `rechner_pipeline.spez`.
 
 ## Kontext
 
@@ -23,7 +23,7 @@ Pydantic (exakt gepinnt, 2.13.4) für T-Box, A-Box und
 Spez-Schema. Das übrige Paket bleibt beim dataclasses-Idiom; die
 Grenze ist die Ontologie-/Spez-Schicht. Semantische Constraints, die
 über Feldvalidierung hinausgehen (Kreuz-Objekt-Regeln, Coverage),
-bleiben im Repo-Idiom `validate() -> List[str]` AUF den
+bleiben im Repo-Idiom `validate() -> List[str]` auf den
 Pydantic-Objekten — Pydantic trägt Struktur und Serialisierung, nicht
 die Fachlogik.
 
@@ -40,4 +40,4 @@ die Fachlogik.
 
 dataclasses + eigener JSON-Schema-Generator: machbar, aber wir bauten
 Pydantic-Funktionalität nach und pflegten sie selbst — Minimalismus
-heisst hier, das Werkzeug zu nehmen, nicht es nachzubauen.
+heißt hier, das Werkzeug zu nehmen, nicht es nachzubauen.

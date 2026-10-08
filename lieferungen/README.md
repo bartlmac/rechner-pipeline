@@ -22,7 +22,7 @@ der Tarifrechner, die Tarifmeldung und die Bestandsdaten-Lieferung
 Geschäftsvorfall-Protokoll des Zwischenjahres).
 
 Ein Drittel der Verträge trägt eine **Vorgeschichte** — Erhöhungen,
-Beitragsfreistellungen und Herabsetzungen VOR dem Migrationsstichtag.
+Beitragsfreistellungen und Herabsetzungen vor dem Migrationsstichtag.
 Ihre Wirkung steckt im gelieferten Stand, ihre Beträge kommen nicht mit.
 Geliefert wird nur `baldrian_gevo_metadaten.csv`: Police, Art und Datum,
 ohne Beträge. Ohne diese Liste ist der Verankerungszeitpunkt nicht

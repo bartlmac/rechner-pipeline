@@ -107,7 +107,7 @@ Vorgänge enthält, die eine Migration antrifft. Eine Änderung gilt vom
 Beginn der Simulation an — für eine laufende Ablage des Tagesbetriebs
 heißt das: neu aufsetzen ([Tagesbetrieb](tagesbetrieb.md), Abschnitt 8).
 
-# 5 Was daraus NICHT folgt
+# 5 Was daraus nicht folgt
 
 Beiträge und Reserven bleiben von den Erfahrungsannahmen unberührt.
 Wenn die Simulation einen Vertrag stornieren lässt, rechnet der

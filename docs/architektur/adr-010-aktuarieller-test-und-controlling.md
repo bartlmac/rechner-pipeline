@@ -1,9 +1,9 @@
 # ADR-010: Aktuarieller Test und Migrationscontrolling sind getrennte Gates
 
-Status: angenommen und umgesetzt (Beschluss Auftraggeber 2026-08-26 zu den
-Punkten E3 und E4 des Migrationskonzepts; Umsetzung 2026-08-26:
-`qa.aktuarieller_test`, `gates.aktuartest`, Gate A-M1 in P9 mit
-erzwungener Reihenfolge vor A-M4, Belegrollen je Gate)
+**Status:** angenommen am 2026-08-26 (Maintainer, zu den Punkten E3 und
+E4 des Migrationskonzepts), umgesetzt am selben Tag:
+`qa.aktuarieller_test`, `gates.aktuartest`, Gate `A-M1` mit
+erzwungener Reihenfolge vor `A-M4`, Belegrollen je Gate.
 
 Normative Referenz: **Grundsatzdokumentation**
 (`docs/mathematik/grundsatzdokumentation.md`), Abschnitt 9.15 — die
@@ -28,7 +28,7 @@ und Verantwortlichem:
   Verantwortung: Migrationsprojekt.
 * **Aktuarieller Test** misst am Verankerungszeitpunkt $t_a$ gegen die
   Methode: Verteilung des Residuums, geclustert nach Historientyp,
-  Ausreisseranalyse, Floor-Prüfungen. $t_a$ ist **je Vertrag verschieden**
+  Ausreißeranalyse, Floor-Prüfungen. $t_a$ ist **je Vertrag verschieden**
   (Grundsatzdokumentation 9.12). Verantwortung: Aktuariat / Verantwortlicher Aktuar.
 
 Unsere heutige Abnahme vermischt beides. `qa.migrationssuite` vergleicht je
@@ -86,7 +86,7 @@ Doku stehen:
   Interpolationskonventionen mit und ist als Diagnoseinstrument entwertet).
 * **Keine Summation der Vergleichsgrößen.** Werte zu verschiedenen
   Stichtagen zu addieren, ergibt fachlich nichts. Die Test-Engine bildet
-  deshalb keine Deckungskapital-Summe; sie kennt ausschliesslich
+  deshalb keine Deckungskapital-Summe; sie kennt ausschließlich
   Verteilungsgrößen des Residuums (Grundsatzdokumentation 9.15: Toleranzen auf Maximum und
   hohen Perzentilen, nie auf Mittelwert oder Median).
 * **Prüfsummen sind Transportsicherung, kein fachlicher Abgleich.**
@@ -122,8 +122,8 @@ Weitere Profile bleiben offen. Die Erweiterungsstelle ist benannt
 
 ### 6. „Vollständig geprüft" bedeutet auf den beiden Ebenen Verschiedenes
 
-Im Controlling heisst es: jeder Vertrag des Bestands wurde geprüft — ein
-ungeprüfter Vertrag ist eine Prüflücke. Im aktuariellen Test heisst es:
+Im Controlling heißt es: jeder Vertrag des Bestands wurde geprüft — ein
+ungeprüfter Vertrag ist eine Prüflücke. Im aktuariellen Test heißt es:
 die **Stichprobe** wurde vollständig abgearbeitet. Die Nichtprüfung der
 Nicht-Stichprobe ist dort kein Befund, sondern die Definition.
 

@@ -1,12 +1,12 @@
-# ADR-016: Vorverdichtung liest Text-PDF (pypdf); OCR bleibt draussen
+# ADR-016: Vorverdichtung liest Text-PDF (pypdf); OCR bleibt draußen
 
-Status: angenommen (Maintainer, 2026-09-01). Kontext: Trockenlauf der
-zweiten Baldrian-Lieferung.
+**Status:** angenommen am 2026-09-01 (Maintainer). Anlass war der
+Trockenlauf der zweiten Baldrian-Lieferung.
 
 ## Kontext
 
 Die Meldungs-Vorverdichtung (`quellen.tarifplan_staging`) las bis heute
-ausschliesslich DOCX. Real liefern Quellsysteme aber überwiegend PDF —
+ausschließlich DOCX. Real liefern Quellsysteme aber überwiegend PDF —
 teils mit Textlayer, teils als Scan. Die zweite Baldrian-Lieferung
 enthält die Mitteilung 143 als PDF (Doku-Engine-Artefakt); der
 maschinelle Trockenlauf vor dem Merge blieb an genau dieser Stelle
@@ -19,10 +19,10 @@ Lieferungen nicht durchführbar.
    unterschieden, mit identischer JSON-Ausgabestruktur (`--input`;
    `--docx` bleibt als Altname). Die Vorverdichtung bleibt der eine
    deterministische Weg zum LLM-Input (P10 unverändert).
-2. PDF heisst TEXT-PDF: extrahiert wird der Textlayer, zeilenerhaltend
+2. PDF heißt Text-PDF: extrahiert wird der Textlayer, zeilenerhaltend
    (der Formelsatz alter Meldungen trägt Bedeutung im Zeilenlayout),
    je Absatz die Seite als Fundstelle. Ein PDF ohne Textlayer (Scan)
-   ist ein harter Fehler mit benanntem Ausweg — OCR ist bewusst NICHT
+   ist ein harter Fehler mit benanntem Ausweg — OCR ist bewusst nicht
    Teil der Stufe: es ist nicht deterministisch genug für einen
    Vorverdichter und extern beschaffbar (Backlog, falls es je in die
    Pipeline soll).

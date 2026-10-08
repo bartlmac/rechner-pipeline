@@ -11,8 +11,8 @@ jeder Agenten-Aussage (Akteur-Konvention
 ## Die Verteilungsregel (Wiederholung aus dem Pipeline-Dokument, weil
 sie die Skill-Grenzen definiert)
 
-Was GELTEN muss, lebt in Code und Gates (erzwungen, nicht empfohlen).
-Was URTEILEN anleitet, lebt in Skills. Was ZEIGT, lebt im
+Was gelten muss, lebt in Code und Gates (erzwungen, nicht empfohlen).
+Was Urteilen anleitet, lebt in Skills. Was zeigt, lebt im
 Präzedenzfall. Ein Skill, der versucht, Geltung zu erzeugen
 ("bitte halte dich an ..."), ist ein Architekturfehler — die Regel
 gehört dann in ein Gate oder einen Validator.
@@ -24,13 +24,13 @@ ausübt. Seit ADR-018 gibt es genau vier Agentenrollen, versioniert als
 Definitionen unter `.claude/agents/` (gespiegelt in `.agents/agents/`,
 Parität test-tragend). Sie legen vor und zeichnen nie; jede hat ein
 menschliches Gegenstück, das mit seinem Schlüssel zeichnet. Es trägt
-seit dem Entscheid vom 2026-09-16 DENSELBEN Namen mit dem Präfix
+seit dem Entscheid vom 2026-09-16 denselben Namen mit dem Präfix
 `mensch/` — `agent/rechenkern` legt vor, `mensch/rechenkern` zeichnet.
 
 | Agentenrolle | Ziel (Perspektive eines laufenden Unternehmens) | Skills |
 |---|---|---|
 | `agent/aktuariat` | fachlich richtig abgebildet: Transformation, drei aktuarielle Abnahmen, Controlling, Bestandsfortführung | transformiere-quellbestand, extrahiere-quellfragment, bereite-fachkonflikt-auf, aktuartest-durchführen, prüfe-migrationscontrolling |
-| `agent/architektur` | in der vorgegebenen Architektur: Schichtenkarte, Nachweiskette, Vertrauensgrenzen, Betrieb | entwickle-im-zielsystem (als Massstab), author-rechner-toolbox-gate, teste-adversarial, integriere-migrationsinkrement, dokumentiere-system |
+| `agent/architektur` | in der vorgegebenen Architektur: Schichtenkarte, Nachweiskette, Vertrauensgrenzen, Betrieb | entwickle-im-zielsystem (als Maßstab), author-rechner-toolbox-gate, teste-adversarial, integriere-migrationsinkrement, dokumentiere-system |
 | `agent/rechenkern` | stabiles Zielsystem: Regressionstests, Referenzwerte, Doku, Inkremente unter ADR-007 | entwickle-im-zielsystem, integriere-migrationsinkrement, teste-adversarial, dokumentiere-system |
 | `agent/programmleitung` | Migration effizient geliefert; orchestriert die drei anderen, hält an jedem Gate an | migrationsfall-durchführen |
 
@@ -42,16 +42,16 @@ Vorzeige hält ihre Auftragsprofile (ADR-017).
 
 ## Skill-Katalog (v1, Fähigkeiten je Skill)
 
-| Rolle | Skill | Kern-Auftrag | Härte-Grenze (was der Skill NICHT darf) |
+| Rolle | Skill | Kern-Auftrag | Härte-Grenze (was der Skill nicht darf) |
 |---|---|---|---|
 | Fall-Orchestrierung | `migrationsfall-durchfuehren` | einen Migrationsfall systematisch durch die drei Stufen und Gates führen | menschliche Gates überspringen; Diskrepanzen endgültig auflösen |
-| Quell-Extraktion | `extrahiere-quellfragment` | EINE Quelle in ein QuellFragment übersetzen (Structured Output, generiertes Schema) | die andere Quelle sehen; raten statt `nicht_belegt`; Rohquellen lesen |
+| Quell-Extraktion | `extrahiere-quellfragment` | Eine Quelle in ein QuellFragment übersetzen (Structured Output, generiertes Schema) | die andere Quelle sehen; raten statt `nicht_belegt`; Rohquellen lesen |
 | Entwicklung | `entwickle-im-zielsystem` | Code unter der nicht verhandelbaren Architektur bauen (Schichtenkarte, Determinismus, Fail-fast, Knoten-Annotation, Test-Pflicht) | Architektur "pragmatisch" brechen; ohne Tests committen; Kern-Verankerungen anfassen |
 | Qualitätssicherung | `teste-adversarial` | Blöcke adversarial reviewen (Finden -> Widerlegen -> Fixen -> Regressionstest) und die Test-Disziplin tragen (Mutations-Denken, unabhängige Kontrollrechnung) | Findings ungeprüft übernehmen; grüne Suiten als Beleg für Vollständigkeit lesen |
 | Dokumentation | `dokumentiere-system` | Doku unter den Repo-Regeln (generiert schlägt handgeschrieben, ein Zuhause je Typ, ADR-Format, Ehrlichkeits-Abschnitte) | Inhalte doppeln (Drift); Grenzen beschönigen |
 | Quellbestand-Transformation | `transformiere-quellbestand` | Mapping des gelieferten Bestandsabzugs in die Ziel-Ontologie vorschlagen (TransformationsSpec); Berechnungen nur aus dem Katalog, Unklarheit wird offener Konflikt | Mapping anwenden/pruefen (deterministischer Code); offene Konflikte entscheiden (Mensch); Ontologie erweitern (A-O1) |
-| Fachkonflikt-Aufbereitung | `bereite-fachkonflikt-auf` | Diskrepanzen verifizieren, einordnen, Auswirkungen RECHNEN, Entscheidungs-Dossier + Empfehlung liefern, dann STOPP | entscheiden (auch nicht "offensichtliche" Fälle); Quellen-Hierarchie festlegen |
-| Gate-Autorenschaft | `author-rechner-toolbox-gate` | neue Prüf-CLIs unter dem Ledger-/Exit-Contract | Fachlogik ausserhalb des Prüfens |
+| Fachkonflikt-Aufbereitung | `bereite-fachkonflikt-auf` | Diskrepanzen verifizieren, einordnen, Auswirkungen rechnen, Entscheidungs-Dossier + Empfehlung liefern, dann STOPP | entscheiden (auch nicht "offensichtliche" Fälle); Quellen-Hierarchie festlegen |
+| Gate-Autorenschaft | `author-rechner-toolbox-gate` | neue Prüf-CLIs unter dem Ledger-/Exit-Contract | Fachlogik außerhalb des Prüfens |
 | Aktuarieller Test | `aktuartest-durchfuehren` | die drei Abnahmen je Vertrag an seinen eigenen Rechenpunkten fahren (Engine, aktuartest-Gate) und je Abnahme eine Vorlage aufbereiten: A-M1 Stichtagstest, A-M2 Verlaufstest, A-M3 Geschäftsvorfalltest | abnehmen (Mensch, A-M1); Werte selbst rechnen; interpolieren oder summieren (Engine verbietet es); Toleranzen aufweichen |
 | Migrationscontrolling | `pruefe-migrationscontrolling` | deterministisches Controlling über zwei Stichtage und jeden Vertrag (Migrationssuite, GeVo-Vergleich, Mapping-Tabelle, Bestandsberichte vor/nach) als A-M4-Vorlage aufbereiten | abnehmen (Mensch, A-M4); Werte selbst rechnen; Toleranzen aufweichen; Erwartungswerte "korrigieren" |
 | Migrations-CI | `integriere-migrationsinkrement` | Code-Änderungen während laufender Migrationen als kleine knotengebundene Inkremente integrieren (ADR-007: Impact, Gesamt-Suite inkl. aller Fälle, benanntes Staging) | langlebige Branches oder Kern-Forks; Landung ohne fallübergreifenden Beweis; Rückgrat ohne Koordination; Push (Mensch) |
@@ -91,8 +91,8 @@ migrationsfall-durchfuehren
 ```
 
 Menschliche Gates (A-Q1/A-O1/A-K2/A-M1/A-M2/A-M3/A-M4, P9-Snapshots) sind
-KEINE Skills — sie sind Werkzeuge fuer Menschen (`ontologie.entscheide`,
-`gates.gate_entscheid`); wer zeichnet, wird aus dem Schluessel ueber die
+keine Skills — sie sind Werkzeuge für Menschen (`ontologie.entscheide`,
+`gates.gate_entscheid`); wer zeichnet, wird aus dem Schlüssel über die
 Zeichnungsordnung bestimmt (ADR-018). Skills bereiten sie vor und halten
 an ihnen an.
 
@@ -121,5 +121,5 @@ als eigener Skill mit demselben Muster:
 3. Ein Skill nennt seine Grenze so präzise wie seinen Auftrag —
    "Skip for" ist Pflicht, Überlappungen zwischen Skills sind ein
    Befund.
-4. Prinzipien (P1-P10) werden in Skills ZITIERT, nicht dupliziert;
+4. Prinzipien (P1-P10) werden in Skills zitiert, nicht dupliziert;
    die Quelle ist das Architektur-Dokument.

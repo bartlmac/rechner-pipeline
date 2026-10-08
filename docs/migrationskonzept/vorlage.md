@@ -425,7 +425,7 @@ Diese vier Punkte sind der Arbeitsvorrat dieser Prüfebene. Sie stehen
 hier, damit eine Abnahme weiß, was sie abnimmt.
 
 ⟨TODO aus dem Gerüst, noch offen: Clusterdefinition nach
-GV-Historientyp aus Lieferobjekt 2; Ausreisser-Klärungsworkflow mit
+GV-Historientyp aus Lieferobjekt 2; Ausreißer-Klärungsworkflow mit
 Zugriff auf die Quellhistorie; Stichprobenkonzept jenseits des Profils
 `vollbestand`; Form des Abnahmeberichts an den Verantwortlichen
 Aktuar⟩

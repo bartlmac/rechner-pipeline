@@ -1,12 +1,10 @@
-# ADR-008: Signierte P9-Freigaben ausserhalb des Falls
+# ADR-008: Signierte P9-Freigaben außerhalb des Falls
 
-Status: Angenommen  
-Datum: 2026-08-20  
-Entscheider: Auftraggeber durch ToDo 10.2
+**Status:** angenommen am 2026-08-20 (Maintainer).
 
 ## Kontext
 
-Ein P9-Snapshot lag bisher ausschliesslich im frei editierbaren
+Ein P9-Snapshot lag bisher ausschließlich im frei editierbaren
 Fall-Arbeitsbereich. Sein gespeicherter Eigenhash wurde beim Lesen nicht
 nachgerechnet; Gate, Command, Version, Dateiname und Vorgängergraph waren
 ebenfalls nicht vollständig validiert. Ein handgeschriebener A-Q1-Snapshot
@@ -16,7 +14,7 @@ freischalten, obwohl die behaupteten Gates nie gelaufen waren.
 Ein kanonischer Hash erkennt versehentliche oder nachträgliche Änderungen,
 beweist allein aber keine menschliche Autorisierung: Wer den Fall ändern
 kann, kann auch einen neuen Hash berechnen. Die Autorität muss deshalb
-ausserhalb des Falls liegen oder asymmetrisch signieren. Das Python-Paket
+außerhalb des Falls liegen oder asymmetrisch signieren. Das Python-Paket
 soll zugleich SDK-frei bleiben und keine neue Kryptografie-Abhängigkeit
 erhalten.
 
@@ -31,7 +29,7 @@ erhalten.
 2. P9-Snapshot-Schema ab v2 bindet Schema, Command `gate_entscheid`,
    Gate-Version, Gate, Entscheid, Rolle, Begründung, Fall, Artefakt-Hashes,
    Systemstand, Entscheidungszeit, Vorgänger und bei A-M4 die P-K1-Belegmenge.
-   Der kanonische SHA-256 umfasst alle persistierten Felder ausser sich
+   Der kanonische SHA-256 umfasst alle persistierten Felder außer sich
    selbst. Der Dateiname ist `<gate>-<vollstaendiger-sha256>.json`.
 3. Beim Lesen wird jeder Snapshot des Gates validiert. Jeder Vorgänger muss
    existieren, der Graph muss zyklenfrei sein und genau eine Spitze besitzen.
@@ -43,7 +41,7 @@ erhalten.
    Schlüssels und Signatur, niemals Schlüsselbytes oder -pfad.
 5. `--freigabe-schluessel <datei>` ist für eine Annahme erforderlich. Die
    Datei muss mindestens 32 kryptografisch zufällige Byte lang sein,
-   ausserhalb des Falls liegen und unter POSIX Rechte 0600 sowie genau einen
+   außerhalb des Falls liegen und unter POSIX Rechte 0600 sowie genau einen
    Hardlink besitzen. Das Flag ist für einen Schlüsselring
    wiederholbar: alle angegebenen Schlüssel prüfen historische Snapshots,
    der letzte signiert einen neuen. Pfade werden im Gate-Ledger redigiert.
@@ -94,7 +92,7 @@ erhalten.
 
 - Nur Eigenhash und inhaltsadressierter Dateiname: verworfen, weil ein
   Fallschreiber beides neu berechnen kann.
-- Eine zweite frei beschreibbare Referenzdatei ausserhalb `entscheide/` aber im
+- Eine zweite frei beschreibbare Referenzdatei außerhalb `entscheide/` aber im
   selben Fall: verworfen, weil sie dieselbe Autoritätsgrenze hätte.
 - Eine neue asymmetrische Kryptografie-Abhängigkeit: für diese Version
   verworfen, weil sie Paket-, ADR- und Betriebsaufwand erzeugt, obwohl eine

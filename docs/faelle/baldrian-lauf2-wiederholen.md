@@ -1,10 +1,15 @@
 # Den zweiten Baldrian-Lauf nachfahren
 
+> **Historisch.** Lauf 2 ist durch Fall 3 ersetzt. Diese Anleitung braucht
+> ein Paket, das nicht im Repository liegt; sie richtete sich an die
+> Beteiligten des Laufs. Was sich heute aus dem Repository allein
+> nachfahren lässt, ist Fall 3 (siehe [README](../../README.md),
+> Schnellstart, und [pakete/](../../pakete/README.md)).
+
 Kurzanleitung für alle, die den Lauf vom September mit dem Repository und
-dem beigelegten Paket wiederholen wollen. Das ist unser Fallback: Der
-eigentliche Weg ist ein neuer Lauf (Fall 3) auf dem aktuellen Code. Wer
-den alten Lauf trotzdem exakt sehen will, findet hier den Stand, die
-Umgebung und einen Ablauf, der in etwa zehn Minuten durchläuft.
+dem Paket des Laufs wiederholen wollen. Wer den alten Lauf exakt sehen
+will, findet hier den Stand, die Umgebung und einen Ablauf, der in etwa
+zehn Minuten durchläuft.
 
 ## Der Stand
 
@@ -22,8 +27,8 @@ später zweimal neu gezeichnet (7. und 20. September); am Lauf selbst
 
 ## Was du brauchst
 
-Das Paket `baldrian-lauf2-stufe1-paket` (kommt mit der Mail; im Repository
-liegt es nicht, weil der Fall-Arbeitsbereich nicht versioniert ist). Es
+Das Paket `baldrian-lauf2-stufe1-paket`. Im Repository liegt es nicht, weil
+der Fall-Arbeitsbereich nicht versioniert ist. Es
 enthält alles, was im Lauf ein Agent oder ein Mensch erzeugt hat: die
 A-Box mit den vierzehn entschiedenen Diskrepanzen, Spez und Fachspez, die
 Vorverdichtung der Quellen, die Transformationsvorschrift für den

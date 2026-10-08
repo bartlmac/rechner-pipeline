@@ -62,7 +62,7 @@ Bestandsstruktur nach Vorgeschichte: 257 Verträge ohne Vorgeschichte,
 360 mit dynamischen Erhöhungen (mehrjährige Erhöhungsserien sind
 der Regelfall, nicht die Ausnahme), 160 beitragsfrei gestellte, 57 mit
 Herabsetzung — darunter kombinierte Verläufe (Erhöhungsserie mit
-anschliessender Herabsetzung oder Beitragsfreistellung) als gut ein
+anschließender Herabsetzung oder Beitragsfreistellung) als gut ein
 Fünftel der Stichprobe.
 
 ## 3 Feststellungen zum Quell-Tarifwerk
@@ -84,9 +84,9 @@ Verantwortlichen Aktuar bestätigt:
    Referenzwerten systematisch um rund 2 % ab.
 3. **Volle Beitragsformel je Erhöhungsbaustein**: Jede dynamische
    Erhöhung ist ein eigenständiger Baustein mit eigener
-   Wertermittlung einschliesslich aller Kostenbestandteile
+   Wertermittlung einschließlich aller Kostenbestandteile
    (Bedingungswerk Ziffer 3) — anders als in der ersten Lieferung,
-   deren Tarifmitteilung die Stückkosten auf der Grundsumme beliess.
+   deren Tarifmitteilung die Stückkosten auf der Grundsumme beließ.
 4. **Stornoabzug je Baustein**: Mindest- und Höchstbetrag werden für
    Grundversicherung und jede Erhöhung einzeln erhoben; der
    Rückkaufswert des Vertrags ist die Summe der Baustein-
@@ -107,7 +107,7 @@ Verantwortlichen Aktuar bestätigt:
 
 Die Übernahme folgt der konstruktiven Neuberechnung: Das Zielsystem
 rechnet jeden Vertrag aus seinen Ursprungsparametern selbst; der
-gelieferte Stand geht ausschliesslich in das Verankerungs-Residuum
+gelieferte Stand geht ausschließlich in das Verankerungs-Residuum
 ein, das eine je Vertrag parametrierte Korrekturschicht über die
 Restlaufzeit trägt (Formfunktion proportional zum Basisverlauf,
 Verankerung am letzten Vertragsjahrestag vor dem Stichtag,
@@ -118,7 +118,7 @@ Gesamtsummen-Inversion, Herabsetzungen nach der
 Teilkündigungs-Semantik der Quelle.
 
 Toleranzen folgen der Fehlerfortpflanzung der Lieferung, nicht einem
-Pauschalmass: Jeder für sich gerundete Baustein eines Lieferwerts
+Pauschalmaß: Jeder für sich gerundete Baustein eines Lieferwerts
 erweitert die zulässige Abweichung um einen halben Cent — dieselbe
 Regel in Stichtagstest, Migrationscontrolling und der unabhängigen
 Nachrechnung des Abnahmeberichts.
@@ -179,7 +179,7 @@ Schreibweise des damaligen Vier-Rollen-Modells (``mensch``, Entscheider
 **Schlüssel.** Gezeichnet wurde mit einem Simulationsschlüssel,
 Fingerabdruck ``162817c937c33d0a…``. Er weist die Rolle nach, nicht die
 Identität einer Person; das Mandat, in dem die Rolle handelte, liegt
-ausserhalb des Falls und ist im Snapshot gebunden. Die Snapshots sind
+außerhalb des Falls und ist im Snapshot gebunden. Die Snapshots sind
 mit HMAC-SHA-256 signiert und bleiben gültig; sie werden nicht
 nachsigniert. Wer sie prüft, erkennt die Simulation an der
 Schlüsselklasse und am Fingerabdruck (geltende Snapshots: Schema-Version
@@ -228,30 +228,30 @@ auf dem neuen Stand unverändert bestanden (100/100, 100/100, 166/166,
 (Korrektur 25: die Kettenprüfung der Entscheide unterscheidet seither
 den Stand, auf dem ein Vorgänger gezeichnet wurde, von dem geltenden
 Belegvertrag; Stand f7c545d). Der Tagesbetrieb der PLV wird aus der neuen
-Uebernahme neu aufgesetzt (Betriebsweg, offen).
+Übernahme neu aufgesetzt (Betriebsweg, offen).
 
 ## Nachtrag 2026-09-30: Systemstand des Laufs und Wiederholung
 
 Der Lauf selbst — Registrierung der Lieferung am 01.09.2026, die vier
-Auskunftsschreiben, die Producer-Kette und alle fuenf Zeichnungen (A-Q1
+Auskunftsschreiben, die Producer-Kette und alle fünf Zeichnungen (A-Q1
 fd793260 bis A-M4 32682e95, gezeichnet am 02.09.2026, 00:48 bis 00:49
 Uhr) — fand auf Systemstand `4b1abf04` statt (Kern 3.3.0,
-Quelltext-Pruefsumme `ef1af1a3...`). Abschnitt 1 nennt diese fuenf
+Quelltext-Prüfsumme `ef1af1a3...`). Abschnitt 1 nennt diese fünf
 Snapshot-Kennungen und zugleich "Stand f7c545d": Die Kennungen sind die
 des Laufs, der Stand ist der der Neuzeichnung vom 07.09.2026 (Korrekturen
-24 und 25). Beides ist richtig, aber nicht dasselbe. Die fuenf Gates
+24 und 25). Beides ist richtig, aber nicht dasselbe. Die fünf Gates
 wurden am 20.09.2026 ein zweites Mal neu gezeichnet, auf `17091b39`
 (Korrektur 26: PEX-Zuschlag; Korrektur 27: Laufmanifest als Pflichtbeleg
 von A-M4; `dev-docs/annahmen-2026-09-20.md`); das ist die heute geltende
 Spitze der Snapshots.
 
 Wer den Lauf nachstellen will, nimmt `4b1abf04`. Die Anleitung dazu —
-Systemstand, was das Repository traegt, die drei Sorten Schritte, der
+Systemstand, was das Repository trägt, die drei Sorten Schritte, der
 eigene Bestand ohne die Lieferung, die gemessene Kommandofolge und die
 Referenzwerte — steht in `baldrian-lauf2-wiederholen.md`; die Kennzahlen
-sind dort auf zwei Staenden nachgemessen. Nebenbefund derselben Messung:
+sind dort auf zwei Ständen nachgemessen. Nebenbefund derselben Messung:
 Das `bestand/`-Verzeichnis des Lauftags entstand vor der
 A-Q1-Zinsentscheidung, der von A-M4 gebundene P-B1-Beleg liegt damit auf
-einem Ledger mit 1,75 % Rechnungszins, waehrend die gezeichnete Spez
-1,25 % traegt — dieselbe Inkonsistenz wie in der Bestand-Config, die
+einem Ledger mit 1,75 % Rechnungszins, während die gezeichnete Spez
+1,25 % trägt — dieselbe Inkonsistenz wie in der Bestand-Config, die
 Korrektur 24 behoben hat.

@@ -177,7 +177,7 @@ eintreten könnte; nach heute ist nichts geschehen, was zu buchen wäre.
 Der zweite Baldrian-Lauf hat den übernommenen Bestand als
 `abgeleitet/bestand-nach/` hinterlassen (Stamm, Historie, Ledger mit
 ZUG-/PEX-Umbuchungen zum Stichtag, Merkmale). ADR-015 legt fest, dass ein
-übernommener Bestand im SELBEN Strom fortgeschrieben wird wie das eigene
+übernommener Bestand im selben Strom fortgeschrieben wird wie das eigene
 Geschäft (`cli_fortschreibung --uebernahme`).
 
 Für den Tagesbetrieb heißt das: Die Laufzeitumgebung erhält den
@@ -300,7 +300,7 @@ Stand läuft dann weiter, weil der Eingang geführt wird.
 ## 7 Der Tageslauf
 
 Ein Kommando, `python -m rechner_pipeline.betrieb.tageslauf --stand
-<daten> --heute <datum> --schluessel <betriebsschlüssel>
+<daten> --heute <datum> --schluessel <betriebsschluessel>
 --zeichnungsordnung <ordnung>`, idempotent und deterministisch. Ohne `--heute`
 gilt der Kalendertag des Aufrufs; in Tests und beim Nachholen wird er
 gesetzt.
@@ -330,7 +330,7 @@ gesetzt.
    sagte „am letzten Kalendertag", Umsetzung und Begründung machten den
    Ersten — Nebenhinweis des Reviews T22; der Text folgt jetzt dem Code.)
 
-   **Bewertung zum Monatsersten heißt: die am Monatsersten GEBUCHTE
+   **Bewertung zum Monatsersten heißt: die am Monatsersten gebuchte
    Sicht** (Review T24-02). Ein Abschluss ist der Stand, den das
    Unternehmen an seinem Stichtag hatte, nicht der Stand, den es später
    rückblickend für diesen Stichtag ausrechnet. Ein Todesfall mit Wirkung
@@ -393,7 +393,7 @@ gesetzt.
 
    **Aufschaltung.** Eine Ablage, die vor dem Betriebsschlüssel geführt
    wurde, wird nicht neu aufgesetzt: Beim ersten Lauf nach dem Umstieg
-   schaltet der Mensch sie EINMAL ausdrücklich auf (`--aufschalten`), und
+   schaltet der Mensch sie einmal ausdrücklich auf (`--aufschalten`), und
    die erste gezeichnete Zeile pinnt den ungezeichneten Vorlauf
    (`vorlauf`: Zahl und SHA-256 der rohen Zeilen); eine spätere Änderung
    darin bricht den Pin. Ohne den Schalter verweigern Lauf, Export und
@@ -531,7 +531,7 @@ kennt die Zukunft nicht, er entdeckt sie jeden Tag neu. Eine
 Prognosekurve wäre hier eine Behauptung über Tage, die noch nicht
 stattgefunden haben.
 
-Der Fallbericht behält seine Projektion. Im Migrationsfall IST der
+Der Fallbericht behält seine Projektion. Im Migrationsfall ist der
 prognostizierte Verlauf der Gegenstand: Er zeigt, wie sich der
 übernommene Bestand nach der Migration entwickelt. Beide Formen sind
 derselbe Renderer mit zwei verschiedenen Fragen, und sie schließen

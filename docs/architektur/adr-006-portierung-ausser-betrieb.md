@@ -1,12 +1,8 @@
-# ADR-006: Der Portierungs-Anwendungsfall wird ausser Betrieb genommen
+# ADR-006: Der Portierungs-Anwendungsfall wird außer Betrieb genommen
 
-Status: akzeptiert (Maintainer, 2026-08-17). Umgesetzt: Entfernung aus dem
-Hauptzweig; konserviert auf Branch `parked/portierung-excel`, Tag
-`portierung-excel-2026-08`. *(Nachtrag 2026-08-19: Branch und Tag
-wurden vor der Veröffentlichung aus dem Arbeits-Repo entfernt — sie
-zeigten in die klarnamen-bereinigte Vorgänger-Historie. Das Konservat
-liegt vollständig im nicht veröffentlichten Archiv des Maintainers,
-als Git-Bundle.)*
+**Status:** angenommen am 2026-08-17 (Maintainer), umgesetzt: Die
+Portierung ist aus dem Hauptzweig entfernt. Ihr letzter Stand ist
+außerhalb des veröffentlichten Repositorys archiviert.
 
 ## Kontext
 
@@ -27,7 +23,7 @@ verschoben:
   Zustandsmodell-Welt (ADR-004). Die Excel-Parität ist kein laufender Referenzwert mehr.
 * Eine neue Tarifgeneration ist **Parametrierung** — der Präzedenzfall
   TG2012 -> TG2015 lief ohne eine einzige Formeländerung durch.
-* Ein neues Produkt kommt über die T-Box (Gate A-O1) und wird IM
+* Ein neues Produkt kommt über die T-Box (Gate A-O1) und wird im
   Zielsystem entwickelt — nicht durch die Übersetzung einer weiteren
   Arbeitsmappe.
 
@@ -42,7 +38,7 @@ tauchte in Gesprächen als vermeintlich lebender Pfad wieder auf.
 Der Portierungs-Anwendungsfall wird aus dem Hauptzweig entfernt. Was
 fällt:
 
-* **Gates**, die einen GENERIERTEN Kern prüfen: `validate` (der
+* **Gates**, die einen generierten Kern prüfen: `validate` (der
   Sechs-Datei-Contract), `security` und `conventions` (statische Prüfung
   fremden Codes), `golden_master` als eigenständiges Gate, `roundtrip`,
   `algebraic`, sowie `dossier` und `report` (Aggregation der Kette).
@@ -58,7 +54,7 @@ fällt:
 * **Der Skill** `build-vergleichsrechenkern` (beide CLI-Verzeichnisse)
   und `qa_contract.json`.
 
-Was ausdrücklich BLEIBT, weil es der Migration dient und nicht der
+Was ausdrücklich bleibt, weil es der Migration dient und nicht der
 Portierung:
 
 * **Die Vorverdichtung**: `gates/extract`, `quellen/adapters/`,
@@ -79,20 +75,20 @@ Portierung:
 
 Gate G6 war kein Portierungs-Artefakt. Es prüft aktuarielle
 Identitäten, Schranken und Rekursionen mit Hypothesis — ausdrücklich
-EXCEL-UNABHAENGIG, als Gegengewicht dazu, dass ein Wertevergleich auf
+Excel-unabhängig, als Gegengewicht dazu, dass ein Wertevergleich auf
 vier Nachkommastellen relative Drift verstecken kann. Dieser Nutzen gilt
 für den Zielkern genauso.
 
 Die Identitäten leben deshalb weiter in
-`tests/test_kern_algebraisch.py`, geprüft gegen den ZIELKERN über vier
+`tests/test_kern_algebraisch.py`, geprüft gegen den Zielkern über vier
 Rechnungsbasen: Schranken für `q_x`, die Endalter-Politik, die
 Barwert-Bilanz `A_x + d·ae_x = 1`, `ae_x = (1 - A_x)/d`, beide
 Rekursionen, die Nettobeitrags-Definition und das Äquivalenzprinzip;
 die Kommutations-Identitäten (D/N/C/M) gegen den Zweitkern.
 
-Was entfällt, ist die VERTRAGSMECHANIK des Gates: `function_mappings`,
+Was entfällt, ist die Vertragsmechanik des Gates: `function_mappings`,
 dynamische Auflösung per `importlib`, ein Contract-JSON. Sie existierte,
-weil der zu prüfende Kern ein FREMDES Artefakt unbekannter Modulstruktur
+weil der zu prüfende Kern ein fremdes Artefakt unbekannter Modulstruktur
 war. Unser Kern ist unser Code — wir importieren ihn direkt. Nicht
 übernommen sind die `l_x`-Identitäten: der Zielkern kennt keine
 Absterbeordnung, dort wäre die Rekursion eine Tautologie über eine
@@ -111,7 +107,7 @@ Größe, die es nicht gibt.
   Branch — nicht als lebenden Pfad.
 * ADR-001 und ADR-002 beschreiben Strukturen, die es teilweise nicht
   mehr gibt (`orchestrate/`, `kern_output`, `assurance --fall`). Sie
-  werden NICHT umgeschrieben — ein ADR ist Protokoll, kein Handbuch —,
+  werden nicht umgeschrieben — ein ADR ist Protokoll, kein Handbuch —,
   sondern tragen einen Ablösungsvermerk auf dieses ADR.
 * Rückweg: der konservierte Stand ist vollständig und lauffähig im
   Archiv des Maintainers erhalten (Git-Bundle, siehe Nachtrag oben).

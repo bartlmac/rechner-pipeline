@@ -1,6 +1,7 @@
-# ADR-013: Der Kommutations-Kreuzcheck wird ausser Betrieb genommen
+# ADR-013: Der Kommutations-Kreuzcheck wird außer Betrieb genommen
 
-Status: akzeptiert (Maintainer, 2026-08-28). Löst Punkt 2 von ADR-004 ab.
+**Status:** angenommen am 2026-08-28 (Maintainer). Löst Punkt 2 von
+ADR-004 ab.
 Umgesetzt: `rechner_pipeline.qa.ueberleitung` entfernt; der Zweitkern
 `rechner_pipeline.kommutationskern` bleibt ohne Konsumenten im
 Produktivpfad.
@@ -11,7 +12,7 @@ ADR-004 hat 2026-08-16 die Kommutation aus dem Zielkern gezogen und als
 separaten Zweitkern geführt, mit genau einem Zweck: dem Kreuz-Check der
 beiden Rechenschienen. Der Zielkern rechnet Thiele auf einem
 (Semi-)Markov-Zustandsmodell, der Zweitkern dieselbe Mathematik in der
-geschlossenen Kommutationsform; `qa/ueberleitung` liess beide über
+geschlossenen Kommutationsform; `qa/ueberleitung` ließ beide über
 denselben Produktcode laufen und verglich.
 
 Das war der **Übersetzungsbeleg** des Backbone-Wechsels: 6170 Werte, 0
@@ -22,7 +23,7 @@ mit — und kostet mehr als die Wartung zweier Pakete.
 
 **Er formt den Zielkern.** Damit der Zweitkern eingehängt werden kann,
 hält `ZustandsBarwerte` (`kern/zustandsmodell.py`) das
-`Barwerte`-Interface aufrecht: drei EINHEITS-Barwerte — Rente,
+`Barwerte`-Interface aufrecht: drei Einheits-Barwerte — Rente,
 Todesfall, Erleben. Mehr gibt die Kommutation nicht her; D/N/C/M können
 keinen beliebigen Zahlungsverlauf ausdrücken. Der KLV-Produktcode
 multipliziert diese drei Werte mit Versicherungssumme und Beitrag, und
@@ -38,8 +39,8 @@ eines Altbestands (dev-docs/zahlungspfade-migrierter-vertraege.md).
 
 ## Entscheidung
 
-Der Kreuz-Check wird ausser Betrieb genommen — geschnitten werden die
-ANSPRUECHE des Zweitkerns an den lebenden Code, nicht der Zweitkern
+Der Kreuz-Check wird außer Betrieb genommen — geschnitten werden die
+Ansprüche des Zweitkerns an den lebenden Code, nicht der Zweitkern
 selbst. Was fällt:
 
 * `rechner_pipeline.qa.ueberleitung` samt seinen sieben Tests: die
@@ -52,23 +53,23 @@ selbst. Was fällt:
   keinen Aufrufer mehr.
 * Der Platz des Zweitkerns in der Hausordnung:
   `ZWEITKERN_KONSUMENTEN` steht auf `{"kommutationskern"}`, und der
-  Schichtentest verlangt jetzt die UMKEHRUNG seiner früheren
+  Schichtentest verlangt jetzt die Umkehrung seiner früheren
   Behauptung — er forderte die Kante `qa -> Zweitkern`, er verbietet
   sie nun.
 * Die Docstrings des Zielkerns, die den Zweitkern eine lebende
   Kreuz-Check-Schiene nannten.
 
-**Was BLEIBT: der Zweitkern selbst.** Er ist keine tote Last, sondern
+**Was bleibt: der Zweitkern selbst.** Er ist keine tote Last, sondern
 ein Zeuge — `tests/test_kern_algebraisch.py` hält die Durchreicher
 `pv_benefits`/`pv_premiums`/`net_premium` des Zielkerns gegen ihn. Der
 Docstring dieses Tests hält fest, warum: *"Früher stand hier
 net_premium == pv_benefits/pv_premiums — der Methodenrumpf gegen sich
-selbst, also wahr für JEDE A_x. Jetzt entscheidet ein zweiter,
+selbst, also wahr für jede A_x. Jetzt entscheidet ein zweiter,
 unabhängig gebauter Kern."* Diese Unabhängigkeit aufzugeben wäre ein
 Rückschritt hinter einen Reviewbefund.
 
-Entscheidend ist die Art der Nutzung: Der Test BAUT den Zweitkern
-testseitig selbst und vergleicht Skalare. Er hängt ihn NICHT in den
+Entscheidend ist die Art der Nutzung: Der Test baut den Zweitkern
+testseitig selbst und vergleicht Skalare. Er hängt ihn nicht in den
 Zielkern ein. Damit hat der Zweitkern keinen Anspruch mehr an den
 lebenden Code — und formt ihn auch nicht mehr. Genau das ist die
 Trennlinie, um die es geht.
@@ -144,7 +145,7 @@ Ansprüche; der Code folgt dann von selbst.
   abfragt, bleibt die Schicht; sie fällt mit der Umstellung, nicht mit
   dieser Entscheidung.
 * Die Excel-Parität des Quellrechners (Gate P-K1). Sie prüft eine
-  LIEFERUNG gegen ihren eigenen Rechner und hat mit den internen
+  Lieferung gegen ihren eigenen Rechner und hat mit den internen
   Rechenschienen nichts zu tun.
 
 ## Nachtrag 2026-10-04: Der Zweitkern liegt nicht mehr im Paket

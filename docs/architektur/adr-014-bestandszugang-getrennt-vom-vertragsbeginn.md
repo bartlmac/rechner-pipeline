@@ -1,11 +1,11 @@
 # ADR-014: Bestandszugang getrennt vom Vertragsbeginn
 
-Status: akzeptiert (Auftraggeber, 2026-08-31); umgesetzt in diesem Branch.
+**Status:** angenommen am 2026-08-31 (Maintainer), umgesetzt.
 
 ## Kontext
 
 Der Bestandsbericht führte den übernommenen Baldrian-Bestand ab 2015 in
-den Büchern der Pfefferminzia. Am Fall gemessen: zu JEDEM Stichtag ab
+den Büchern der Pfefferminzia. Am Fall gemessen: zu jedem Stichtag ab
 2015 standen dort alle 500 Verträge mit 38,46 Mio Euro
 Versicherungssumme — elf Jahre bevor die Übernahme stattfand. Das
 Jahresraster des Berichts begann 2015-01-01, der Migrationsstichtag ist
@@ -17,7 +17,7 @@ Unterscheidung. Der Stamm kannte genau ein Anfangsdatum,
 übernommenen Vertrag korrekt 2015: Der Vertrag wurde damals
 geschlossen, die Thiele-Rekursion zählt ab dort, das Eintrittsalter
 bezieht sich darauf. Was nirgends stand, ist der **Bestandszugang** —
-wann der Vertrag in DIESE Bücher kam. Beim eigenen Geschäft fallen
+wann der Vertrag in diese Bücher kam. Beim eigenen Geschäft fallen
 beide zusammen; bei übernommenem liegen elf Jahre dazwischen, in denen
 der Vertrag beim abgebenden Unternehmen stand.
 
@@ -39,7 +39,7 @@ Der Stamm führt eine eigene Spalte `bestandszugang`
 
 * **Eigenes Geschäft**: `bestandszugang == insurance_start`. Der
   Generator setzt sie, für Ursprungsbestand und simulierten Neuzugang
-  gleichermassen.
+  gleichermaßen.
 * **Übernommenes Geschäft**: `bestandszugang` ist der
   Migrationsstichtag. `gates/bestand_uebernehmen` setzt ihn.
 * **Invarianten** (`validate_portfolio`, damit Gate P-B1):
@@ -55,7 +55,7 @@ Wer liest was:
 | Jahresraster des Berichts | `bestandszugang` | Die Reihe beginnt, wo der Bestand beginnt |
 | Bewegungskonto, Zugangsposten | `bestandszugang` | Der Zugang ist die Übernahme, nicht der Abschluss |
 | Ereignis-Sicht (`ledger_mit_bestandszugang`) | `bestandszugang` | Dieselbe Spalte wie das Bewegungskonto, sonst zwei Zugangsjahre |
-| `months_exp`, PEX-Jahr, Vertragsjahre | `insurance_start` | Die Rekursion rechnet den VERTRAG, nicht die Zugehörigkeit |
+| `months_exp`, PEX-Jahr, Vertragsjahre | `insurance_start` | Die Rekursion rechnet den Vertrag, nicht die Zugehörigkeit |
 | Berichtskopf, Zeitraum | beide | Fallen sie auseinander, sagt die Zeile es — daran erkennt der Leser das übernommene Geschäft |
 
 ## Alternativen
@@ -69,13 +69,13 @@ Config auch für die Strukturansichten, wo sie heute optional ist.
 **Aus dem ZUG-Ereignis ableiten.** Der Ledger führt die Zugangsbuchung
 bereits richtig. Verworfen: Die Grundsicht des Berichts hängt dann am
 Ledger, der dort optional ist — ein Bericht ohne Ledger fällt still auf
-den falschen Zeitraum zurück. Ausserdem ist es dieselbe
+den falschen Zeitraum zurück. Außerdem ist es dieselbe
 Zwei-Quellen-Ableitung, die den Fehler erzeugt hat.
 
 **Nebentabelle statt Spalte** (die Bauform von `merkmale.parquet`).
 Verworfen, und der Unterschied ist der Punkt: Eine Nebentabelle ist
 richtig, wenn die Angabe für die meisten Verträge fehlt, weil `NULL`
-dort zweierlei hiesse. Der Bestandszugang ist für JEDEN Vertrag
+dort zweierlei hieße. Der Bestandszugang ist für jeden Vertrag
 definiert, das eigene Geschäft eingeschlossen. Eine immer gefüllte
 Spalte ist kein Sparse-Fall.
 

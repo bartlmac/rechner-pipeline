@@ -1,8 +1,6 @@
 # ADR-009: Fall-Scope und Bestands-Pflichtbelege für A-M4
 
-Status: Angenommen  
-Datum: 2026-08-20  
-Entscheider: Auftraggeber durch ToDo 10.3 und Präzisierung in ToDo 6.2
+**Status:** angenommen am 2026-08-20 (Maintainer).
 
 ## Kontext
 
@@ -14,7 +12,7 @@ Ein pauschaler Dateiname-Check wäre die falsche Reparatur: Ein reiner
 Tariffall hat diese Artefakte fachlich nicht und darf sie nicht künstlich
 erzeugen müssen.
 
-Die drei Bestandsbelege haben unterschiedliche Erzeuger. Eine blosse
+Die drei Bestandsbelege haben unterschiedliche Erzeuger. Eine bloße
 Existenzprüfung belegt weder ihren Zusammenhang noch, dass sie denselben
 Eingangs-, A-Box-, Code-, Bestands- und Stichtagsstand beschreiben.
 
@@ -31,7 +29,7 @@ Eingangs-, A-Box-, Code-, Bestands- und Stichtagsstand beschreiben.
    vollständig geprüfte Migrationssuite und einen grün erzeugten
    HTML-Abnahmebericht.
 4. P-B1 und Suite müssen denselben aktuell vorhandenen Bestand per SHA-256
-   binden. P-B1 muss ausserdem den aktuellen Systemstand tragen; die Suite muss
+   binden. P-B1 muss außerdem den aktuellen Systemstand tragen; die Suite muss
    genau die beiden chronologischen Berichtsstichtage binden.
 5. `gates.abnahmebericht` erzeugt ein grünes Ledger nur mit
    Transformationsspecifikation, Transformationsergebnis und zwei vorhandenen,
@@ -52,7 +50,7 @@ Eingangs-, A-Box-, Code-, Bestands- und Stichtagsstand beschreiben.
    Portfolio-Eingang neu und führt die produktiven P-B1-Engines auf den
    strukturiert persistierten Eingangsrollen und Optionen erneut aus. Die
    Suite wird semantisch erneut validiert; P-B1-Portfoliozeilen und
-   vollständige Suite-Prüfmenge müssen exakt übereinstimmen. Schliesslich
+   vollständige Suite-Prüfmenge müssen exakt übereinstimmen. Schließlich
    liest A-M4 die vier Renderer-Artefakte aus ihren Rollen neu, gleicht Spec und
    Transformationsergebnis typ- und wertgenau mit dem kanonischen
    Renderer-Vertrag ab, leitet Zeilenzahlen, Befunde und Konflikte aus den
@@ -126,7 +124,7 @@ Eingangs-, A-Box-, Code-, Bestands- und Stichtagsstand beschreiben.
 ## Nachtrag 2026-08-26 (ADR-010)
 
 Die Pflichtbelegmenge dieses ADR beschreibt ab hier das Gate A-M4. Mit
-ADR-010 wird die scope-getriebene Belegmenge JE GATE aufgelöst
+ADR-010 wird die scope-getriebene Belegmenge je Gate aufgelöst
 (`fall.BELEGROLLEN`): Das neue menschliche Gate A-M1 (aktuarielle
 Abnahme) trägt eine eigene Rollenmenge — im Bestands-Scope das
 Testergebnis und der Bericht des aktuariellen Tests, im Tarif-Scope

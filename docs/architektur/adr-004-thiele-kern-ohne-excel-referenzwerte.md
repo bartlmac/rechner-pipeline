@@ -1,11 +1,11 @@
 # ADR-004: Der Zielkern ist Thiele-Welt — Excel-Parität ist Übersetzungsbeleg, kein laufender Referenzwert
 
-Status: akzeptiert (Maintainer, 2026-08-16). Umgesetzt: Kern 3.0.0
-(`kern/tafeln.py`, `rechner_pipeline.kommutationskern`).
+**Status:** angenommen am 2026-08-16 (Maintainer), umgesetzt mit Kern
+3.0.0 (`kern/tafeln.py`, `rechner_pipeline.kommutationskern`).
 
 > **Punkt 2 abgelöst durch [ADR-013](adr-013-kommutations-kreuzcheck-ausser-betrieb.md)
 > (2026-08-28):** Der Kommutations-Zweitkern und der Kreuz-Check sind
-> ausser Betrieb. Der Übersetzungsbeleg ist erbracht und bleibt hier
+> außer Betrieb. Der Übersetzungsbeleg ist erbracht und bleibt hier
 > zitierbar; die Sicherung des Kernverhaltens tragen seither die
 > eingefrorenen Referenzwerte. Alles Übrige dieser Entscheidung gilt
 > unverändert.
@@ -16,12 +16,12 @@ Der Zielkern rechnet seit Version 2.0.0 auf einem
 (Semi-)Markov-Zustandsmodell mit Thiele-Rekursion — trug aber weiter
 drei Bezüge zur Excel-Historie mit sich:
 
-1. Die **617/617-Excel-Paritaet** (einmalige Übersetzungsabnahme vom
+1. Die **617/617-Excel-Parität** (einmalige Übersetzungsabnahme vom
    22.07.2026) lief als dauerhafter Kern-Test mit eingecheckten
    Erwartungswert-Fixtures weiter — als wäre sie ein laufender Referenzwert.
 2. **Kommutationswerte** (D/N/C/M) lebten als `kern/kommutation.py` im
    Kern, obwohl der produktive Pfad sie nirgends braucht: das
-   Zustandsmodell konsumiert ausschliesslich reine qx-Vektoren.
+   Zustandsmodell konsumiert ausschließlich reine qx-Vektoren.
 3. Der Verlauf war **blattfest auf 51 Zeilen (0..50)** gedeckelt — die
    Zeilenzahl des Quell-Verlaufsblatts als Domänengrenze des Kerns.
 
@@ -62,10 +62,10 @@ eine historische Workbook.
   `kern/__init__`-Docstring beschreibt den neuen Stand (Referenzwerte,
   Überleitung, algebraische Gates, Gate P-K1 je Fall).
 - Rechenwerte sind unverändert: der produktive Pfad nutzte schon
-  vorher ausschliesslich qx. Beleg: alle Charakterisierungs-Referenzwerte
+  vorher ausschließlich qx. Beleg: alle Charakterisierungs-Referenzwerte
   bit-exakt grün, Gate P-K1 des Präzedenzfalls klv-tg2015 weiter
   616 Werte / 0 Abweichungen.
-- Die Bestand-Engine behält ihr Verlaufsfenster 0..50 als EIGENE
+- Die Bestand-Engine behält ihr Verlaufsfenster 0..50 als eigene
   konservative Grenze (so dokumentiert); sie ist Kandidat für eine
   tafelbewusste Endalter-Prüfung je Generation (Roadmap).
 - `berechne()` bleibt die Golden-Master-Contract-View für
@@ -76,6 +76,6 @@ eine historische Workbook.
 ## Verworfene Alternative
 
 Kommutation als "tote" Schicht im Kern belassen und nur den 617-Test
-streichen: liesse die irreführende Architekturaussage stehen, der
+streichen: ließe die irreführende Architekturaussage stehen, der
 Kern rechne auf Kommutationswerten — genau die Verwechslung von
 Übersetzungshistorie und Zielbild, die dieses ADR beendet.
