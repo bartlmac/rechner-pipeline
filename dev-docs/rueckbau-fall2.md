@@ -72,8 +72,8 @@ Rückkehr wäre kein überschaubarer Schritt mehr.
 - Was die Migration am Werkzeug gelehrt hat: Korrekturschicht, Verankerung,
   Serien-Rekonstruktion, Prüfstrecken, Zeichnungsordnung, Gates.
 - Der Fall-Arbeitsbereich des zweiten Laufs und seine Lieferung
-  (`lieferungen/baldrian-2`): Sie sind die Quelle von Fall 3.
-- Die Dokumente des Laufs (`docs/faelle/baldrian-lauf2*.md`) und der
+  (`migrationen/baldrian/lieferungen/baldrian-2`): Sie sind die Quelle von Fall 3.
+- Die Dokumente des Laufs (`migrationen/baldrian/baldrian-lauf2*.md`) und der
   Tarifplan: Sie sind NICHT zurückgebaut und beschreiben weiter, was der
   übernommene Tarif verlangt.
 - In `bestand/` die Zuordnung "ein Tarif mit `red_verfahren = teilkuendigung`
@@ -173,7 +173,7 @@ dem Revert).
   Monatsabschlüsse), mit eigener Linie und den vier Erstabnahmen (ADR-025).
   Nicht geprüft: der Zugang zum Stichtag des Falls in voller Größe. Er
   braucht die Generation des Falls in der Config; nach dem Handbuch
-  (`deploy/plv/README.md`) und `betrieb/neuaufsetzen.py` heißt eine
+  (`plv/betrieb/README.md`) und `betrieb/neuaufsetzen.py` heißt eine
   geänderte Config eine neu gerechnete Ablage — gelesen, nicht gefahren. Ein
   Storno eines Zugangs in einer laufenden Ablage gibt es nicht.
 - Der Tarifplan und die Fachdokumente: nicht zurückgebaut (siehe oben).

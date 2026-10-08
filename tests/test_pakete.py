@@ -1,7 +1,7 @@
 """pakete/: jeder festgehaltene Fall ist ein Paket, das seinen Pruefsummen entspricht.
 
 Ein Paket ist die Eingabe des deterministischen Nachfahrens
-(deploy/welt/fall_nachfahren.sh). Das Skript faehrt nur ein Paket, das
+(werkzeuge/welt/fall_nachfahren.sh). Das Skript faehrt nur ein Paket, das
 seinen Pruefsummen entspricht und keine Datei darueber hinaus traegt. Liegt
 ein Paket im Repository, gilt dieselbe Bedingung schon fuer den Baum —
 sonst faellt eine verletzte Datei erst auf, wenn jemand den Fall nachfaehrt,

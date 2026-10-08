@@ -157,7 +157,7 @@ Lesetexte.
 
 ## Was der Umbau gekostet hat
 
-Nur `werkzeuge/` und `vorzeige-seite/`; kein `src/`, kein Neulauf, keine
+Nur `werkzeuge/` und `plv/seite/`; kein `src/`, kein Neulauf, keine
 umbenannten Artefakte.
 
 * `werkzeuge/vorzeigeseite.py` — `_stationen()` setzt je Station
@@ -171,7 +171,7 @@ umbenannten Artefakte.
   dreizehn Stationen einen eigenen Anker (vier teilten sich einen);
   `datum()`, `GATE_TITEL`, `ART`, `GEGENSTAND_TEXT` und
   `DECKUNG_ZUSTAND` wohnen hier, weil beide Erzeuger sie brauchen.
-* `vorzeige-seite/migrationen/baldrian-weg.md` → `ki.md`: die Seite
+* `plv/seite/migrationen/baldrian-weg.md` → `ki.md`: die Seite
   trägt die Kachel „Künstliche Intelligenz“ und ist jetzt fallfrei.
 * `stil.css` — `ol.journey` und `.befunde` entfallen, `p.gate` kommt.
 

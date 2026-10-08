@@ -18,7 +18,7 @@ OFFICE_DATEIEN = tuple(
         pfad
         for wurzel in (
             REPO_ROOT / "tests" / "fixtures",
-            REPO_ROOT / "lieferungen",
+            REPO_ROOT / "migrationen" / "baldrian" / "lieferungen",
         )
         for muster in ("*.xlsm", "*.xlsx", "*.docx")
         for pfad in wurzel.rglob(muster)

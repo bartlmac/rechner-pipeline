@@ -68,8 +68,8 @@ Bestands-Scope). Der Belegvertrag der Probe liegt in `models.zugangsprobe`,
 damit Probe, Gate und Registrierung ihn ohne neue Schichtkante lesen. Die
 Probe ist `betrieb.zugangsprobe`, das Gate `gates.gate_entscheid`;
 `betrieb.uebernahme` und der Tageslauf verlangen die Abnahme. Die Bedienung
-steht in `deploy/plv/README.md` („Der Zugang hat drei Schritte“), für eine
-Welt in `deploy/welt/zugang.sh`. Die Tests stehen in
+steht in `plv/betrieb/README.md` („Der Zugang hat drei Schritte“), für eine
+Welt in `werkzeuge/welt/zugang.sh`. Die Tests stehen in
 `tests/test_zugangsabnahme_ab2.py`.
 
 ## Bezug

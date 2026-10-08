@@ -2,7 +2,9 @@
 
 **Status:** angenommen am 2026-10-04 (Maintainer, Entscheidung vom
 2026-10-03). Was umgesetzt ist, steht unter „Folgen“, was offen ist, unter
-„Offen“.
+„Offen“. Die Tabelle der Gegenstände und ihre Orte sind seit 2026-10-08
+durch [ADR-028](adr-028-ordnung-nach-ebenen.md) abgelöst (Ordnung nach
+Ebenen); die Pfade unten nennen den Stand vom 2026-10-04.
 
 ## Kontext
 

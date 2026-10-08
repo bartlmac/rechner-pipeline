@@ -802,9 +802,9 @@ Schluessel von `mensch/betrieb` (A-B2) im Ring. Probe, Zugangsabnahme und
 Registrierung lesen die Linie (`--linie <linie>`, Pflicht) und brauchen den
 Schluessel des Vorstands im Ring (die Glieder der Linie); die Probe liest
 dazu A-M4 und den A-M1, den A-M4 pinnt, und braucht deshalb den Schluessel
-von `mensch/aktuariat` (Pruefrunde G, `deploy/plv/README.md`). Eine rote
+von `mensch/aktuariat` (Pruefrunde G, `plv/betrieb/README.md`). Eine rote
 Probe ist ein Befund fuer den Menschen, kein Auftrag, die Abnahme
-nachzubessern (`deploy/plv/README.md`).
+nachzubessern (`plv/betrieb/README.md`).
 
 **Schichtbeleg erzeugen (Producer, seit Lauf 2):** Den Schichtbeleg fuer
 `aktuartest_lauf --schicht` erzeugt das Systemkommando

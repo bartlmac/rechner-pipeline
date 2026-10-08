@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "werkzeuge"))
 
 from quellsystem.bestandsfuehrung import lauf  # noqa: E402
 from quellsystem.erwartungswerte import (  # noqa: E402

@@ -6,7 +6,7 @@ Pfefferminzia Lebensversicherung AG auf: eine Startseite, Bereiche
 (``vorzeigeseite.py``, je Fall unter ``migrationen/<fall>/``).
 
 Die Unternehmensseiten sind HANDGESCHRIEBENE, versionierte Quellen
-unter ``vorzeige-seite/`` — im Gegensatz zu den Fall-Seiten, die je
+unter ``plv/seite/`` — im Gegensatz zu den Fall-Seiten, die je
 Lauf aus den Artefakten entstehen. Dieses Werkzeug kopiert sie in den
 Push-Baum und erzwingt dabei zwei Dinge:
 
@@ -21,7 +21,7 @@ Spielleiter-Bereichen in die Veroeffentlichung.
 
 Aufruf (nach dem Bau der Fall-Seiten in denselben Baum)::
 
-    python werkzeuge/unternehmensseite.py --quellen vorzeige-seite \\
+    python werkzeuge/unternehmensseite.py --quellen plv/seite \\
         --out runs/seite
 """
 
@@ -1163,7 +1163,7 @@ FACHDOKUMENTE = (
      "aktuariat/tarifplaene/bu.md", "Rechenkern und Tarifwerk", "../"),
     ("mathematik/grundsatzdokumentation.md",
      "aktuariat/mathematik/grundsatzdokumentation.md", "Rechenkern und Tarifwerk", "../"),
-    # Die Berichte zu einem Fall (docs/faelle/) kommen je Fall dazu:
+    # Die Berichte zu einem Fall (migrationen/baldrian/) kommen je Fall dazu:
     # darstellung.FALLDOKUMENTE.
     # Hinter den Kulissen (ausserhalb der Fiktion): Entstehung der
     # Bestaende, Fachkonzept Tagesbetrieb, Erfahrungsannahmen. Ihre
@@ -1545,8 +1545,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         prog="python werkzeuge/unternehmensseite.py",
         description="Unternehmensseiten der Vorfuehrung in den Push-Baum "
                     "zusammenbauen.")
-    p.add_argument("--quellen", default="vorzeige-seite",
-                   help="versionierte Quellseiten (Vorgabe: vorzeige-seite)")
+    p.add_argument("--quellen", default="plv/seite",
+                   help="versionierte Quellseiten (Vorgabe: plv/seite)")
     p.add_argument("--daten", required=True,
                    help="falldaten-Modell des aktuellen Falls — Quelle "
                         "der {{...}}-Kennzahlen in den Quellseiten")

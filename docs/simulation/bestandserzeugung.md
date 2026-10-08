@@ -140,12 +140,12 @@ Bestand, auch ohne eigenen Zugangsstrom.
 # 6 Der Quellbestand
 
 Die Lieferungen der fiktiven abgebenden Unternehmen erzeugt
-`quellsystem/`, ein eigenständiger Zweitkern (eine Kopie des
+`werkzeuge/quellsystem/`, ein eigenständiger Zweitkern (eine Kopie des
 Kommutationskerns) mit den fremden Konventionen der Quelle (Stornoabzug je Scheibe,
 eigene Rundungs- und Kalenderlogik). Er importiert bewusst nichts aus
 dem Zielsystem: Was die Migration später feststellen muss, darf ihr
 nicht vorab in den Code gereicht werden. Sein Export legt die
-Lieferungen versioniert unter `lieferungen/` ab; dort schneiden auch die
+Lieferungen versioniert unter `migrationen/baldrian/lieferungen/` ab; dort schneiden auch die
 Fixtures der End-to-End-Tests ihre Daten aus. Die Fall-Regie (Seeds, Drehbücher,
 Auflösungen der Vorführfälle) bleibt außerhalb des Repos.
 

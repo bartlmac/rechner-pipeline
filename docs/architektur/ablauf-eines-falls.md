@@ -80,10 +80,10 @@ der die PLV Tag für Tag geführt wird (ADR-022):
    weiter.
 
 So läuft der Zugang in einer Welt, deren Ablage neu aufgesetzt wird
-(`deploy/welt/zugang.sh`). In eine laufende Ablage kann ein Zugang auch
+(`werkzeuge/welt/zugang.sh`). In eine laufende Ablage kann ein Zugang auch
 direkt registriert werden; dann fährt die Probe auf einer Kopie der Ablage
 vom zuletzt geführten Tag an, und auf `A-B2` folgt die Registrierung
-(`deploy/plv/README.md`).
+(`plv/betrieb/README.md`).
 
 Damit ist der Fall abgeschlossen. Nach einem Fallabbruch (`A-M5`) ist im
 Fall nichts mehr zeichenbar.
@@ -123,5 +123,5 @@ unter Mandat.
 | Wer | Wo |
 |---|---|
 | ein Agent, der einen Fall führt | Skill `migrationsfall-durchfuehren`; Rollenkatalog in [skill-architektur.md](skill-architektur.md) |
-| ein Mensch, der eine Welt aufstellt, einen Fall startet oder nachfährt | `deploy/welt/README.md` |
+| ein Mensch, der eine Welt aufstellt, einen Fall startet oder nachfährt | `werkzeuge/welt/README.md` |
 | wer die einzelnen Bedienfolgen nachlesen will | ADR-025 und ADR-026 |

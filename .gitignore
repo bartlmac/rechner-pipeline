@@ -41,9 +41,9 @@ Thumbs.db
 
 # Doku-Engine-Renderings (Quellen sind die Markdown-Dateien)
 docs/**/*.pdf
-quellsystem/*.pdf
+werkzeuge/quellsystem/*.pdf
 docs/**/*.typ
-quellsystem/*.typ
+werkzeuge/quellsystem/*.typ
 docs/**/*_files/
 
 # Kurzlebige Arbeitsverzeichnisse der Suite im Repo-Baum. Ein Test, der den

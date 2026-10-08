@@ -34,7 +34,7 @@ dem Entscheid vom 2026-09-16 denselben Namen mit dem Präfix `mensch/`:
 | `agent/aktuariat` | fachlich richtig abgebildet: Transformation, drei aktuarielle Abnahmen, Controlling, Bestandsfortführung | transformiere-quellbestand, extrahiere-quellfragment, bereite-fachkonflikt-auf, `aktuartest-durchfuehren`, `pruefe-migrationscontrolling` |
 | `agent/architektur` | in der vorgegebenen Architektur: Schichtenkarte, Nachweiskette, Vertrauensgrenzen, Betrieb | entwickle-im-zielsystem (als Maßstab), author-rechner-toolbox-gate, teste-adversarial, integriere-migrationsinkrement, dokumentiere-system |
 | `agent/rechenkern` | stabiles Zielsystem: Regressionstests, Referenzwerte, Doku, Inkremente unter ADR-007 | entwickle-im-zielsystem, integriere-migrationsinkrement, teste-adversarial, dokumentiere-system |
-| `agent/betrieb` | der übernommene Bestand wird danach richtig geführt: Zugangsprobe (A-B2), Anfangsbestand einer neu aufgesetzten Ablage (A-B3), Auslieferung eines Stands (A-B1) | kein eigener Skill; die Kommandos stehen in `deploy/plv/README.md` |
+| `agent/betrieb` | der übernommene Bestand wird danach richtig geführt: Zugangsprobe (A-B2), Anfangsbestand einer neu aufgesetzten Ablage (A-B3), Auslieferung eines Stands (A-B1) | kein eigener Skill; die Kommandos stehen in `plv/betrieb/README.md` |
 | `agent/programmleitung` | Migration effizient geliefert; orchestriert die vier anderen, hält an jedem Gate an | `migrationsfall-durchfuehren` |
 
 Die Gegenseite des abgebenden Hauses (`mensch/quell-aktuar`) hat kein

@@ -43,17 +43,22 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
 
 ## Repo Map (what an agent needs to know first)
 
-- **Five things live here, and no infrastructure** (ADR-027): (1) the
-  PLV runtime — `src/rechner_pipeline/kern`, `bestand`, `betrieb` and
-  `configs/`; (2) the migration system — `gates`, `ontologie`, `spez`,
-  `quellen`, `qa`, `fall.py` and the agent roles under `.claude/` and
-  `.agents/`; (3) case definitions — `lieferungen/`, `quellsystem/`,
-  `pakete/`; (4) routines that set up a world and replay a case —
-  `deploy/welt/`, `deploy/plv/`; (5) the website — `vorzeige-seite/` and
-  its tools in `werkzeuge/`. `tests/`, `docs/`, `dev-docs/` and `models`
-  cut across all five. Cut changes along these lines: several of them
-  go into one pull request only if `main` would be unexplained with
-  just one part; the website never travels with 1 to 4.
+- **The tree is ordered by levels, and holds no infrastructure**
+  (ADR-028, ADR-027): (1) the system — the migration system in
+  `src/rechner_pipeline` (`gates`, `ontologie`, `spez`, `quellen`, `qa`,
+  `fall.py`), the agent roles under `.claude/` and `.agents/`, and
+  `system/` (live-run tools, migration-concept template); (2) the PLV
+  object — `kern`, `bestand`, `betrieb`, `configs/`, `docs/mathematik/`,
+  `docs/tarifplaene/` and `plv/` (runtime image, website sources); (3) the
+  Baldrian object, i.e. the migration — `migrationen/baldrian/`
+  (deliveries, case file, reports); (4) simulation — `werkzeuge/` (world
+  routines, source system, document engine, website tools) and the
+  generators in `bestand`; (5) runtime artefacts — `pakete/` only.
+  `tests/`, `docs/`, `dev-docs/` and `models` cut across. Configs and the
+  signed documents stay at their old paths until the acceptance logic can
+  follow a move. Cut changes along these lines: several parts go into one
+  pull request only if `main` would be unexplained with just one part; the
+  website never travels with the rest.
 - **Accepted objects do not change silently.** The kernel state (the
   `kern` package, the frozen reference values, the
   Grundsatzdokumentation) and the Tarifwerk (`docs/tarifplaene`, the
@@ -77,11 +82,11 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   decisions. The system is demonstrated on the fictitious insurer
   Pfefferminzia LV (PLV); `configs/` holds its portfolio configurations
   (TOML, suite-loaded), `tests/fixtures/` holds synthetic source
-  workbooks for extraction tests, and `lieferungen/` ships the showcase
+  workbooks for extraction tests, and `migrationen/baldrian/lieferungen/` ships the showcase
   deliveries of fictitious ceding insurers (freight to register into a
   case, possibly with deliberate errors — finding them is the
   demonstration). There is no implicit input channel: nothing reads
-  `lieferungen/` automatically; sources enter a case only through
+  `migrationen/baldrian/lieferungen/` automatically; sources enter a case only through
   explicit registration.
 - **Docs have one home each:** architecture and ADRs in
   `docs/architektur/`; the normative maths and numerics of the kernel in
@@ -94,7 +99,7 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   GENERATED — third-order experience assumptions, simulation tooling —
   in `docs/simulation/`, never in the actuarial documents, because in a
   real company reality drives the portfolio, not a model; the
-  project-side migration procedure in `docs/migrationskonzept/`
+  project-side migration procedure in `system/migrationskonzept/`
   (template; the filled instance lives in the case workspace); planned
   work that is recognised but not built in `dev-docs/`; team
   agent instructions here; private notes in `docs-local/` (never read
@@ -226,8 +231,8 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `tageslauf._STANDARD_BETRIEBSZEICHNUNG` and an intake acceptance via
   `uebernahme._STANDARD_ZUGANGSABNAHME` (tests/conftest.py,
   tests/zugangsabnahme_testhelfer.py). Runtime
-  environment and image: `deploy/plv/`. Setting up a world (store, line, first acceptances,
-  optionally its own keys) and starting a case in it: `deploy/welt/`.
+  environment and image: `plv/betrieb/`. Setting up a world (store, line, first acceptances,
+  optionally its own keys) and starting a case in it: `werkzeuge/welt/`.
   Recorded cases for deterministic replay live in `pakete/`; they carry
   the resolution of their case, so a session that runs one of these
   cases live does not read there.

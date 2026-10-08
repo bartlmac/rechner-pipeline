@@ -90,7 +90,7 @@ def regeln(fall: Path) -> List[Tuple[str, str, "re.Pattern[bytes]"]]:
     dort liegt, wo Faelle liegen.
     ``<schluesselverzeichnis>`` — das Verzeichnis des Schluesselmaterials
     im Heimatverzeichnis (``~/.rechner-pipeline-schluessel``).
-    ``<welt>`` — die Laufzeitumgebung (``~/apps/<welt>``, deploy/plv/README.md).
+    ``<welt>`` — die Laufzeitumgebung (``~/apps/<welt>``, plv/betrieb/README.md).
     ``<laufordner>`` — ein Laufverzeichnis ausserhalb des Falls
     (``~/git/<baum>/runs/<ordner>``): dort liegen Stands-Paket und Anker, und
     das Protokoll der Auslieferungsabnahme nennt den Anker mit vollem Pfad

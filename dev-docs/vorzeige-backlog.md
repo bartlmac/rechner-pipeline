@@ -1,6 +1,6 @@
 # Vorzeigeseite: Backlog der Verbesserungen
 
-Ideen und Vorhaben für den Unternehmensauftritt (vorzeige-seite/,
+Ideen und Vorhaben für den Unternehmensauftritt (plv/seite/,
 werkzeuge/), gesammelt vom Maintainer und der Seiten-Session. Ein
 erledigter Punkt wird gelöscht, nicht abgehakt. Was eine Zahl oder
 Tabelle auf die Seite bringt, muss aus einem Artefakt oder dem Code

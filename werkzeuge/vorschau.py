@@ -166,7 +166,7 @@ def _ids_erweiterung(markdown, formeln: List[str]):
     return Erweiterung()
 
 #: Die Vorschau zeigt, was Jekyll zeigen wird: dasselbe Stylesheet, dasselbe
-#: Geruest (werkzeuge/../vorzeige-seite/_layouts/default.html). Ein eigenes
+#: Geruest (werkzeuge/../plv/seite/_layouts/default.html). Ein eigenes
 #: Aussehen der Vorschau waere eine zweite Wahrheit.
 SEITE = ('<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">'
          '<meta name="viewport" content="width=device-width, initial-scale=1">'

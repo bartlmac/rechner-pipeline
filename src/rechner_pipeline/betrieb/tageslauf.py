@@ -463,7 +463,7 @@ def betriebszeichner(
                 f"ohne Betriebsschluessel {ohne} — {wofuer} zeichnet bzw. prueft "
                 "Protokollzeilen und Eingaenge mit dem Schluessel des Betriebs. "
                 f"Ausweg: {flag} <betriebsschluessel> --zeichnungsordnung <ordnung> "
-                "(beide ausserhalb der Ablage, deploy/plv/README.md)")
+                "(beide ausserhalb der Ablage, plv/betrieb/README.md)")
         schluessel, zeichnungsordnung = _STANDARD_BETRIEBSZEICHNUNG
     if schluessel is None or zeichnungsordnung is None:
         raise TageslaufError(
@@ -817,7 +817,7 @@ def aufschaltung_fehler(
     unterscheiden; darum entscheidet der Mensch, AUSDRUECKLICH und einmal:
 
     - Protokoll mit Zeilen, keine gezeichnet: nur mit ``aufschalten``
-      (erster Lauf nach dem Umstieg, deploy/plv/README.md).
+      (erster Lauf nach dem Umstieg, plv/betrieb/README.md).
     - Protokoll mit gezeichneter Zeile und ``aufschalten``: verweigert — die
       Aufschaltung ist geschehen, und ein Schalter, der dauerhaft im Timer
       stuende, oeffnete die Herabstufung wieder.
@@ -852,7 +852,7 @@ def aufschaltung_fehler(
         "Altbestand vor dem Betriebsschluessel oder ein ohne Schluessel "
         "herabgestuftes Protokoll; die Ablage allein unterscheidet das nicht. "
         "Ausweg: ist es der erste Lauf nach dem Umstieg, den Tageslauf EINMAL mit "
-        "--aufschalten fahren (deploy/plv/README.md; die erste gezeichnete Zeile "
+        "--aufschalten fahren (plv/betrieb/README.md; die erste gezeichnete Zeile "
         "pinnt dann den Vorlauf). War das Protokoll schon gezeichnet, ist es ein "
         "Kettenbruch: das Protokoll aus der Sicherung wiederherstellen, NICHT "
         "aufschalten")
@@ -2935,7 +2935,7 @@ def _tageslauf(
     if not config_pfad.is_file():
         raise TageslaufError(
             f"keine Config unter {config_pfad} — die Laufzeitumgebung traegt "
-            "die Config der PLV als Kopie unter configs/ (deploy/plv/README.md)"
+            "die Config der PLV als Kopie unter configs/ (plv/betrieb/README.md)"
         )
     # Genau EINMAL gelesen (Angriffsrunde Betrieb, dieselbe Naht wie N9):
     # Rechnung, Hash der Protokollzeile, Manifest und P-B1 lasen die Config
@@ -2992,7 +2992,7 @@ def _pruefe_config_unveraendert(
         "Ablage mit der neuen Config neu aufsetzen (python -m "
         "rechner_pipeline.betrieb.neuaufsetzen --stand <daten> --fall <fall> "
         "--stichtag <zugang> --config <neue config> ..., davor Zugangsprobe und "
-        "A-B2 auf einer leeren Ablage mit dieser Config; deploy/plv/README.md) "
+        "A-B2 auf einer leeren Ablage mit dieser Config; plv/betrieb/README.md) "
         "— die alte Ablage geht vollstaendig ins Archiv —, oder die Config "
         "zuruecksetzen, mit der das Protokoll gerechnet hat")
 
@@ -3521,7 +3521,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Einmalig beim ersten Lauf nach dem Umstieg auf den Betriebsschluessel: "
         "ein Protokoll ohne gezeichnete Zeile (Altbestand) weiterfuehren; die erste "
         "gezeichnete Zeile pinnt den Vorlauf. Auf ein gezeichnetes oder leeres "
-        "Protokoll verweigert (deploy/plv/README.md).")
+        "Protokoll verweigert (plv/betrieb/README.md).")
     parser.add_argument(
         "--image-digest", dest="image_digest", default=None,
         help="Digest des Container-Images fuer das Protokoll (Default: "

@@ -7,7 +7,7 @@ Umsetzung freigegeben. Die Abnahme der T-Box selbst ist ein Akt der Rolle
 `mensch/architektur` (`A-O1.tbox-aenderung`, mit Änderungsbeleg und
 Stellungnahme des Aktuariats). Seit ADR-025 geschieht sie bei der
 Erstabnahme der Linie; dieses ADR ist das Artefakt ihres Belegs
-(`deploy/welt/welt_aufstellen.sh`).
+(`werkzeuge/welt/welt_aufstellen.sh`).
 
 ## Kontext
 

@@ -44,7 +44,7 @@ Was die Routine tut, in dieser Reihenfolge — und was sie NICHT tut:
    Die Registrierung verlangt die Zugangsabnahme A-B2 (ADR-022) — fuer
    die NEUE Ablage: Ihr gefuehrter Stand ist der einer leeren Ablage mit
    dieser Config, also laeuft die Zugangsprobe auf einer leeren Ablage,
-   die nur diese Config traegt (deploy/plv/README.md).
+   die nur diese Config traegt (plv/betrieb/README.md).
    Vor dem Tausch liest die Routine den neuen Eingang einmal vollstaendig
    (``lies_uebernahme``): unbekannte Generation, falscher Stichtag, fehlende
    Merkmale oder abweichendes Tarifwerk fallen auf, BEVOR etwas bewegt ist.
@@ -165,7 +165,7 @@ def neu_aufsetzen(
     if stand.is_symlink() or not stand.is_dir():
         raise NeuaufsetzenError(
             f"{stand}: keine Ablage (kein echtes Verzeichnis) — fuer die erste "
-            "Einrichtung siehe deploy/plv/README.md, neu aufgesetzt wird nur eine "
+            "Einrichtung siehe plv/betrieb/README.md, neu aufgesetzt wird nur eine "
             "bestehende Ablage"
         )
     alt = Ablage(stand)
@@ -474,7 +474,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--aufschalten", action="store_true",
                         help="Einmalig: die alte Ablage traegt ein Protokoll ohne gezeichnete "
                              "Zeile (Altbestand vor dem Betriebsschluessel) und wird trotzdem "
-                             "archiviert (deploy/plv/README.md).")
+                             "archiviert (plv/betrieb/README.md).")
     ns = parser.parse_args(argv)
     try:
         stichtag = _dt.date.fromisoformat(ns.stichtag)

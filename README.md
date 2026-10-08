@@ -48,10 +48,10 @@ Installation.
 **Einen Fall nachfahren.** Ein Aufruf baut eine eigene Umgebung auf (eine
 [Welt](docs/architektur/glossar.md#welt)) und spielt die abgeschlossene
 Übernahme der Baldrian ohne Agenten nach (Fall 3, siehe
-[docs/faelle/](docs/faelle/README.md)). Das dauert etwa 45 Minuten:
+[migrationen/baldrian/](migrationen/baldrian/README.md)). Das dauert etwa 45 Minuten:
 
 ```bash
-deploy/welt/laufzeit_aufstellen.sh ~/plv-welt pakete/baldrian-klv-tg2015-fall3
+werkzeuge/welt/laufzeit_aufstellen.sh ~/plv-welt pakete/baldrian-klv-tg2015-fall3
 ```
 
 Danach liegen die Monatsabschlüsse und Berichte der PLV mit dem übernommenen
@@ -68,16 +68,16 @@ Ein zweites Nachfahren in einer neuen Welt hält an, solange der Fall im Klon
 liegt. Dann einen frischen Klon nehmen oder den Fall vorher nach
 `faelle/archiv/` verschieben; gelöscht wird ein Fall nie. Wie man an einem
 Haltepunkt anhält und selbst entscheidet, steht in
-[deploy/welt/README.md](deploy/welt/README.md).
+[werkzeuge/welt/README.md](werkzeuge/welt/README.md).
 
 **Das Container-Image.** Ändert ein Push auf `main` den Code,
-`requirements.txt` oder `deploy/plv/`, baut die CI das Image
+`requirements.txt` oder `plv/betrieb/`, baut die CI das Image
 `ghcr.io/bartlmac/rechner-pipeline-plv`. Es dient dem Betrieb einer
 Laufzeit, nicht der Entwicklung: Es enthält nur das Paket und führt den
 Tageslauf einer bestehenden Ablage aus, im Betrieb jede Nacht über einen
-Timer. Die Tests, die Skripte unter `deploy/welt/` und die Pakete der Fälle
+Timer. Die Tests, die Skripte unter `werkzeuge/welt/` und die Pakete der Fälle
 sind nicht darin, dafür braucht es den Klon. Wie eine Laufzeit mit dem
-Image betrieben wird, steht in [deploy/plv/README.md](deploy/plv/README.md).
+Image betrieben wird, steht in [plv/betrieb/README.md](plv/betrieb/README.md).
 
 ## Wie das System arbeitet
 
@@ -109,39 +109,50 @@ die Begriffe erklärt das [Glossar](docs/architektur/glossar.md).
 
 ## Was dieses Repository ist
 
-Das Repository trägt fünf Gegenstände und keine Infrastruktur
-([ADR-027](docs/architektur/adr-027-fuenf-gegenstaende-keine-infrastruktur.md)):
+Das Repository ist nach Ebenen geordnet
+([ADR-028](docs/architektur/adr-028-ordnung-nach-ebenen.md)): das System,
+die beiden Unternehmen, an denen es arbeitet, die Werkzeuge, die diese Welt
+herstellen, und was beim Laufen entsteht. Der Code aller Ebenen liegt in
+einem Python-Paket unter `src/`; welche Ebene ein Modul trägt, misst die
+Schichtenkarte ([ADR-017](docs/architektur/adr-017-vier-ebenen.md)).
 
-| | Gegenstand | Wozu | Wo |
+| | Ebene | Was | Wo |
 |---|---|---|---|
-| 1 | **Laufzeit der PLV** | Rechenkern, Bestandsführung und Tagesbetrieb der PLV, ohne jede Migration | `src/rechner_pipeline/kern`, `src/rechner_pipeline/bestand`, `src/rechner_pipeline/betrieb`, `configs/` |
-| 2 | **Migrationssystem** | Quellen vorverdichten, Aussagen mit Herkunft führen, Tarife parametrieren, prüfen und abnehmen; dazu die Rollen der Agenten | `src/rechner_pipeline/quellen`, `src/rechner_pipeline/ontologie`, `src/rechner_pipeline/spez`, `src/rechner_pipeline/qa`, `src/rechner_pipeline/gates`, `src/rechner_pipeline/fall.py`, `.claude/`, `.agents/` |
-| 3 | **Fall-Definitionen** | die Lieferungen der abgebenden Gesellschaft, das Werkzeug, das sie erzeugt, und abgeschlossene Fälle zum Nachfahren | `lieferungen/`, `quellsystem/`, `pakete/` |
-| 4 | **Routinen** | eine Welt aufstellen, einen Fall darin führen oder nachfahren, das Image der Laufzeit bauen | `deploy/welt/`, `deploy/plv/` |
-| 5 | **Webseite** | die Quellen der Vorzeigeseite und die Werkzeuge, die sie bauen | `vorzeige-seite/`, `werkzeuge/` |
+| 1 | **System** | das Migrationssystem: Quellen vorverdichten, Aussagen mit Herkunft führen, Tarife parametrieren, prüfen und abnehmen; die Rollen der Agenten; Werkzeuge für den Live-Lauf eines Falls | `src/rechner_pipeline/quellen`, `src/rechner_pipeline/ontologie`, `src/rechner_pipeline/spez`, `src/rechner_pipeline/qa`, `src/rechner_pipeline/gates`, `src/rechner_pipeline/fall.py`, `.claude/`, `.agents/`, `system/` |
+| 2 | **Objekt PLV** | die übernehmende Gesellschaft: Rechenkern, Bestandsführung und Tagesbetrieb, ihre Parametrierung und Fachdokumente, das Image ihrer Laufzeit und ihr Auftritt | `src/rechner_pipeline/kern`, `src/rechner_pipeline/bestand`, `src/rechner_pipeline/betrieb`, `configs/`, `docs/mathematik/`, `docs/tarifplaene/`, `plv/` |
+| 3 | **Objekt Baldrian bzw. Migration** | die abgebende Gesellschaft: ihre Lieferungen, die Falldatei der Vorführung und die Berichte zu den Fällen | `migrationen/` |
+| 4 | **Simulation** | Entwurf und Betrieb der simulierten Welt: das Quellsystem der Baldrian, eine Welt aufstellen und einen Fall nachfahren, die Seite bauen. Verteilungen und Geschäftsvorfälle erzeugen die Erzeuger im Paket. | `werkzeuge/` |
+| 5 | **Laufzeit-Artefakte** | was beim Laufen entsteht; im Repository liegt davon nur Fall 3, eingefroren, damit er nachfahrbar ist | `pakete/` |
 
-Quer zu allen fünf liegen `tests/`, `docs/` (Architektur, Mathematik,
-Tarifpläne, Simulation), `dev-docs/` (geplante Vorhaben),
-`src/rechner_pipeline/models` (gemeinsame Datenverträge), `deploy/dev`
-und `.devcontainer/` (Entwicklungsumgebung) sowie `.github/` (CI).
+Beide Unternehmen sind erfunden. Quer zu den Ebenen liegen `tests/`,
+`docs/` (Entwicklerdoku), `dev-docs/` (geplante Vorhaben),
+`src/rechner_pipeline/models` (gemeinsame Datenverträge), `deploy/dev` und
+`.devcontainer/` (Entwicklungsumgebung) sowie `.github/` (CI).
+
+Grundsatzdokumentation, Tarifpläne und Configs gehören zur PLV, liegen aber
+noch an ihrem bisherigen Ort: Ihre Abnahme bindet den Pfad mit. Sie ziehen
+nach `plv/` um, sobald die Abnahme einen Ortswechsel verfolgen kann.
 
 Nicht im Repository liegen die laufenden Instanzen mit ihren Schlüsseln und
-Daten, das Hosting der Seite und die Einrichtung einzelner Rechner.
+Daten, die Fallräume und Läufe (lokal, von Git ausgenommen), das Hosting der
+Seite und die Einrichtung einzelner Rechner.
 
 ## Wo was steht
 
 | Frage | Dokument |
 |---|---|
 | Wie richte ich mich ein, und welche Regeln gelten? | [ONBOARDING.md](ONBOARDING.md), [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Wo fange ich in der Dokumentation an? | [docs/](docs/README.md) |
 | Was bedeuten Fall, Gate, Welt, Linie, A-Box …? | [Glossar](docs/architektur/glossar.md) |
 | Wie läuft ein Fall ab, und wer zeichnet welches Gate? | [docs/architektur/ablauf-eines-falls.md](docs/architektur/ablauf-eines-falls.md) |
 | Welche Architektur-Entscheidungen gelten? | [docs/architektur/](docs/architektur/README.md) |
 | Was prüft ein Gate, und warum trägt es eine Version? | [docs/architektur/gate-vertrag-und-versionen.md](docs/architektur/gate-vertrag-und-versionen.md) |
 | Welche Mathematik rechnet der Kern? Welche Tarife hat die PLV? | [docs/mathematik/](docs/mathematik/README.md), [docs/tarifplaene/](docs/tarifplaene/README.md) |
 | Wie entstehen Bestand und Tagesbetrieb der PLV? | [docs/simulation/](docs/simulation/README.md) |
-| Welche Fälle gibt es, und was lässt sich nachfahren? | [docs/faelle/](docs/faelle/README.md), [pakete/](pakete/README.md) |
-| Wie stelle ich eine Welt auf? Wie läuft die Laufzeit im Betrieb? | [deploy/welt/](deploy/welt/README.md), [deploy/plv/](deploy/plv/README.md) |
+| Welche Fälle gibt es, und was lässt sich nachfahren? | [migrationen/baldrian/](migrationen/baldrian/README.md), [pakete/](pakete/README.md) |
+| Wie stelle ich eine Welt auf? Wie läuft die Laufzeit im Betrieb? | [werkzeuge/welt/](werkzeuge/welt/README.md), [plv/betrieb/](plv/betrieb/README.md) |
 | Wie entsteht die Vorzeigeseite? | [werkzeuge/](werkzeuge/README.md) |
+| Wie führe ich einen Fall live vor? | [system/](system/README.md) |
 | Wie arbeiten Agenten im Repository? | [AGENTS.md](AGENTS.md), [docs/architektur/skill-architektur.md](docs/architektur/skill-architektur.md) |
 | Was ist erkannt, aber noch nicht gebaut? | [dev-docs/](dev-docs/README.md) |
 

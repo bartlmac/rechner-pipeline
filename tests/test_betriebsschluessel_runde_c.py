@@ -954,6 +954,6 @@ def test_ohne_config_wird_nichts_registriert(tmp_path):
     fall = _fall(tmp_path / "faelle")
     stand = tmp_path / "daten"
     with pytest.raises(ueb.UebernahmeError,
-                       match="erst die Config nach deploy/plv/README.md ablegen, dann registrieren"):
+                       match="erst die Config nach plv/betrieb/README.md ablegen, dann registrieren"):
         ueb.eingang_anlegen(stand, fall, STICHTAG, schluesselring=TESTRING)
     assert not (Ablage(stand).uebernahme / "probe-uebernahme").exists()

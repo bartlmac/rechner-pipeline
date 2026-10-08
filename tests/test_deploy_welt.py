@@ -1,4 +1,4 @@
-"""deploy/welt: eigene Schluessel entstehen sicher, und der Ring eines Gates passt zur Ordnung.
+"""werkzeuge/welt: eigene Schluessel entstehen sicher, und der Ring eines Gates passt zur Ordnung.
 
 Die Skripte stellen eine Welt auf und fuehren darin einen Fall. Rechnen und
 zeichnen tut das System; was die Skripte selbst entscheiden — und was ein
@@ -68,8 +68,8 @@ from rechner_pipeline.models.zeichnung import pruefe_ordnung
 from tests.test_dokumentierte_kommandos import Kommando, pruefe
 
 REPO = Path(__file__).resolve().parents[1]
-WELT_SKRIPTE = REPO / "deploy" / "welt"
-FALLDATEI = WELT_SKRIPTE / "fall-baldrian-klv-tg2015.conf"
+WELT_SKRIPTE = REPO / "werkzeuge" / "welt"
+FALLDATEI = REPO / "migrationen" / "baldrian" / "fall-baldrian-klv-tg2015.conf"
 
 ROLLEN = ("betrieb", "vorstand", "rechenkern", "architektur", "aktuariat", "betrieb-mensch")
 #: Welche Rolle welches Gate in der erzeugten Ordnung traegt.
@@ -119,8 +119,9 @@ def baum(tmp_path):
     (b / "src" / "rechner_pipeline").mkdir(parents=True)
     (b / "src" / "rechner_pipeline" / "__init__.py").write_text("")
     (b / ".gitignore").write_text("faelle/\n")    # wie im Repository: Faelle sind nicht Teil des Baums
-    (b / "lieferungen").mkdir()
-    shutil.copytree(REPO / "lieferungen" / "baldrian-2", b / "lieferungen" / "baldrian-2")
+    (b / "migrationen" / "baldrian" / "lieferungen").mkdir(parents=True)
+    shutil.copytree(REPO / "migrationen" / "baldrian" / "lieferungen" / "baldrian-2",
+                    b / "migrationen" / "baldrian" / "lieferungen" / "baldrian-2")
     _git(b, "init", "--quiet", "--initial-branch=main")
     _git(b, "add", "-A")
     _git(b, "commit", "--quiet", "-m", "stand")
@@ -356,7 +357,7 @@ def _welt_mit_linie(welt: Path) -> Path:
 
 def test_anlegen_haelt_bei_fehlender_lieferdatei_und_blockiert_keinen_zweiten_versuch(tmp_path, welt, baum):
     _welt_mit_linie(welt)
-    (baum / "lieferungen" / "baldrian-2" / "LIEFERSCHEIN.md").unlink()
+    (baum / "migrationen" / "baldrian" / "lieferungen" / "baldrian-2" / "LIEFERSCHEIN.md").unlink()
     _git(baum, "commit", "--quiet", "-am", "ohne Lieferschein")
     lauf = _lauf("fall_starten.sh", str(welt), "anlegen", str(FALLDATEI), baum=baum)
     assert lauf.returncode == 2 and b"LIEFERSCHEIN.md fehlt" in lauf.stdout
@@ -369,7 +370,7 @@ def test_die_falldatei_gilt_relativ_zum_verzeichnis_des_aufrufs(tmp_path, welt, 
     # es danach nicht dort suchen. Gemessen wird am Halt HINTER dem Lesen der
     # Falldatei: Die Lieferung fehlt — also wurde die Datei gefunden und gelesen.
     _welt_mit_linie(welt)
-    (baum / "lieferungen" / "baldrian-2" / "LIEFERSCHEIN.md").unlink()
+    (baum / "migrationen" / "baldrian" / "lieferungen" / "baldrian-2" / "LIEFERSCHEIN.md").unlink()
     _git(baum, "commit", "--quiet", "-am", "ohne Lieferschein")
     ort = tmp_path / "anderswo"
     ort.mkdir()
@@ -958,7 +959,7 @@ def gefuehrt(tmp_path, welt, baum):
     }.items():
         (fall / rel).parent.mkdir(parents=True, exist_ok=True)
         (fall / rel).write_text(inhalt)
-    (welt / "fall.conf").write_text('FALLNAME=gefuehrt\nLIEFERUNG=lieferungen/x\n'
+    (welt / "fall.conf").write_text('FALLNAME=gefuehrt\nLIEFERUNG=migrationen/baldrian/lieferungen/x\n'
                                     'LIEFERDATEIEN="LIEFERSCHEIN.md abzug.csv"\nSTICHTAG=2026-01-01\n')
     (tmp_path / "rezept.sh").write_text(REZEPT_PAKET)
     (tmp_path / "erarbeitet.txt").write_text("# was erarbeitet wurde\nabgeleitet/abox\n\nabgeleitet/transformation/abzug.spec.json\n")
@@ -1271,7 +1272,7 @@ def _systemkommandos(text: str, name: str) -> list[Kommando]:
     return aus
 
 
-SKRIPT_KOMMANDOS = {name: _systemkommandos((WELT_SKRIPTE / name).read_text(encoding="utf-8"), f"deploy/welt/{name}")
+SKRIPT_KOMMANDOS = {name: _systemkommandos((WELT_SKRIPTE / name).read_text(encoding="utf-8"), f"werkzeuge/welt/{name}")
                     for name in SKRIPTE}
 
 

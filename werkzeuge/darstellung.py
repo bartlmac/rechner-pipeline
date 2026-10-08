@@ -236,14 +236,14 @@ WEG_STATIONEN: Tuple[Tuple[int, str, Optional[str]], ...] = (
     (13, "Zugang in die Bücher", "A-B2"),
 )
 
-#: Berichte des Aktuariats unter docs/faelle/, die zu GENAU einem Fall
-#: gehoeren: (Quelle unter docs/, Ziel im Auftritt, Titel). Ein Bericht
+#: Berichte des Aktuariats unter migrationen/baldrian/, die zu GENAU einem Fall
+#: gehoeren: (Quelle relativ zu docs/, Ziel im Auftritt, Titel). Ein Bericht
 #: ueber Lauf 2 ist kein Bericht ueber Fall 3 — der Auftritt zeigt ihn nur,
 #: wenn er den Fall darstellt, den der Bericht wuerdigt.
 FALLDOKUMENTE: Dict[str, Tuple[Tuple[str, str, str], ...]] = {
     "baldrian-klv-tg2015-lauf2": (
-        ("faelle/baldrian-lauf2.md", "migrationen/abschlussbericht-baldrian.md", "Abschlussbericht"),
-        ("faelle/baldrian-lauf2-veraenderungen.md", "migrationen/veraenderungen-baldrian.md",
+        ("../migrationen/baldrian/berichte/baldrian-lauf2.md", "migrationen/abschlussbericht-baldrian.md", "Abschlussbericht"),
+        ("../migrationen/baldrian/berichte/baldrian-lauf2-veraenderungen.md", "migrationen/veraenderungen-baldrian.md",
          "Was sich verändert hat"),
     ),
 }

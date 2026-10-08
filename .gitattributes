@@ -6,7 +6,7 @@
 # Lieferungen und Fixturen sind Bytes, keine Texte: Ihre SHA-256 stehen in
 # Fall-Eingaengen und Golden-Master-Vergleichen. Git laesst sie unangetastet,
 # einschliesslich der CRLF, die ein Quellsystem geschrieben hat.
-lieferungen/** -text
+migrationen/baldrian/lieferungen/** -text
 tests/fixtures/** -text
 # Ein festgehaltener Fall ist an seine SHA256SUMS gebunden; das Nachfahren
 # faehrt ihn nur, wenn jede Datei byteweise stimmt.

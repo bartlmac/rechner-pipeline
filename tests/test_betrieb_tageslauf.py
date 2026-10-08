@@ -674,7 +674,7 @@ def test_ein_abschluss_ist_dieselbe_datei_ob_am_stichtag_oder_nachgeholt(tmp_pat
     obwohl das Unternehmen im Februar nichts von ihm wusste. Beide Wege
     waren gruen und schrieben dieselbe 0444-Datei mit anderem Inhalt.
 
-    Gemessen wird das Versprechen aus deploy/plv/README und Fachkonzept
+    Gemessen wird das Versprechen aus plv/betrieb/README und Fachkonzept
     Abschnitt 7: derselbe Stand, als haette der Lauf jede Nacht
     stattgefunden. Gegenprobe: Ohne den Stichtagsschnitt in
     ``_stichtagssicht`` weichen genau die Abschluesse ab, in deren Monat

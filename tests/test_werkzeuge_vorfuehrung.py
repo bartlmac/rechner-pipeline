@@ -31,7 +31,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "werkzeuge"))
+sys.path.insert(0, str(REPO / "system"))
 
 import aufzeichnung as az  # noqa: E402
 import lagebild as lb  # noqa: E402
@@ -231,7 +231,7 @@ def test_die_anzeigen_lesen_fall_und_linie_des_aufrufs():
                 if text.startswith("watch ")]
     # Cockpit drei Anzeigen, je weiterer Rolle eine.
     assert len(anzeigen) == 3 + len(vf.agentenrollen()) - 1
-    assert all("werkzeuge/lagebild.py" in a for a in anzeigen)
+    assert all("system/lagebild.py" in a for a in anzeigen)
     assert all("--linie linie" in a for a in anzeigen)
     assert sum("--fall faelle/f" in a for a in anzeigen) == len(anzeigen) - 1  # system ohne Fall
 

@@ -3,14 +3,16 @@
 Ein Paket hält einen geführten Migrationsfall so fest, dass er sich ohne
 Agenten deterministisch nachfahren lässt: Aus dem Stand des Repositorys und
 einem Paket entsteht mit einem Aufruf eine Laufzeit mit übernommenem
-Bestand.
+Bestand. Im Repository sind Pakete die einzigen Laufzeit-Artefakte
+([ADR-028](../docs/architektur/adr-028-ordnung-nach-ebenen.md)); was ein
+Lauf sonst erzeugt, bleibt in seinem Fallraum und seiner Welt.
 
 ```
-deploy/welt/laufzeit_aufstellen.sh <welt> pakete/<paket> [--bis <haltepunkt>]
+werkzeuge/welt/laufzeit_aufstellen.sh <welt> pakete/<paket> [--bis <haltepunkt>]
 ```
 
 Wie der Aufruf arbeitet und wie man an einem Haltepunkt selbst zeichnet,
-steht in [deploy/welt/README.md](../deploy/welt/README.md). Ein Lauf mit
+steht in [werkzeuge/welt/README.md](../werkzeuge/welt/README.md). Ein Lauf mit
 `--bis <haltepunkt>` endet am genannten Haltepunkt; derselbe Aufruf ohne
 `--bis` (oder mit einem späteren Haltepunkt) fährt weiter.
 
@@ -79,15 +81,15 @@ Paket auf dem neuen Stand nicht mehr nachfahrbar und wird neu festgehalten
 
 | Paket | Fall | Lieferung | Stand davor | Stand danach |
 |---|---|---|---|---|
-| `baldrian-klv-tg2015-fall3` | Übernahme des Bestands KLV TG2015 der Baldrian Leben zum 01.01.2026, festgehalten am 02.10.2026, am 08.10.2026 auf den redaktionell überarbeiteten Kern und das überarbeitete Tarifwerk nachgezogen: 834 Verträge, 112 Schritte | `lieferungen/baldrian-2` und die Nachlieferungen im Paket | Tag `fall3-vor` | Tag `fall3-nach` |
+| `baldrian-klv-tg2015-fall3` | Übernahme des Bestands KLV TG2015 der Baldrian Leben zum 01.01.2026, festgehalten am 02.10.2026, am 08.10.2026 auf den redaktionell überarbeiteten Kern und das überarbeitete Tarifwerk nachgezogen: 834 Verträge, 112 Schritte | `migrationen/baldrian/lieferungen/baldrian-2` und die Nachlieferungen im Paket | Tag `fall3-vor` | Tag `fall3-nach` |
 
 Welche Fälle es außerdem gab und in welchem Verhältnis sie stehen:
-[docs/faelle/README.md](../docs/faelle/README.md).
+[migrationen/baldrian/README.md](../migrationen/baldrian/README.md).
 
 ## Ein Paket bauen
 
-Aus einem geführten Fall baut `deploy/welt/paket_bauen.sh` das Paket; der
+Aus einem geführten Fall baut `werkzeuge/welt/paket_bauen.sh` das Paket; der
 Abschnitt „Das Paket bauen“ in
-[deploy/welt/README.md](../deploy/welt/README.md) beschreibt es. Im
+[werkzeuge/welt/README.md](../werkzeuge/welt/README.md) beschreibt es. Im
 Repository liegt ein Paket nur, wenn es seinen Prüfsummen entspricht und
 keine Datei darüber hinaus trägt.

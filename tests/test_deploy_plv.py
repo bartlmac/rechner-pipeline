@@ -1,4 +1,4 @@
-"""deploy/plv: Image, Compose, Timer und Workflow tragen den Vertrag des Konzepts.
+"""plv/betrieb: Image, Compose, Timer und Workflow tragen den Vertrag des Konzepts.
 
 Fachkonzept docs/simulation/tagesbetrieb.md, Abschnitt 8. Die Dateien
 sind Text, kein Code — was sie zusichern (Installation wie die CI, kein
@@ -15,7 +15,7 @@ import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-DEPLOY = REPO / "deploy" / "plv"
+DEPLOY = REPO / "plv" / "betrieb"
 
 
 def _text(name: str) -> str:
@@ -66,7 +66,7 @@ def test_timer_um_23_uhr_persistent():
 def test_workflow_baut_bei_push_auf_main_mit_zwei_tags():
     workflow = (REPO / ".github" / "workflows" / "plv-image.yml").read_text(encoding="utf-8")
     assert "branches: [main]" in workflow
-    assert "file: deploy/plv/Dockerfile" in workflow
+    assert "file: plv/betrieb/Dockerfile" in workflow
     assert "rechner-pipeline-plv:latest" in workflow
     assert "rechner-pipeline-plv:${{ steps.kurz.outputs.sha }}" in workflow
     assert "GIT_SHA=${{ github.sha }}" in workflow

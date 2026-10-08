@@ -14,8 +14,9 @@ Tarifpläne, liegen getrennt davon unter `docs/mathematik/` und
    Zugang in die Ablage, mit allen Gates.
 3. [Skill-Architektur](skill-architektur.md): die Rollen der Agenten und was
    jede darf.
-4. [ADR-027](adr-027-fuenf-gegenstaende-keine-infrastruktur.md): was das
-   Repository trägt und was nicht.
+4. [ADR-028](adr-028-ordnung-nach-ebenen.md): wie das Repository nach
+   Ebenen geordnet ist; [ADR-027](adr-027-fuenf-gegenstaende-keine-infrastruktur.md):
+   was es nicht trägt.
 
 Die ADRs sind danach ein Nachschlagewerk. Man liest sie, wenn man an der
 Stelle arbeitet, die sie regeln.
@@ -81,7 +82,8 @@ Stelle arbeitet, die sie regeln.
 | [001](adr-001-repo-zielstruktur.md) | Die Verzeichnisse folgen der Migrations-Pipeline | gilt, teilweise abgelöst durch ADR-006 |
 | [017](adr-017-vier-ebenen.md) | Vier Ebenen regeln, wer wen importieren darf: Entwickler, KI-Tool, Vorzeige, Vorzeige-Werkzeuge | gilt |
 | [019](adr-019-parallele-testsuite.md) | Die Testsuite läuft parallel | gilt |
-| [027](adr-027-fuenf-gegenstaende-keine-infrastruktur.md) | Das Repository trägt fünf Gegenstände und keine Infrastruktur | gilt |
+| [027](adr-027-fuenf-gegenstaende-keine-infrastruktur.md) | Das Repository trägt fünf Gegenstände und keine Infrastruktur | gilt, die Tabelle der Gegenstände ist abgelöst durch ADR-028 |
+| [028](adr-028-ordnung-nach-ebenen.md) | Das Repository ist nach Ebenen geordnet: System, Objekt PLV, Objekt Baldrian bzw. Migration, Simulation, Laufzeit-Artefakte | gilt; die abgenommenen Gegenstände ziehen später um |
 
 Ältere Dokumente und Belege nennen Gates teils noch mit früheren Kennungen
 (`G-2` statt `A-M4`, `O3` statt `P-K1`). Die Zuordnung steht im Register in

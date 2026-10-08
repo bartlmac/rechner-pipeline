@@ -376,7 +376,7 @@ def test_die_menge_ist_nicht_leer_und_die_ausnahmen_gibt_es() -> None:
     ("python -m rechner_pipeline.gates.stand_belegen gibtsnicht --linie <l>", "gibtsnicht"),
     # ... eine unzulaessige Alternative faellt ...
     ("python -m rechner_pipeline.gates.aktuartest --abnahme A-M1|A-M9 ...", "A-M9"),
-    # ... und der Aufruf aus deploy/plv/README.md besteht.
+    # ... und der Aufruf aus plv/betrieb/README.md besteht.
     ("python -m rechner_pipeline.betrieb.zugangsprobe --stand ~/apps/plv/daten "
      "--fall faelle/<fall> --stichtag 2026-01-01 [--bis <ISO>] "
      "--freigabe-schluessel <v> --freigabe-schluessel <a> --schluessel <b> "

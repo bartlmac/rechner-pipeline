@@ -604,7 +604,7 @@ def test_ein_einzelner_freigabeschluessel_reicht_nicht(tmp_path, betriebsschlues
     """Pruefer-Befund zur Doku: Mit getrennten Schluesseln (Aktuariat fuer
     A-M1/A-M4, mensch/betrieb fuer A-B2) braucht die Registrierung BEIDE im
     Ring — mit nur dem Aktuariatsschluessel verweigert sie am A-B2-Snapshot.
-    deploy/plv/README.md zeigt den Schalter deshalb zweifach. Der Schluessel
+    plv/betrieb/README.md zeigt den Schalter deshalb zweifach. Der Schluessel
     des Vorstands liegt seit Pruefrunde I immer im Ring (der Betrieb liest den
     Fallauftrag, den die Abnahmen nennen); fehlt nur der von mensch/betrieb,
     verweigert die Registrierung an A-B2."""

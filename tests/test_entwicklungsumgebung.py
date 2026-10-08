@@ -44,8 +44,8 @@ def test_devcontainer_zeigt_auf_das_entwicklungs_image():
 def test_zeilenenden_regel_schont_lieferungen_und_fixturen():
     attribute = _lies(".gitattributes")
     assert "* text=auto eol=lf" in attribute
-    for pfad in ("lieferungen/** -text", "tests/fixtures/** -text"):
+    for pfad in ("migrationen/baldrian/lieferungen/** -text", "tests/fixtures/** -text"):
         assert pfad in attribute, pfad
     # Die Pin-Datei der Laufzeit ist unberuehrt: Laufzeit-Image und
     # Entwicklungs-Image bleiben zwei Dateien mit zwei Zwecken.
-    assert "requirements.txt" in _lies("deploy/plv/Dockerfile")
+    assert "requirements.txt" in _lies("plv/betrieb/Dockerfile")

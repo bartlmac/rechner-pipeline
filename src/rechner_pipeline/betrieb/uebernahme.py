@@ -1796,7 +1796,7 @@ def _pruefe_tarifwerk_gegen_ablage(stand: Path, roh: Dict[str, bytes], quelle: P
             f"({config_pfad}), gegen die das Tarifwerk der Uebernahme geprueft "
             "werden koennte; ohne diesen Abgleich entstuende ein Eingang, den der "
             "Tageslauf womoeglich nie annimmt. Ausweg: erst die Config nach "
-            "deploy/plv/README.md ablegen, dann registrieren")
+            "plv/betrieb/README.md ablegen, dann registrieren")
     config = load_config(config_pfad)
     generationen = {str(g) for g in read_portfolio(
         io.BytesIO(roh["bestand.parquet"]), expected_columns=STAMM_NAMES)["tarif_generation"]}

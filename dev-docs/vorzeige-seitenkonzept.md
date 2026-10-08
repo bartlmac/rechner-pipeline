@@ -1,7 +1,7 @@
 # Vorzeigeseite: Seitenkonzept
 
 Beschlossen mit dem Maintainer am 2026-09-08. Maßstab für jede Änderung an
-`vorzeige-seite/` und `werkzeuge/`; Anmerkungen werden hieran gemessen, das
+`plv/seite/` und `werkzeuge/`; Anmerkungen werden hieran gemessen, das
 Backlog (`vorzeige-backlog.md`) sammelt, was noch fehlt.
 
 ## Was die Seite ist

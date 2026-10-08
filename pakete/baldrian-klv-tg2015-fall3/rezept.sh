@@ -3,7 +3,10 @@
 # Am 08.10.2026 neu festgehalten: Kern und Tarifwerk tragen seither die
 # redaktionelle Ueberarbeitung von Kern-Docstrings, Grundsatzdokumentation
 # und Tarifplaenen (keine Regel, kein Wert); die Fingerabdruecke unten und
-# die Begruendungen von A-K2 und A-T1 nennen diesen Stand.
+# die Begruendungen von A-K2 und A-T1 nennen diesen Stand. Am selben Abend
+# nach Ebenen geordnet (ADR-028): Die Lieferung liegt unter
+# migrationen/baldrian/lieferungen/, das README der Tarifplaene nennt den
+# neuen Ort der Doku-Engine; die erwarteten Ergebnisse sind unveraendert.
 #
 # Das Rezept faehrt die ENDFASSUNG des Falls: je Artefakt das Kommando, das es
 # zuletzt erzeugt hat, in der Reihenfolge des Laufs. Messungen auf Kopien,
@@ -275,15 +278,15 @@ zeichne A-M3 "Nachfahren ohne erneute Pruefung; uebernommen ist das Urteil der Z
 
 schritt "Tarifwerk belegen (Vorlage A-T1)" $PY -m rechner_pipeline.gates.tarifwerk_belegen --fall $F --repo-root . \
     --von "$(abgenommen A-T1)" \
-    --begruendung "Der Tarifplan KLV (Abschnitt zur uebernommenen Generation TG2015, Tabelle der Tarifzellen) wurde bei der Rueckfuehrung der Generation TG2015 in die Bestand-Config neu erzeugt. Geaendert ist nur die Schreibweise der Stornoabzuege der beiden Haus-Zellen (Mindest- und Hoechstbetrag 0 zu 0.0, Wert gleich null); kein Wert, keine Rechnungsgrundlage der eigenen Generationen der PLV. Die uebernommene Generation TG2015 steht neu in der Bestand-Config als Generationsblock ohne Neuzugang; sie ist nicht Gegenstand der Tarifwerk-Abnahme (eigene Generationen), die Parametrierung der eigenen Generationen ist unveraendert. Am 08.10.2026 redaktionell ueberarbeitet: Tarifplaene KLV und BU (Zweitkern-Saetze, Pruefvermerke, Schreibweise, Zeichensetzung); keine Regel und kein Wert geaendert."
+    --begruendung "Der Tarifplan KLV (Abschnitt zur uebernommenen Generation TG2015, Tabelle der Tarifzellen) wurde bei der Rueckfuehrung der Generation TG2015 in die Bestand-Config neu erzeugt. Geaendert ist nur die Schreibweise der Stornoabzuege der beiden Haus-Zellen (Mindest- und Hoechstbetrag 0 zu 0.0, Wert gleich null); kein Wert, keine Rechnungsgrundlage der eigenen Generationen der PLV. Die uebernommene Generation TG2015 steht neu in der Bestand-Config als Generationsblock ohne Neuzugang; sie ist nicht Gegenstand der Tarifwerk-Abnahme (eigene Generationen), die Parametrierung der eigenen Generationen ist unveraendert. Am 08.10.2026 redaktionell ueberarbeitet: Tarifplaene KLV und BU (Zweitkern-Saetze, Pruefvermerke, Schreibweise, Zeichensetzung); keine Regel und kein Wert geaendert. Am selben Abend im README der Tarifplaene der Ort der Doku-Engine nachgezogen (werkzeuge/engine, ADR-028)."
 schritt "Das belegte Tarifwerk ist das des festgehaltenen Falls" $PY -c 'import json, sys; \
     d = json.load(open(sys.argv[1])); v, s = d["stand_vorher"], d["stand"]; \
     ist = [v["tarifwerk_sha256"], s["tarifwerk_sha256"], s["parametrierung_sha256"]]; \
     sys.exit(0 if ist == sys.argv[2:5] else "ein anderes Tarifwerk als im festgehaltenen Fall: %s" % ist)' \
     $A/tarifwerk/aenderung.json 716d2ff1c167906452494f68a9daa9cb2f04b7ad33db8f8c8634fc515ee5d7e5 \
-    df30abc2e6bfa8499681c6904795f1adb91c43cd6d2420e9cf46d237dcd75c0e \
+    981a6ff332659405868af3494c20c0324c1ba0395eaf8173976447ba4d5ad322 \
     1ddb772011782802bb72a6800a04effcd3da1791566bfc0e08e2789566ae038d
-zeichne A-T1 "Nachfahren ohne erneute Pruefung; uebernommen ist das Urteil der Zeichnung im festgehaltenen Fall 3 (02.10.2026): Im Tarifplan KLV ist nur die Schreibweise der Haus-Stornoabzuege geaendert (0 zu 0.0, Wert null); die Parametrierung der eigenen Generationen ist die abgenommene. Der neue Generationsblock TG2015 der Bestand-Config ist nicht Gegenstand von A-T1 (uebernommene Generation; im Fall abgenommen ueber P-K1, A-M1 und A-M4). Dazu die redaktionelle Ueberarbeitung der Tarifplaene vom 08.10.2026, keine Regel und kein Wert; neu abgenommen am 08.10.2026."
+zeichne A-T1 "Nachfahren ohne erneute Pruefung; uebernommen ist das Urteil der Zeichnung im festgehaltenen Fall 3 (02.10.2026): Im Tarifplan KLV ist nur die Schreibweise der Haus-Stornoabzuege geaendert (0 zu 0.0, Wert null); die Parametrierung der eigenen Generationen ist die abgenommene. Der neue Generationsblock TG2015 der Bestand-Config ist nicht Gegenstand von A-T1 (uebernommene Generation; im Fall abgenommen ueber P-K1, A-M1 und A-M4). Dazu die redaktionelle Ueberarbeitung der Tarifplaene vom 08.10.2026 und der Ort der Doku-Engine im README der Tarifplaene (ADR-028), keine Regel und kein Wert; neu abgenommen am 08.10.2026."
 
 haltepunkt vor-A-M4
 

@@ -34,7 +34,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "werkzeuge"))
 
 from quellsystem.barwerte import Barwerte  # noqa: E402
 from quellsystem.kommutation import fuer  # noqa: E402
@@ -92,7 +92,7 @@ def test_kein_import_aus_rechner_pipeline():
     in die Quelle durchsickern — und die Migration pruefte am Ende die
     eigene Arithmetik gegen sich selbst.
     """
-    quell = REPO_ROOT / "quellsystem"
+    quell = REPO_ROOT / "werkzeuge" / "quellsystem"
     treffer = [
         f"{pfad.name}:{nr}: {zeile.strip()}"
         for pfad in sorted(quell.glob("*.py"))

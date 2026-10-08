@@ -14,10 +14,10 @@ Pin-Dateien. Auf andere Betriebssysteme wird der Code nicht angepasst; dort
 läuft die Suite im Entwicklungs-Container.
 
 Das Image der Laufzeit (`ghcr.io/bartlmac/rechner-pipeline-plv`, gebaut,
-wenn ein Push auf `main` den Code, `requirements.txt` oder `deploy/plv/`
+wenn ein Push auf `main` den Code, `requirements.txt` oder `plv/betrieb/`
 ändert) ist kein Entwicklungswerkzeug. Es enthält nur das
 Paket und führt den Tageslauf einer bestehenden Ablage aus
-([deploy/plv/README.md](deploy/plv/README.md)). Zum Entwickeln, Testen und
+([plv/betrieb/README.md](plv/betrieb/README.md)). Zum Entwickeln, Testen und
 Nachfahren eines Falls braucht es den Klon mit einer eigenen Umgebung, wie
 unten beschrieben.
 
@@ -101,7 +101,7 @@ Ohne Docker kommt ein vierter hinzu (die Doku-Engine). Das ist erwartet.
 Minuten entsteht aus dem Stand des Repositorys eine Laufzeit der PLV mit
 dem übernommenen Bestand:
 ```
-deploy/welt/laufzeit_aufstellen.sh ~/plv-welt pakete/baldrian-klv-tg2015-fall3
+werkzeuge/welt/laufzeit_aufstellen.sh ~/plv-welt pakete/baldrian-klv-tg2015-fall3
 ```
 Mit `--bis <haltepunkt>` hält der Lauf an einer Stelle, an der man selbst
 liest und zeichnet; derselbe Aufruf ohne `--bis` (oder mit einem späteren
@@ -111,11 +111,11 @@ Haltepunkt) fährt danach weiter. Die Haltepunkte nennt
 Fall wird vorher nach `faelle/archiv/` verschoben (README, Schnellstart). Erprobt ist das
 Nachfahren unter Linux, aus einem Klon mit `.venv`, im Entwicklungs-Container
 bisher nicht. Einzelheiten stehen in
-[deploy/welt/README.md](deploy/welt/README.md).
+[werkzeuge/welt/README.md](werkzeuge/welt/README.md).
 
 `main` trägt den Stand nach Fall 3, der Rechenkern kennt den übernommenen
 Tarif also bereits. Den Stand vor dem Fall trägt der Tag `fall3-vor`. Die
-Skripte unter `deploy/welt/` gibt es dort noch nicht, sie nehmen den
+Skripte unter `werkzeuge/welt/` gibt es dort noch nicht, sie nehmen den
 Codebaum aber über die Variable `BAUM` entgegen. Wer den Fall live mit
 Agenten auf dem alten Stand führen will, legt einen zweiten Klon auf
 `fall3-vor` an und ruft die Skripte aus `main` mit `BAUM=<zweiter Klon>` auf
@@ -148,7 +148,7 @@ Agenten-Werkzeug führt der Skill `migrationsfall-durchfuehren` durch den
 Fall. Wie ein Fall vollständig geführt wird,
 mit Welt, Fallauftrag und allen Gates, beschreibt
 [docs/architektur/ablauf-eines-falls.md](docs/architektur/ablauf-eines-falls.md).
-Die Kommandos dazu stehen in [deploy/welt/README.md](deploy/welt/README.md)
+Die Kommandos dazu stehen in [werkzeuge/welt/README.md](werkzeuge/welt/README.md)
 und in den Bedienfolgen von
 [ADR-025](docs/architektur/adr-025-erstabnahme-des-zielsystems.md) und
 [ADR-026](docs/architektur/adr-026-lebenslauf-eines-falls.md).
@@ -221,5 +221,5 @@ Abschluss, der sich selbst schreibgeschützt ablegt. Vor dem Aufräumen unter
 | Fall-Scope und die Pflichtbelege der Migrationsabnahme | [ADR-009](docs/architektur/adr-009-fall-scope-und-gate-dag.md) |
 | Tarifregeln eines übernommenen Tarifs, Herabsetzungsanteile | [ADR-024](docs/architektur/adr-024-tbox-020-tarifwerk-gevo-zustandsextrakt.md), [ADR-023](docs/architektur/adr-023-herabsetzung-und-teilkuendigung.md) |
 | Einen Bestand erzeugen und berichten | [docs/simulation/bestandserzeugung.md](docs/simulation/bestandserzeugung.md) |
-| Die Laufzeit im Tagesbetrieb | [deploy/plv/README.md](deploy/plv/README.md), [docs/simulation/tagesbetrieb.md](docs/simulation/tagesbetrieb.md) |
+| Die Laufzeit im Tagesbetrieb | [plv/betrieb/README.md](plv/betrieb/README.md), [docs/simulation/tagesbetrieb.md](docs/simulation/tagesbetrieb.md) |
 | Agenten im Repository | [AGENTS.md](AGENTS.md), [docs/architektur/skill-architektur.md](docs/architektur/skill-architektur.md) |

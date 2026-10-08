@@ -53,10 +53,10 @@ den Bau ab). Was Prosa bleibt, ist benannt und begründet.
 | PLATZHALTER Dauer und Kosten je Migration | index, migrationen | keine Artefakt-Quelle (Sitzungsprotokoll, Token) — Backlog |
 | PLATZHALTER „Aktuelle Migration: Baldrian Rentenversicherungen“ | index, migrationen | Fall existiert noch nicht; Prosa-Kasten bis der Fall läuft |
 | Methodik-Bullets | index, migrationen | Prosa (Selbstverständnis), verlinkt auf generierte Prüfgates-Seite und Konzept |
-| Bestandsstruktur nach Vorgeschichte (257/360/160/57) | migrationen | steht so nicht im Modell; übernommen aus docs/faelle/baldrian-lauf2.md (versionierte VU-Quelle — ändert sich dort, fällt der Widerspruch im Review auf) |
+| Bestandsstruktur nach Vorgeschichte (257/360/160/57) | migrationen | steht so nicht im Modell; übernommen aus migrationen/baldrian/berichte/baldrian-lauf2.md (versionierte VU-Quelle — ändert sich dort, fällt der Widerspruch im Review auf) |
 | Erzählsätze (Selbstverständnis, Banderole, Zählwerk-Hinweis) | alle | Prosa; das Zählwerk-Prinzip ist lauf-unabhängig formuliert |
 | Tarifgenerations-Nennung (KLV TG2015) | aktuariat | aus dem importierten Tarifplan ersichtlich; Nennung ist Text |
-| Abschlussbericht des Falls | migrationen | wird als Fachdokument aus docs/faelle/baldrian-lauf2.md importiert (eine Quelle, eine Heimat) |
+| Abschlussbericht des Falls | migrationen | wird als Fachdokument aus migrationen/baldrian/berichte/baldrian-lauf2.md importiert (eine Quelle, eine Heimat) |
 
 ## Geschlossene Restlücke (2026-09-06)
 

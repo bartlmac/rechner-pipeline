@@ -101,7 +101,7 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
 #: fiktiven Unternehmen (Ebene 3); "werkzeug" = die Vorzeige-Werkzeuge,
 #: die synthetische Daten ERZEUGEN (Ebene 4). Die Ebene 4 hat innerhalb
 #: von src keine eigene Schicht, sondern einzelne Module (EBENE_JE_MODUL);
-#: ihre uebrigen Teile (simulation/, quellsystem/, werkzeuge/) liegen
+#: ihre uebrigen Teile (simulation/, werkzeuge/quellsystem/, werkzeuge/) liegen
 #: ausserhalb von src und werden hier NICHT gemessen — siehe validate()
 #: und ADR-017, Konsequenzen: Die Karte erzwingt die Ebenen-Grenzen nur
 #: innerhalb des Pakets (Review T22-08).

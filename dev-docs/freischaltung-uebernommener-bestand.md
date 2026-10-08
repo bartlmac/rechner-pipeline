@@ -138,7 +138,7 @@ Falls entdeckt und im Kern als Opt-in-Parameter umgesetzt worden
 (`erhoehungs_scheibe(gamma1_uebernehmen=...)`,
 `vertrags_monatsreserve(stoab_je_baustein=...)`, Commits fc01663 und
 2b35155, Fachbericht Systemänderung 4 und
-`docs/faelle/baldrian-lauf2-veraenderungen.md`). Der Kern kann beides;
+`migrationen/baldrian/berichte/baldrian-lauf2-veraenderungen.md`). Der Kern kann beides;
 gerufen wird es nur von der Prüfstrecke. Genau diese Lücke, „kann“
 ohne „tut“, ist das Thema.
 
@@ -371,7 +371,7 @@ des Falls (Nr. 24, Gebiet Kern/Gates, mit den Zahlen aus 1.1),
 Provenienz bindet den Bestand), Bestand vor/nach neu, Führungsprobe,
 Abnahmebericht neu, A-M4 neu zeichnen. Die Neuzeichnung ist eine
 Handlung der Rollen des Falls (Regie), nicht der dev-Session.
-`docs/faelle/baldrian-lauf2.md` bekommt einen Nachtrag.
+`migrationen/baldrian/berichte/baldrian-lauf2.md` bekommt einen Nachtrag.
 Fertig, wenn: der Fall einen neuen A-M4-Snapshot mit Korrekturvermerk
 trägt und die Führungsprobe im Fall grün ist.
 STAND 2026-09-07: Produzenten und Prüf-Gates auf dem finalen Stand des
@@ -451,6 +451,6 @@ liegt beim Maintainer.
 | 6 Führungsprobe vor A-M4 | ERLEDIGT 2026-09-07 (gates.fuehrungsprobe; Pflichtbelegrolle im Bestands-Scope, Abnahmebericht 3.0.0, P9 2.0.0) |
 | 7 Freischaltung im Skill | ERLEDIGT 2026-09-07 (Skill migrationsfall-durchfuehren, Stufe 1b und 3b; Befundliste, Backlog) |
 | 8 Fall Lauf 2 korrigieren | Produzenten neu (2026-09-07, finaler Branch-Stand, Korrektur 24); Zeichnungen bei der Regie offen |
-| 9 Betrieb neu aufsetzen | Code ERLEDIGT 2026-09-08 (Eingang trägt Scheiben, Schichten, Übernahmebeleg; Tageslauf reicht sie in die Fortschreibung; Config-Schalter gegen den Beleg; Routine betrieb.neuaufsetzen, Doku 8.5 und deploy/plv/README.md). AUSFUEHRUNG auf der Laufzeit offen (Maintainer: Timer anhalten, Routine, Erstbefüllung, Stands-Paket) |
+| 9 Betrieb neu aufsetzen | Code ERLEDIGT 2026-09-08 (Eingang trägt Scheiben, Schichten, Übernahmebeleg; Tageslauf reicht sie in die Fortschreibung; Config-Schalter gegen den Beleg; Routine betrieb.neuaufsetzen, Doku 8.5 und plv/betrieb/README.md). AUSFUEHRUNG auf der Laufzeit offen (Maintainer: Timer anhalten, Routine, Erstbefüllung, Stands-Paket) |
 | 10 Prozessregel Betriebsfunde | ERLEDIGT 2026-09-07 (docs/simulation/tagesbetrieb.md, Abschnitt 6.1) |
 | 11 Kommunikation | offen (run-Session, Go des Maintainers) |

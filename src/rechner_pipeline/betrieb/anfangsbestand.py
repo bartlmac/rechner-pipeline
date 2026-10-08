@@ -475,7 +475,7 @@ def anfangsbestand_fehler(ablage: tl.Ablage, zeichner: Zeichner) -> Optional[str
         "rechner_pipeline.betrieb.anfangsbestand belegen --stand <daten> --linie <linie> ..., "
         "A-B3 zeichnen (python -m rechner_pipeline.gates.gate_entscheid --linie <linie> "
         "--gate A-B3 ...), python -m rechner_pipeline.betrieb.anfangsbestand binden ... "
-        "(deploy/plv/README.md, ADR-025)")
+        "(plv/betrieb/README.md, ADR-025)")
     if not pfad.is_file():
         return (f"{ablage.wurzel}: kein abgenommener Anfangsbestand ({ab.BINDUNG_DATEI} fehlt) "
                 "— nach dem Aufbaulauf laeuft kein Tag ohne die Abnahme A-B3 durch den "

@@ -210,7 +210,7 @@ def test_der_bereits_gefuehrte_tag_ist_ein_no_op_nur_mit_derselben_config(tmp_pa
     """Der bereits gefuehrte Tag rechnet nicht (benannter No-op) — aber nur
     mit der Config, mit der er gerechnet wurde. Bis zur Pruefrunde G stand
     hier das Gegenteil ("dort aendert sie nichts", Exit 0 mit getauschter
-    Config); deploy/plv/README.md sagte an einer Stelle "haelt an, sobald die
+    Config); plv/betrieb/README.md sagte an einer Stelle "haelt an, sobald die
     Kopie nicht mehr die ist", an einer anderen "selber Tag ist No-op".
     Entscheid: Die Wache laeuft vor dem No-op (Fund G07; ausfuehrlich in
     ``tests/test_runde_g_tageslauf.py``)."""

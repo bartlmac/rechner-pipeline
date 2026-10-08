@@ -24,7 +24,7 @@ wirkt deshalb nie in die Bewertung zurück.
 | Werkzeug | Erzeugt |
 |---|---|
 | `bestand.cli_fortschreibung` (Engines: `bestand.generator` + `bestand.ereignisse`) | den Zielbestand der Pfefferminzia: Modellpunkte je Generation, dann ein Strom datierter Geschäftsvorfälle — Bedienung: [bestandserzeugung.md](bestandserzeugung.md) |
-| `quellsystem/` | die Lieferungen der fiktiven abgebenden Unternehmen: eigener Zweitkern mit den Konventionen der Quelle, Export nach `lieferungen/`; die Fall-Regie (Seeds, Drehbücher) bleibt außerhalb des Repos |
+| `werkzeuge/quellsystem/` | die Lieferungen der fiktiven abgebenden Unternehmen: eigener Zweitkern mit den Konventionen der Quelle, Export nach `migrationen/baldrian/lieferungen/`; die Fall-Regie (Seeds, Drehbücher) bleibt außerhalb des Repos |
 | `betrieb.neugeschaeft` + `betrieb.tageslauf` (Konzept: [tagesbetrieb.md](tagesbetrieb.md)) | den Tagesbetrieb der Pfefferminzia: Neugeschäft je Werktag, nächtliche Fortschreibung, Tagesjournal, Monatsabschluss — der Punkt, ab dem das Unternehmen zu leben beginnt |
 
 Jeder Betrag kommt auch in der Simulation aus dem Rechenkern; das

@@ -19,7 +19,7 @@ Die Fachdokumentation hat zwei Stufen:
    ein migriertes Produkt mit Korrekturschicht gehört dazu ein Abschnitt zur
    Ausgestaltung (Grundsatzdokumentation, Abschnitt 10 Nr. 9).
 
-Daneben steht das [Migrationskonzept](../migrationskonzept/README.md), das
+Daneben steht das [Migrationskonzept](../../system/migrationskonzept/README.md), das
 je Bestand und Quellsystem ausgefüllt wird. Es verweist auf die
 Grundsatzdokumentation, nie umgekehrt.
 

@@ -99,7 +99,7 @@ Die Vorzeige darf in den ersten Ausbaustufen davon abweichen.
   `ontologie/code_karte.py`, jede neue Kante ist ein Befund), und aus
   Ebene 2 keine Kante in Ebene 4. Nicht gemessen sind Ebene 1
   (Entwickler und KI haben keinen Code) und die Teile der Ebene 4
-  außerhalb des Pakets (`simulation/`, `quellsystem/`, die
+  außerhalb des Pakets (`simulation/`, `werkzeuge/quellsystem/`, die
   Berichtsgeneratoren unter `werkzeuge/`); dass die Berichtsgeneratoren
   das Produkt lesen und nie umgekehrt, gilt heute durch Messung von
   Hand, nicht durch Prüfung (Backlog „werkzeuge/ in die

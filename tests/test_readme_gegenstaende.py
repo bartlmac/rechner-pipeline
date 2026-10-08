@@ -1,14 +1,14 @@
-"""README: die Tabelle der fuenf Gegenstaende haelt mit dem Baum zusammen (ADR-027).
+"""README: die Tabelle der fuenf Ebenen haelt mit dem Baum zusammen (ADR-028).
 
-Das README ist die Landkarte des Repositorys: fuenf Gegenstaende, dazu was
-quer zu ihnen liegt. Eine Landkarte veraltet still — das Bild mit sieben
+Das README ist die Landkarte des Repositorys: fuenf Ebenen (bis 08.10.2026
+fuenf Gegenstaende nach ADR-027), dazu was quer zu ihnen liegt. Eine Landkarte veraltet still — das Bild mit sieben
 Komponenten, das hier vorher stand, wurde an drei Stellen ueber seine
 Nummern zitiert und nannte weder die Routinen noch die Webseite. Mechanisch
 pruefbar ist zweierlei:
 
 * Jeder Pfad, den der Abschnitt "Was dieses Repository ist" nennt, existiert.
 * Jedes Verzeichnis der obersten Ebene, das Dateien des Repositorys traegt,
-  ist dort zugeordnet — einem Gegenstand oder "quer". Ein neues Verzeichnis
+  ist dort zugeordnet — einer Ebene oder "quer". Ein neues Verzeichnis
   ohne Zuordnung ist rot.
 
 Ob eine Zuordnung fachlich stimmt, ist Sprache und kein Test.
@@ -24,7 +24,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 ABSCHNITT = "## Was dieses Repository ist"
-#: Eine Zeile der Tabelle: Nummer und fett gesetzter Name des Gegenstands.
+#: Eine Zeile der Tabelle: Nummer und fett gesetzter Name der Ebene.
 GEGENSTAND = re.compile(r"^\| ([0-9]+) \| \*\*([^*]+)\*\* \|", re.M)
 CODE = re.compile(r"`([^`\n]+)`")
 
@@ -67,7 +67,7 @@ def _readme() -> str:
     return (REPO / "README.md").read_text(encoding="utf-8")
 
 
-def test_die_tabelle_nennt_fuenf_gegenstaende():
+def test_die_tabelle_nennt_fuenf_ebenen():
     nummern = [n for n, _ in GEGENSTAND.findall(_abschnitt(_readme()))]
     assert nummern == ["1", "2", "3", "4", "5"]
 
@@ -75,8 +75,8 @@ def test_die_tabelle_nennt_fuenf_gegenstaende():
 def test_jeder_genannte_pfad_existiert():
     pfade = _pfade(_abschnitt(_readme()))
     # Positivkontrolle: Die Suche findet die Pfade der Tabelle ueberhaupt.
-    assert {"src/rechner_pipeline/kern", "deploy/welt", "pakete",
-            "vorzeige-seite", ".claude"} <= set(pfade), pfade
+    assert {"src/rechner_pipeline/kern", "system", "plv", "migrationen",
+            "werkzeuge", "pakete", ".claude"} <= set(pfade), pfade
     assert _fehlende(pfade, REPO) == []
 
 
@@ -85,8 +85,8 @@ def test_jedes_verzeichnis_der_obersten_ebene_ist_zugeordnet():
     assert {"src", "tests", "docs", "deploy"} <= verzeichnisse, verzeichnisse
     assert _nicht_zugeordnet(_pfade(_abschnitt(_readme())), verzeichnisse) == [], (
         "ein Verzeichnis der obersten Ebene steht nicht im README-Abschnitt "
-        f"'{ABSCHNITT[3:]}' — einem Gegenstand zuordnen oder unter 'quer' "
-        "nennen (ADR-027)")
+        f"'{ABSCHNITT[3:]}' — einer Ebene zuordnen oder unter 'quer' "
+        "nennen (ADR-028)")
 
 
 def test_die_pruefung_sieht_ein_fremdes_verzeichnis_und_einen_toten_pfad(tmp_path):

@@ -30,7 +30,7 @@ Generation hält der Kern einen Charakterisierungs-Referenzwert
 Parametrierung nicht still driftet.
 
 Die PDFs sind Sekundärartefakte, gerendert über die gepinnte
-Doku-Engine (`docs/engine/render.sh`, ohne Argument alle Tarifpläne;
-die Grundsatzdokumentation rendert `docs/engine/render.sh
+Doku-Engine (`werkzeuge/engine/render.sh`, ohne Argument alle Tarifpläne;
+die Grundsatzdokumentation rendert `werkzeuge/engine/render.sh
 docs/mathematik/grundsatzdokumentation.md`); maßgeblich sind die
 Markdown-Fassungen.

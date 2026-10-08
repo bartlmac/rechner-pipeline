@@ -1,5 +1,5 @@
 # Baut und veroeffentlicht das Laufzeit-Image des PLV-Tagesbetriebs
-# (deploy/plv/Dockerfile) als ghcr-Image — bei einem Push auf main, der einen
+# (plv/betrieb/Dockerfile) als ghcr-Image — bei einem Push auf main, der einen
 # der Pfade unten aendert, mit zwei Tags: Commit-Kurzhash und latest
 # (Fachkonzept docs/simulation/tagesbetrieb.md, Abschnitt 8.1). Muster:
 # docs-image.yml. Der Kontext ist das Repo (src/ und Pin-Dateien); Aenderungen
@@ -13,7 +13,7 @@ on:
       - "src/**"
       - "requirements.txt"
       - "pyproject.toml"
-      - "deploy/plv/**"
+      - "plv/betrieb/**"
       - ".github/workflows/plv-image.yml"
   workflow_dispatch:
 
@@ -35,7 +35,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: deploy/plv/Dockerfile
+          file: plv/betrieb/Dockerfile
           push: true
           build-args: |
             GIT_SHA=${{ github.sha }}

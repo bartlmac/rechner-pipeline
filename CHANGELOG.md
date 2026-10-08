@@ -75,6 +75,17 @@ Entscheidungen dahinter als ADRs unter `docs/architektur/`.
 * **SDK-frei und deterministisch:** kein Modell-, Provider- oder
   Token-Pfad in `src/`; gleiche Eingaben ergeben byte-identische Artefakte.
 
+### Ordnung des Repositorys
+
+Das Repository ist nach Ebenen geordnet (ADR-028): System (`system/`),
+Objekt PLV (`plv/`), Objekt Baldrian bzw. Migration (`migrationen/`),
+Simulation (`werkzeuge/`) und Laufzeit-Artefakte (`pakete/`). Umgezogen
+sind `deploy/plv`, `deploy/welt`, `lieferungen/`, `quellsystem/`,
+`vorzeige-seite/`, `docs/faelle/`, `docs/engine/` und
+`docs/migrationskonzept/`; die Lieferungen bytegleich. `configs/`, die
+Grundsatzdokumentation und die Tarifpläne folgen, sobald die Abnahme einen
+Ortswechsel verfolgen kann.
+
 ### Was es bewusst noch nicht kann
 
 * **Ein Paket ist an den Stand gebunden, auf dem es festgehalten wurde.**

@@ -62,10 +62,10 @@ aus den P9-Snapshots gebaut ist, gilt: abox.json nicht löschen.
   Kein Eingangskanal. *(Nachtrag 2026-08-19: `examples/` wurde
   aufgelöst; Bestands-Konfigurationen nach `configs/`,
   Extraktions-Fixtures nach `tests/fixtures/`, historische
-  Quelldokumente aus dem Repo entfernt. Neu ist `lieferungen/`:
+  Quelldokumente aus dem Repo entfernt. Neu ist `migrationen/baldrian/lieferungen/`:
   versioniertes Frachtgut der Showcase-Migrationen, damit jeder Clone
   eine Migration selbst durchführen kann. Die Kein-Eingangskanal-Regel
-  gilt unverändert: kein Code liest `lieferungen/` implizit, in einen
+  gilt unverändert: kein Code liest `migrationen/baldrian/lieferungen/` implizit, in einen
   Fall gelangt eine Lieferung nur über die ausdrückliche
   Registrierung.)*
 

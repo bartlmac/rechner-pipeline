@@ -59,9 +59,10 @@ ihn am Gate `A-Q1`.
 Die Gliederung aus ADR-017: die Entwicklung (Entwickler und KI), das
 Migrationssystem, die [Vorzeige](#vorzeige) und die Werkzeuge, mit denen
 die Vorzeige hergestellt wird. In ADR-017 und ADR-018 heißt das
-Migrationssystem „KI-Tool“. Seit ADR-027 ist das Repository nach fünf
-Gegenständen gegliedert; die Ebenen der Module misst weiter die
-Schichtenkarte (`ontologie.code_karte`).
+Migrationssystem „KI-Tool“. Seit ADR-028 ordnen die Ebenen auch den Baum:
+System, Objekt PLV, Objekt Baldrian bzw. Migration, Simulation und
+Laufzeit-Artefakte. Die Ebenen der Module misst weiter die Schichtenkarte
+(`ontologie.code_karte`).
 
 ### Erstabnahme
 
@@ -127,7 +128,7 @@ Gates.
 
 Die Dateien, die die abgebende Gesellschaft schickt: Tarifrechner,
 Tarifbeschreibung, Bedingungen, Bestandsabzüge, Erwartungswerte. Die
-Lieferungen der Vorführung liegen unter `lieferungen/`.
+Lieferungen der Vorführung liegen unter `migrationen/baldrian/lieferungen/`.
 
 ### Linie
 
@@ -144,7 +145,7 @@ nennt die Linie und das Glied, unter dem er gezeichnet wurde.
 
 Das Dokument, mit dem die Leitung einer [Vorführung](#vorführung) einer
 simulierten Rolle das Zeichnen überträgt. Seine Prüfsumme steht in jeder
-Zeichnung dieser Rolle (Vorlage `deploy/welt/mandat.vorlage.txt`,
+Zeichnung dieser Rolle (Vorlage `werkzeuge/welt/mandat.vorlage.txt`,
 [ADR-018](adr-018-rollenmodell-und-schluesselklassen.md)).
 
 ### Migrationsabnahme
@@ -291,7 +292,7 @@ Alles, was neben dem Code nötig ist, damit die PLV läuft und ein Fall
 geführt werden kann: die [Ablage](#ablage), die [Linie](#linie), die
 Schlüssel der Rollen und die Zeichnungsordnung. Je Fall gibt es eine eigene
 Welt, damit kein Fall die Laufzeit eines anderen berührt. Aufgestellt wird
-sie mit den Routinen unter `deploy/welt/`. Der Arbeitsbereich des Falls
+sie mit den Routinen unter `werkzeuge/welt/`. Der Arbeitsbereich des Falls
 liegt nicht in der Welt, sondern im Klon.
 
 ### Zeichnen

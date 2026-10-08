@@ -6,7 +6,7 @@ name: docs-image
 on:
   push:
     branches: [main]
-    paths: ["docs/engine/**"]
+    paths: ["werkzeuge/engine/**"]
   workflow_dispatch:
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
         with:
-          context: docs/engine
+          context: werkzeuge/engine
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/rechner-pipeline-docs:latest

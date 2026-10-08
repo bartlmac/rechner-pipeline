@@ -1,7 +1,7 @@
 # Referenzumgebung fuer Entwicklung und Tests: Linux, CPython 3.11, die
 # exakt gepinnten Abhaengigkeiten aus requirements-dev.txt — dieselbe
 # Eingabe wie die CI (.github/workflows/tests.yml) und das Laufzeit-Image
-# (deploy/plv/Dockerfile). Das Projekt haertet seinen Code nicht auf
+# (plv/betrieb/Dockerfile). Das Projekt haertet seinen Code nicht auf
 # mehrere Betriebssysteme; wer nicht auf Linux arbeitet, faehrt die Suite
 # hier drin (Entscheid des Maintainers 2026-09-06, Anlass: ein Windows-PR
 # mit Python 3.14, der Backslash-Schluessel, CRLF und Dateisperren fand).

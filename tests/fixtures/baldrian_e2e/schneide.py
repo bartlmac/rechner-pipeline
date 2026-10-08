@@ -31,7 +31,7 @@ from collections import defaultdict
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
-LIEFERUNG = REPO / "lieferungen" / "baldrian"
+LIEFERUNG = REPO / "migrationen" / "baldrian" / "lieferungen" / "baldrian"
 FALL = REPO / "faelle" / "baldrian-uebernahme"
 ZIEL = Path(__file__).resolve().parent
 

@@ -39,7 +39,7 @@ den du vorbereitest.
 ## Was du tust (Kommandos)
 
 Einen eigenen Skill gibt es fuer den Betrieb nicht; die Kommandos und ihre
-Reihenfolge stehen in ``deploy/plv/README.md`` und im Fachkonzept
+Reihenfolge stehen in ``plv/betrieb/README.md`` und im Fachkonzept
 ``docs/simulation/tagesbetrieb.md``. Du fuehrst sie aus, wo der Mensch es
 dir auftraegt, und bereitest die Vorlage auf:
 
@@ -58,7 +58,7 @@ dir auftraegt, und bereitest die Vorlage auf:
   gezeichneten A-B2. Beide nennen `--linie`; der Ring der Probe traegt die
   Schluessel des Vorstands und von `mensch/aktuariat` (A-M4, A-M1), der
   der Registrierung zusaetzlich den von `mensch/betrieb` (A-B2) — die
-  woertlichen Aufrufe stehen in `deploy/plv/README.md`.
+  woertlichen Aufrufe stehen in `plv/betrieb/README.md`.
 - **Auslieferung (Vorlage fuer A-B1):** das Stands-Paket mit Anker
   erzeugen (`python -m rechner_pipeline.betrieb.seite`) und den Ankersatz
   nennen, den `mensch/betrieb` zeichnen soll.

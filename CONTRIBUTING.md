@@ -17,14 +17,15 @@ willkommen.
 
 ## Pull Requests schneiden
 
-Das Repository trägt fünf Gegenstände (ADR-027): die Laufzeit der PLV,
-das Migrationssystem, die Fall-Definitionen, die Routinen und die
-Webseite.
+Das Repository ist nach Ebenen geordnet (ADR-028): System, Objekt PLV,
+Objekt Baldrian bzw. Migration, Simulation und Laufzeit-Artefakte. Für Pull
+Requests gilt, was ADR-027 festgelegt hat:
 
-- Mehrere Gegenstände gehen nur dann in einen Pull Request, wenn sie
+- Mehrere Teile gehen nur dann in einen Pull Request, wenn sie
   zusammengehören: wenn `main` mit nur einem Teil davon nicht stimmig wäre.
-- Die Webseite geht nie im selben Pull Request wie die anderen vier: Sie
-  zieht `main` nach und wird eigenständig veröffentlicht.
+- Die Webseite, ihre Quellen und die Werkzeuge, die sie bauen, geht nie im
+  selben Pull Request wie der Rest: Sie zieht `main` nach und wird
+  eigenständig veröffentlicht.
 - Infrastruktur einzelner Installationen gehört nicht ins Repository.
 - Kern und Tarifwerk sind abgenommene Gegenstände (`src/rechner_pipeline/kern`,
   die Referenzwerte, die Grundsatzdokumentation, `docs/tarifplaene`, die

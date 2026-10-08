@@ -419,12 +419,12 @@ Die Simulation kennt keine Uhrzeit, nur den Kalendertag.
 
 ### 8.1 Image
 
-Ein Dockerfile im Repo (`deploy/plv/Dockerfile`): `python:3.11-slim`,
+Ein Dockerfile im Repo (`plv/betrieb/Dockerfile`): `python:3.11-slim`,
 Installation exakt wie die CI (`requirements.txt`, dann `pip install -e .
 --no-deps`), kein Entwicklungswerkzeug, keine Schlüssel, ein
 unprivilegierter Benutzer. Ein GitHub-Workflow `plv-image.yml` baut bei
 einem Push auf `main`, der `src/`, `requirements.txt`, `pyproject.toml`
-oder `deploy/plv/` ändert, das Image
+oder `plv/betrieb/` ändert, das Image
 `ghcr.io/<owner>/rechner-pipeline-plv` mit zwei Tags: den ersten zwölf
 Stellen des Commits und `latest`. Das Muster existiert
 bereits für die Doku-Engine (`docs-image.yml`). Der Image-Digest steht in
@@ -434,7 +434,7 @@ dem er entstand (dieselbe Provenienzdisziplin wie die Gate-Ledger).
 ### 8.2 Laufzeitumgebung `~/apps/plv`
 
 Aufbau der Laufzeitumgebung und ihre Einrichtung stehen in
-`deploy/plv/README.md`: Compose-Datei, `.env` ohne Geheimnisse, die Ablage
+`plv/betrieb/README.md`: Compose-Datei, `.env` ohne Geheimnisse, die Ablage
 `daten/`, Schlüssel und Linie außerhalb der Ablage, Timer und Service
 (`systemd --user`, täglich 23:00, `Persistent=true`).
 
@@ -446,7 +446,7 @@ erste Lauf mit neuem Image protokolliert den Digest-Wechsel. Wechselt
 die Kern-Version, weisen Monatsabschluss-Kontrollen die Abweichungen aus,
 wie ADR-011 es verlangt; der Tagesbetrieb schreibt nichts um.
 
-Das Repository liefert unter `deploy/plv/` Compose-Datei, Timer, Service
+Das Repository liefert unter `plv/betrieb/` Compose-Datei, Timer, Service
 und eine README mit dem Einrichtungsweg; die Laufzeitumgebung selbst ist
 kein Repo-Inhalt. Erstbefüllung: Die Ablage beginnt leer; dazu kommen die
 Übernahme-Eingänge und der Tagesstrom seit dem Betriebsbeginn (ADR-020).
@@ -710,7 +710,7 @@ die Config zurück, mit der das Protokoll gerechnet hat.
 
 Umgesetzt wurde das Konzept in acht Blöcken, je ein Commit mit Tests.
 Neuer Code liegt im Paket `rechner_pipeline.betrieb` (Tagesbetrieb der
-Vorzeige) und unter `deploy/plv/`; Änderungen an bestehenden Modulen
+Vorzeige) und unter `plv/betrieb/`; Änderungen an bestehenden Modulen
 blieben additiv. Code und Tests verweisen mit der Blocknummer auf diese
 Tabelle.
 
@@ -722,7 +722,7 @@ Tabelle.
 | B4 | `betrieb.tageslauf`: Nachholen, Fortschreibung, Wache P-B1, Monatsabschluss, Protokoll; Test über mehrere Tage inkl. Monatswechsel und ausgefallener Nacht |
 | B5 | Übernahme-Eingang: Baldrian `bestand-nach` als `daten/uebernahme/`, Fall-Bezug im Protokoll, Teilbestand im Monatsbericht |
 | B6 | Tarifplan: erzeugte Generationentabellen aus der Config; Kern-Referenzwerte je Generation |
-| B7 | `deploy/plv/`: Dockerfile, Compose, Timer, README; Workflow `plv-image.yml`; Erstbefüllung dokumentiert |
+| B7 | `plv/betrieb/`: Dockerfile, Compose, Timer, README; Workflow `plv-image.yml`; Erstbefüllung dokumentiert |
 | B8 | Seite: Abschnitt „Bestand heute“ aus dem Stand; Stands-Paket als Quelle für `falldaten` |
 
 ## 10 Offene Fachentscheidungen

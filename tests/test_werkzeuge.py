@@ -531,8 +531,8 @@ import unternehmensseite as us  # noqa: E402
 
 
 def _quellseiten(tmp_path: Path) -> Path:
-    quellen = tmp_path / "vorzeige-seite"
-    quellen.mkdir()
+    quellen = tmp_path / "plv/seite"
+    quellen.mkdir(parents=True)
     (quellen / "_config.yml").write_text("theme: x\n", encoding="utf-8")
     (quellen / "index.md").write_text(
         "Fiktives Unternehmen — Vorfuehrung\n\n# Willkommen\n",
@@ -2581,7 +2581,7 @@ def test_die_architekturdokumentation_steht_hinter_den_kulissen(tmp_path):
     assert not (ziel / "it").exists()
     index = (ziel / "hinter-den-kulissen" / "architektur" / "index.md").read_text(encoding="utf-8")
     assert "Hinter den Kulissen" in index.split("\n## ", 1)[0]
-    quellen = repo / "vorzeige-seite"
+    quellen = repo / "plv/seite"
     for md in sorted(quellen.rglob("*.md")):
         if md.relative_to(quellen).parts[0] != "hinter-den-kulissen":
             assert "architektur/" not in md.read_text(encoding="utf-8"), md
@@ -2598,7 +2598,7 @@ def test_jede_kastenart_hat_ihre_farbe_und_keine_ist_weiss():
     import re
     import grafik
 
-    css = (Path(__file__).resolve().parent.parent / "vorzeige-seite" / "assets" / "stil.css").read_text(
+    css = (Path(__file__).resolve().parent.parent / "plv/seite" / "assets" / "stil.css").read_text(
         encoding="utf-8")
     wurzel = dict(re.findall(r"(--[\w-]+):\s*(#[0-9a-fA-F]{3,6})\s*;", css.split("}", 1)[0]))
 
