@@ -696,7 +696,7 @@ def render_html(
         "vor der Umstellung führen den Wert des letzten Jahrestags, spätere den "
         "monatsgenauen. Festgeschriebene Abschlüsse werden nicht nachträglich "
         "geändert. Die Stufe am Wechsel ist deshalb keine Bewegung des Bestands; "
-        "Veränderungen über den Wechsel hinweg sind nicht ausgewiesen.</p>"
+        "Veränderungen über den Wechsel hinweg sind nicht ausgewiesen.</p>\n"
         if len(bekannte) > 1 else "")
 
     with plt.rc_context(_RC):
@@ -742,8 +742,7 @@ Bewegung im Berichtsmonat, Entwicklung der letzten {monate} Monate.</p>
 <h2>Bestand am {stichtag.isoformat()}</h2>
 {_stand_tabelle(jetzt, kennzahlen.get(vormonat), kennzahlen.get(von),
                 gruppen, stichtage)}
-{konvention_hinweis}
-<p class="hinweis">Alle Zahlen stammen aus dem festgeschriebenen
+{konvention_hinweis}<p class="hinweis">Alle Zahlen stammen aus dem festgeschriebenen
 Monatsabschluss des jeweiligen Stichtags; sie sind nicht nachgerechnet. Die
 Vergleichsspalten zeigen denselben Abschluss einen Monat und
 {monate} Monate früher: die eine beantwortet, was sich seit dem letzten
