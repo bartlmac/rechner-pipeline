@@ -58,7 +58,11 @@ def test_ein_nachgerechneter_abschluss_behaelt_seinen_beleg_in_seite_und_paket(t
     def kein_bericht(*_a, **_k):
         raise OSError(5, "I/O error")
 
-    monkeypatch.setattr(tl, "_bericht", kein_bericht)
+    # Der gemeinsame Schreiber beider Berichtsarten: Seit den Berichtsarten
+    # entsteht der Monatsbericht je Abschluss ueber _monatsbericht, _bericht
+    # schreibt nur noch Jahres- und Teilbestandsbericht. Der Lauf scheitert
+    # am ersten Bericht nach dem ersten neuen Abschluss.
+    monkeypatch.setattr(tl, "_schreibe_bericht", kein_bericht)
     assert tageslauf(ablage, dt.date(2026, 2, 2))[0] != EXIT_OK
     monkeypatch.undo()
     assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK

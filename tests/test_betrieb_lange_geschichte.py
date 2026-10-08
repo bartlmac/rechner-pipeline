@@ -209,12 +209,26 @@ def test_der_betriebsbericht_endet_am_berichtsstichtag(tmp_path):
     ablage = _ablage_ab(tmp_path / "daten", dt.date(2026, 1, 1))
     code, zeile = tageslauf(ablage, dt.date(2026, 2, 3))
     assert code == EXIT_OK, zeile.get("fehler") or zeile.get("pb1")
-    bericht = next(e for e in zeile["abschluesse"] if "bericht" in e)["bericht"]
-    html = (ablage.berichte / bericht).read_text("utf-8")
-    assert "Berichtsstichtag: 2026-02-01" in html
+    # Der grosse Bericht ist der, in dem eine Projektion ueberhaupt
+    # entstehen kann -- er kennt Historie und Prognose. Zum Jahreswechsel
+    # traegt ihn der Jahresbericht.
+    jahres = next(e["jahresbericht"] for e in zeile["abschluesse"]
+                  if e.get("jahresbericht"))
+    html = (ablage.berichte / jahres).read_text("utf-8")
+    assert "Berichtsstichtag: 2026-01-01" in html
     assert "keine Projektion" in html
     for prognose in ("danach Prognose", "ab hier Prognose", "Projektionshorizont"):
         assert prognose not in html, prognose
+    # Der Monatsbericht daneben kann sie gar nicht erst haben: Er endet am
+    # Stichtag, weil er nichts anderes kennt als die Abschluesse bis dahin.
+    monat = next(e["bericht"] for e in zeile["abschluesse"]
+                 if e.get("bericht") and e["stichtag"] == "2026-02-01")
+    monats_html = (ablage.berichte / monat).read_text("utf-8")
+    nur_text = re.sub(r"<[^>]+>", "", monats_html)
+    assert "Berichtsstichtag: 2026-02-01" in nur_text
+    assert "keine Projektion" in nur_text
+    for prognose in ("danach Prognose", "ab hier Prognose", "Projektionshorizont"):
+        assert prognose not in monats_html, prognose
 
 
 def test_fallbericht_und_betriebsbericht_schliessen_sich_aus():

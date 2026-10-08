@@ -282,3 +282,23 @@ def test_eine_weitergereichte_zahl_wird_abgeleitet_statt_geglaubt(
                                       encoding="utf-8")
     with pytest.raises(fd.FalldatenFehler):
         _mit_anker(kopie)
+
+
+def test_das_paket_traegt_monatsberichte_und_den_jahresbericht_bezeugt(paket: Path):
+    """Wie vor Lauf 3: je Abschluss des Fensters der Monatsbericht, zum 1.1.
+    dazu der Jahresbericht — beide bezeugt (Hash in der Protokollzeile, Datei
+    und Hash in stand.json). Die Testablage fuehrt die Abschluesse zum
+    01.01. und 01.02.2026."""
+    stand = json.loads((paket / "stand.json").read_text(encoding="utf-8"))
+    je = {a["stichtag"]: a for a in stand["abschluesse"]}
+    assert je["2026-01-01"]["bericht"] == "bestandsbericht_2026-01-01.html"
+    assert je["2026-01-01"]["jahresbericht"] == "jahresbericht_2025.html"
+    assert je["2026-02-01"]["bericht"] == "bestandsbericht_2026-02-01.html"
+    assert "jahresbericht" not in je["2026-02-01"]
+    for name in ("bestandsbericht_2026-01-01.html", "bestandsbericht_2026-02-01.html",
+                 "jahresbericht_2025.html"):
+        assert (paket / name).is_file() and name in stand["dateien"], name
+    assert "<title>Monatsbericht zum 2026-02-01</title>" in (
+        paket / "bestandsbericht_2026-02-01.html").read_text(encoding="utf-8")
+    assert "<title>Jahresbericht 2025</title>" in (
+        paket / "jahresbericht_2025.html").read_text(encoding="utf-8")

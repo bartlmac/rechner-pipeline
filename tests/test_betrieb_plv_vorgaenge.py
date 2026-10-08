@@ -122,11 +122,12 @@ def test_der_abschluss_fuehrt_die_summe_nach_dem_vorgang(gefuehrt):
 
 
 def test_der_bestandsbericht_weist_beide_vorgaenge_aus(gefuehrt):
-    """Ereignistabelle und Bewegungskonto des Monatsberichts zum
-    Neujahrstag: je Vorgang die Anzahl aus dem Ledger, und das Konto des
+    """Ereignistabelle und Bewegungskonto des Jahresberichts zum
+    Neujahrstag (der grosse Bericht; der Monatsbericht ist ein eigenes
+    Dokument): je Vorgang die Anzahl aus dem Ledger, und das Konto des
     vollen Jahres 2026 traegt eine Teilkuendigung ungleich null."""
     ablage, _ = gefuehrt
-    html = (ablage.berichte / "bestandsbericht_2027-01-01.html").read_text(encoding="utf-8")
+    html = (ablage.berichte / "jahresbericht_2026.html").read_text(encoding="utf-8")
     ledger = read_portfolio(ablage.stand / "ledger.parquet")
     for titel, code, art in (("Beitragsherabsetzung (RED)", "RED", "VS_herabsetzung"),
                              ("Teilkündigung (TKU)", "TKU", "VS_teilkuendigung"),

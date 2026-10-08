@@ -83,8 +83,14 @@ DURCHREICHER = {
      "df, pfad, exklusiv=True"): "Verzeichnis ist Parameter",
     ("rechner_pipeline.bestand.manifest.schreibe_manifest", "neue_datei",
      "lauf, ziel.name"): "Laufverzeichnis ist Parameter",
-    ("rechner_pipeline.betrieb.tageslauf._bericht", "neue_datei",
+    # Monatsbericht und Jahresbericht kommen durch EINEN Schreiber auf die
+    # Platte (_schreibe_bericht); beide Erzeuger reichen ihr Ziel durch.
+    ("rechner_pipeline.betrieb.tageslauf._schreibe_bericht", "neue_datei",
      "ziel.parent, ziel.name"): "Ziel ist Parameter",
+    ("rechner_pipeline.betrieb.tageslauf._bericht", "_schreibe_bericht",
+     "html, ziel"): "Ziel ist Parameter",
+    ("rechner_pipeline.betrieb.tageslauf._monatsbericht", "_schreibe_bericht",
+     "html, ziel"): "Ziel ist Parameter",
     ("rechner_pipeline.betrieb.tageslauf._schreibe_json_atomar", "mkstemp",
      "dir=pfad.parent, prefix=f'.{pfad.name}.', suffix='.tmp'"): "Ziel ist Parameter",
     ("rechner_pipeline.betrieb.seite._schreibe", "neue_datei",
@@ -440,13 +446,22 @@ def test_jede_tempdatei_eines_echten_laufs_gehoert_zu_einem_schreibziel(ein_tag,
     angelegt = _spion_tempdateien(monkeypatch)
     code, zeile = tageslauf(ablage, dt.date(2026, 2, 3))
     assert code == EXIT_OK and zeile["uebernommen"] is True
-    wurzel = ablage.wurzel
-    unter_der_ablage = [p for p in angelegt if wurzel in p.parents]
+    # Der Jahresbericht entsteht nur an einem 1.1.; der Lauf oben fuehrt den
+    # Februar. Ein zweiter gespaehter Lauf ueber den Jahreswechsel bringt
+    # sein Schreibziel in die Messung — mit eigener Wurzel.
+    jahr = _ablage(tmp_path / "jahr")
+    code_j, _ = tageslauf(jahr, dt.date(2026, 1, 31))
+    assert code_j == EXIT_OK
+    wurzeln = (ablage.wurzel, jahr.wurzel)
+    unter_der_ablage = [p for p in angelegt if any(w in p.parents for w in wurzeln)]
     assert unter_der_ablage, "der Spion sah keine Tempdatei — er misst nichts"
-    ohne_eintrag = [str(p.relative_to(wurzel)) for p in unter_der_ablage
-                    if _eintrag_von(wurzel, p) is None]
+
+    def _wurzel_von(p):
+        return next(w for w in wurzeln if w in p.parents)
+    ohne_eintrag = [str(p.relative_to(_wurzel_von(p))) for p in unter_der_ablage
+                    if _eintrag_von(_wurzel_von(p), p) is None]
     assert ohne_eintrag == []
-    assert {_eintrag_von(wurzel, p) for p in unter_der_ablage} == set(tl.SCHREIBZIELE)
+    assert {_eintrag_von(_wurzel_von(p), p) for p in unter_der_ablage} == set(tl.SCHREIBZIELE)
 
 
 def _zielname(ort: Path, muster: str) -> str:

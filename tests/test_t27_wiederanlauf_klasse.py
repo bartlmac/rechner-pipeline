@@ -238,7 +238,18 @@ def test_ein_nachhollauf_ueber_den_ablauf_hinweg_laeuft_nach_einem_berichtsfehle
     def _kein_bericht(*_a, **_k):
         raise OSError(5, "I/O error")
 
-    monkeypatch.setattr(tl, "_bericht", _kein_bericht)
+    # Seit den Berichtsarten laeuft der Monatsbericht ueber _monatsbericht
+    # (eigener Renderer) und entsteht je Abschluss in der Schleife. Damit der
+    # Lauf erst NACH den Abschluessen ueber den Ablauf hinweg scheitert,
+    # scheitert nur der Bericht zum 01.03.; Januar und Februar gelingen.
+    echter_monatsbericht = tl._monatsbericht
+
+    def _kein_maerzbericht(ablage_, journal, config, stichtag, *rest, **k):
+        if stichtag == dt.date(2026, 3, 1):
+            return _kein_bericht()
+        return echter_monatsbericht(ablage_, journal, config, stichtag, *rest, **k)
+
+    monkeypatch.setattr(tl, "_monatsbericht", _kein_maerzbericht)
     code, zeile = tageslauf(ablage, dt.date(2026, 3, 2))
     monkeypatch.undo()
     assert code != EXIT_OK and zeile["uebernommen"] is False
@@ -386,7 +397,9 @@ def test_ein_nachgerechneter_abschluss_wird_belegt_wie_ein_neuer(tmp_path, monke
     def _kein_bericht(*_a, **_k):
         raise OSError(5, "I/O error")
 
-    monkeypatch.setattr(tl, "_bericht", _kein_bericht)
+    # Der gemeinsame Schreiber beider Berichtsarten (am 01.03. ohne
+    # Uebernahme ruft der Lauf _bericht gar nicht).
+    monkeypatch.setattr(tl, "_schreibe_bericht", _kein_bericht)
     code, _ = tageslauf(ablage, dt.date(2026, 3, 2))
     monkeypatch.undo()
     assert code != EXIT_OK

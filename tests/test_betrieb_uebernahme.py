@@ -533,7 +533,11 @@ def test_ein_abschluss_der_den_eingang_traegt_macht_ihn_nicht_neu(eingang, monke
     def _kein_bericht(*_a, **_k):
         raise OSError(5, "I/O error")
 
-    monkeypatch.setattr(tl, "_bericht", _kein_bericht)
+    # Der gemeinsame Schreiber beider Berichtsarten: Seit den Berichtsarten
+    # entsteht der Monatsbericht je Abschluss ueber _monatsbericht, _bericht
+    # schreibt nur noch Jahres- und Teilbestandsbericht. Der Lauf scheitert
+    # am ersten Bericht nach dem ersten neuen Abschluss.
+    monkeypatch.setattr(tl, "_schreibe_bericht", _kein_bericht)
     code, zeile = tageslauf(ablage, dt.date(2026, 1, 9))
     monkeypatch.undo()
     assert code != EXIT_OK and zeile["uebernommen"] is False
@@ -653,7 +657,15 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
     assert code == EXIT_OK, zeile
     abschluesse = zeile["abschluesse"]
     assert [a["stichtag"] for a in abschluesse] == ["2026-01-01", "2026-02-01"]
-    assert "bericht" not in abschluesse[0]            # nur der juengste Abschluss wird gerendert
+    # Jeder Abschluss, den das Paket traegt, bekommt seinen Bericht —
+    # die Unternehmensseite verlinkt zwoelf Monate, nicht einen.
+    assert abschluesse[0]["bericht"] == "bestandsbericht_2026-01-01.html"
+    # Zum Jahreswechsel zusaetzlich der Jahresbericht: derselbe Stichtag,
+    # zwei Dokumente. Der Monatsbericht zeigt zwoelf Monate, der
+    # Jahresbericht die Entwicklung seit Betriebsbeginn.
+    assert abschluesse[0]["jahresbericht"] == "jahresbericht_2025.html"
+    assert (ablage.berichte / "jahresbericht_2025.html").is_file()
+    assert "jahresbericht" not in abschluesse[1]
     assert abschluesse[1]["bericht"] == "bestandsbericht_2026-02-01.html"
     # Runde D, Fund 7: die Zeile bindet den Teilbestandsbericht per Hash.
     teil_pfad = ablage.berichte / "bestandsbericht_2026-02-01_teilbestand-probe-uebernahme.html"
@@ -668,19 +680,17 @@ def test_teilbestand_bekommt_seinen_eigenen_monatsbericht(eingang):
     zeilen = re.findall(r"<td>(KLV-\d{4}|BU-\d{4}|TG2015)</td>.*?<td class=\"num\">(\d+)</td></tr>", teil)
     assert dict(zeilen)["KLV-2017"] == "3"
     assert all(anzahl == "0" for name, anzahl in zeilen if name != "KLV-2017")
-    gesamt = (ablage.berichte / "bestandsbericht_2026-02-01.html").read_text("utf-8")
-    zeilen_gesamt = re.findall(r"<td>(KLV-\d{4}|BU-\d{4}|TG2015)</td>.*?<td class=\"num\">(\d+)</td></tr>", gesamt)
-    # KLV-2017 verkauft nicht mehr (Fenster bis 2021): im Gesamtbestand
-    # stehen genau die drei uebernommenen, wie im Teilbestand. Der Gesamt-
-    # bericht ist MEHR als der Teilbestand, weil das eigene Geschaeft der
-    # aktuell verkaufenden Generation (KLV-2025) dazukommt — seit ADR-020
-    # entsteht es aus dem Tagesstrom ab Betriebsbeginn.
-    assert int(dict(zeilen_gesamt)["KLV-2017"]) == 3
-    assert int(dict(zeilen_gesamt).get("KLV-2025", "0")) > 0
-    # Ohne den Schalter kein Teilbestand-Bericht. Eine eigene Ablage mit
-    # eigener Config und eigener Registrierung: Seit ADR-022 bindet die
-    # Zugangsabnahme den Stand der Ablage samt Config; ein kopierter Eingang
-    # unter umgeschriebener Config traete (richtig) nicht ein.
+    # Der Gesamtbericht ist seit dem eigenen Renderer der Monatsbericht; er
+    # zaehlt nicht je Generation, sondern fuehrt den Bestand des Abschlusses.
+    # Dass der Teilbestand ein Teil ist, steht damit im Abschluss selbst —
+    # und der ist die Quelle, aus der beide Berichte lesen.
+    # KLV-2017 verkauft nicht mehr (Fenster bis 2021): im Gesamtbestand stehen
+    # genau die drei uebernommenen; das eigene Geschaeft der verkaufenden
+    # Generation (KLV-2025) kommt seit ADR-020 aus dem Tagesstrom dazu.
+    abschluss = read_portfolio(ablage.abschluesse / "abschluss_2026-02-01.parquet")
+    assert int((abschluss["tarif_generation"] == "KLV-2017").sum()) == 3
+    assert int((abschluss["tarif_generation"] == "KLV-2025").sum()) > 0
+    # Ohne den Schalter kein Teilbestand-Bericht:
     aus = Ablage(stand.parent / "aus")
     _mit_config(aus.wurzel, _kleine_config().replace(
         "teilbestand_getrennt = true", "teilbestand_getrennt = false"))

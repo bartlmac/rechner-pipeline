@@ -134,6 +134,11 @@ from rechner_pipeline.bestand.manifest import (
     sha256_bytes,
 )
 from rechner_pipeline.bestand.kennzahlen import monatskennzahlen
+from rechner_pipeline.bestand.monatsbericht import (
+    MONATE as BERICHT_MONATE,
+    monatsraster,
+    render_html as monatsbericht_html,
+)
 from rechner_pipeline.bestand.parquet_io import neue_datei, read_portfolio, write_portfolio
 from rechner_pipeline.bestand.report import render_html
 from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
@@ -404,6 +409,9 @@ SCHREIBZIELE: Tuple[Tuple[str, str], ...] = (
     (JOURNAL_DIR, TAGESJOURNAL_DATEI),
     (ABSCHLUSS_DIR, "abschluss_*.parquet"),
     (BERICHT_DIR, "bestandsbericht_*.html"),
+    # Der Jahresbericht zum 1.1. — Monatsbericht und Jahresbericht sind zwei
+    # Dokumente; ohne Eintrag verweigert schreibziel ihn (Exit 4).
+    (BERICHT_DIR, "jahresbericht_*.html"),
     (ARBEIT_DIR, "*.parquet"),
     (ARBEIT_DIR, MANIFEST_DATEI),
     (SEITE_STAGING_DIR, "index.html"),
@@ -2608,13 +2616,80 @@ def _stamm_am_stichtag(stamm: pd.DataFrame, historie: pd.DataFrame) -> pd.DataFr
     return aus.astype({"status_id": "int64"})
 
 
+def _schreibe_bericht(html: str, ziel: Path) -> Path:
+    """Einen fertigen Bericht atomar ablegen (erst daneben, dann umlegen).
+
+    Eine Stelle fuer beide Erzeuger: Monatsbericht und Jahresbericht sollen
+    nicht auf verschiedene Weise auf die Platte kommen, und ein halb
+    geschriebener Bericht darf nie unter seinem Namen stehen.
+    """
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    tmp = neue_datei(ziel.parent, ziel.name)
+    try:
+        tmp.write_text(html, encoding="utf-8", newline="\n")
+        os.replace(tmp, ziel)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    return ziel
+
+
+def _monatsbericht(
+    ablage: Ablage, journal: pd.DataFrame, config: BestandConfig,
+    stichtag: _dt.date, heute: _dt.date, ziel: Path, quelle_hash: str,
+) -> Path:
+    """Den Monatsbericht zu einem Abschluss schreiben.
+
+    Eigener Renderer, nicht der grosse Bericht mit engerem Stichtagsraster:
+    Das Raster steuert dort nur die Verlaufskurven, waehrend Ereignissummen
+    und Nachweisungen unabhaengig davon die ganze Historie zeigen — der
+    Bericht traegt dann eine Zwoelf-Monats-Kurve unter der Ueberschrift
+    "Geschaeftsvorfaelle 1994 bis 2026". Siehe
+    :mod:`rechner_pipeline.bestand.monatsbericht`.
+
+    Quelle sind die FESTGESCHRIEBENEN Abschluesse des Rasters, gelesen von
+    der Platte, plus das Tagesjournal. Nicht die Stichtagssicht: Der
+    Abschluss ist der Stand seines Stichtags, und wer ihn nachrechnet,
+    weicht um die Buchungen ab, die es an dem Tag noch nicht gab (T24-02).
+    Fehlt ein aelterer Abschluss — vor dem Betriebsbeginn —, entfaellt
+    seine Zeile; erfunden wird keine.
+    """
+    abschluesse = {}
+    konventionen = {}
+    for tag in monatsraster(stichtag, BERICHT_MONATE):
+        pfad = ablage.abschluesse / f"abschluss_{tag.isoformat()}.parquet"
+        if pfad.is_file():
+            # Die EINE Lesefunktion, und ihr Urteil wird verwendet: Eine Reihe
+            # ueber die Naht jahreszeile/monatsgenau zeichnet der Bericht nicht
+            # still (Befund 08.10.2026: [0] verwarf die Konvention).
+            tabelle, konvention = lies_abschluss(pfad)
+            abschluesse[tag] = tabelle
+            konventionen[tag] = konvention.name
+    html = monatsbericht_html(
+        abschluesse, journal, stichtag, monate=BERICHT_MONATE, stand=heute,
+        titel=f"Monatsbericht zum {stichtag.isoformat()}",
+        quelle_hash=quelle_hash,
+        hinweis=config.tagesbetrieb.berichtshinweis,
+        konventionen=konventionen,
+    )
+    return _schreibe_bericht(html, ziel)
+
+
 def _bericht(
     tabellen: Dict[str, Any], config: BestandConfig, stichtag: _dt.date, heute: _dt.date,
     ziel: Path, quelle_hash: str, titel: Optional[str] = None,
 ) -> Path:
+    """Der grosse Bericht: Gesamtentwicklung seit Betriebsbeginn.
+
+    Jahresbericht und Teilbestandsbericht. Der Monatsbericht geht seit
+    seinem eigenen Renderer nicht mehr hier durch (:func:`_monatsbericht`);
+    ein enger gestelltes Stichtagsraster hat den grossen Bericht nie zu
+    einem Monatsbericht gemacht, weil Ereignissummen und Nachweisungen
+    nicht am Raster haengen.
+    """
     html = render_html(
         tabellen["portfolio"],
-        titel=titel or f"Bestandsbericht PLV zum {stichtag.isoformat()}",
+        titel=titel or f"Bestandsbericht zum {stichtag.isoformat()}",
         quelle_hash=quelle_hash,
         historie=tabellen["historie"],
         ledger=tabellen["ledger"],
@@ -2631,16 +2706,12 @@ def _bericht(
         schichten=tabellen.get("schichten"),
         verankerung=tabellen.get("verankerung"),
         reduktionen=tabellen.get("reduktionen"),
+        # Derselbe Hinweis wie im Monatsbericht: Beide Dokumente werden
+        # verlinkt und weitergegeben, und beide muessen ohne die Seite
+        # verstaendlich sein, die sie einordnet.
+        hinweis=config.tagesbetrieb.berichtshinweis,
     )
-    ziel.parent.mkdir(parents=True, exist_ok=True)
-    tmp = neue_datei(ziel.parent, ziel.name)
-    try:
-        tmp.write_text(html, encoding="utf-8", newline="\n")
-        os.replace(tmp, ziel)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
-    return ziel
+    return _schreibe_bericht(html, ziel)
 
 
 def _anfuegen(
@@ -3144,10 +3215,8 @@ def _tageslauf_mit_config(
                     (tabellen["portfolio"]["insurance_start"] > pd.Timestamp(heute)).sum()),
             }
             # Monatsabschluesse fuer jeden Monatsersten im gefuehrten Fenster.
-            # Festgeschrieben wird jeder; den Bestandsbericht (jederzeit neu
-            # renderbar) bekommt nur der juengste — beim Nachholen vieler
-            # Monate waere alles andere Rechenzeit fuer Seiten, die niemand
-            # liest. Mit teilbestand_getrennt kommt je Uebernahme ein
+            # Festgeschrieben wird jeder; den Monatsbericht bekommen die des
+            # Paketfensters, den Jahresbericht der Abschluss zum 1.1. Mit teilbestand_getrennt kommt je Uebernahme ein
             # Bericht ueber ihren Teilbestand dazu (Konzept, Abschnitt 6).
             manifest_hash = _datei_hash(arbeit / MANIFEST_DATEI)
             kennung = str(manifest_hash)[:16]
@@ -3260,13 +3329,20 @@ def _tageslauf_mit_config(
                         **monatskennzahlen(
                             lies_abschluss(geschrieben)[0], journal, stichtag),
                     }
-                if stichtag == stichtage[-1]:
-                    # Derselbe Schnitt wie der Abschluss: Der Bericht legt
-                    # den Abschluss aus, den er begleitet — auf der Sicht
-                    # von heute erzaehlte er vom selben Stichtag eine
-                    # andere Geschichte als die Zahlen daneben.
-                    bericht = _bericht(
-                        sicht, config, stichtag, heute,
+                # Jeder Abschluss des Paketfensters bekommt seinen Monatsbericht
+                # (die Unternehmensseite verlinkt zwoelf Monate); aeltere beim
+                # Nachholen nicht — das waere Rechenzeit fuer Seiten, die niemand
+                # liest.
+                # Das Fenster ist das des Monatsberichts (zwoelf Monate), dasselbe
+                # wie das Paketfenster der Seite (seite.PAKET_ABSCHLUESSE_ANZAHL).
+                if stichtag in stichtage[-BERICHT_MONATE:]:
+                    # Der Bericht legt den Abschluss aus, den er begleitet,
+                    # und liest ihn dafuer selbst — samt der zwoelf davor.
+                    # Auf der Sicht von heute nachgerechnet erzaehlte er
+                    # vom selben Stichtag eine andere Geschichte als die
+                    # Zahlen daneben (T24-02).
+                    bericht = _monatsbericht(
+                        ablage, journal, config, stichtag, heute,
                         schreibziel(ablage, ablage.berichte
                                     / f"bestandsbericht_{stichtag.isoformat()}.html"),
                         tabellen["sha256"]["portfolio"],
@@ -3277,6 +3353,24 @@ def _tageslauf_mit_config(
                     # und der gezeichnete Anker band dann, was immer in
                     # berichte/ lag. Die gezeichnete Zeile traegt seinen Hash.
                     eintrag["bericht_sha256"] = _datei_hash(bericht)
+                    # Zum Kalenderjahresende zusaetzlich der Jahresbericht:
+                    # dieselbe Form wie bisher, also die Gesamtentwicklung
+                    # ueber alle Jahre. Der Abschluss zum 1.1. traegt den
+                    # Stand des abgelaufenen Jahres — Monatsbericht und
+                    # Jahresbericht stehen nebeneinander, sie sagen
+                    # Verschiedenes ueber denselben Stichtag.
+                    if (stichtag.month, stichtag.day) == (1, 1):
+                        jahr = stichtag.year - 1
+                        jahres = _bericht(
+                            sicht, config, stichtag, heute,
+                            schreibziel(ablage, ablage.berichte / f"jahresbericht_{jahr}.html"),
+                            tabellen["sha256"]["portfolio"],
+                            titel=f"Jahresbericht {jahr}",
+                        )
+                        eintrag["jahresbericht"] = jahres.name
+                        # Gebunden wie der Monatsbericht (Runde D, Fund 7): Das
+                        # Paket traegt nur bezeugte Berichte.
+                        eintrag["jahresbericht_sha256"] = _datei_hash(jahres)
                     if config.tagesbetrieb.teilbestand_getrennt and teilbestaende:
                         eintrag["teilbestaende"] = []
                         for fall, policen in sorted(teilbestaende.items()):

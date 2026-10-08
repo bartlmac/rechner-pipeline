@@ -243,7 +243,11 @@ def test_ein_leerer_abschluss_ueber_einem_gefuellten_stichtag_haelt_den_tag_an(
     def _kein_bericht(*_a, **_k):
         raise OSError(5, "I/O error")
 
-    monkeypatch.setattr(tl, "_bericht", _kein_bericht)
+    # Der gemeinsame Schreiber beider Berichtsarten: Seit den Berichtsarten
+    # entsteht der Monatsbericht je Abschluss ueber _monatsbericht, _bericht
+    # schreibt nur noch Jahres- und Teilbestandsbericht. Der Lauf scheitert
+    # am ersten Bericht nach dem ersten neuen Abschluss.
+    monkeypatch.setattr(tl, "_schreibe_bericht", _kein_bericht)
     assert tageslauf(ablage, dt.date(2026, 3, 2))[0] != EXIT_OK
     monkeypatch.undo()
     feb = tl.abschluss_pfad(ablage.abschluesse, dt.date(2026, 2, 1))

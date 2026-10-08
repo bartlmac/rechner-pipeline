@@ -162,7 +162,14 @@ def test_monatsabschluss_genau_einmal_und_schreibgeschuetzt(gefuehrt):
     abschluss = read_portfolio(pfad)
     assert len(abschluss) > 0 and set(abschluss["stichtag"].dt.date) == {dt.date(2026, 2, 1)}
     bericht = ablage.berichte / "bestandsbericht_2026-02-01.html"
-    assert bericht.is_file() and "Bestandsbericht PLV zum 2026-02-01" in bericht.read_text("utf-8")
+    # Monatsbericht, nicht Gesamtbericht: Er zeigt den Stand am Stichtag,
+    # die Bewegung des Berichtsmonats und zwoelf Monate Verlauf — und
+    # keinen Zeitraum ausserhalb davon. Die Entwicklung seit
+    # Betriebsbeginn traegt der Jahresbericht zum Jahreswechsel.
+    text = bericht.read_text("utf-8")
+    assert bericht.is_file() and "Monatsbericht zum 2026-02-01" in text
+    assert "Der Berichtsmonat: 2026-01-01 bis 2026-02-01" in text
+    assert "<h2>Bestand am 2026-02-01</h2>" in text
 
 
 def test_tagesjournal_ist_bijektiv_und_nur_angefuegt(gefuehrt):
@@ -1070,7 +1077,11 @@ def _injiziere(monkeypatch, naht: str):
         def _kaputt(*_a, **_k):
             raise OSError(5, "I/O error")
 
-        monkeypatch.setattr(tl, "_bericht", _kaputt)
+        # An der Stelle, an der JEDER Bericht die Platte erreicht -- seit
+        # der Monatsbericht seinen eigenen Renderer hat, faengt ein Patch
+        # auf _bericht nur noch den Jahres- und Teilbestandsbericht, und
+        # ein Lauf ohne Jahreswechsel liefe unbemerkt durch.
+        monkeypatch.setattr(tl, "_schreibe_bericht", _kaputt)
     elif naht == "protokoll-teilweise":
         def _kaputt(pfad, zeile, _zeichner=None, **_k):
             # Der Anfang der Zeile steht, der Rest nicht — der Teilwrite,

@@ -307,7 +307,7 @@ TEMPDATEI_STELLEN = {
         "raeumt vor dem Schreiben die Reste desselben Ziels (tageslauf.raeume_schreibreste_von)",
     ("tageslauf", "_schreibe_json_atomar", "mkstemp"):
         "Ziel durch schreibziel; der Lauf raeumt unter der Sperre (SCHREIBZIELE)",
-    ("tageslauf", "_bericht", "neue_datei"):
+    ("tageslauf", "_schreibe_bericht", "neue_datei"):
         "Ziel durch schreibziel; der Lauf raeumt unter der Sperre (SCHREIBZIELE)",
     ("seite", "bereite_bestand_heute_vor", "neue_datei"):
         "Ziel durch schreibziel; raeumt selbst und der Lauf unter der Sperre",

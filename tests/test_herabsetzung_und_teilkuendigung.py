@@ -764,6 +764,10 @@ INVENTAR = {
     "bestand/ereignisse.py": (0, 2, 5),
     "bestand/kennzahlen.py": (4, 4, 4),
     "bestand/ledger_bindung.py": (7, 1, 0),
+    # Monatsbericht: Stueckzahl-Aufzaehler Zugang (ZUG, MIG) und Abgang
+    # (STO, TOD, ABL); Herabsetzung und Teilkuendigung aendern keine
+    # Stueckzahl und gehoeren dort nicht hinein.
+    "bestand/monatsbericht.py": (2, 0, 0),
     "bestand/migrationszugang.py": (1, 6, 0),
     "bestand/report.py": (1, 0, 0),
     "bestand/vorbedingungen.py": (1, 0, 1),
