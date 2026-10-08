@@ -1,6 +1,7 @@
 # Rechner-Pipeline — agentische Bestandsmigration Leben
 
-> **Status:** öffentlicher Prototyp, lauffähig Ende-zu-Ende.
+> **Status:** öffentlicher Prototyp und Arbeitsstand, lauffähig Ende-zu-Ende,
+> aber noch nicht produktiv einsetzbar.
 > Vorgängerprojekt: [portxlpy](https://github.com/bartlmac/portxlpy).
 > Was der aktuelle Stand kann und was er bewusst noch nicht kann:
 > [`CHANGELOG.md`](CHANGELOG.md).
