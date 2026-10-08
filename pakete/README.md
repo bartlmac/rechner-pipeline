@@ -5,7 +5,8 @@ Agenten deterministisch nachfahren lässt: Aus dem Stand des Repositorys und
 einem Paket entsteht mit einem Aufruf eine Laufzeit mit übernommenem
 Bestand. Im Repository sind Pakete die einzigen Laufzeit-Artefakte
 ([ADR-028](../docs/architektur/adr-028-ordnung-nach-ebenen.md)); was ein
-Lauf sonst erzeugt, bleibt in seinem Fallraum und seiner Welt.
+Lauf sonst erzeugt, bleibt im Arbeitsbereich seines Falls und in seiner
+Welt.
 
 ```
 werkzeuge/welt/laufzeit_aufstellen.sh <welt> pakete/<paket> [--bis <haltepunkt>]

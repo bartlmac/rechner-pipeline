@@ -27,7 +27,7 @@ Protokoll in der Welt. Sie rechnen und prüfen nichts selbst.
 | `laufzeit_aufstellen.sh` | Welt und festgehaltenen Fall in einem Aufruf: die Welt auf dem Stand vor dem Fall, der Fall auf dem Stand danach |
 | `abgenommen.py` | der Commit, auf dem eine Linie ein Gate angenommen hat (gelesen von den Skripten) |
 | `gezeichnet.py` | ob ein Mensch ein Gate schon selbst gezeichnet hat (gelesen vom Nachfahren) |
-| `fall-baldrian-klv-tg2015.conf` | der Fall der Vorführung: Lieferung, Stichtag, Auftrag |
+| [`fall-baldrian-klv-tg2015.conf`](../../migrationen/baldrian/fall-baldrian-klv-tg2015.conf) | der Fall der Vorführung: Lieferung, Stichtag, Auftrag; liegt bei der Baldrian unter `migrationen/baldrian/` |
 | `einstellungen.beispiel.conf` | Vorlage der Einstellungen für eine Welt mit vorhandenen Schlüsseln |
 | `mandat.vorlage.txt` | Vorlage des Mandats der simulierten Rollen |
 | `stellungnahme-tbox-020.json` | aktuarielle Stellungnahme zur T-Box 0.2.0, Pflichtbeleg der Erstabnahme A-O1 |

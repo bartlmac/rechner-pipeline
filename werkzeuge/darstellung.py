@@ -236,7 +236,7 @@ WEG_STATIONEN: Tuple[Tuple[int, str, Optional[str]], ...] = (
     (13, "Zugang in die Bücher", "A-B2"),
 )
 
-#: Berichte des Aktuariats unter migrationen/baldrian/, die zu GENAU einem Fall
+#: Berichte des Aktuariats unter migrationen/baldrian/berichte/, die zu GENAU einem Fall
 #: gehoeren: (Quelle relativ zu docs/, Ziel im Auftritt, Titel). Ein Bericht
 #: ueber Lauf 2 ist kein Bericht ueber Fall 3 — der Auftritt zeigt ihn nur,
 #: wenn er den Fall darstellt, den der Bericht wuerdigt.

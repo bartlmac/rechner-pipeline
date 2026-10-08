@@ -9,7 +9,7 @@ Lebensversicherung a. G., wie die PLV erfunden.
 | die Fälle mit der Baldrian: welche es gibt und was sich nachfahren lässt | [baldrian/](baldrian/README.md) |
 | die Lieferungen der Baldrian | [baldrian/lieferungen/](baldrian/lieferungen/README.md) |
 | die Falldatei der Vorführung | `baldrian/fall-baldrian-klv-tg2015.conf` |
-| die Berichte zu Lauf 2 | [baldrian/berichte/](baldrian/berichte/baldrian-lauf2.md) |
+| die Berichte zu Lauf 2 | [Abschlussbericht](baldrian/berichte/baldrian-lauf2.md), [was die Übernahme verändert hat](baldrian/berichte/baldrian-lauf2-veraenderungen.md) |
 
 Eingefroren zum Nachfahren liegt der dritte Fall unter
 [pakete/](../pakete/README.md) (Laufzeit-Artefakte). Das Quellsystem, das

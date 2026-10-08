@@ -156,7 +156,7 @@ Die Vorzeige darf in den ersten Ausbaustufen davon abweichen.
 | 1 | Zeichnungsordnung mit Schlüsselklassen; Snapshot trägt Besetzung; Agentenschlüssel zeichnen nicht | umgesetzt (ADR-018) |
 | 2 | die Agentenrollen als versionierte Definitionen (Ziel, Perspektive, Skills, Schreibgrenzen); Programmleitung orchestriert | umgesetzt, inzwischen fünf Rollen (`.claude/agents/`) |
 | 3 | Ebene je Modul in der Schichtenkarte, gemessen und erzwungen | umgesetzt (`ontologie.code_karte.EBENE_JE_SCHICHT`) |
-| 4 | README, ONBOARDING, Unternehmensseite nach Ebenen; Fachbericht mit Abgrenzungen | README und ONBOARDING sind seit ADR-027 nach den fünf Gegenständen gegliedert; der übrige Teil ist nicht nachgehalten |
+| 4 | README, ONBOARDING, Unternehmensseite nach Ebenen; Fachbericht mit Abgrenzungen | das README ist seit ADR-028 nach Ebenen gegliedert (vorher nach den fünf Gegenständen aus ADR-027); der übrige Teil ist nicht nachgehalten |
 
 ## Bewusst nicht Bestandteil
 

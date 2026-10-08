@@ -73,7 +73,7 @@ Rückkehr wäre kein überschaubarer Schritt mehr.
   Serien-Rekonstruktion, Prüfstrecken, Zeichnungsordnung, Gates.
 - Der Fall-Arbeitsbereich des zweiten Laufs und seine Lieferung
   (`migrationen/baldrian/lieferungen/baldrian-2`): Sie sind die Quelle von Fall 3.
-- Die Dokumente des Laufs (`migrationen/baldrian/baldrian-lauf2*.md`) und der
+- Die Dokumente des Laufs (`migrationen/baldrian/berichte/baldrian-lauf2*.md`, `migrationen/baldrian/baldrian-lauf2-wiederholen.md`) und der
   Tarifplan: Sie sind NICHT zurückgebaut und beschreiben weiter, was der
   übernommene Tarif verlangt.
 - In `bestand/` die Zuordnung "ein Tarif mit `red_verfahren = teilkuendigung`

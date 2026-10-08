@@ -10,7 +10,7 @@ Aus ihnen erzeugt dieses Werkzeug eine Aufzeichnung im offenen
 asciicast-Format (Version 2, ``.cast``): eine kleine Textdatei, in der der
 Text kopierbar bleibt. Sie laeuft in jedem asciinema-Player (Terminal oder
 Browser); ein GIF oder MP4 entsteht daraus mit ``agg`` und ``ffmpeg``
-(siehe werkzeuge/README.md) — das braucht kein Programm auf dem Host, auf
+(siehe system/README.md) — das braucht kein Programm auf dem Host, auf
 dem aufgenommen wird.
 
     python system/aufzeichnung.py aufnehmen --session vorfuehrung --out runs/fall3

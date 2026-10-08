@@ -59,10 +59,12 @@ ihn am Gate `A-Q1`.
 Die Gliederung aus ADR-017: die Entwicklung (Entwickler und KI), das
 Migrationssystem, die [Vorzeige](#vorzeige) und die Werkzeuge, mit denen
 die Vorzeige hergestellt wird. In ADR-017 und ADR-018 heißt das
-Migrationssystem „KI-Tool“. Seit ADR-028 ordnen die Ebenen auch den Baum:
-System, Objekt PLV, Objekt Baldrian bzw. Migration, Simulation und
-Laufzeit-Artefakte. Die Ebenen der Module misst weiter die Schichtenkarte
-(`ontologie.code_karte`).
+Migrationssystem „KI-Tool“. Seit ADR-028 ordnen die Ebenen auch den Baum,
+unter diesen Namen: System (das KI-Tool), Objekt PLV und Objekt Baldrian
+bzw. Migration (die Vorzeige, geteilt in die beiden erfundenen Unternehmen,
+die übernehmende und die abgebende), Simulation (die Vorzeige-Werkzeuge)
+und, neu, die Laufzeit-Artefakte; die Entwicklung liegt quer. Die Ebene
+eines Moduls misst weiter die Schichtenkarte (`ontologie.code_karte`).
 
 ### Erstabnahme
 
@@ -117,6 +119,8 @@ lässt den neuen Kernstand abnehmen (`A-K2`). Die Abnahme bindet den Stand
 Die fachliche Kennung, an die Code, Tests und Aussagen gebunden sind, etwa
 `klv/tg2015` für eine Tarifgeneration der KLV. Jedes Modul und jeder Test
 nennt seinen Knoten ([ADR-005](adr-005-knoten-hierarchie-und-impact.md)).
+Kennungen wie `system/architektur` sind Namen der Ontologie, keine Ordner
+des Repositorys.
 
 ### Ledger
 

@@ -120,7 +120,12 @@ Codebaum aber über die Variable `BAUM` entgegen. Wer den Fall live mit
 Agenten auf dem alten Stand führen will, legt einen zweiten Klon auf
 `fall3-vor` an und ruft die Skripte aus `main` mit `BAUM=<zweiter Klon>` auf
 (mit `PYTHON=<Interpreter>`, wenn der zweite Klon keine eigene `.venv`
-hat). Eine eigene Anleitung dafür gibt es noch nicht.
+hat). Die Falldatei aus `main` nennt die Lieferung relativ zum Codebaum
+unter `migrationen/baldrian/lieferungen/`; der alte Stand trägt sie noch
+unter `lieferungen/`. Deshalb eine Kopie der Falldatei anlegen und darin
+`LIEFERUNG` auf den absoluten Pfad setzen, etwa
+`<zweiter Klon>/lieferungen/baldrian-2` (die Dateien sind dieselben). Eine
+eigene Anleitung dafür gibt es noch nicht.
 
 **Einen Fall anlegen.** Eine Datei kommt nur durch Registrieren in einen
 Fall:

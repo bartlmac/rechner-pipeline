@@ -29,7 +29,7 @@ Entscheidungen dahinter als ADRs unter `docs/architektur/`.
 * **Nachfahren ohne Agenten.** Ein festgehaltener Fall liegt als Paket im
   Repository (`pakete/`). Ein Aufruf stellt eine Welt auf dem Stand vor dem
   Fall auf, fährt den Fall nach und erzeugt eine Laufzeit mit übernommenem
-  Bestand (`deploy/welt/laufzeit_aufstellen.sh`). Zwei Welten tragen in
+  Bestand (`werkzeuge/welt/laufzeit_aufstellen.sh`). Zwei Welten tragen in
   ihrer Ablage dieselben Bytes, gleich mit welchen Schlüsseln gezeichnet
   wird.
 * **Menschliche Gates mit gezeichneten Snapshots:** `A-Q1`, `A-O1`,
@@ -79,12 +79,14 @@ Entscheidungen dahinter als ADRs unter `docs/architektur/`.
 
 Das Repository ist nach Ebenen geordnet (ADR-028): System (`system/`),
 Objekt PLV (`plv/`), Objekt Baldrian bzw. Migration (`migrationen/`),
-Simulation (`werkzeuge/`) und Laufzeit-Artefakte (`pakete/`). Umgezogen
-sind `deploy/plv`, `deploy/welt`, `lieferungen/`, `quellsystem/`,
-`vorzeige-seite/`, `docs/faelle/`, `docs/engine/` und
-`docs/migrationskonzept/`; die Lieferungen bytegleich. `configs/`, die
-Grundsatzdokumentation und die Tarifpläne folgen, sobald die Abnahme einen
-Ortswechsel verfolgen kann.
+Simulation (`werkzeuge/`) und Laufzeit-Artefakte (`pakete/`). Was wohin
+gezogen ist, steht als Tabelle in ADR-028: `deploy/`, `lieferungen/`
+(bytegleich), `quellsystem/`, `vorzeige-seite/`, die vier Werkzeuge des
+Live-Laufs, die Falldatei der Vorführung und Teile von `docs/`. `configs/`,
+die Grundsatzdokumentation und die Tarifpläne folgen, sobald die Abnahme
+einen Ortswechsel verfolgen kann. Das README der Tarifpläne nennt den neuen
+Ort der Doku-Engine; das Paket des dritten Falls nimmt diesen Stand des
+Tarifwerks beim Nachfahren ab (A-T1).
 
 ### Was es bewusst noch nicht kann
 
@@ -131,3 +133,4 @@ Weitere offene Punkte, fachlich und technisch: `dev-docs/offene-punkte.md`.
 | ADR-025 (2026-10-01) | Erstabnahme des Zielsystems in der Linie |
 | ADR-026 (2026-10-01) | Fallauftrag `A-M6` und Fallabbruch `A-M5` |
 | ADR-027 (2026-10-04) | fünf Gegenstände des Repositorys, keine Infrastruktur |
+| ADR-028 (2026-10-08) | Ordnung des Repositorys nach Ebenen |

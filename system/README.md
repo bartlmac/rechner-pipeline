@@ -1,13 +1,14 @@
 # System
 
 Das Migrationssystem: Es führt einen Migrationsfall vom Auftrag bis in die
-Ablage, mit Agenten für die Vorarbeit und deterministischem Code für alles,
-was geprüft und abgenommen wird
+Ablage. Agenten machen die Vorarbeit, deterministischer Code prüft, und
+Menschen nehmen ab
 ([ADR-028](../docs/architektur/adr-028-ordnung-nach-ebenen.md)).
 
 | Was | Wo |
 |---|---|
-| Quellen vorverdichten, Aussagen mit Herkunft führen, Tarife parametrieren, prüfen und abnehmen | `src/rechner_pipeline/quellen`, `src/rechner_pipeline/ontologie`, `src/rechner_pipeline/spez`, `src/rechner_pipeline/qa`, `src/rechner_pipeline/gates`, `src/rechner_pipeline/fall.py` |
+| Quellen vorverdichten, Aussagen mit Herkunft führen, Tarife parametrieren, prüfen und Abnahmen vorbereiten | `src/rechner_pipeline/quellen`, `src/rechner_pipeline/ontologie`, `src/rechner_pipeline/spez`, `src/rechner_pipeline/qa`, `src/rechner_pipeline/gates`, `src/rechner_pipeline/fall.py` |
+| die gemeinsamen Datenverträge | `src/rechner_pipeline/models` |
 | die Rollen der Agenten und ihre Skills | `.claude/agents/`, `.claude/skills/`, gespiegelt in `.agents/` |
 | Architektur und Entscheidungen | [docs/architektur/](../docs/architektur/README.md) |
 | die Vorlage des Migrationskonzepts | [migrationskonzept/](migrationskonzept/README.md) |

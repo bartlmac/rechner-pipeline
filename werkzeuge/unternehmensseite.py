@@ -1163,7 +1163,7 @@ FACHDOKUMENTE = (
      "aktuariat/tarifplaene/bu.md", "Rechenkern und Tarifwerk", "../"),
     ("mathematik/grundsatzdokumentation.md",
      "aktuariat/mathematik/grundsatzdokumentation.md", "Rechenkern und Tarifwerk", "../"),
-    # Die Berichte zu einem Fall (migrationen/baldrian/) kommen je Fall dazu:
+    # Die Berichte zu einem Fall (migrationen/baldrian/berichte/) kommen je Fall dazu:
     # darstellung.FALLDOKUMENTE.
     # Hinter den Kulissen (ausserhalb der Fiktion): Entstehung der
     # Bestaende, Fachkonzept Tagesbetrieb, Erfahrungsannahmen. Ihre

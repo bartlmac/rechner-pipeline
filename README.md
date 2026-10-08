@@ -111,30 +111,33 @@ die Begriffe erklärt das [Glossar](docs/architektur/glossar.md).
 
 Das Repository ist nach Ebenen geordnet
 ([ADR-028](docs/architektur/adr-028-ordnung-nach-ebenen.md)): das System,
-die beiden Unternehmen, an denen es arbeitet, die Werkzeuge, die diese Welt
-herstellen, und was beim Laufen entsteht. Der Code aller Ebenen liegt in
-einem Python-Paket unter `src/`; welche Ebene ein Modul trägt, misst die
+die beiden erfundenen Unternehmen, an denen es arbeitet, die Simulation,
+die Bestände, Lieferungen und Welten erzeugt, und was beim Laufen entsteht.
+Der Code von System, PLV und den Erzeugern der Simulation liegt in einem
+Python-Paket unter `src/`; welche Ebene ein Modul trägt, misst die
 Schichtenkarte ([ADR-017](docs/architektur/adr-017-vier-ebenen.md)).
+Skripte und das Quellsystem liegen bei ihrer Ebene unter `system/` und
+`werkzeuge/`.
 
-| | Ebene | Was | Wo |
-|---|---|---|---|
-| 1 | **System** | das Migrationssystem: Quellen vorverdichten, Aussagen mit Herkunft führen, Tarife parametrieren, prüfen und abnehmen; die Rollen der Agenten; Werkzeuge für den Live-Lauf eines Falls | `src/rechner_pipeline/quellen`, `src/rechner_pipeline/ontologie`, `src/rechner_pipeline/spez`, `src/rechner_pipeline/qa`, `src/rechner_pipeline/gates`, `src/rechner_pipeline/fall.py`, `.claude/`, `.agents/`, `system/` |
-| 2 | **Objekt PLV** | die übernehmende Gesellschaft: Rechenkern, Bestandsführung und Tagesbetrieb, ihre Parametrierung und Fachdokumente, das Image ihrer Laufzeit und ihr Auftritt | `src/rechner_pipeline/kern`, `src/rechner_pipeline/bestand`, `src/rechner_pipeline/betrieb`, `configs/`, `docs/mathematik/`, `docs/tarifplaene/`, `plv/` |
-| 3 | **Objekt Baldrian bzw. Migration** | die abgebende Gesellschaft: ihre Lieferungen, die Falldatei der Vorführung und die Berichte zu den Fällen | `migrationen/` |
-| 4 | **Simulation** | Entwurf und Betrieb der simulierten Welt: das Quellsystem der Baldrian, eine Welt aufstellen und einen Fall nachfahren, die Seite bauen. Verteilungen und Geschäftsvorfälle erzeugen die Erzeuger im Paket. | `werkzeuge/` |
-| 5 | **Laufzeit-Artefakte** | was beim Laufen entsteht; im Repository liegt davon nur Fall 3, eingefroren, damit er nachfahrbar ist | `pakete/` |
+| Ebene | Was | Wo |
+|---|---|---|
+| **System** | das Migrationssystem: Quellen vorverdichten, Aussagen mit Herkunft führen, Tarife parametrieren, prüfen und Abnahmen vorbereiten; die gemeinsamen Datenverträge; die Rollen der Agenten; Werkzeuge für den Live-Lauf eines Falls | `src/rechner_pipeline/quellen`, `src/rechner_pipeline/ontologie`, `src/rechner_pipeline/spez`, `src/rechner_pipeline/qa`, `src/rechner_pipeline/gates`, `src/rechner_pipeline/models`, `src/rechner_pipeline/fall.py`, `.claude/`, `.agents/`, [`system/`](system/README.md) |
+| **Objekt PLV** | die übernehmende Gesellschaft: Rechenkern, Bestandsführung und Tagesbetrieb, ihre Parametrierung und Fachdokumente, das Image ihrer Laufzeit und ihr Auftritt | `src/rechner_pipeline/kern`, `src/rechner_pipeline/bestand`, `src/rechner_pipeline/betrieb`, `configs/`, `docs/mathematik/`, `docs/tarifplaene/`, [`plv/`](plv/README.md) |
+| **Objekt Baldrian bzw. Migration** | die abgebende Gesellschaft: ihre Lieferungen, die Falldatei der Vorführung und die Berichte zu den Fällen | [`migrationen/`](migrationen/README.md) |
+| **Simulation** | ihr Modell (Verteilungen, das Erzeugen von Geschäftsvorfällen und Neugeschäft, in einzelnen Modulen von `bestand` und `betrieb`) und ihr Betrieb: das Quellsystem der Baldrian, eine Welt aufstellen, einen Fall nachfahren, die Seite bauen | [`werkzeuge/`](werkzeuge/README.md) |
+| **Laufzeit-Artefakte** | was beim Laufen entsteht; im Repository liegt davon nur der dritte Fall, eingefroren, damit er nachfahrbar ist | [`pakete/`](pakete/README.md) |
 
-Beide Unternehmen sind erfunden. Quer zu den Ebenen liegen `tests/`,
-`docs/` (Entwicklerdoku), `dev-docs/` (geplante Vorhaben),
-`src/rechner_pipeline/models` (gemeinsame Datenverträge), `deploy/dev` und
-`.devcontainer/` (Entwicklungsumgebung) sowie `.github/` (CI).
+Quer zu den Ebenen liegen `tests/`, `docs/` (Entwicklerdoku), `dev-docs/`
+(geplante Vorhaben), `deploy/dev` und `.devcontainer/`
+(Entwicklungsumgebung) sowie `.github/` (CI).
 
 Grundsatzdokumentation, Tarifpläne und Configs gehören zur PLV, liegen aber
 noch an ihrem bisherigen Ort: Ihre Abnahme bindet den Pfad mit. Sie ziehen
 nach `plv/` um, sobald die Abnahme einen Ortswechsel verfolgen kann.
 
 Nicht im Repository liegen die laufenden Instanzen mit ihren Schlüsseln und
-Daten, die Fallräume und Läufe (lokal, von Git ausgenommen), das Hosting der
+Daten, die Arbeitsbereiche der Fälle und die Läufe (lokal, von Git
+ausgenommen), das Hosting der
 Seite und die Einrichtung einzelner Rechner.
 
 ## Wo was steht

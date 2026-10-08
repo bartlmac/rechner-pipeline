@@ -24,8 +24,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 ABSCHNITT = "## Was dieses Repository ist"
-#: Eine Zeile der Tabelle: Nummer und fett gesetzter Name der Ebene.
-GEGENSTAND = re.compile(r"^\| ([0-9]+) \| \*\*([^*]+)\*\* \|", re.M)
+#: Eine Zeile der Tabelle: der fett gesetzte Name der Ebene. Die Tabelle
+#: zaehlt nicht: Die Nummern der Ebenen aus ADR-017 sind andere.
+EBENE = re.compile(r"^\| \*\*([^*]+)\*\* \|", re.M)
 CODE = re.compile(r"`([^`\n]+)`")
 
 
@@ -68,8 +69,7 @@ def _readme() -> str:
 
 
 def test_die_tabelle_nennt_fuenf_ebenen():
-    nummern = [n for n, _ in GEGENSTAND.findall(_abschnitt(_readme()))]
-    assert nummern == ["1", "2", "3", "4", "5"]
+    assert len(EBENE.findall(_abschnitt(_readme()))) == 5
 
 
 def test_jeder_genannte_pfad_existiert():

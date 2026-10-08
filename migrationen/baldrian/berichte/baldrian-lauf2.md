@@ -248,7 +248,7 @@ Spitze der Snapshots.
 Wer den Lauf nachstellen will, nimmt `4b1abf04`. Die Anleitung dazu —
 Systemstand, was das Repository trägt, die drei Sorten Schritte, der
 eigene Bestand ohne die Lieferung, die gemessene Kommandofolge und die
-Referenzwerte — steht in `baldrian-lauf2-wiederholen.md`; die Kennzahlen
+Referenzwerte — steht in [baldrian-lauf2-wiederholen.md](../baldrian-lauf2-wiederholen.md); die Kennzahlen
 sind dort auf zwei Ständen nachgemessen. Nebenbefund derselben Messung:
 Das `bestand/`-Verzeichnis des Lauftags entstand vor der
 A-Q1-Zinsentscheidung, der von A-M4 gebundene P-B1-Beleg liegt damit auf

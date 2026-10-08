@@ -1,6 +1,6 @@
 # Werkzeuge der Simulation
 
-Entwurf und Betrieb der simulierten Welt, die Ebene Simulation nach
+Modell und Betrieb der Simulation, die Ebene Simulation nach
 [ADR-028](../docs/architektur/adr-028-ordnung-nach-ebenen.md):
 
 | Ordner | Was |
@@ -10,9 +10,10 @@ Entwurf und Betrieb der simulierten Welt, die Ebene Simulation nach
 | [engine/](engine/README.md) | die Doku-Engine: setzt Tarifpläne, Grundsatzdokumentation und Lieferdokumente als PDF |
 | hier im Ordner | die Werkzeuge, mit denen die Webseite gebaut wird, und Hilfen zum Beobachten eines Laufs |
 
-Die Entwurfsseite, Verteilungen und das Erzeugen der Geschäftsvorfälle,
-liegt im Paket (`src/rechner_pipeline/bestand`) und ist in
-[docs/simulation/](../docs/simulation/README.md) beschrieben. Die Werkzeuge
+Das Modell, Verteilungen und das Erzeugen von Geschäftsvorfällen und
+Neugeschäft, liegt in einzelnen Modulen des Pakets
+(`src/rechner_pipeline/bestand`, `src/rechner_pipeline/betrieb/neugeschaeft.py`)
+und ist in [docs/simulation/](../docs/simulation/README.md) beschrieben. Die Werkzeuge
 für den Live-Lauf eines Falls gehören zum System und liegen unter
 [system/](../system/README.md).
 
@@ -60,7 +61,7 @@ Die Vorführung tritt als Unternehmensauftritt der (frei erfundenen)
 Pfefferminzia Lebensversicherung AG auf. Die Unternehmensseiten sind
 handgeschriebene, versionierte Quellen unter `plv/seite/`; die
 Migrationsberichte entstehen je Fall aus den Artefakten und hängen
-unter `migrationen/<fall>/`. Jede Unternehmensseite muss die
+auf der Seite unter `migrationen/<fall>/`. Jede Unternehmensseite muss die
 Fiktions-Banderole tragen; `unternehmensseite.py` baut sonst nicht.
 
 Der Entwurf wird nicht gepflegt, sondern erzeugt: ein Kommando fährt
@@ -198,7 +199,7 @@ Was das Datenmodell für eine Zahl der Seite liest, kommt ohne Station mit.
 Was keine Regel trifft (Arbeitsunterlagen der Agenten, Reste früherer
 Durchgänge, ein Dateiname, der nur nach einem Gate klingt), kommt nicht auf
 die Seite und wird gezählt. Die Regeln stehen im Docstring der Funktion;
-die Karte (`migrationen/#prozess`) und die Fallseite lesen dieselbe
+die Karte auf der Seite (`migrationen/#prozess`) und die Fallseite lesen dieselbe
 Zuordnung aus dem Modell.
 
 Die Änderung am Zielsystem ist ein Pflichtabschnitt des Modells: Ein

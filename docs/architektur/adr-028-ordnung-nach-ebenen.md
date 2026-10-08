@@ -24,23 +24,25 @@ bisher nur die Importe im Paket.
 
 ## Entscheidung
 
-Die oberste Ebene des Repositorys folgt den Ebenen. Es sind die aus
-ADR-017, auf den Baum übertragen: Ebene 2 (KI-Tool) ist das System, Ebene 3
-(Vorzeige) teilt sich in die beiden Unternehmen, Ebene 4
-(Vorzeige-Werkzeuge) ist die Simulation, Ebene 1 (Entwickler und KI) liegt
-quer. Neu sind die Laufzeit-Artefakte.
+Die Ordner im Wurzelverzeichnis folgen den Ebenen. Es sind die aus
+ADR-017, auf den Baum übertragen und benannt: Ebene 2 (KI-Tool) heißt
+System, Ebene 3 (Vorzeige) teilt sich in Objekt PLV und Objekt Baldrian
+bzw. Migration, Ebene 4 (Vorzeige-Werkzeuge) heißt Simulation, Ebene 1
+(Entwickler und KI) liegt quer. Neu sind die Laufzeit-Artefakte. Die
+Reihenfolge der Tabellen ist keine Nummerierung.
 
 | Ebene | Was | Ordner |
 |---|---|---|
-| System | das Migrationssystem, die Rollen der Agenten, die Werkzeuge für den Live-Lauf eines Falls und die Vorlage des Migrationskonzepts | `src/rechner_pipeline` (gates, ontologie, spez, quellen, qa, fall.py), `.claude/`, `.agents/`, `system/` |
+| System | das Migrationssystem, die gemeinsamen Datenverträge, die Rollen der Agenten, die Werkzeuge für den Live-Lauf eines Falls und die Vorlage des Migrationskonzepts | `src/rechner_pipeline` (gates, ontologie, spez, quellen, qa, models, fall.py), `.claude/`, `.agents/`, `system/` |
 | Objekt PLV | die übernehmende Gesellschaft: Rechenkern, Bestandsführung, Tagesbetrieb, ihre Parametrierung und Fachdokumente, das Image ihrer Laufzeit und ihr Auftritt | `src/rechner_pipeline` (kern, bestand, betrieb), `configs/`, `docs/mathematik/`, `docs/tarifplaene/`, `plv/` |
 | Objekt Baldrian bzw. Migration | die abgebende Gesellschaft: ihre Lieferungen, die Falldatei der Vorführung, die Berichte zu den Fällen | `migrationen/baldrian/` |
-| Simulation | Entwurf und Betrieb der simulierten Welt. Entwurf: Verteilungen und das Erzeugen von Geschäftsvorfällen (die Erzeuger in `src/rechner_pipeline/bestand`), das Quellsystem der Baldrian. Betrieb: eine Welt aufstellen, einen Fall nachfahren, die Seite bauen. | `werkzeuge/` |
+| Simulation | Modell und Betrieb der Simulation. Modell: Verteilungen, das Erzeugen von Geschäftsvorfällen und Neugeschäft (die Module, die die Schichtenkarte der Simulation zuordnet: `bestand/generator.py`, `stochastik.py`, `ereignisse.py`, `cli_fortschreibung.py`, `betrieb/neugeschaeft.py`), das Quellsystem der Baldrian. Betrieb: eine Welt aufstellen, einen Fall nachfahren, die Seite bauen. | `werkzeuge/`, die genannten Module in `src/rechner_pipeline` |
 | Laufzeit-Artefakte | was beim Laufen entsteht; im Repository nur, was das Nachfahren eines Falls braucht | `pakete/` |
 
-Quer dazu liegen `tests/`, `docs/` (Entwicklerdoku), `dev-docs/`,
-`src/rechner_pipeline/models`, die Entwicklungsumgebung (`deploy/dev`,
-`.devcontainer/`) und `.github/`.
+Quer dazu liegen `tests/`, `docs/` (Entwicklerdoku), `dev-docs/`, die
+Entwicklungsumgebung (`deploy/dev`, `.devcontainer/`) und `.github/`.
+`deploy/` bleibt vorerst mit der Entwicklungsumgebung allein stehen, weil
+`.devcontainer/` auf sie verweist.
 
 Was umgezogen ist:
 
@@ -66,24 +68,29 @@ einen lokalen, von Git ausgenommenen Ordner vergeben ist (`.gitignore`).
 Grundsatzdokumentation (`docs/mathematik/`), Tarifpläne
 (`docs/tarifplaene/`) und `configs/` gehören zur PLV, ziehen aber noch
 nicht um. Ihre Abnahme bindet den Pfad: A-T1 liest das Tarifwerk des
-zuletzt abgenommenen Commits unter dem heutigen Pfad
-(`gates/tarifwerk_belegen.py`), und der Kernstand hasht Name und Inhalt
-jeder Datei. Nach einem Umzug fände A-T1 im Stand vor dem dritten Fall
+zuletzt abgenommenen Commits unter dem heutigen Pfad (die Pfade stehen in
+`models/tarifwerkabnahme.py`, gelesen in `gates/tarifwerk_belegen.py`), und
+der Kernstand hasht Name und Inhalt jeder Datei. Nach einem Umzug fände A-T1 im Stand vor dem dritten Fall
 weder Tarifpläne noch Configs, und das Nachfahren des Falls hielte an der
 Prüfung des Tarifwerks an.
 
 ## Folgen
 
 * Die Routinen tragen den Umzug ohne Änderung ihrer Logik. Sie finden ihre
-  eigenen Dateien über ihren Ort, und im Baum vor dem Fall greifen sie nur
-  auf `src/`, `configs/` und `docs/architektur/` zu, die nicht umziehen.
+  eigenen Dateien über ihren Ort, und im Baum vor dem Fall lesen sie nur
+  Pfade, die nicht umziehen: `src/`, `configs/`, `tests/fixtures/`,
+  `docs/architektur/`, `docs/mathematik/` und `docs/tarifplaene/`. Eine
+  Ausnahme ist der Live-Lauf eines Falls auf dem Stand vor dem Fall: Die
+  Falldatei aus `main` nennt die Lieferung unter dem neuen Pfad, der alte
+  Baum trägt sie unter `lieferungen/`. Dafür nennt das ONBOARDING einen
+  absoluten Pfad.
 * Die Lieferungen sind bytegleich umgezogen; `.gitattributes` schützt sie
   unter dem neuen Pfad vor jeder Umwandlung von Zeilenenden.
 * Das Paket des dritten Falls nennt die Lieferung unter dem neuen Pfad
   (`fall.conf`). Das README der Tarifpläne nennt den neuen Ort der
   Doku-Engine; das ändert das Tarifwerk, das Rezept hält den neuen
-  Fingerabdruck. Keines der 16 erwarteten Ergebnisse des Falls nennt einen
-  Pfad des Repositorys.
+  Fingerabdruck und zeichnet A-T1 beim Nachfahren über diesen Stand. Keines
+  der 16 erwarteten Ergebnisse des Falls nennt einen Pfad des Repositorys.
 * README, `AGENTS.md`, `CONTRIBUTING.md` und die Einstiegsseiten der Ebenen
   (`system/`, `plv/`, `migrationen/`, `werkzeuge/`, `docs/`) folgen den
   Ebenen. Ein Test hält die Tabelle im README mit dem Baum zusammen
@@ -99,7 +106,11 @@ Prüfung des Tarifwerks an.
   Commit hatte, und ein bloßer Ortswechsel darf im Beleg nicht als
   „entfallen“ und „neu“ erscheinen. Danach werden Kernstand und Tarifwerk
   neu abgenommen, und das Paket des dritten Falls wird neu festgehalten.
-* `deploy/` trägt nur noch die Entwicklungsumgebung (`deploy/dev`), auf die
-  `.devcontainer/` verweist.
-* Einrichtungen außerhalb des Repositorys, die Routinen unter dem alten
-  Pfad `deploy/welt/` aufrufen, müssen nachgezogen werden.
+* Die Vorlage einer Instanz unter `plv/betrieb/` (Compose, Umgebung, Dienst
+  und Timer) ist nach ADR-027 Infrastruktur und dort schon als offen
+  benannt. Sie bleibt, bis entschieden ist, was die Routinen davon
+  brauchen.
+* Skripte außerhalb des Repositorys, die alte Pfade aufrufen
+  (`deploy/welt/`, `deploy/plv/`), `quellsystem` aus dem Wurzelverzeichnis
+  importieren oder nach `lieferungen/` schreiben, müssen nachgezogen
+  werden.
