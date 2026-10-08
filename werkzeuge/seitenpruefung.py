@@ -9,10 +9,11 @@ Veroeffentlichung sie faehrt.
 * ``verweise``: Jeder relative Verweis (href, src) der gerenderten Vorschau
   trifft eine Datei, jedes Sprungziel ``#x`` eine id oder einen name in
   ihr. Ein absoluter Pfad ab ``/`` gilt als tot: Die Sichtung liefert unter
-  einem Pfad-Praefix aus.
-* ``ueberschriften``: Keine Ueberschrift im Push-Baum endet auf eine
-  Attributliste ``{: ...}``. Die Vorschau liest sie als id, Pages zeigt sie
-  als Text; eine eigene id heisst ``{#x}``, das lesen beide.
+  einem Pfad-Praefix aus. Ein Verweis in einem Beleg (``artefakte/``,
+  ``plv/``) ist ein Hinweis: Belege erscheinen unveraendert.
+* ``pages``: Was Pages anders liest als die Vorschau, steht nicht im
+  Push-Baum: eine Ueberschrift, die auf eine Attributliste ``{: ...}``
+  endet; Liquid ausserhalb von raw; eine Formel in ``$...$``.
 * ``paket``: Jede Datei des Stands-Pakets unter ``plv/`` traegt die
   Pruefsumme, die ``stand.json`` fuer sie nennt; unter ``plv/`` liegt nichts
   ohne Eintrag; was nicht veroeffentlicht ist, sind nur die Parquet-Tabellen;
@@ -39,7 +40,7 @@ Aufruf (``alle`` faehrt alle fuenf, Exit 1 bei einem Befund)::
         --paket <stands-paket> --anker <anker>/anker.jsonl \\
         --daten runs/<bau>/falldaten.json --repo .
 
-Jede Pruefung einzeln: ``verweise <vorschau>``, ``ueberschriften <seite>``,
+Jede Pruefung einzeln: ``verweise <vorschau>``, ``pages <seite>``,
 ``paket <seite> <paket>``,
 ``pruefsummen ...`` (dieselben Angaben wie ``alle`` ohne ``--vorschau``),
 ``breite <vorschau> --name <kurzname>``.
@@ -80,7 +81,11 @@ def verweise(vorschau: Path) -> Tuple[List[str], str]:
 
     Folgt Verzeichnis-Symlinks: Die Vorschau verlinkt Teile der Seite als
     Symlink, und ``rglob`` folgt ihnen nicht (bis 04.10.2026 sah die
-    Pruefung so 52 von 66 Seiten)."""
+    Pruefung so 52 von 66 Seiten). Liest Attribute in doppelten und in
+    einfachen Anfuehrungszeichen; bis 08.10.2026 nur doppelte, und zwei tote
+    Verweise im Bericht der Migrationsabnahme blieben ungesehen. Ein Verweis
+    in einem Beleg ist ein Hinweis, kein Befund: Belege des Falls und das
+    Stands-Paket erscheinen Byte fuer Byte, wie sie gezeichnet wurden."""
     wurzel = Path(os.path.normpath(vorschau.absolute()))
     ids: Dict[Path, Set[str]] = {}
 
@@ -88,18 +93,21 @@ def verweise(vorschau: Path) -> Tuple[List[str], str]:
         if datei not in ids:
             text = (datei.read_text(encoding="utf-8", errors="replace")
                     if datei.suffix in (".html", ".htm", ".svg") else "")
-            ids[datei] = set(re.findall(r'\b(?:id|name)\s*=\s*"([^"]+)"', text))
+            ids[datei] = {a or b for a, b in re.findall(
+                r"""\b(?:id|name)\s*=\s*(?:"([^"]+)"|'([^']+)')""", text)}
         return ids[datei]
 
     seiten = sorted(Path(d) / f for d, _, fs in os.walk(wurzel, followlinks=True)
                     for f in fs if f.endswith(".html"))
     befunde: List[str] = []
+    hinweise: List[str] = []
     gesamt, extern = 0, collections.Counter()
     for seite in seiten:
         rel = seite.relative_to(wurzel).as_posix()
-        for ziel in re.findall(r'\b(?:href|src)\s*=\s*"([^"]*)"',
+        beleg = "artefakte" in rel.split("/") or rel.startswith("plv/")
+        for a, b in re.findall(r"""\b(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)')""",
                                seite.read_text(encoding="utf-8", errors="replace")):
-            ziel = html.unescape(ziel).strip()
+            ziel = html.unescape(a or b).strip()
             if not ziel or ziel.startswith(("mailto:", "javascript:", "data:")):
                 continue
             if re.match(r"^[a-z][a-z0-9+.-]*:", ziel, re.I):
@@ -109,56 +117,85 @@ def verweise(vorschau: Path) -> Tuple[List[str], str]:
             pfad, _, sprung = ziel.partition("#")
             pfad = urllib.parse.unquote(pfad.split("?")[0])
             if pfad.startswith("/"):
-                befunde.append(f"{rel}: {ziel} — absoluter Pfad")
+                (hinweise if beleg else befunde).append(f"{rel}: {ziel} — absoluter Pfad")
                 continue
             z = Path(os.path.normpath(seite.parent / pfad)) if pfad else seite
             if z.is_dir():
                 z = z / "index.html"
             if not z.exists():
-                befunde.append(f"{rel}: {ziel} — kein Ziel")
+                (hinweise if beleg else befunde).append(f"{rel}: {ziel} — kein Ziel")
                 continue
             if wurzel not in z.parents and z != wurzel:
-                befunde.append(f"{rel}: {ziel} — ausserhalb der Vorschau")
+                (hinweise if beleg else befunde).append(f"{rel}: {ziel} — ausserhalb der Vorschau")
                 continue
             if sprung and z.suffix in (".html", ".htm") and urllib.parse.unquote(sprung) not in ids_von(z):
-                befunde.append(f"{rel}: {ziel} — kein Sprungziel")
+                (hinweise if beleg else befunde).append(f"{rel}: {ziel} — kein Sprungziel")
     zusammen = (f"{gesamt} relative Verweise in {len(seiten)} HTML-Seiten, "
-                f"{len(befunde)} Befunde; extern: {dict(sorted(extern.items()))}")
+                f"{len(befunde)} Befunde; extern: {dict(sorted(extern.items()))}; "
+                f"in Belegen ohne Ziel: {len(hinweise)}")
+    for h in hinweise:
+        zusammen += f"\n  HINWEIS {h} (Beleg, unveraendert veroeffentlicht)"
     return befunde, zusammen
 
 
 # --------------------------------------------------------------------------- #
-# Ueberschriften
+# Pages
 # --------------------------------------------------------------------------- #
 
 #: Eine Attributliste ``{: ...}`` am Ende einer Ueberschrift.
 _KOPF_MIT_LISTE = re.compile(r"^#{1,6}[ \t].*\{:[^}]*\}[ \t]*$")
+#: Ein raw-Block (zaehlt nicht) oder ein Liquid-Anfang ausserhalb davon.
+_LIQUID = re.compile(r"\{%-?\s*raw\s*-?%\}.*?\{%-?\s*endraw\s*-?%\}|\{\{|\{%", re.S)
+#: Was beim Suchen nach ``$...$`` nicht zaehlt (Codeblock, Codespan, Skript,
+#: Formel in ``$$...$$``) und die Formel in ``$...$`` selbst (``formel``).
+_FORMEL = re.compile(
+    r"^(?P<zaun>```|~~~)[^\n]*\n.*?^(?P=zaun)[ \t]*$"
+    r"|(?P<striche>`+)(?:(?!\n[ \t]*\n).)+?(?<!`)(?P=striche)(?!`)"
+    r"|<script\b.*?</script>"
+    r"|\$\$.+?\$\$"
+    r"|(?P<formel>\$[^$\n]+?\$)",
+    re.S | re.M | re.I)
 
 
-def ueberschriften(seite: Path) -> Tuple[List[str], str]:
-    """Befunde und Zusammenfassung der Ueberschriften im Push-Baum.
+def pages(seite: Path) -> Tuple[List[str], str]:
+    """Befunde und Zusammenfassung dessen, was Pages anders liest als die Vorschau.
 
-    Die Vorschau (Python-Markdown, attr_list) liest ``## Titel {: #x }`` als
-    Ueberschrift mit der id ``x``. Pages (kramdown) kennt am Ende einer
-    Ueberschrift nur ``{#x}``: Eine Attributliste hinter Text uebergeht es
-    ("Found span IAL after text - ignoring it") und zeigt sie als Text, die
-    id entsteht dann aus dem ganzen Text. Live stuende also ``Titel {: #x }``
-    da, und jeder Verweis auf ``#x`` liefe ins Leere, waehrend Vorschau und
-    ``verweise`` nichts merken (47 Ueberschriften bis zum Bau vom
-    08.10.2026). Codebloecke zaehlen nicht."""
+    Pages rendert mit Jekyll 3: erst Liquid, dann kramdown (Eingabe GFM). Die
+    Vorschau rendert mit Python-Markdown und sieht drei Dinge nicht, die live
+    anders oder gar nicht ankommen (gemessen mit dem Renderer von Pages am
+    08.10.2026):
+
+    * Eine Ueberschrift, die auf ``{: #x }`` endet. attr_list liest das als id,
+      kramdown nur ``{#x}``; die Attributliste zeigt es als Text (47
+      Ueberschriften bis 308e959).
+    * Liquid ausserhalb von raw. ``{{`` und ``{%`` wertet Liquid aus, ein
+      unvollstaendiges ``{{`` bricht den ganzen Build ab (KLV-Tarifplan).
+    * Eine Formel in ``$...$``. Fuer kramdown ist das Text, Escapes,
+      Hervorhebung und Typografie laufen darueber (35 von 489 Formeln).
+
+    Fuer Ueberschriften und Formeln zaehlen Codebloecke nicht; Liquid liest
+    auch sie."""
     befunde: List[str] = []
-    gelesen = 0
-    for md in sorted(seite.rglob("*.md")):
-        gelesen += 1
+    dateien = sorted(seite.rglob("*.md"))
+    for md in dateien:
         rel = md.relative_to(seite).as_posix()
+        text = md.read_text(encoding="utf-8")
         im_code = False
-        for nr, zeile in enumerate(md.read_text(encoding="utf-8").splitlines(), 1):
+        for nr, zeile in enumerate(text.splitlines(), 1):
             if zeile.lstrip().startswith(("```", "~~~")):
                 im_code = not im_code
             elif not im_code and _KOPF_MIT_LISTE.match(zeile):
                 befunde.append(f"{rel}:{nr}: {zeile.strip()} — Pages zeigt die Liste als Text, "
                                f"die id nur aus {{#...}}")
-    return befunde, f"{gelesen} Markdown-Dateien, {len(befunde)} Befunde"
+        for m in _LIQUID.finditer(text):
+            if m.group(0) in ("{{", "{%"):
+                befunde.append(f"{rel}:{text.count(chr(10), 0, m.start()) + 1}: {m.group(0)} "
+                               f"ausserhalb von raw — Liquid wertet es aus oder bricht ab")
+        for m in _FORMEL.finditer(text):
+            if m.group("formel"):
+                befunde.append(f"{rel}:{text.count(chr(10), 0, m.start()) + 1}: "
+                               f"{m.group('formel')[:60]} — kramdown liest $...$ als Text")
+    return befunde, f"{len(dateien)} Markdown-Dateien, {len(befunde)} Befunde"
 
 
 # --------------------------------------------------------------------------- #
@@ -361,7 +398,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     q = teil.add_parser("verweise", help="Verweise und Sprungziele der Vorschau")
     q.add_argument("vorschau")
-    q = teil.add_parser("ueberschriften", help="Ueberschriften, die Pages anders liest als die Vorschau")
+    q = teil.add_parser("pages", help="was Pages anders liest als die Vorschau")
     q.add_argument("seite")
     q = teil.add_parser("paket", help="plv/ und berichte/ gegen stand.json")
     q.add_argument("seite")
@@ -378,8 +415,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.pruefung == "verweise":
         return _melde("Verweise", verweise(Path(args.vorschau)))
-    if args.pruefung == "ueberschriften":
-        return _melde("Ueberschriften", ueberschriften(Path(args.seite)))
+    if args.pruefung == "pages":
+        return _melde("Pages", pages(Path(args.seite)))
     if args.pruefung == "paket":
         return _melde("Paket", paket(Path(args.seite), Path(args.paket)))
     if args.pruefung == "breite":
@@ -394,7 +431,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.pruefung == "pruefsummen":
         return _melde("Pruefsummen", pruefsummen(*summen))
     rc = _melde("Verweise", verweise(Path(args.vorschau)))
-    rc |= _melde("Ueberschriften", ueberschriften(Path(args.seite)))
+    rc |= _melde("Pages", pages(Path(args.seite)))
     rc |= _melde("Paket", paket(Path(args.seite), Path(args.paket)))
     rc |= _melde("Pruefsummen", pruefsummen(*summen))
     try:

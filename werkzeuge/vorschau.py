@@ -31,6 +31,7 @@ import argparse
 import os
 import re
 import sys
+from html import escape
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -43,6 +44,10 @@ GANZ_VERLINKEN = ("artefakte", "assets", "plv")
 #: ueber Zeilenenden) — sonst frisst das inline-Muster die halbe
 #: Blockformel.
 _MATHE = re.compile(r"\$\$.+?\$\$|\$[^$\n]+?\$", re.S)
+
+#: Liquid-Tags um einen Rumpf, den Liquid nicht auswerten soll. Auf Pages
+#: nimmt Liquid sie heraus, die Vorschau ebenso (unternehmensseite.ROH_AUF).
+_ROH = re.compile(r"\{%-?\s*(?:end)?raw\s*-?%\}")
 
 #: Platzhalter fuer eine herausgenommene Formel. Nur Buchstaben und
 #: Ziffern: Markdown laesst ein gewoehnliches Wort in Ruhe, waehrend
@@ -69,14 +74,35 @@ def _mathe_herausnehmen(text: str):
     HTML-Tags darin, und zeigt Buchstabensalat. Gemessen an der
     Vorzeige-Seite: dreizehn Formeln im KLV-Tarifplan, vier in der
     Grundsatzdokumentation.
+
+    Zurueck kommen die Formeln so, wie kramdown sie auf Pages an MathJax
+    gibt: ``$$...$$`` im Text als ``\\(...\\)`` (abgesetzt nur als eigener
+    Absatz, :func:`_eigener_absatz`), HTML-maskiert, damit ein ``<`` in der
+    Formel kein Tag oeffnet. Liefert den Text, die Formeln wie geschrieben
+    (fuer die ids der Ueberschriften) und ihre Anzeige.
     """
     formeln: List[str] = []
+    anzeige: List[str] = []
 
     def weg(treffer) -> str:
-        formeln.append(treffer.group(0))
+        roh = treffer.group(0)
+        formeln.append(roh)
+        if roh.startswith("$$") and not _eigener_absatz(text, treffer.start(), treffer.end()):
+            roh = "\\(" + roh[2:-2].strip() + "\\)"
+        anzeige.append(escape(roh, quote=False))
         return _PLATZHALTER.format(len(formeln) - 1)
 
-    return _MATHE.sub(weg, text), formeln
+    return _MATHE.sub(weg, text), formeln, anzeige
+
+
+def _eigener_absatz(text: str, anfang: int, ende: int) -> bool:
+    """Steht die Formel ``text[anfang:ende]`` als eigener Absatz da?
+
+    So unterscheidet kramdown eine abgesetzte Formel von einer im Text: davor
+    der Anfang oder eine Leerzeile (und hoechstens drei Leerzeichen), danach
+    eine Leerzeile oder das Ende."""
+    return (re.search(r"(?:\A|\n[ \t]*\n)[ \t]{0,3}\Z", text[:anfang]) is not None
+            and re.match(r"[ \t]*(?:\n[ \t]*\n|\n?[ \t]*\Z)", text[ende:]) is not None)
 
 
 def _mathe_zurueck(html: str, formeln: List[str]) -> str:
@@ -198,12 +224,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             # ihr eigenes Geruest mit demselben Stylesheet mit.
             continue
         elif quelle.suffix == ".md":
-            roh, formeln = _mathe_herausnehmen(
-                quelle.read_text(encoding="utf-8"))
+            roh, formeln, anzeige = _mathe_herausnehmen(
+                _ROH.sub("", quelle.read_text(encoding="utf-8")))
             rumpf = _mathe_zurueck(
                 markdown.markdown(roh, extensions=[
                     "tables", "attr_list", _ids_erweiterung(markdown, formeln)]),
-                formeln)
+                anzeige)
             # Jekyll (jekyll-relative-links, auf Pages vorgegeben) macht
             # aus einem Link auf eine .md-Datei den Link auf ihr
             # gerendertes Gegenstueck; die Vorschau tut dasselbe.

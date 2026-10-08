@@ -65,17 +65,43 @@ def test_verweise_findet_tote_ziele_fehlende_sprungziele_und_absolute_pfade(tmp_
         "teil/s.html: nix.html — kein Ziel"])
 
 
-def test_ueberschriften_findet_eine_attributliste_am_ende(tmp_path: Path):
-    """Pages (kramdown) zeigt ``{: #x }`` am Ende einer Ueberschrift als Text
-    und gibt ihr eine andere id; die Vorschau merkt es nicht. ``{#x}`` lesen
-    beide, und in einem Codeblock ist es kein Befund."""
+def test_verweise_liest_einfache_anfuehrungszeichen_und_belege_sind_ein_hinweis(tmp_path: Path):
+    """Bis 08.10.2026 las die Pruefung nur href="...": Zwei tote Verweise im
+    Bericht der Migrationsabnahme (href='...') blieben ungesehen. Ein toter
+    Verweis in einem Beleg (artefakte/, plv/) ist ein Hinweis: Belege
+    erscheinen unveraendert; auf der eigenen Seite bleibt er ein Befund."""
+    v = tmp_path / "vorschau"
+    _schreibe(v / "a.html", "<h2 id='da'>A</h2>")
+    _schreibe(v / "index.html", "<a href='a.html#da'>da</a> <a href='weg.html'>w</a>")
+    _schreibe(v / "migrationen" / "f" / "artefakte" / "bericht.html", "<a href='abgeleitet/x.html'>x</a>")
+    _schreibe(v / "plv" / "index.html", '<a href="fehlt.html">f</a>')
+    befunde, zusammen = sp.verweise(v)
+    assert befunde == ["index.html: weg.html — kein Ziel"], befunde
+    assert "in Belegen ohne Ziel: 2" in zusammen
+    assert "HINWEIS migrationen/f/artefakte/bericht.html: abgeleitet/x.html — kein Ziel" in zusammen
+
+
+def test_pages_findet_was_pages_anders_liest_als_die_vorschau(tmp_path: Path):
+    """Gemessen mit dem Renderer von Pages am 08.10.2026: kramdown zeigt
+    ``{: #x }`` am Ende einer Ueberschrift als Text, Liquid bricht an einem
+    ``{{`` den Build ab, und ``$...$`` ist fuer kramdown Text. ``{#x}``, raw und
+    ``$$...$$`` lesen beide gleich; Code zaehlt fuer Ueberschriften und
+    Formeln nicht, fuer Liquid schon."""
     seite = tmp_path / "seite"
-    _schreibe(seite / "index.md", "# Start\n\n## Über uns {#ueber-uns}\n\n```\n## Beispiel {: #x }\n```\n")
-    assert sp.ueberschriften(seite)[0] == []
-    _schreibe(seite / "unter" / "a.md", "## Über uns {: #ueber-uns }\n### Weiter {:.klasse}\n")
-    befunde, _ = sp.ueberschriften(seite)
+    _schreibe(seite / "index.md",
+              "# Start\n\n## Über uns {#ueber-uns}\n\n```\n## Beispiel {: #x }\n$y$\n```\n\n"
+              '<script>window.MathJax={tex:{inlineMath:[["$","$"]]}};</script>\n\n'
+              "{% raw %}\nFormel $$\\frac{{}_{a}V}{b}$$ und `$HOME/$PFAD`\n{% endraw %}\n"
+              "Ausserhalb von raw: `$a$` und ``x $b$ y``\n")
+    assert sp.pages(seite)[0] == []
+    _schreibe(seite / "unter" / "a.md",
+              "## Über uns {: #ueber-uns }\n### Weiter {:.klasse}\n\nFormel $x_1$\n\n"
+              "\\frac{{}_{a}V}{b}\n\n```\n{% include x %}\n```\n")
+    befunde, _ = sp.pages(seite)
     assert [b.split(" — ")[0] for b in befunde] == [
-        "unter/a.md:1: ## Über uns {: #ueber-uns }", "unter/a.md:2: ### Weiter {:.klasse}"]
+        "unter/a.md:1: ## Über uns {: #ueber-uns }", "unter/a.md:2: ### Weiter {:.klasse}",
+        "unter/a.md:6: {{ ausserhalb von raw", "unter/a.md:9: {% ausserhalb von raw",
+        "unter/a.md:4: $x_1$"], befunde
 
 
 def test_ein_sprung_auf_eine_fehlende_ueberschrift_bleibt_ein_befund(tmp_path: Path):
@@ -96,6 +122,25 @@ def test_ein_sprung_auf_eine_fehlende_ueberschrift_bleibt_ein_befund(tmp_path: P
     assert lauf.returncode == 0, lauf.stderr
     befunde, _ = sp.verweise(tmp_path / "vorschau")
     assert befunde == ["index.html: #ebene — kein Sprungziel"], befunde
+
+
+def test_die_vorschau_liest_raw_und_formeln_wie_pages(tmp_path: Path):
+    """Liquid nimmt raw heraus, kramdown gibt $$...$$ im Text als \\(...\\) und als
+    eigenen Absatz abgesetzt an MathJax, HTML-maskiert. Die Vorschau tut
+    dasselbe; sonst saehe die Sichtung anders aus als die Seite."""
+    if subprocess.run(["python3", "-c", "import markdown"], capture_output=True).returncode:
+        pytest.skip("python3-markdown fehlt im System-python3")
+    seite = tmp_path / "seite"
+    _schreibe(seite / "index.md", "# Start\n\n{% raw %}\nIm Text $$k<j$$ und $$\\{1, 2\\}$$.\n\n"
+              "$$\nV = \\frac{{}_{a}V}{b}\n$$\n\n$$x_0$$ beginnt den Absatz.\n\n{% endraw %}\n")
+    lauf = subprocess.run(["python3", str(ROOT / "werkzeuge" / "vorschau.py"), "--seite", str(seite),
+                           "--out", str(tmp_path / "vorschau")], capture_output=True, text=True)
+    assert lauf.returncode == 0, lauf.stderr
+    html = (tmp_path / "vorschau" / "index.html").read_text(encoding="utf-8")
+    assert "raw" not in html
+    assert "Im Text \\(k&lt;j\\) und \\(\\{1, 2\\}\\)." in html
+    assert "$$\nV = \\frac{{}_{a}V}{b}\n$$" in html
+    assert "\\(x_0\\) beginnt den Absatz." in html
 
 
 def _paket_und_seite(tmp_path: Path):

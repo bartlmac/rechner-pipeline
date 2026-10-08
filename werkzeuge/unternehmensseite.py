@@ -1183,16 +1183,50 @@ FACHDOKUMENTE = (
      (("](../mathematik/", "](../../aktuariat/mathematik/"),)),
 )
 
-#: MathJax fuer Fachdokumente mit TeX-Formeln. Die Wiedergabe ist
-#: best-effort: Markdown und TeX teilen sich Sonderzeichen, einzelne
-#: Formeln koennen im Gerenderten leiden — das Dokument im Repo bleibt
-#: die massgebliche Fassung.
+#: MathJax fuer Fachdokumente mit TeX-Formeln. kramdown reicht die Formeln
+#: als ``\\(...\\)`` und ``\\[...\\]`` weiter (:func:`_fuer_pages`).
 MATHJAX = (
     '<script>window.MathJax={tex:{inlineMath:[["$","$"],'
     '["\\\\(","\\\\)"]]}};</script>\n'
     '<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/'
     'tex-mml-chtml.js"></script>\n'
 )
+
+
+#: Liquid laeuft auf Pages vor kramdown ueber jede Seite; auch eine .md ohne
+#: Vorspann ist eine Seite (jekyll-optional-front-matter, auf Pages Standard).
+#: Ein importiertes Dokument ist nicht fuer Liquid geschrieben: "{{" in einer
+#: Formel des KLV-Tarifplans brach den ganzen Pages-Build ab (gemessen mit dem
+#: Renderer von Pages am 08.10.2026). Sein Rumpf steht deshalb in raw. Die
+#: Ueberschrift aus dem Vorspann bleibt davor, denn jekyll-titles-from-headings
+#: nimmt den Seitentitel nur aus einer Ueberschrift am Anfang der Seite.
+ROH_AUF, ROH_ZU = "{% raw %}", "{% endraw %}"
+
+#: Im Rumpf eines importierten Dokuments: ein Codeblock, ein Codespan, eine
+#: Formel in ``$$...$$`` oder eine in ``$...$`` (Gruppe ``formel``).
+_FORMEL_ODER_CODE = re.compile(
+    r"^(?P<zaun>```|~~~)[^\n]*\n.*?^(?P=zaun)[ \t]*$"
+    r"|(?P<striche>`+)(?:(?!\n[ \t]*\n).)+?(?<!`)(?P=striche)(?!`)"
+    r"|\$\$.+?\$\$"
+    r"|\$(?P<formel>[^$\n]+?)\$",
+    re.S | re.M)
+
+
+def _fuer_pages(rumpf: str) -> str:
+    """Den Rumpf eines importierten Dokuments so ablegen, wie Pages ihn liest.
+
+    kramdown kennt als Mathematik nur ``$$...$$`` und reicht sie unveraendert
+    an MathJax weiter, im Text als ``\\(...\\)``, als eigener Absatz als
+    ``\\[...\\]``. ``$...$`` ist fuer kramdown Text: Escapes, Hervorhebung und
+    Typografie laufen darueber, bevor MathJax es sieht. Gemessen am 08.10.2026
+    kamen so 35 von 489 Formeln veraendert an: aus ``\\{`` wurde ``{``,
+    ``A^{1}_{y:m} + E_{y:m}`` bekam ein ``<em>``, aus ``s'`` wurde ``s’``.
+    Deshalb wird jede Formel ``$$...$$``; Codeblock und Codespan bleiben, wie
+    sie sind. Dazu steht der Rumpf in raw (:data:`ROH_AUF`)."""
+    rumpf = _FORMEL_ODER_CODE.sub(
+        lambda m: m.group(0) if m.group("formel") is None else f"$${m.group('formel')}$$",
+        rumpf)
+    return f"{ROH_AUF}\n{rumpf}\n{ROH_ZU}\n"
 
 
 def _titel_und_rumpf(text: str) -> tuple:
@@ -1276,7 +1310,7 @@ def fachdokumente(docs: Path, ziel: Path,
             rumpf = rumpf.replace(alt, neu)
         zielpfad.write_text(
             _vorspann(rel, titel, "$" in rumpf,
-                      zurueck=(zurueck_titel, zurueck_ziel)) + rumpf
+                      zurueck=(zurueck_titel, zurueck_ziel)) + _fuer_pages(rumpf)
             + "\n" + fusszeile("../" * (len(rel.parts) - 1)) + "\n",
             encoding="utf-8")
         aus.append((zielname, titel))
@@ -1336,7 +1370,7 @@ def architektur(docs: Path, ziel: Path) -> int:
         zielpfad.parent.mkdir(parents=True, exist_ok=True)
         zielpfad.write_text(
             _vorspann(rel, titel, "$" in rumpf,
-                      zurueck=("Hinter den Kulissen", "../")) + rumpf
+                      zurueck=("Hinter den Kulissen", "../")) + _fuer_pages(rumpf)
             + "\n" + fusszeile("../../") + "\n",
             encoding="utf-8")
         anzahl += 1

@@ -615,7 +615,7 @@ def test_fachdokumente_werden_mit_banderole_importiert(tmp_path: Path):
     (docs / "tarifplaene").mkdir(parents=True)
     (docs / "tarifplaene" / "probe.md").write_text(
         '---\ntitle: "Tarifplan Probe —\n  umbrochen"\nlang: de\n---\n\n'
-        "# 1 Inhalt\nFormel $S_x$\n", encoding="utf-8")
+        "# 1 Inhalt\nFormel $S_x$ und `$HOME/$PFAD`\n", encoding="utf-8")
 
     ziel = tmp_path / "seite"
     importiert = us.fachdokumente(
@@ -630,6 +630,13 @@ def test_fachdokumente_werden_mit_banderole_importiert(tmp_path: Path):
     assert "# Tarifplan Probe — umbrochen" in seite
     assert "title:" not in seite
     assert "mathjax" in seite.lower()
+    # So, wie Pages es liest (gemessen mit dem Renderer von Pages am
+    # 08.10.2026): die Formel als $$...$$, Code unberuehrt, der Rumpf in raw,
+    # der Titel davor als erste Zeile (jekyll-titles-from-headings).
+    assert "Formel $$S_x$$ und `$HOME/$PFAD`" in seite
+    assert seite.splitlines()[0] == "# Tarifplan Probe — umbrochen"
+    assert seite.index("# Tarifplan") < seite.index(us.ROH_AUF) < seite.index("# 1 Inhalt")
+    assert seite.index("`$HOME/$PFAD`") < seite.index(us.ROH_ZU) < seite.index('class="fuss-fiktion"')
     uebersicht = (ziel / "aktuariat" / "tarifplaene" / "index.md").read_text(
         encoding="utf-8")
     assert "[Tarifplan Probe — umbrochen](probe.html)" in uebersicht
