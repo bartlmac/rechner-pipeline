@@ -35,6 +35,21 @@ import falldaten as fd  # noqa: E402
 import vorzeigeseite as vz  # noqa: E402
 
 
+def _fallseite(*args, **kwargs) -> str:
+    """Alle Seiten des Falls hintereinander.
+
+    Aus dem einen Fallbericht sind kleine Seiten je Station geworden
+    (der Weg der Uebernahme ist das Rueckgrat). Zusicherungen, die
+    fragen "steht das im Fallbericht", fragen jetzt "steht das auf einer
+    seiner Seiten" — wo eine Aussage auf eine BESTIMMTE Seite gehoert,
+    prueft der Test sie einzeln.
+    """
+    import vorzeigeseite as _vz
+
+    return "\n".join(_vz._seiten(*args, **kwargs).values())
+
+
+
 # --------------------------------------------------------------------------- #
 # T21-01: BU — der Betrag eines Abgangs folgt aus dem Zustand davor
 # --------------------------------------------------------------------------- #
@@ -174,24 +189,35 @@ def test_ein_echter_tarif_fall_verlangt_kein_controlling(tmp_path):
 
 def test_die_kopfzeile_behauptet_keinen_simulationsschluessel_ohne_snapshots(tmp_path):
     """Die Kopfzeile sagte fuer jeden Fall 'Simulationsschluessel' —
-    auch fuer einen ohne Snapshots oder mit Schluesselklasse mensch."""
+    auch fuer einen ohne Snapshots oder mit Schluesselklasse mensch.
+
+    Seit 04.10.2026 spricht die Seite mit der Stimme des Unternehmens
+    (Entscheid des Maintainers): Schluesselklasse, Besetzung und Begruendung
+    eines Entscheids stehen in seinem Snapshot, nicht auf der Seite — fuer
+    keine Klasse. Was die Seite NICHT prueft, sagt sie weiter (T19-02)."""
     fall = tmp_path / "fall"
     anlegen(fall, scope="bestand")
     modell = fd.sammle(fall, [])
-    seite = vz._seite(fall, modell, tmp_path, [], None)
+    seite = _fallseite(fall, modell, tmp_path, [], None)
     assert "Simulationsschlüssel" not in seite
-    assert "Schlüsselklasse" in seite
+    # Was die Seite an den Snapshots prueft und was nicht, sagt die Seite der
+    # Entscheide (test_falldaten_verifikation), nicht mehr der Kopf der
+    # Fallseite (Maintainer 06.10.2026).
+    assert "Schlüsselmaterial" not in seite
     def _e(gate, klasse):
-        return {"gate": gate, "entscheid": "angenommen", "entscheider": "x",
+        return {"gate": gate, "entscheid": "angenommen", "entscheider": "Besetzung-XYZ",
                 "rolle": "mensch/aktuariat", "schluesselklasse": klasse,
                 "schluessel_sha256": "", "strukturell_verifiziert": True,
-                "verifikationsbefunde": [], "signatur_verifiziert": False}
+                "verifikationsbefunde": [], "signatur_verifiziert": False,
+                "geltend": True, "begruendung": "Begruendung-XYZ"}
 
-    modell["kette"]["entscheide"] = [_e("A-M1", "simulation")]
-    seite = vz._seite(fall, modell, tmp_path, [], None)
-    assert "Simulationsschlüssel" in seite
-    modell["kette"]["entscheide"] = [_e("A-M1", "simulation"), _e("A-M2", "mensch")]
-    assert "Simulationsschlüssel" not in vz._seite(fall, modell, tmp_path, [], None)
+    for klassen in (["simulation"], ["simulation", "mensch"], ["mensch"]):
+        modell["kette"]["entscheide"] = [_e(f"A-M{i + 1}", k) for i, k in enumerate(klassen)]
+        seite = _fallseite(fall, modell, tmp_path, [], None)
+        for verraet in ("Simulationsschlüssel", "Schlüsselklasse simulation",
+                        "Schlüsselklasse mensch", "Besetzung-XYZ", "Begruendung-XYZ"):
+            assert verraet not in seite, (klassen, verraet)
+        assert "Rolle mensch/aktuariat" in seite, klassen
 
 
 def test_keine_darstellung_nennt_snapshots_menschliche_entscheide():

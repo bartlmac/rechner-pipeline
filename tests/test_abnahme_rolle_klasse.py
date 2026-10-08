@@ -1066,8 +1066,12 @@ def test_ratsche_die_test_ordnungen_trennen_fall_und_betrieb(tmp_path):
 #: Linie Pflicht ist (Nachtrag 2026-10-01), zeichnet KEINE Ordnung mit '*'
 #: mehr: ``test_zeichnungsordnung.py`` prueft genau diese Verweigerung,
 #: ``test_rollenmodell_adr018.py`` den Lader der Altform (Schema 1).
+#: ``test_werkzeuge.py`` (Ast der Vorzeige): eine Ordnung nach Schema 1 mit
+#: '*' liegt als Datei NEBEN dem Fall und darf auf der Rollenseite NICHTS
+#: bewirken — der Test prueft genau, dass "alle Gates" nicht erscheint. Sie
+#: wird nie geladen und nie gezeichnet.
 STERN_IN_TESTS = Counter({"test_rollenmodell_adr018.py": 1, "test_zeichnungsordnung.py": 1,
-                          "test_erstabnahme_linie.py": 1})
+                          "test_erstabnahme_linie.py": 1, "test_werkzeuge.py": 1})
 
 
 def _sterne(quelle: str) -> int:

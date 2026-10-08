@@ -7,7 +7,8 @@ Dieses Kommando faehrt die ganze Kette aus den aktuellen Quellen —
 
     falldaten  ->  vorzeigeseite (--als-unterseite)  ->
     unternehmensseite (inkl. Fachdoku, Landkarte, Techstack)  ->
-    vorschau
+    Wache (bereinigung --wache)  ->  vorschau  ->
+    Seitenpruefung (mit Stands-Paket und Vorschau: seitenpruefung alle)
 
 — und bricht ab, sobald ein Schritt bricht. Vor Sichtung und
 Veroeffentlichung einmal laufen lassen; danach kann der Entwurf nicht
@@ -105,7 +106,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if (zwischen := _schritt(
             [sys.executable, str(WERKZEUGE / "unternehmensseite.py"),
-             "--out", str(aus)])) != 0:
+             "--daten", str(daten), "--out", str(aus)])) != 0:
+        return zwischen
+
+    # Die Wache liest jede Datei des Push-Baums — nicht nur die Belege des
+    # Falls, auch Stands-Paket, Fachdokumente, Landkarte: kein Hostpfad,
+    # kein gesperrtes Wort (werkzeuge/bereinigung.py). Ein Befund haelt an.
+    if (zwischen := _schritt(
+            [sys.executable, str(WERKZEUGE / "bereinigung.py"),
+             "--wache", str(aus)])) != 0:
         return zwischen
 
     if args.vorschau:
@@ -114,6 +123,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         if (zwischen := _schritt(
                 ["python3", str(WERKZEUGE / "vorschau.py"),
                  "--seite", str(aus), "--out", args.vorschau])) != 0:
+            return zwischen
+
+    # Die Pruefungen vor der Veroeffentlichung (Entscheid des Maintainers
+    # 04.10.2026): Verweise der Vorschau, Paket gegen stand.json, jede
+    # angezeigte Kennung mit Quelle, Breite auf dem Telefon. Sie brauchen
+    # die gerenderte Vorschau und das Stands-Paket; ein Befund haelt an.
+    if args.vorschau and args.stands_paket and args.anker:
+        if (zwischen := _schritt(
+                [sys.executable, str(WERKZEUGE / "seitenpruefung.py"), "alle",
+                 "--seite", str(aus), "--vorschau", args.vorschau,
+                 "--fall", args.fall, "--name", args.name,
+                 "--paket", args.stands_paket, "--anker", args.anker,
+                 "--daten", str(daten), "--repo", str(WERKZEUGE.parent)])) != 0:
             return zwischen
 
     if rc == 3:

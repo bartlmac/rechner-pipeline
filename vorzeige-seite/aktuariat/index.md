@@ -1,36 +1,47 @@
-<link rel="stylesheet" href="../assets/stil.css">
-<div class="banderole">Fiktives Unternehmen — eine Vorführung agentischer
-Bestandsmigration. <a href="../">Zur Startseite.</a></div>
+# Rechenkern und Tarifwerk
 
-# Aktuariat
+Jeder Betrag in unseren Büchern kommt aus einem Rechenkern, und jeder
+Vertrag wird nach einem dokumentierten Tarifplan bewertet. Die Arbeit am
+Rechenkern ist ein Zusammenspiel von Aktuariat und Rechenkernentwicklung.
+Sie erfolgt nach Dokumentation und in fachlicher Rollentrennung: Das
+Aktuariat verantwortet, was gerechnet wird, die Rechenkernentwicklung, wie
+es gerechnet wird. In beiden Rollen unterstützt KI die Menschen.
 
-Das Aktuariat der Pfefferminzia führt das Rechenwerk der übernommenen
-Bestände: die Tarifpläne, nach denen jeder Vertrag bewertet wird, und
-die Bestandsentwicklung als jeweils aktuelle Sicht auf das geführte
-Geschäft.
+## Was der Kern rechnet {: #rechenkern }
 
-## Tarifpläne
+Der Kern bewertet mehrere Tarifgenerationen nebeneinander, übernommene
+Tarifwerke eingeschlossen. Eine Übernahme bringt kein zweites System
+mit: Das fremde Tarifwerk wird als weitere Generation im selben Kern
+parametriert, und danach rechnet dieselbe Maschine für eigene und
+übernommene Verträge.
 
-Die Bewertung jedes Vertrags folgt einem dokumentierten Tarifplan —
-mit Zustandsmodell, Rechnungsgrundlagen und den Formeln, nach denen
-der Rechenkern arbeitet. Geführt werden derzeit die kapitalbildende
-Lebensversicherung (Tarifgeneration 2015, aus der Übernahme Baldrian)
-und ein Berufsunfähigkeits-Beispielprodukt.
+Die Bewertung folgt der Thiele-Rekursion. Sie ist deterministisch —
+gleiche Eingaben ergeben gleiche Ergebnisse, auf den Cent. Jede
+produktive Änderung am Kern muss eine Suite von Charakterisierungstests
+mit eingefrorenen Referenzwerten unverändert bestehen; ändert sich ein
+Wert, ist das ein Befund und keine Anpassung.
 
-[Zu den Tarifplänen](tarifplaene/) — das gemeinsame mathematische
-Rückgrat aller Produkte (Zustandsraum, Thiele-Rekursion,
-Rechnungsgrundlagen-Schicht, Numerik) steht in der
-[Grundsatzdokumentation](mathematik/grundsatzdokumentation.html).
+## Tarifwerk {: #tarifwerk }
 
-## Bestandsentwicklung
+Die Bewertung jedes Vertrags folgt einem dokumentierten Tarifplan mit
+Zustandsmodell, Rechnungsgrundlagen und den Formeln des Rechenkerns.
+Geführt werden die kapitalbildende Lebensversicherung in mehreren
+Generationen (darunter die Tarifgeneration 2015 aus der Übernahme
+Baldrian) und die Berufsunfähigkeitsversicherung.
 
-Die aktuelle Sicht auf den geführten Bestand, bewertet je Tarifzelle:
+* [Tarifpläne](tarifplaene/) — je Generation Zustandsmodell,
+  Rechnungsgrundlagen und Formeln.
+* [Grundsatzdokumentation](mathematik/grundsatzdokumentation.html) —
+  Zustandsraum, Thiele-Rekursion, Rechnungsgrundlagen, Numerik.
 
-* [Bestand nach der Übernahme Baldrian, Stichtag 01.01.2026](../migrationen/baldrian/artefakte/abgeleitet/berichte/bestandsbericht-nach.html)
-* [Der gelieferte Bestand vor der Übernahme, zum Vergleich](../migrationen/baldrian/artefakte/abgeleitet/berichte/bestandsbericht-vor.html)
+## Was der Kern für den Bestand leistet {: #im-bestand }
 
-Jede Zahl der Berichte ist über den
-[Abnahmebericht der Migration](../migrationen/baldrian/)
-nachrechenbar. *In Vorbereitung:* Zugang, Abgang und Geschäftsvorfälle
-im Zeitverlauf sowie die fortgeschriebene Sicht bis zum Ablauf des
-Bestands.
+Die Zahlen, die der Kern für den geführten Bestand rechnet, stehen unter
+[Bestandsführung](../geschaeftsentwicklung/): der Bestand am Stichtag und
+die [Monatsberichte](../geschaeftsentwicklung/#monatsberichte).
+
+Wie der Kern eine Übernahme nachrechnet und wer sie abnimmt, steht unter
+[Bestandsmigrationen](../migrationen/#abnahmen). Die Bestandsberichte zur
+Übernahme Baldrian:
+[nach der Übernahme, Stichtag 01.01.2026](../migrationen/baldrian/artefakte/abgeleitet/berichte/bestandsbericht-nach.html)
+und [der gelieferte Bestand zum Vergleich](../migrationen/baldrian/artefakte/abgeleitet/berichte/bestandsbericht-vor.html).

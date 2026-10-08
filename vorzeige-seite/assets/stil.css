@@ -1,73 +1,357 @@
-/* Gestaltung der Unternehmensseiten der Vorfuehrung. Ergaenzt das
-   Jekyll-Thema; die Fall-Seiten unter migrationen/<fall>/ nutzen es
-   nicht — sie bleiben das nuechterne Erzeugnis des Werkzeugs. */
+/* Gestaltung des Auftritts — Unternehmensseiten UND die generierten
+   Fall-Seiten unter migrationen/<fall>/. Muster "Bericht": serifenlos,
+   hoher Kontrast, klare Rasterkanten, ein dunkler Kopf. Ein
+   Gestaltungssystem bis zum Beleg: Der Leser verlaesst das Unternehmen
+   nicht in dem Moment, in dem er den Beweis sucht.
 
-.banderole {
-  background: #5b3a29;
-  color: #fff;
-  padding: .55rem 1rem;
-  border-radius: 4px;
-  font-size: .85rem;
-  margin: 0 0 1.6rem;
-}
-.banderole a { color: #ffd9c4; }
+   Die Farben der Diagramme stehen hier als Variablen; die erzeugten SVGs
+   greifen darauf zu (werkzeuge/grafik.py). Sie sind gerechnet, nicht
+   gewaehlt: Helligkeitsband, Chroma, Farbfehlsichtigkeit und Kontrast
+   geprueft. Wer sie tauscht, prueft sie erneut. */
 
-table td:first-child { font-weight: 600; }
+:root {
+  --grund: #f2f4f5;
+  --flaeche: #ffffff;
+  --tinte: #14181a;
+  --matt: #6a7075;
+  --linie: #dbe0e2;
+  --primaer: #1f4f57;
+  --primaer-dunkel: #17424a;
+  --akzent: #c2622d;
 
-.blocks {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
-  gap: 1rem;
-  margin: 1.6rem 0;
+  /* Datenfarben: Identitaet (Serie) und Zeit (eine Rampe, zwei Stufen) */
+  --serie-1: #2a78d6;
+  --serie-2: #eb6834;
+  --serie-3: #1baf7a;
+  --serie-4: #eda100;
+  --serie-5: #e87ba4;
+  --zeit-frueher: #6da7ec;
+  --zeit-jetzt: #1c5cab;
+  --text-matt: #6a7075;
+  --text-tinte: #14181a;
+  --flaeche-matt: #e7eae4;
 }
-.block-gross {
-  border: 1px solid #d7dbd4;
-  border-top: 4px solid #2f5d62;
-  border-radius: 6px;
-  padding: 1rem 1.2rem;
-  background: #fbfbfa;
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0; background: var(--grund); color: var(--tinte);
+  font: 15px/1.6 -apple-system, "Segoe UI", system-ui, sans-serif;
 }
-.block-gross h3 { margin-top: 0; }
-.block-gross .kennzahl { font-size: 1.5rem; font-weight: 700; }
-.block-gross .einheit { color: #5f6663; font-size: .85rem; }
-.block-gross p { margin: .4rem 0; }
-.block-gross .platzhalter { color: #5f6663; font-style: italic; }
+main { max-width: 62rem; margin: 0 auto; padding: 0 0 4rem; background: var(--grund); }
+/* Ein Innenabstand fuer alles, was nicht randlos sein soll — sonst muss
+   jede neue Komponente ihren eigenen Rand mitbringen und vergisst ihn. */
+main > *:not(h1):not(nav.kopf) { margin-left: 2.2rem; margin-right: 2.2rem; }
+/* Eine Tabelle ist kein Blockelement: ihre 100 % rechnen gegen den Elternblock,
+   die Aussenraender kommen obendrauf — sie liefe rechts hinaus. */
+main > table { width: calc(100% - 4.4rem); }
+a { color: var(--primaer); }
+
+/* --- Kopf und Reiter --- */
+
+h1 {
+  background: var(--primaer); color: #fff; margin: 0;
+  font-weight: 700; font-size: 2rem; line-height: 1.2; letter-spacing: -.02em;
+  padding: 2.4rem 2.2rem 2.2rem;
+}
+nav.kopf {
+  background: var(--primaer-dunkel); margin: 0 0 2.4rem; padding: 0 2.2rem;
+  font-weight: 600; font-size: .78rem; line-height: 1; letter-spacing: .06em; text-transform: uppercase;
+  display: flex; flex-wrap: wrap;
+}
+nav.kopf a { color: #c7dcdd; text-decoration: none; padding: .9rem 1.1rem .9rem 0; }
+nav.kopf a:hover, nav.kopf a.aktiv { color: #fff; }
+
+h2 {
+  font-weight: 700; font-size: 1.3rem; line-height: 1.3; letter-spacing: -.01em;
+  margin: 2.8rem 2.2rem .8rem; padding-bottom: .4rem;
+  border-bottom: 3px solid var(--primaer);
+}
+h3 {
+  font-weight: 700; font-size: .78rem; line-height: 1.3; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--akzent); margin: 1.8rem 2.2rem .6rem;
+}
+p { margin-top: .7rem; margin-bottom: .7rem; max-width: 44rem; }
+
+/* --- Stichwortlisten der Startseite --- */
+
+ul.gross {
+  list-style: none; padding: 0; display: grid;
+  grid-template-columns: repeat(2, 1fr); gap: .6rem 1.2rem;
+  margin-top: 1.2rem; margin-bottom: 2rem;
+}
+ul.gross li {
+  font-weight: 600; font-size: 1.02rem; line-height: 1.4; background: var(--flaeche);
+  padding: .8rem 1rem; border-left: 4px solid var(--primaer);
+  display: flex; align-items: center;
+}
+@media (max-width: 40rem) { ul.gross { grid-template-columns: 1fr; } }
+
+/* --- Kennzahlen: Kachel, Anteil, Diagrammreihe --- */
+
+.bestand-kopf {
+  display: grid; grid-template-columns: minmax(14rem, 20rem) 1fr; gap: 1rem;
+  align-items: stretch; margin-top: 1.2rem; margin-bottom: 1.4rem;
+}
+.bestand-kopf figure.reihe { display: flex; flex-direction: column; justify-content: center; }
+.bestand-kopf > * { margin: 0 !important; }
+.bestand-kopf .kennzahlen-reihe { grid-template-columns: 1fr; margin: 0; }
+/* Mehrere Kennzahlen: nebeneinander, der Anteilsbalken darunter ueber die
+   ganze Breite — sonst steht er in einer Karte voller Leere. */
+.bestand-kopf.breit { grid-template-columns: 1fr; }
+.bestand-kopf.breit .kennzahlen-reihe {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1rem;
+}
+@media (max-width: 46rem) { .bestand-kopf { grid-template-columns: 1fr; } }
+
+.kennzahlen-reihe {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 18rem));
+  gap: 1rem; margin-top: 1.2rem; margin-bottom: 1.2rem;
+}
+.kennzahl-kachel {
+  background: var(--flaeche); padding: 1rem 1.1rem 1.1rem;
+  border-top: 4px solid var(--primaer); display: flex; flex-direction: column;
+}
+.kennzahl-kachel .marke {
+  font-weight: 600; font-size: .72rem; line-height: 1.3; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--matt);
+}
+.kennzahl-kachel .wert { font-weight: 700; font-size: 2.9rem; line-height: 1.1; margin: .3rem 0 .15rem; letter-spacing: -.02em; }
+.kennzahl-kachel .delta { font-size: .85rem; color: var(--matt); }
+.kennzahl-kachel .delta.auf { color: #1b7a4b; }
+.kennzahl-kachel .delta.ab { color: #a8422a; }
+.kennzahl-kachel .fuss { font-size: .75rem; color: var(--matt); margin-top: .5rem; }
+
+figure.reihe, .diagramme figure {
+  background: var(--flaeche); padding: 1rem 1.1rem; margin: 0 0 1rem;
+}
+figure.reihe { margin-bottom: 1.4rem; }
+.diagramme { display: grid; gap: 1rem; margin-top: 1.2rem; margin-bottom: 1.6rem; }
+figcaption {
+  font-weight: 700; font-size: .7rem; line-height: 1.3; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--matt); margin-bottom: .6rem;
+}
+svg { max-width: 100%; height: auto; display: block; }
+
+/* --- Kacheln --- */
 
 .kacheln {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-  gap: .8rem;
-  margin: 1.2rem 0 1.8rem;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem; margin-top: 1.2rem; margin-bottom: 1.8rem;
 }
+.kacheln.gross { grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); }
+/* Eine Kachel, die sich anklicken laesst, muss danach aussehen: Titel in
+   Linkfarbe, Pfeil, und beim Ueberfahren hebt sie sich. Ohne das steht sie
+   wie ein Textkasten da und die Ebene dahinter wird nicht gefunden. */
 a.kachel {
-  display: block;
-  border: 1px solid #d7dbd4;
-  border-radius: 6px;
-  padding: .9rem 1rem;
-  text-decoration: none;
-  color: inherit;
-  background: #fff;
+  display: block; background: var(--flaeche); padding: 1.2rem 1.3rem;
+  text-decoration: none; color: inherit; border-top: 4px solid var(--akzent);
+  transition: box-shadow .12s ease, transform .12s ease;
 }
-a.kachel:hover { border-color: #2f5d62; }
-a.kachel b { display: block; margin-bottom: .25rem; color: #2f5d62; }
-a.kachel span { font-size: .85rem; color: #5f6663; }
+a.kachel:hover { box-shadow: 0 3px 12px rgba(27, 30, 28, .14); transform: translateY(-2px); }
+a.kachel:hover b { text-decoration: underline; }
+a.kachel:focus-visible { outline: 3px solid var(--primaer); outline-offset: 2px; }
+a.kachel b {
+  display: block; color: var(--primaer); font-weight: 700; font-size: 1.05rem;
+  line-height: 1.3; margin-bottom: .4rem;
+}
+/* Der Pfeil haengt am Ende des Textes, nicht am Titel: in den erzeugten
+   Berichtskacheln steht die Formatmarke im selben <b>, dahinter gelesen
+   ergaebe er Unsinn. Allein auf einer Zeile stuende er ratlos da. */
+a.kachel span:last-of-type::after {
+  content: " \00a0\2192"; color: var(--primaer); font-weight: 700;
+}
+a.kachel span { font-size: .9rem; color: var(--matt); }
+a.kachel b em {
+  display: block; margin-top: .2rem; font-style: normal; font-weight: 600;
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--matt);
+}
+a.kachel .kennzahl {
+  display: block; margin-bottom: .3rem; color: var(--tinte);
+  font-size: .9rem; font-weight: 600;
+}
 a.kachel .wip {
-  display: inline-block;
-  font-size: .7rem;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  color: #8c4a2f;
-  border: 1px solid #8c4a2f;
-  border-radius: 3px;
-  padding: 0 .35em;
-  margin-left: .4em;
+  display: inline-block; font-size: .68rem; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--akzent); border: 1px solid var(--akzent);
+  border-radius: 3px; padding: 0 .35em; margin-left: .4em;
 }
 
-.migrationen-band {
-  border-left: 5px solid #8c4a2f;
-  background: #f8ede5;
-  border-radius: 0 6px 6px 0;
-  padding: 1rem 1.3rem;
-  margin: 2rem 0;
+/* --- Tabellen --- */
+
+table { border-collapse: collapse; width: 100%; font-size: .9rem; background: var(--flaeche); }
+th, td { padding: .5rem .8rem; text-align: left; border-bottom: 1px solid var(--linie); }
+th {
+  font-weight: 700; font-size: .7rem; line-height: 1.3; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--matt); border-bottom: 2px solid var(--linie); vertical-align: bottom;
 }
-.migrationen-band h2 { margin-top: 0; }
+th small { display: block; font-weight: 400; text-transform: none; letter-spacing: 0; }
+td:first-child { font-weight: 600; }
+td b { font-variant-numeric: tabular-nums; }
+table.kpi.gleich { table-layout: fixed; }
+table.kpi caption {
+  text-align: left; font-weight: 700; font-size: .95rem; line-height: 1.3; color: var(--primaer);
+  padding: 1.2rem 0 .5rem;
+}
+table.eckdaten { width: 100%; background: transparent; font-size: .92rem; }
+table.eckdaten td { padding: .4rem .6rem .4rem 0; }
+table.eckdaten td:first-child { color: var(--matt); font-weight: 400; width: 15rem; }
+
+/* --- Platzhalter, Migrationsblock, Fusszeile --- */
+
+.platzhalter { color: var(--akzent); font-style: italic; font-size: .88rem; }
+.platzhalter-box {
+  background: #fdf1e7; border: 0; border-left: 4px solid var(--akzent);
+  padding: .9rem 1.1rem; margin-top: .8rem; margin-bottom: 1.4rem;
+}
+.platzhalter-box b { display: block; color: var(--akzent); }
+.platzhalter-box span { font-size: .9rem; color: var(--matt); }
+.migration {
+  background: var(--flaeche); border-left: 4px solid var(--primaer);
+  padding: 1.1rem 1.3rem; margin-top: 1rem; margin-bottom: 1rem;
+}
+.migration h3 { margin: 0 0 .6rem; }
+.migration h3 small {
+  margin-left: .6em; font-size: .68rem; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--primaer); border: 1px solid var(--primaer);
+  border-radius: 3px; padding: 0 .35em;
+}
+.quelle { font-size: .8rem; color: var(--matt); }
+.kleingedruckt { font-size: .85rem; color: var(--matt); max-width: 46rem; }
+.kleingedruckt p { margin: .4rem 0; }
+.fuss-fiktion {
+  border-top: 1px solid var(--linie); margin-top: 3rem; padding-top: .8rem;
+  font-size: .8rem; color: var(--matt);
+}
+.fuss-fiktion a { color: var(--matt); }
+
+/* --- Fallbericht und Journey --- */
+
+.chrom {
+  font-size: .78rem; color: var(--matt); border-bottom: 1px solid var(--linie);
+  padding: .3rem 0 .5rem; margin-bottom: 1.2rem;
+}
+.chrom a { color: var(--matt); }
+.kennzahlen {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1px; background: var(--linie); border: 1px solid var(--linie);
+  margin-top: 1.4rem; margin-bottom: 1.8rem;
+}
+.kennzahlen .bandtitel {
+  grid-column: 1 / -1; background: var(--flaeche); padding: .45rem 1rem 0;
+  font-weight: 700; font-size: .7rem; line-height: 1.4; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--akzent);
+}
+.kennzahlen .gruppe { background: var(--flaeche); padding: .7rem 1rem .8rem; }
+.kennzahlen .gruppentitel {
+  font-weight: 700; font-size: .68rem; line-height: 1.3; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--matt); margin-bottom: .4rem;
+}
+.kennzahlen .kennzahl { display: flex; align-items: baseline; gap: .5rem; margin: .15rem 0; }
+.kennzahlen .kennzahl b { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.leitgrafik { background: var(--flaeche); padding: 1rem 1.1rem; margin-bottom: 1.2rem; }
+.widerspruch { border-left: 4px solid var(--akzent); padding: .2rem 1rem; }
+/* Abgrenzungen: Aussage, Zahlen, Sicht. Die drei Teile kommen ohne
+   Trennzeichen aus dem Werkzeug — trennt sie das Stylesheet nicht,
+   kleben sie zu einem Wort zusammen. */
+.abgrenzungen { display: grid; gap: .6rem; margin-top: 1rem; margin-bottom: 1.4rem; }
+.abgrenzung {
+  background: var(--flaeche); padding: .8rem 1rem; border-left: 3px solid var(--linie);
+}
+.abgrenzung.fachlich { border-left-color: var(--primaer); }
+.abgrenzung.technisch { border-left-color: var(--matt); }
+.abgrenzung.luecke { border-left-color: var(--akzent); }
+.abgrenzung b { display: block; font-weight: 700; }
+.abgrenzung span { display: block; margin-top: .2rem; color: var(--matt); font-size: .9rem; }
+.abgrenzung i {
+  display: inline-block; margin-top: .45rem; font-style: normal; font-size: .68rem;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--matt);
+}
+.stationen { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .8rem; }
+a.station {
+  display: block; background: var(--flaeche); padding: .8rem .9rem;
+  text-decoration: none; color: inherit; border-top: 3px solid var(--primaer);
+}
+
+/* Die Fallseite fuehrt dreizehn Stationen; wo eine ein Gate hat, steht
+   es als erstes — was es prueft und was es hinterlaesst, vor dem, was
+   im Fall geschah. */
+p.gate {
+  background: var(--flaeche); border-left: 4px solid var(--akzent);
+  padding: .6rem .9rem; margin: .2rem 0 .9rem; font-size: .9rem;
+}
+p.gate code { color: var(--akzent); font-weight: 700; background: none; padding: 0; }
+p.gate em { font-style: normal; font-weight: 600; color: var(--gedaempft); }
+
+.kennung-zerlegung {
+  display: flex; flex-wrap: nowrap; align-items: flex-end; gap: .25rem;
+  font-family: ui-monospace, monospace; overflow-x: auto;
+  margin-top: 1rem; margin-bottom: .4rem;
+}
+.kennung-zerlegung .teil {
+  display: inline-flex; flex-direction: column; align-items: center;
+  background: var(--flaeche); border-top: 3px solid var(--akzent);
+  padding: .2rem .5rem; white-space: nowrap;
+}
+.kennung-zerlegung .teil b { font-size: 1.1rem; color: var(--primaer); }
+.kennung-zerlegung .teil small {
+  font-family: inherit; font-size: .65rem; color: var(--akzent); font-weight: 700;
+}
+.kennung-zerlegung .trenner { font-size: 1.2rem; font-weight: 700; color: var(--akzent); padding-bottom: .9rem; }
+ol.kennung-legende { padding-left: 1.4rem; font-size: .88rem; margin-bottom: 1.2rem; }
+
+.rollen table { width: 100%; }
+.rollen td small { display: block; font-family: ui-monospace, monospace; font-size: .72rem; color: var(--matt); }
+.rollen table.zeichnung td:first-child { white-space: nowrap; }
+.rollen .pointe { border-left: 4px solid var(--primaer); padding: .5rem .9rem; background: var(--flaeche); }
+.rollen .befund { border-left: 4px solid var(--akzent); padding: .5rem .9rem; background: #fdf1e7; }
+
+blockquote {
+  background: var(--flaeche); border-left: 4px solid var(--primaer);
+  padding: .8rem 1rem; margin: 1rem 2rem;
+}
+code { font: .85em ui-monospace, monospace; background: #eceff0; padding: .1em .3em; border-radius: 3px; }
+.hinweis { background: var(--akzent); color: #fff; padding: .5rem 2rem; font-size: .85rem; margin: 0; }
+
+/* Zwei Fassungen derselben Grafik (grafik.responsiv): Auf dem Telefon
+   schrumpft eine 900 Einheiten breite viewBox auf 40 % — Text inbegriffen.
+   Welche Fassung gilt, entscheidet allein diese Regel. */
+.nur-breit { display: block; }
+.nur-handy { display: none; }
+@media (max-width: 30rem) {
+  .nur-breit { display: none; }
+  .nur-handy { display: block; }
+}
+
+/* Auf schmalen Geraeten zaehlt jeder Millimeter Satzbreite: ein Diagramm
+   mit fester viewBox verkleinert seine Schrift mit sich selbst. */
+@media (max-width: 46rem) {
+  main > *:not(h1):not(nav.kopf) { margin-left: 1.1rem; margin-right: 1.1rem; }
+  main > table { width: calc(100% - 2.2rem); }
+  /* Eine Tabelle, die breiter ist als das Geraet (lange Dateinamen,
+     Kennungen ohne Umbruch, neun Spalten), verschiebt sich in sich selbst —
+     nicht die ganze Seite. */
+  main > table { display: block; overflow-x: auto; width: fit-content;
+                 max-width: calc(100% - 2.2rem); }
+  h1 { padding: 1.8rem 1.1rem 1.6rem; }
+  nav.kopf { padding: 0 1.1rem; }
+  h2 { margin-left: 1.1rem; margin-right: 1.1rem; }
+  h3 { margin-left: 1.1rem; margin-right: 1.1rem; }
+  figure.reihe { padding: 1rem .8rem; }
+  /* Drei Kennzahlen nebeneinander lassen die grossen Zahlen umbrechen. */
+  .bestand-kopf.breit .kennzahlen-reihe { grid-template-columns: 1fr; }
+}
+
+/* Prozessuebersicht: 1920 Einheiten breit; auf dem Telefon scrollt der
+   Kasten, statt die Schrift auf 3 px zu schrumpfen. */
+.schaubild { overflow-x: auto; margin: 1rem 0; }
+/* Eine Kennung (Gate, Platzhalter mit Anzahl) bricht nicht in sich um. */
+.kennung { white-space: nowrap; }
+/* Ein langer Dateiname, eine Pruefsumme oder ein zitierter Pfad im
+   Fliesstext darf umbrechen, wo sonst die Zeile ueber den Rand liefe (auf
+   dem Telefon). */
+main p, main li { overflow-wrap: break-word; }
+p code, li code { overflow-wrap: anywhere; }
+.schaubild svg { display: block; min-width: 860px; width: 100%; max-width: 1920px; height: auto; }
+.schaubild a.artefakt:hover text, .schaubild a.artefakt:focus text { fill: var(--akzent); }
+.schaubild a.station:hover rect, .schaubild a.station:focus rect { stroke-width: 3; filter: brightness(.96); }
+.schaubild a.station text { text-decoration: none; }

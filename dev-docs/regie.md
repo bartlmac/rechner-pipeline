@@ -54,3 +54,9 @@ ein Tag bringt, welche Stoerungen inszeniert werden).
 3. Verweise aus AGENTS.md/ONBOARDING dorthin, sobald das Kapitel steht.
 
 Siehe `dev-docs/offene-punkte.md` (Eintrag "Regie dokumentieren").
+
+**Abgrenzung zur Dokumentation (2026-09-08):** `docs/simulation/` ist keine
+Regie, sondern das versionierte Fachkonzept (Tagesbetrieb, Erfahrungsannahmen,
+Entstehung der Bestaende). Die Veroeffentlichungssperre der Vorzeigeseite
+(`werkzeuge/vorzeigeseite._pruefe_regie`) nimmt genau diesen Elternteil `docs/`
+aus — nur das Paar `docs/simulation`; jedes andere `simulation/`, `docs-local/` oder `regie/` im Pfad sperrt.

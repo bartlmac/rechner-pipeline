@@ -172,6 +172,14 @@ pip weiterhin selbst auf — die Hülle ist dicht, nicht hermetisch.
 .venv/bin/python -m pytest -n 12 --dist loadfile
 ```
 
+**Zusatzwerkzeuge.** Zwei Nebenaufgaben brauchen Werkzeuge, die die
+Pipeline selbst nicht braucht: die Vorzeigeseite rendern und das Ergebnis
+ansehen. Sie werden bei Bedarf installiert und stehen nicht in
+`requirements*.txt`; die Kommandos stehen in `werkzeuge/README.md`. Es
+lohnt sich: Ohne Renderer saßen zwei Layoutfehler im Stylesheet, die kein
+Test sehen kann — eine `font:`-Kurzform, die der Browser verwirft, und ein
+SVG, das seine Beschriftung mit sich hochskalierte.
+
 ## 3. Ausführen
 
 **Die Laufzeit mit einem Aufruf aufstellen.** Aus dem Stand des

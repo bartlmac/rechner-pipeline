@@ -289,10 +289,11 @@ def test_das_datenmodell_der_darstellung_ist_vollstaendig(
     # Pruefung jedes ungezeichnete Gate EINZELN, deshalb die Menge statt
     # der Liste. Die PARAMETRIERUNG fehlt, weil das Fixture die A-Box
     # nicht mitfuehrt: Es prueft die Migration ab dem Bestandsabzug,
-    # nicht noch einmal die Quellenauswertung. Das UMBAUBUDGET fehlt,
-    # weil der Test kein Operator-Lauf ist, dessen Umbau zu messen
-    # waere. Alles Uebrige muss die Kette liefern.
-    assert fehlend == {"parameter", "kette", "umbau"}, (
+    # nicht noch einmal die Quellenauswertung. Die AENDERUNG AM
+    # ZIELSYSTEM fehlt (Umbaubudget oder Aenderungsbelege von Kern und
+    # Tarifwerk), weil der Test kein Operator-Lauf ist, dessen Umbau zu
+    # messen waere. Alles Uebrige muss die Kette liefern.
+    assert fehlend == {"parameter", "kette", "systemaenderung"}, (
         f"unerwartete Luecken: {sorted(fehlend)}")
     assert modell["bestand"]["anzahl"] == 25
     assert modell["transformation"]["zeilen_quelle"] == 25

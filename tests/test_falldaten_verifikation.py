@@ -24,6 +24,21 @@ import falldaten  # noqa: E402
 from rechner_pipeline.models.schemas import p9_snapshot_sha256  # noqa: E402
 
 
+def _fallseite(*args, **kwargs) -> str:
+    """Alle Seiten des Falls hintereinander.
+
+    Aus dem einen Fallbericht sind kleine Seiten je Station geworden
+    (der Weg der Uebernahme ist das Rueckgrat). Zusicherungen, die
+    fragen "steht das im Fallbericht", fragen jetzt "steht das auf einer
+    seiner Seiten" — wo eine Aussage auf eine BESTIMMTE Seite gehoert,
+    prueft der Test sie einzeln.
+    """
+    import vorzeigeseite as _vz
+
+    return "\n".join(_vz._seiten(*args, **kwargs).values())
+
+
+
 def _echter_snapshot(gate: str = "A-M1") -> dict:
     daten = {
         "schema_version": 6,
@@ -137,6 +152,7 @@ def _volles_modell() -> dict:
             "entscheide_mit_befund": 0,
         },
         "umbau": {"vorhanden": True},
+        "systemaenderung": {"vorhanden": True},
     }
 
 
@@ -269,14 +285,18 @@ def test_vorzeigeseite_zeigt_luecken_und_endet_nicht_mit_null(tmp_path: Path):
     daten = tmp_path / "d.json"
     daten.write_text(json.dumps(modell, default=str), encoding="utf-8")
 
-    seite = vz._seite(fall, modell, tmp_path, [], None)
-    assert "Was diese Seite NICHT zeigt" in seite
-    assert "aktuarielle Abnahme A-M2" in seite
+    seite = _fallseite(fall, modell, tmp_path, [], None)
+    # EINE Stelle (Maintainer 06.10.2026): die Luecke steht im
+    # Kleingedruckten unter "Grenzen dieses Laufs" und nirgends sonst.
+    assert seite.count("aktuarielle Abnahme A-M2") == 1
+    assert "aktuarielle Abnahme A-M2" in seite.split("Grenzen dieses Laufs", 1)[1]
 
     out = tmp_path / "seite"
     assert vz.main(["--fall", str(fall), "--daten", str(daten), "--out", str(out),
                     "--repo", str(tmp_path)]) == 3
-    assert "Was diese Seite NICHT zeigt" in (out / "index.md").read_text(encoding="utf-8")
+    index = (out / "index.md").read_text(encoding="utf-8")
+    assert '<div class="kleingedruckt">' in index.split("Grenzen dieses Laufs", 1)[1]
+    assert "aktuarielle Abnahme A-M2" in index.split("Grenzen dieses Laufs", 1)[1]
 
 
 def test_vorzeigeseite_nennt_nichts_gezeichnet_ohne_verifizierte_signatur(tmp_path: Path):
@@ -295,13 +315,52 @@ def test_vorzeigeseite_nennt_nichts_gezeichnet_ohne_verifizierte_signatur(tmp_pa
          "verifikationsbefunde": [], "signatur_verifiziert": False}
         for g in ("A-M1", "A-M4")]
 
-    seite = vz._seite(fall, modell, tmp_path, [], None)
-    assert "Signatur hier nicht verifiziert" in seite
-    assert "HMAC-signiert" not in seite
-    assert "gezeichnet" not in seite.replace("nichts gezeichnet", "")
+    # BEIDE Formen der Seite: Veroeffentlicht wird sie als Unterseite des
+    # Auftritts, und genau dort standen Abschnitte, die die freie Form
+    # nicht baut — ein Detektor, der nur die freie Form sah, haette den
+    # Satz "jede Abnahme von einem Menschen gezeichnet" nie bemerkt.
+    seite = "\n".join(_fallseite(fall, modell, tmp_path, [], None, unterseite=u)
+                      for u in (False, True))
+    # Der Hinweis steht bei den Snapshots, und die stehen seit dem Umbau
+    # der Seite auf ihrer eigenen — geprueft wird dort, wo er hingehoert.
+    entscheide = vz._entscheide_seite(fall, modell, [], False, "2026-09-21",
+                                      {"commit": "0" * 12, "branch": "test"})
+    assert "Signatur hier nicht verifiziert" in entscheide
+    for text in (seite, entscheide):
+        assert "HMAC-signiert" not in text
+        assert "gezeichnet" not in text.replace("nichts gezeichnet", "")
 
-    # Gegenprobe: Erst eine verifizierte Signatur traegt das Wort.
+    # Gegenprobe: Erst eine verifizierte Signatur traegt das Wort — auf
+    # der Seite, die die Snapshots fuehrt.
     for e in modell["kette"]["entscheide"]:
         e["signatur_verifiziert"] = True
-    seite = vz._seite(fall, modell, tmp_path, [], None)
-    assert "Signatur verifiziert, gezeichnet" in seite
+    entscheide = vz._entscheide_seite(fall, modell, [], False, "2026-09-21",
+                                      {"commit": "0" * 12, "branch": "test"})
+    assert "Signatur verifiziert, gezeichnet" in entscheide
+
+
+def test_die_systemstaende_zaehlen_nur_die_geltenden_abnahmen():
+    """Der Fallauftrag bindet die Lieferung, nicht den Systemstand; seine
+    Runden duerfen auf frueheren Staenden liegen (Fall 3: zwei, waehrend
+    alle neun Abnahmen auf einem liegen). Erst zwei geltende Abnahmen auf
+    verschiedenen Staenden sind eine Einschraenkung."""
+    def stand(commit: str) -> dict:
+        return {"system": {"branch": "egal", "commit": commit, "quellcode_sha256": commit * 8}}
+
+    rohe = [(Path("auftrag.json"), stand("alt1")), (Path("m1.json"), stand("neu1")),
+            (Path("m2-alt.json"), stand("alt2")), (Path("m2.json"), {**stand("neu1"),
+                                                                    "system": {**stand("neu1")["system"], "branch": "anderer"}})]
+    entscheide = [{"gate": "A-M6", "geltend": True, "snapshot_datei": "entscheide/auftrag.json"},
+                  {"gate": "A-M1", "geltend": True, "snapshot_datei": "entscheide/m1.json"},
+                  {"gate": "A-M2", "geltend": False, "snapshot_datei": "entscheide/m2-alt.json"},
+                  {"gate": "A-M2", "geltend": True, "snapshot_datei": "entscheide/m2.json"}]
+    # geltender Auftrag auf altem Stand, ueberholte Runde auf altem Stand,
+    # anderer Zweigname auf demselben Stand: alles EIN Stand der Abnahmen
+    assert falldaten._staende_der_abnahmen(entscheide, rohe) == 1
+    entscheide[2]["geltend"] = True
+    assert falldaten._staende_der_abnahmen(entscheide, rohe) == 2
+
+    assert not falldaten.abgrenzungen({"kette": {"systemstaende_der_abnahmen": 1,
+                                                 "systemstaende_der_entscheide": 3}})
+    treffer, = falldaten.abgrenzungen({"kette": {"systemstaende_der_abnahmen": 2}})
+    assert "2 verschiedenen Ständen" in treffer["satz"]

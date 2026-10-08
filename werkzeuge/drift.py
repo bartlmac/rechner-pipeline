@@ -35,6 +35,7 @@ from typing import Dict, List, Optional
 
 #: Provenienz-Zeilen der Fall-Seiten, die sich je Bau aendern DUERFEN.
 VOLATIL = (
+    re.compile(r"^\*Diese Seite wurde am .* erzeugt\.\*$", re.MULTILINE),
     re.compile(r"^\| Veröffentlicht \|.*$", re.MULTILINE),
     re.compile(r"^\| Systemstand \|.*$", re.MULTILINE),
     re.compile(r"^\| Arbeitsbaum sauber \|.*$", re.MULTILINE),

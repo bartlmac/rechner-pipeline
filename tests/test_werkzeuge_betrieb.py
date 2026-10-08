@@ -302,3 +302,168 @@ def test_das_paket_traegt_monatsberichte_und_den_jahresbericht_bezeugt(paket: Pa
         paket / "bestandsbericht_2026-02-01.html").read_text(encoding="utf-8")
     assert "<title>Jahresbericht 2025</title>" in (
         paket / "jahresbericht_2025.html").read_text(encoding="utf-8")
+
+
+def test_geschaeftsentwicklung_und_kennzahlen_rechnet_der_konsument_aus_dem_paket(paket):
+    """Die Geschaeftsentwicklung je Zeitraum und die Bestandskennzahlen der
+    Abschluesse stehen NICHT in stand.json; die Darstellung rechnet sie aus
+    dem Tagesjournal und den Abschluss-Dateien des Pakets nach, deren Hash
+    sie vorher geprueft hat (Nachzug 03.10.2026: auf dem Ast der Vorzeige
+    stand beides als geglaubte Zahl in stand.json).
+
+    Mutationsprobe: Der Monat ist eine echte Teilmenge des Jahres; die
+    Zeilen summieren sich zu den Buchungen des Journals; ein Zeitraum vor
+    dem Betriebsbeginn ist ein benannter Platzhalter, keine Null."""
+    stand = json.loads((paket / "stand.json").read_text("utf-8"))
+    assert "geschaeftsentwicklung" not in stand and "abschluss_kennzahlen" not in stand
+    b = _mit_anker(paket)
+    ge = b["geschaeftsentwicklung"]
+    zr = ge["zeitraeume"]
+    assert zr["letztes_jahr"] == {"von": "2025-01-01", "bis": "2025-12-31", "ausserhalb_betrieb": True}
+    # Der vergleichbare Abschnitt des Vorjahres endet am selben Tag, nicht
+    # am Jahresende — sonst staende ein volles Jahr gegen ein angebrochenes.
+    assert zr["vorjahr_bis_heute"] == {"von": "2025-01-01", "bis": "2025-02-03", "ausserhalb_betrieb": True}
+    assert zr["aktuelles_jahr"] == {"von": "2026-01-01", "bis": "2026-02-03", "ausserhalb_betrieb": False}
+    assert ge["je_zeitraum"]["letztes_jahr"] == {}
+    jahr, monat = ge["je_zeitraum"]["aktuelles_jahr"], ge["je_zeitraum"]["aktueller_monat"]
+    assert jahr["ZUG"]["anzahl"] == sum(jahr["ZUG"]["je_herkunft"].values()) > 0
+    # Gezaehlt werden VORFAELLE: Ein Zugang bucht zwei Zeilen, ist aber ein Vertrag.
+    assert jahr["ZUG"]["zeilen"] > jahr["ZUG"]["anzahl"]
+    assert sum(e["zeilen"] for e in jahr.values()) == b["buchungen"]["gesamt"]
+    for ereignis, e in monat.items():
+        assert e["anzahl"] <= jahr[ereignis]["anzahl"]
+    # Kennzahlen des juengsten Abschlusses, gelesen aus SEINER Datei im Paket:
+    k = b["abschluss_kennzahlen"]["aktuell"]
+    assert k["datei"] in stand["dateien"]
+    assert k["gesamt"]["vertraege"] == sum(e["vertraege"] for e in k["je_produkt"].values()) > 0
+    # Die Konvention liest die Seite ueber lies_abschluss aus der Datei, die
+    # der Tageslauf geschrieben hat — dieselbe Aussage wie deren Spalte.
+    import pandas as pd
+    spalte = pd.read_parquet(paket / k["datei"])["bewertungskonvention"].unique().tolist()
+    assert spalte == [k["dk_konvention"]]
+    # Der Abschluss zwoelf Monate vor dem juengsten liegt nicht im Paket
+    # (das Paket traegt zwoelf Monate): Er fehlt, statt ersetzt zu werden.
+    assert "vorjahr" not in b["abschluss_kennzahlen"]
+
+
+def test_ein_leeres_journal_ergibt_leere_zeitraeume():
+    import pandas as pd
+
+    from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
+
+    leer = pd.DataFrame({n: pd.Series(dtype="object") for n in TAGESJOURNAL_NAMES})
+    assert fd._geschaeftsentwicklung(leer, dt.date(2026, 2, 3), dt.date(2026, 1, 1))["je_zeitraum"] == {
+        "letztes_jahr": {}, "vorjahr_bis_heute": {}, "aktuelles_jahr": {}, "aktueller_monat": {}}
+
+
+def test_ohne_vorjahresabschluss_im_paket_steht_der_grund_statt_eines_vergleichs():
+    """Das Paket traegt zwoelf Monatsabschluesse; der Abschluss ein Jahr vor
+    dem juengsten liegt nicht darin. Die Kacheln zeigen dann keinen
+    Vergleich und sagen, warum — vorher fehlte er still, und der Text
+    darueber behauptete "daneben derselbe Stichtag im Vorjahr" (Entscheid
+    03.10.2026: benannt weglassen). Mit Vorjahresabschluss steht der
+    Vergleich, der Grund nicht."""
+    import unternehmensseite as us
+
+    def eintrag(stichtag, vertraege):
+        return {"stichtag": stichtag,
+                "je_produkt": {"klv": {"vertraege": vertraege, "jahresbeitrag": 1000.0, "deckungskapital": 5.0}},
+                "gesamt": {"vertraege": vertraege, "jahresbeitrag": 1000.0, "deckungskapital": 5.0}}
+
+    dateien = {f"abschluesse/abschluss_2026-{m:02d}-01.parquet": "0" * 64 for m in range(1, 11)}
+    dateien.update({f"abschluesse/abschluss_2025-{m}-01.parquet": "0" * 64 for m in (11, 12)})
+    dateien["tagesjournal.parquet"] = "0" * 64
+
+    def modell(**kennzahlen):
+        return {"betrieb": {"vorhanden": True, "dateien": dateien, "abschluss_kennzahlen": kennzahlen}}
+
+    ohne = us._bestand_vergleich(modell(aktuell=eintrag("2026-10-01", 10)))
+    assert ("Ohne Vergleich mit dem Vorjahr: Veröffentlicht sind 12 Monatsabschlüsse, der "
+            "jüngste zum 01.10.2026; der Abschluss zum 01.10.2025 gehört nicht dazu.") in ohne
+    assert "ggü." not in ohne
+    mit = us._bestand_vergleich(modell(aktuell=eintrag("2026-10-01", 10),
+                                       vorjahr=eintrag("2025-10-01", 8)))
+    assert "ggü. 01.10.2025" in mit and "Ohne Vergleich mit dem Vorjahr" not in mit
+
+
+def test_ein_vergleich_ueber_zwei_dk_konventionen_wird_benannt_nicht_ausgewiesen():
+    """Zwei Abschluesse in verschiedener Konvention des Deckungskapitals
+    (Jahreszeile gegen monatsgenau): Die Seite weist keine Veraenderung aus,
+    sie nennt den Grund. In derselben Konvention steht die Veraenderung.
+    Beide Richtungen, sonst ist der Waechter blind."""
+    import unternehmensseite as us
+
+    def modell(alt, neu):
+        def eintrag(stichtag, konvention, dk):
+            return {"stichtag": stichtag, "dk_konvention": konvention, "je_produkt": {"klv": {
+                "vertraege": 10, "jahresbeitrag": 1000.0, "deckungskapital": dk}},
+                "gesamt": {"vertraege": 10, "jahresbeitrag": 1000.0, "deckungskapital": dk}}
+        return {"betrieb": {"vorhanden": True, "abschluss_kennzahlen": {
+            "aktuell": eintrag("2026-10-01", neu, 120000.0),
+            "vorjahr": eintrag("2025-10-01", alt, 100000.0)}}}
+
+    gemischt = us._bestand_vergleich(modell("jahreszeile", "monatsgenau"), us.BESTAND_KENNZAHLEN_TIEF)
+    assert "Konvention gewechselt" in gemischt and "keine Bewegung des Bestands" in gemischt
+    assert "+20 %" not in gemischt
+    gleich = us._bestand_vergleich(modell("jahreszeile", "jahreszeile"), us.BESTAND_KENNZAHLEN_TIEF)
+    assert "+20 %" in gleich and "Konvention gewechselt" not in gleich
+    tabelle = us._generiert("tabelle", "bestand_kennzahlen", modell("jahreszeile", "monatsgenau"))
+    assert "keine Bewegung des Bestands" in tabelle
+
+
+def test_eine_naht_der_bewertungskonvention_aus_den_abschlussdateien_meldet_die_seite(paket, tmp_path):
+    """Vom Erzeuger zum Konsumenten, ueber den EINEN Leser: Die Konvention
+    kommt aus den Abschlussdateien (``bestand.abschluss.lies_abschluss``),
+    nicht aus einem Modell, das der Test hinlegt. Vorjahr in der Gestalt vor
+    der Umstellung (Spalte fehlt: Jahreszeile), Stand monatsgenau: Die Seite
+    MUSS den Wechsel nennen und darf keine Veraenderung ausweisen.
+    Gegenprobe: zwei monatsgenaue Abschluesse, keine Meldung, die
+    Veraenderung steht. Ein leerer Abschluss hat keine Konvention und ist
+    keine Naht.
+
+    Mutationsprobe: Mit dem frueheren Leser (Spalte ``dk_konvention``, die
+    kein Abschluss traegt) hiessen beide Dateien "jahreszeile", die erste
+    Haelfte wird rot. Zwei Abschluesse, gleich falsch gelesen, vergleichen
+    sich gleich — das sah die Seite bis dahin nicht."""
+    import unternehmensseite as us
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.models.bestand import (
+        ABSCHLUSS_NAMES, ABSCHLUSS_NAMES_VOR_UMSTELLUNG, KONVENTION_JAHRESZEILE,
+        KONVENTION_MONATSGENAU)
+
+    stand = json.loads((paket / "stand.json").read_text("utf-8"))
+    quelle = sorted(d for d in stand["dateien"] if d.startswith("abschluesse/"))[-1]
+    jetzt = read_portfolio(paket / quelle)
+    assert list(jetzt.columns) == list(ABSCHLUSS_NAMES) and len(jetzt) > 0
+    jetzt = jetzt.assign(bewertungskonvention=KONVENTION_MONATSGENAU)
+    frueher = jetzt.assign(deckungskapital=jetzt["deckungskapital"] * 0.8)
+
+    def kennzahlen(name, vorjahr):
+        d = tmp_path / name
+        d.mkdir()
+        vorjahr.to_parquet(d / "abschluss_2025-10-01.parquet")
+        jetzt.to_parquet(d / "abschluss_2026-10-01.parquet")
+        return fd._abschluss_kennzahlen(d, [
+            {"stichtag": "2025-10-01", "datei": "abschluss_2025-10-01.parquet"},
+            {"stichtag": "2026-10-01", "datei": "abschluss_2026-10-01.parquet"}])
+
+    def seite(k):
+        return us._bestand_vergleich({"betrieb": {"vorhanden": True, "abschluss_kennzahlen": k}},
+                                     us.BESTAND_KENNZAHLEN_TIEF)
+
+    k = kennzahlen("naht", frueher[list(ABSCHLUSS_NAMES_VOR_UMSTELLUNG)])
+    assert (k["vorjahr"]["dk_konvention"], k["aktuell"]["dk_konvention"]) == (
+        KONVENTION_JAHRESZEILE, KONVENTION_MONATSGENAU)
+    gemischt = seite(k)
+    assert "Konvention gewechselt" in gemischt and "keine Bewegung des Bestands" in gemischt
+    assert "+25 %" not in gemischt
+
+    k = kennzahlen("gleich", frueher)
+    assert k["vorjahr"]["dk_konvention"] == k["aktuell"]["dk_konvention"] == KONVENTION_MONATSGENAU
+    gleich = seite(k)
+    assert "Konvention gewechselt" not in gleich and "keine Bewegung des Bestands" not in gleich
+    assert "+25 %" in gleich
+
+    k = kennzahlen("leer", frueher.iloc[0:0])
+    assert k["vorjahr"]["dk_konvention"] is None
+    assert us._dk_bruch(k["aktuell"], k["vorjahr"]) is None

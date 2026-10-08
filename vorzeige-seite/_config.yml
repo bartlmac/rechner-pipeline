@@ -1,7 +1,9 @@
 # Jekyll-Konfiguration der veroeffentlichten Vorfuehrung. Die
 # Artefakte werden ausdruecklich NICHT von Jekyll angefasst, damit
 # JSON und CSV unveraendert herunterladbar bleiben.
-theme: jekyll-theme-cayman
+# Kein fremdes Theme: Die Gestaltung gehoert zum Auftritt und liegt in
+# assets/stil.css und _layouts/default.html — sonst kaempft das eigene
+# Stylesheet gegen die Vorgaben eines Themes.
 title: Pfefferminzia Lebensversicherung AG
 description: >-
   Fiktives Unternehmen — Vorfuehrung einer agentischen
@@ -11,3 +13,10 @@ include:
   - artefakte
 keep_files:
   - artefakte
+
+# Jede Seite bekommt das Layout, auch ohne eigenen Vorspann.
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: "default"

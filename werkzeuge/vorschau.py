@@ -35,32 +35,68 @@ from typing import List, Optional
 
 #: Verzeichnisse, die als Ganzes in die Vorschau verlinkt werden —
 #: Artefakt-Belege und Seiten-Assets; ihr Inhalt wird nicht gerendert.
-GANZ_VERLINKEN = ("artefakte", "assets")
+GANZ_VERLINKEN = ("artefakte", "assets", "plv")
 
-STIL = """
-body{margin:0;background:#f8f8f6;color:#1b1e1c;
-font:15.5px/1.6 system-ui,sans-serif}
-main{max-width:56rem;margin:0 auto;padding:2.5rem 1.3rem 5rem}
-h1{font:600 2rem/1.15 Georgia,serif}
-h2{font:600 1.3rem/1.25 Georgia,serif;margin-top:2.2rem}
-h3{font:600 1.05rem/1.3 Georgia,serif;margin-top:1.8rem}
-table{border-collapse:collapse;font-size:.88rem;margin:1rem 0}
-th,td{border:1px solid #cfd3cc;padding:.4rem .8rem;text-align:left}
-th{background:#eceee9}
-blockquote{margin:1rem 0;padding:.7rem 1rem;background:#fff;
-border-left:3px solid #c1c6bf}
-code{font:.85em ui-monospace,monospace;background:#e7eae4;
-padding:.1em .3em;border-radius:3px}
-.hinweis{background:#8c4a2f;color:#fff;padding:.5rem 1rem;
-font-size:.85rem;margin:0}
-a{color:#2f5d62}
-"""
+#: TeX-Formeln, die vor dem Markdown-Lauf aus dem Text genommen werden.
+#: Erst Block ($$...$$, darf Zeilen umfassen), dann inline ($...$, nicht
+#: ueber Zeilenenden) — sonst frisst das inline-Muster die halbe
+#: Blockformel.
+_MATHE = re.compile(r"\$\$.+?\$\$|\$[^$\n]+?\$", re.S)
 
-SEITE = ("<!DOCTYPE html><html lang=\"de\"><head><meta charset=\"utf-8\">"
-         "<title>Vorschau — {name}</title><style>{stil}</style></head><body>"
-         "<p class=\"hinweis\">VORSCHAU des Entwurfs — nicht die "
-         "veroeffentlichte Seite. Die Optik der Live-Seite entsteht erst "
-         "beim Jekyll-Bau.</p><main>{rumpf}</main></body></html>")
+#: Platzhalter fuer eine herausgenommene Formel. Nur Buchstaben und
+#: Ziffern: Markdown laesst ein gewoehnliches Wort in Ruhe, waehrend
+#: Unterstriche oder Klammern im Platzhalter dasselbe Schicksal ereilten
+#: wie die Formel, die er vertritt.
+_PLATZHALTER = "xmathex{}x"
+
+
+def _mathe_herausnehmen(text: str):
+    """Formeln durch Platzhalter ersetzen und getrennt zurueckgeben.
+
+    Ohne diesen Schritt geht die Mathematik durch den Markdown-Lauf
+    kaputt, und zwar auf zwei Weisen, die beide nicht auffallen, weil sie
+    gueltiges HTML erzeugen:
+
+    * ``attr_list`` liest eine geschweifte Klammer hinter einem Wort als
+      Attributliste. Aus ``\frac{{}_{a_0}V^{bpfl}}`` wird ein Element mit
+      dem Attribut ``a_0="a_0"``.
+    * Der Unterstrich ist in Markdown Hervorhebung. Aus ``_{j}p_y`` wird
+      ein ``<em>``, das mitten in der Formel oeffnet und irgendwo wieder
+      schliesst.
+
+    MathJax bekommt dann keinen TeX-Ausdruck mehr, sondern TeX mit
+    HTML-Tags darin, und zeigt Buchstabensalat. Gemessen an der
+    Vorzeige-Seite: dreizehn Formeln im KLV-Tarifplan, vier in der
+    Grundsatzdokumentation.
+    """
+    formeln: List[str] = []
+
+    def weg(treffer) -> str:
+        formeln.append(treffer.group(0))
+        return _PLATZHALTER.format(len(formeln) - 1)
+
+    return _MATHE.sub(weg, text), formeln
+
+
+def _mathe_zurueck(html: str, formeln: List[str]) -> str:
+    """Die Platzhalter wieder durch ihre Formeln ersetzen."""
+    for i, roh in enumerate(formeln):
+        html = html.replace(_PLATZHALTER.format(i), roh)
+    return html
+
+#: Die Vorschau zeigt, was Jekyll zeigen wird: dasselbe Stylesheet, dasselbe
+#: Geruest (werkzeuge/../vorzeige-seite/_layouts/default.html). Ein eigenes
+#: Aussehen der Vorschau waere eine zweite Wahrheit.
+SEITE = ('<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">'
+         '<meta name="viewport" content="width=device-width, initial-scale=1">'
+         '<title>Vorschau — {name}</title>'
+         '<link rel="stylesheet" href="{wurzel}assets/stil.css">'
+         '<style>.vorschau-marke{{background:#c2622d;color:#fff;'
+         'padding:.4rem 2rem;font:600 .75rem/1.4 system-ui,sans-serif;'
+         'letter-spacing:.05em}}</style></head><body>'
+         '<p class="vorschau-marke">Vorschau des Entwurfs — nicht die '
+         'veroeffentlichte Seite.</p>'
+         '<main>{rumpf}</main></body></html>')
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -102,13 +138,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         if quelle.is_dir():
             if quelle.name not in GANZ_VERLINKEN:
                 continue
-        elif quelle.name == "_config.yml":
-            # Jekyll-Konfiguration — hat in der Vorschau keine Wirkung.
+        elif quelle.name.startswith("_") or rel.parts[0].startswith("_"):
+            # Jekyll-Interna (Konfiguration, Layouts) — die Vorschau bringt
+            # ihr eigenes Geruest mit demselben Stylesheet mit.
             continue
         elif quelle.suffix == ".md":
-            rumpf = markdown.markdown(
-                quelle.read_text(encoding="utf-8"),
-                extensions=["tables", "attr_list"])
+            roh, formeln = _mathe_herausnehmen(
+                quelle.read_text(encoding="utf-8"))
+            rumpf = _mathe_zurueck(
+                markdown.markdown(roh, extensions=["tables", "attr_list"]),
+                formeln)
             # Jekyll (jekyll-relative-links, auf Pages vorgegeben) macht
             # aus einem Link auf eine .md-Datei den Link auf ihr
             # gerendertes Gegenstueck; die Vorschau tut dasselbe.
@@ -116,7 +155,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             ziel = ziel.with_suffix(".html")
             ziel.parent.mkdir(parents=True, exist_ok=True)
             ziel.write_text(
-                SEITE.format(name=str(rel), stil=STIL, rumpf=rumpf),
+                SEITE.format(name=str(rel), rumpf=rumpf,
+                             wurzel="../" * (len(rel.parts) - 1)),
                 encoding="utf-8")
             gerendert += 1
             continue

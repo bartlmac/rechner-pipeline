@@ -57,6 +57,11 @@ Vier Abschnitte, mehr braucht es nicht:
 | [Rueckbau des zweiten Baldrian-Laufs](rueckbau-fall2.md) | Herleitung | umgesetzt; der dritte Fall hat darauf aufgesetzt (2026-10-02) |
 | [Annahmen vom 2026-09-20](annahmen-2026-09-20.md), [Entscheidungsvorlage Laufmanifest](entscheidungsvorlage-am4-laufmanifest.md) | Belege zur Neuzeichnung des zweiten Laufs | vom Abschlussbericht des Laufs zitiert (`docs/faelle/baldrian-lauf2.md`) |
 | [Regie](regie.md) | Stub | Konzept benannt, Dokumentation ausstehend |
+| [Fallseite: Konzept](fallseite-konzept.md) | wie eine Bestandsuebernahme auf dem Auftritt erzaehlt wird | Stand 2026-09-22 |
+| [Vorzeigeseite: Seitenkonzept](vorzeige-seitenkonzept.md) | Massstab fuer `vorzeige-seite/` und `werkzeuge/` | beschlossen am 2026-09-08 |
+| [Vorzeigeseite: Backlog](vorzeige-backlog.md) | Vorhaben fuer den Auftritt; Erledigtes wird geloescht | laufend |
+| [Vorzeigeseite: statische Stellen](vorzeige-statische-stellen.md) | statische Stellen der Seite und ihre Automatisierung | erhoben 2026-09-02, gelesen nach dem Seitenkonzept |
+| [Zielbild der Vorzeige](vorzeige-zielbild-artefakte.md) | Uebergabe der Seiten-Session: was der Lauf liefern muss | Stand 2026-09-22 |
 
 Befundlisten, Reviews und Merge-Plaene abgeschlossener Runden liegen nicht
 mehr hier; sie stehen in der Geschichte des Repositorys.
