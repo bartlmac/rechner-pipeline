@@ -228,7 +228,7 @@ untergeschobener Snapshot kann nur verweigern, nichts erlauben. Sie sieht
 die Bereiche, die sie bekommt (Fall und Linie), keine fremden Fälle. Seit
 Prüfrunde G hält auch `A-M4` sie gegen Fall und Linie (ADR-025, Nachtrag
 Prüfrunde G). Die Vergleichsgrundlage der Sicht (`vorher`) rechnet das
-Gate seit Prüfrunde H beim Zeichnen nach (ADR-025, Nachtrag Prüfrunde H).
+Gate seit Prüfrunde H beim Zeichnen nach (ADR-025, zweiter Nachtrag zu Prüfrunde H, Punkt 2).
 
 ## Nachtrag 2026-10-01 (vierter): Prüfrunde G — Feststellung statt Lücke, Scope, Belege an der Spez
 

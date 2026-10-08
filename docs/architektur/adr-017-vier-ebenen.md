@@ -1,21 +1,21 @@
 # ADR-017: Vier Ebenen — Entwickler, KI-Tool, Vorzeige, Vorzeige-Werkzeuge
 
-**Status:** angenommen am 2026-09-05 (Maintainer). Die Umsetzung
-erfolgt in Schritten; dieses ADR ist Schritt 0.
+**Status:** angenommen am 2026-09-05 (Maintainer). Die Schritte der
+Umsetzung und ihr Stand stehen unter „Umsetzung“.
 
 ## Kontext
 
 Das Repository trägt vier Dinge, die bisher als eines beschrieben,
-gepruft und dokumentiert wurden: die Arbeit des Entwicklers mit seiner
+geprüft und dokumentiert wurden: die Arbeit des Entwicklers mit seiner
 KI; das KI-Tool, das eine Bestandsmigration agentisch durchführt; die
 Vorzeige, an der sich dieses Tool zeigt und testen lässt — ein fiktives
 Unternehmen mit Rechenkern, Produkten, Bestand, Bestandsführung und
 Migrationsfall; und die Werkzeuge, mit denen die Vorzeige hergestellt
 wird. Ein Paket, eine Schichtenkarte, eine README, ein Rollenbegriff.
 
-Das externe Review T20 (DORA) und das unabhängige Review U1 fanden
-dieselbe Ursache hinter verschiedenen Befunden: Die Frage "wer
-entscheidet" hatte drei Antworten, Skills und Auftragsprofile lagen in
+Zwei Prüfungen, eine externe und eine unabhängige, fanden dieselbe
+Ursache hinter verschiedenen Befunden: Die Frage „wer
+entscheidet“ hatte drei Antworten, Skills und Auftragsprofile lagen in
 verschiedenen Welten (versioniertes Repo gegen Spielleiter-Bereich), der
 Fachbericht eines Versicherers erwähnte nicht, dass eine KI-Session
 gezeichnet hatte, und die Rahmendokumentation beschrieb Tool und
@@ -31,8 +31,8 @@ jeder Schlüssel gehört genau einer davon an.
 | Ebene | Was sie ist | Beispiele | Während eines Falls |
 |---|---|---|---|
 | 1 Entwickler und KI | die Arbeit an Tool und Vorzeige | diese Sitzungen, Reviews, ADRs, Suite | der Fall hält an; die Tool-Version wechselt außerhalb |
-| 2 KI-Tool | das agentische Migrationssystem, unabhängig vom Unternehmen | Ontologie, Spez-Vertrag, Gates und Ledger, Zeichnungsordnung, Skills, Agentenrollen, Berichts-GENERATOREN | fix; im Rahmen konfigurierbar |
-| 3 Vorzeige | ein Unternehmen, an dem das Tool greifbar und testbar wird | Referenz-Zielsystem (Rechenkern, Produkte, Tarifpläne), Bestand und Bestandsführung, der Migrationsfall mit seinen Zeichnungen, die Unternehmensseite, konfigurierte Berichts-INSTANZEN | lebt |
+| 2 KI-Tool | das agentische Migrationssystem, unabhängig vom Unternehmen | Ontologie, Spez-Vertrag, Gates und Ledger, Zeichnungsordnung, Skills, Agentenrollen, die Generatoren der Berichte | fix; im Rahmen konfigurierbar |
+| 3 Vorzeige | ein Unternehmen, an dem das Tool greifbar und testbar wird | Referenz-Zielsystem (Rechenkern, Produkte, Tarifpläne), Bestand und Bestandsführung, der Migrationsfall mit seinen Zeichnungen, die Unternehmensseite, die konfigurierten Berichte | lebt |
 | 4 Vorzeige-Werkzeuge | was die Vorzeige herstellt und in der Wirklichkeit ein Unternehmen oder Quellsystem liefern würde | Bestandssimulation, Quellsystem-Erzeugung, Regie-Mechanik | außerhalb des Falls |
 
 **Abgrenzungskriterium.** Alles, was bei einem beliebigen Versicherer in
@@ -61,8 +61,8 @@ eines laufenden Falls sind ein Ereignis der Ebene 1 — und sie laufen
 über kein Laufzeit-Gate.
 
 *Korrigiert am 2026-09-16 (Entscheid des Maintainers).* Hier stand, sie
-liefen über das Gate A-K1, und das sei "der Inhalt, der ihm bisher
-fehlte". Beides ist mit der Einführung von `A-O1.tbox-aenderung` und
+liefen über das Gate A-K1, und das sei „der Inhalt, der ihm bisher
+fehlte“. Beides ist mit der Einführung von `A-O1.tbox-aenderung` und
 `A-K2.kernaenderung` überholt: Die T-Box ist ein Teil des Tools, nicht
 das ganze Tool — Gates und Ledger, Zeichnungsordnung, Skills und
 Agentenrollen gehören ebenfalls dazu, und für die gibt es kein Gate.
@@ -90,21 +90,23 @@ Die Vorzeige darf in den ersten Ausbaustufen davon abweichen.
   Werkzeuge importiert niemand außer der Vorzeige selbst. Ob daraus
   eine Paketteilung folgt, wird nach der Messung entschieden, nicht
   vorher.
-  Reichweite (präzisiert 2026-09-06 nach Review T22-08): Erzwungen ist
+  Reichweite (präzisiert 2026-09-06 nach Befund T22-08): Erzwungen ist
   das innerhalb des Pakets `src/rechner_pipeline` — die Grenze Ebene 2
-  zu 3 als gemessene Schnittstelle, die Grenze Ebene 3 zu 4 als
-  gemessene Ratsche über die Simulationsmodule (Generator, Stochastik,
-  Ereignis-Engine, Fortschreibungs-Kommando, Neugeschäft), und aus
+  zu 3 als gemessene Schnittstelle, die Grenze Ebene 3 zu 4 als feste
+  Liste der heute bestehenden Importe in die Simulationsmodule
+  (Generator, Stochastik, Ereignis-Engine, Fortschreibungs-Kommando,
+  Neugeschäft; `VORZEIGE_NACH_WERKZEUG_ERLAUBT` in
+  `ontologie/code_karte.py`, jede neue Kante ist ein Befund), und aus
   Ebene 2 keine Kante in Ebene 4. Nicht gemessen sind Ebene 1
   (Entwickler und KI haben keinen Code) und die Teile der Ebene 4
   außerhalb des Pakets (`simulation/`, `quellsystem/`, die
   Berichtsgeneratoren unter `werkzeuge/`); dass die Berichtsgeneratoren
   das Produkt lesen und nie umgekehrt, gilt heute durch Messung von
-  Hand, nicht durch Prüfung — Backlog "werkzeuge/ in die
-  Schichtenkarte". Der Satz "vier Ebenen erzwungen" wäre zu groß;
+  Hand, nicht durch Prüfung — Backlog „werkzeuge/ in die
+  Schichtenkarte“. Der Satz „vier Ebenen erzwungen“ wäre zu groß;
   richtig ist: zwei Grenzen im Paket erzwungen, der Rest benannt.
   Nachtrag 2026-09-07 (Freischaltung des übernommenen Bestands,
-  dev-docs/freischaltung-übernommener-bestand.md, Schritt 3): Die
+  dev-docs/freischaltung-uebernommener-bestand.md, Schritt 3): Die
   Zielsystem-Schnittstelle wächst um zwei Kanten aus der Übernahme
   (`gates/bestand_uebernehmen`) in `bestand/migrationszugang` und
   `kern/beitragsreduktion`. Grund: Der Anfangszustand eines
@@ -125,10 +127,10 @@ Die Vorzeige darf in den ersten Ausbaustufen davon abweichen.
 - README, ONBOARDING und die Unternehmensseite werden nach Ebenen
   geschnitten: Was ist das Tool, was ist die Vorzeige, was stellt sie
   her. Fachdokumente der Vorzeige nennen KI-Beteiligung und
-  Simulationscharakter (U1, Klasse K5).
+  Simulationscharakter.
 - Der zweite Baldrian-Lauf wird als Ausnahme ausgewiesen: Seine
   Zeichnungen erfolgten durch KI-Sessions im Mandat unter der Rolle
-  "mensch". Die Snapshots bleiben gültig und gepinnt; der Fachbericht
+  `mensch`. Die Snapshots bleiben gültig und gepinnt; der Fachbericht
   und die Fall-Seite sagen, wer gezeichnet hat und mit welcher
   Schlüsselklasse.
 - Der Tagesbetrieb der Vorzeige (docs/simulation/tagesbetrieb.md) ist
@@ -136,13 +138,13 @@ Die Vorzeige darf in den ersten Ausbaustufen davon abweichen.
 
 ## Umsetzung
 
-| Schritt | Inhalt |
-|---|---|
-| 0 | dieses ADR und ADR-018 |
-| 1 | Zeichnungsordnung mit Schlüsselklassen; Snapshot trägt Besetzung; Agentenschlüssel zeichnen nicht |
-| 2 | die vier Agentenrollen als versionierte Definitionen (Ziel, Perspektive, Skills, Schreibgrenzen); Programmleitung orchestriert |
-| 3 | Ebene je Modul in der Schichtenkarte, gemessen und erzwungen |
-| 4 | README, ONBOARDING, Unternehmensseite nach Ebenen; Fachbericht mit Abgrenzungen |
+| Schritt | Inhalt | Stand |
+|---|---|---|
+| 0 | dieses ADR und ADR-018 | angenommen |
+| 1 | Zeichnungsordnung mit Schlüsselklassen; Snapshot trägt Besetzung; Agentenschlüssel zeichnen nicht | umgesetzt (ADR-018) |
+| 2 | die Agentenrollen als versionierte Definitionen (Ziel, Perspektive, Skills, Schreibgrenzen); Programmleitung orchestriert | umgesetzt, inzwischen fünf Rollen (`.claude/agents/`) |
+| 3 | Ebene je Modul in der Schichtenkarte, gemessen und erzwungen | umgesetzt (`ontologie.code_karte.EBENE_JE_SCHICHT`) |
+| 4 | README, ONBOARDING, Unternehmensseite nach Ebenen; Fachbericht mit Abgrenzungen | README und ONBOARDING sind seit ADR-027 nach den fünf Gegenständen gegliedert; der übrige Teil ist nicht nachgehalten |
 
 ## Bewusst nicht Bestandteil
 

@@ -20,7 +20,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GATE_DOKUMENT = REPO_ROOT / "docs/architektur/gate-vertrag-und-versionen.md"
-ZEILE = re.compile(r"^\| ([PA]-[A-Z0-9]+) \(Version `([^`]+)`\) \| `gates\.([a-z_]+)` \|")
+ZEILE = re.compile(r"^\| ((?:[PA]-[A-Z0-9]+|P9)(?:-Vorlage)?) \(Version `([^`]+)`\) \| `gates\.([a-z_]+)` \|")
 
 
 def _dokumentierte_versionen():

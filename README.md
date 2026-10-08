@@ -6,7 +6,8 @@
 > [CHANGELOG](CHANGELOG.md).
 
 Die Rechner-Pipeline übernimmt den Bestand eines Lebensversicherers in ein
-anderes System: Tarife, Verträge und ihre Geschichte. KI-Agenten lesen die
+anderes System: Tarife und Verträge, jeden Vertrag mit dem Zustand, den
+seine Geschichte hinterlassen hat. KI-Agenten lesen die
 gelieferten Unterlagen und machen Vorschläge. Deterministischer Code prüft
 und rechnet. Wo Quellen sich widersprechen oder das Zielsystem erweitert
 werden muss, entscheidet ein Mensch.
@@ -37,23 +38,37 @@ python3.11 -m venv .venv
 .venv/bin/python -m pytest -n auto --dist loadfile
 ```
 
-Die Suite läuft parallel, eine Testdatei je Prozess. Ist sie grün, stimmt
-die Installation.
+Die Suite läuft parallel; jede Testdatei läuft ganz in einem Prozess
+([ADR-019](docs/architektur/adr-019-parallele-testsuite.md)). Mit zwölf
+Prozessen dauert sie etwa sieben Minuten; bei knappem Arbeitsspeicher
+weniger Prozesse wählen, etwa `-n 4`. Ist sie grün, stimmt die
+Installation.
 
 **Einen Fall nachfahren.** Ein Aufruf baut eine eigene Umgebung auf (eine
 [Welt](docs/architektur/glossar.md#welt)) und spielt die abgeschlossene
-Übernahme der Baldrian ohne Agenten nach. Das dauert etwa 45 Minuten:
+Übernahme der Baldrian ohne Agenten nach (Fall 3, siehe
+[docs/faelle/](docs/faelle/README.md)). Das dauert etwa 45 Minuten:
 
 ```bash
 deploy/welt/laufzeit_aufstellen.sh ~/plv-welt pakete/baldrian-klv-tg2015-fall3
 ```
 
 Danach liegen die Monatsabschlüsse und Berichte der PLV mit dem übernommenen
-Bestand unter `~/plv-welt/daten/`, der Fall mit seinem Abnahmebericht unter
-`faelle/baldrian-klv-tg2015-fall3/`. Wie man an einem Haltepunkt anhält und
-selbst entscheidet, steht in [deploy/welt/README.md](deploy/welt/README.md).
+Bestand unter `~/plv-welt/daten/`. Der Fall selbst liegt im Klon unter
+`faelle/baldrian-klv-tg2015-fall3/`, sein Abnahmebericht unter
+`abgeleitet/berichte/migrationsabnahme.html`. Beim Nachfahren zeichnet das
+Rezept alle Gates selbst, mit Schlüsseln der Klasse `simulation`, die der
+Aufruf neu erzeugt: Jede Zeichnung weist sich als simuliert aus, und das
+Urteil des festgehaltenen Falls wird übernommen, nicht neu gefällt.
 
-**Das Container-Image.** Bei jedem Push auf `main` baut die CI das Image
+Ein zweites Nachfahren in einer neuen Welt hält an, solange der Fall im Klon
+liegt. Dann einen frischen Klon nehmen oder den Fall vorher nach
+`faelle/archiv/` verschieben; gelöscht wird ein Fall nie. Wie man an einem
+Haltepunkt anhält und selbst entscheidet, steht in
+[deploy/welt/README.md](deploy/welt/README.md).
+
+**Das Container-Image.** Ändert ein Push auf `main` den Code, die
+Pin-Dateien oder `deploy/plv/`, baut die CI das Image
 `ghcr.io/bartlmac/rechner-pipeline-plv`. Es dient dem Betrieb einer
 Laufzeit, nicht der Entwicklung: Es enthält nur das Paket und führt den
 Tageslauf einer bestehenden Ablage aus, im Betrieb jede Nacht über einen
@@ -84,7 +99,8 @@ Eine Übernahme ist ein **Fall**. Er läuft in fünf Abschnitten:
 Jede menschliche Entscheidung ist ein **Gate** mit einer Kennung,
 zum Beispiel `A-M4` für die Migrationsabnahme. Sie wird mit einem Schlüssel
 gezeichnet und als unveränderlicher Beleg im Fall abgelegt. Agenten legen
-nur vor; zeichnen kann nur ein Mensch. Den ganzen Ablauf mit allen Gates
+nur vor; eine Abnahme zeichnet nur ein Mensch, in der Vorführung eine
+simulierte Rolle unter Mandat. Den ganzen Ablauf mit allen Gates
 beschreibt [docs/architektur/ablauf-eines-falls.md](docs/architektur/ablauf-eines-falls.md),
 die Begriffe erklärt das [Glossar](docs/architektur/glossar.md).
 
@@ -145,8 +161,9 @@ Daten, das Hosting der Seite und die Einrichtung einzelner Rechner.
 
 ## Mitwirken
 
-Beiträge laufen über Pull Requests nach Absprache, siehe
-[CONTRIBUTING.md](CONTRIBUTING.md). Vor jedem Commit läuft die volle Suite.
+Beiträge sind als Pull Request willkommen; vor größeren Änderungen bitte
+ein Issue, siehe [CONTRIBUTING.md](CONTRIBUTING.md). Vor jedem Commit läuft
+die volle Suite.
 
 ## Lizenz
 

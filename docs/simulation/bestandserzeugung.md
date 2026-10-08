@@ -154,5 +154,6 @@ Auflösungen der Vorführfälle) bleibt außerhalb des Repos.
 Keine Prüfung, kein Gate, kein Teil der Abnahme. Sie bewertet nichts
 (das tut der Rechenkern auf Rechnungsgrundlagen erster Ordnung) und
 ihre Annahmen wirken nie in die Bewertung zurück. Sie lässt sich
-weglassen, ohne dass das System etwas verliert; deshalb steht sie im
-Komponentenbild neben dem System, nicht darin.
+weglassen, ohne dass das System etwas verliert; deshalb liegt sie nach
+ADR-017 auf der Ebene der Vorzeige-Werkzeuge und gehört nicht zum
+Migrationssystem.

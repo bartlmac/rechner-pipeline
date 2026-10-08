@@ -102,21 +102,20 @@ Größe, die es nicht gibt.
   Artefakts, das nicht mehr entsteht.
 * `pip install` bringt kein Konsolen-Kommando `rechner-pipeline` mehr;
   alle Einstiege sind `python -m rechner_pipeline.<modul>`.
-* README, AGENTS.md und ONBOARDING beschreiben den Portierungsakt nur
-  noch als abgeschlossene Vorgeschichte mit Verweis auf den geparkten
-  Branch — nicht als lebenden Pfad.
+* README, AGENTS.md und ONBOARDING erwähnen den Portierungsakt nicht
+  mehr.
 * ADR-001 und ADR-002 beschreiben Strukturen, die es teilweise nicht
   mehr gibt (`orchestrate/`, `kern_output`, `assurance --fall`). Sie
   werden nicht umgeschrieben — ein ADR ist Protokoll, kein Handbuch —,
   sondern tragen einen Ablösungsvermerk auf dieses ADR.
-* Rückweg: der konservierte Stand ist vollständig und lauffähig im
-  Archiv des Maintainers erhalten (Git-Bundle, siehe Nachtrag oben).
-  Sollte ein künftiger Fall doch eine Übersetzung brauchen, lässt
-  er sich von dort wiederherstellen.
+* Rückweg: Der letzte Stand der Portierung liegt vollständig und
+  lauffähig als Git-Bundle im nicht veröffentlichten Archiv des
+  Maintainers. Sollte ein künftiger Fall doch eine Übersetzung brauchen,
+  lässt er sich von dort wiederherstellen.
 
 ## Verworfene Alternative
 
-Die Maschinerie "erstmal liegen lassen, sie stört ja nicht". Sie stört:
+Die Maschinerie „erstmal liegen lassen, sie stört ja nicht“. Sie stört:
 Sie kostet Pflege bei jeder Änderung, ihre Doku widerspricht dem
 Zielbild, und sie erzeugt in jedem Gespräch den Eindruck eines zweiten,
 lebenden Anwendungsfalls. Wo Code konserviert gehört, gehört er in

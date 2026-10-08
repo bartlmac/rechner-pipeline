@@ -2,7 +2,7 @@
 
 **Status:** angenommen am 2026-09-20 (Maintainer), umgesetzt.
 
-## Anlass
+## Kontext
 
 Die Suite ist auf 2373 Tests gewachsen und braucht am Stück **20:30**.
 Als Vorbedingung jedes Commits (nicht verhandelbare Regel 6) ist das
@@ -39,7 +39,10 @@ Verträge. Sie sind teuer, weil sie etwas Teures prüfen.
 
 `pytest-xdist` wird als **Entwicklungs-Abhängigkeit** aufgenommen,
 exakt gepinnt (`pytest-xdist==3.6.1`). Die Vorgabe für den vollen Lauf
-ist `-n 12 --dist loadfile`.
+auf dem Entwicklungsrechner des Maintainers (28 Kerne) ist
+`-n 12 --dist loadfile`. README, ONBOARDING und die CI nennen
+`-n auto --dist loadfile`, was auf Rechnern mit weniger Kernen dasselbe
+leistet; mehr Prozesse als große Testdateien bringen nichts.
 
 **Warum `--dist loadfile` und nicht `--dist load`:** `loadfile` gibt eine
 ganze Testdatei an einen Arbeiter. Damit bleiben die 61
@@ -134,4 +137,4 @@ Wirkung.
 
 **Tests löschen oder zusammenlegen.** Die teuren Module prüfen die
 teuren Aussagen (Tagesläufe, Wiederanlauf an jeder Naht,
-Kern-Projektionen). Sie sind nicht das Problem, sie sind der Zweck.
+Kern-Projektionen). Ihre Laufzeit ist der Preis dieser Aussagen.

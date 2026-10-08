@@ -1,7 +1,8 @@
 # Ablauf eines Migrationsfalls
 
-Ein Fall beginnt mit dem Auftrag des Vorstands und endet mit dem gebundenen
-Anfangsbestand in der Ablage oder mit dem gezeichneten Abbruch. Dazwischen
+Ein Fall beginnt mit der Registrierung der Lieferung und dem Auftrag des
+Vorstands. Er endet mit dem gebundenen Anfangsbestand in der Ablage oder mit
+dem gezeichneten Abbruch. Dazwischen
 schlagen Agenten vor, deterministischer Code prüft, und Menschen zeichnen.
 Dieses Dokument ist die Übersicht. Die Entscheidungen dahinter stehen in
 [ADR-026](adr-026-lebenslauf-eines-falls.md) (Auftrag und Abbruch),
@@ -20,7 +21,10 @@ Die Begriffe erklärt das [Glossar](glossar.md).
    den Auftrag voraus. Scheitert der Fall, endet er mit dem Fallabbruch
    `A-M5`, den die Programmleitung zeichnet.
 3. **Vorverdichtung und Extraktion.** Jede Quelle wird deterministisch
-   vorverdichtet (`P-Q1`), dann liest ein Agent sie und schlägt Aussagen vor.
+   vorverdichtet: Excel-Mappen über `P-Q1` (`gates.extract`), Word und
+   Text-PDF über `quellen.tarifplan_staging`, CSV-Bestandsabzüge über
+   `quellen.bestand_profil`. Dann liest ein Agent sie und schlägt Aussagen
+   vor.
 4. **Zusammenführung zur A-Box.** Code führt die Aussagen aller Quellen
    zusammen (`P-Q2`) und prüft sie gegen die T-Box (`P-Q3`).
 5. **Entscheidung der Widersprüche `A-Q1`.** Widersprüche zwischen Quellen
@@ -53,8 +57,8 @@ Der Abnahmebericht vertraut keinem früheren Ergebnis. Er liest die Quelle
 Spezifikation und Ziel nach und rendert sich selbst neu, um Byte für Byte zu
 vergleichen. Prüflücken, verlorene Zeilen oder offene Widersprüche ergeben
 einen roten Bericht und einen blockierenden Exit-Code. Ein Bestandsfall
-verlangt zusätzlich die Prüfung des Bestands (`P-B1`), die vollständige
-Suite und die Führungsprobe auf demselben Stand. Die Einzelheiten stehen in
+verlangt zusätzlich die Prüfung des Bestands (`P-B1`), die Migrationssuite
+über den vollen Bestand und die Führungsprobe auf demselben Stand. Die Einzelheiten stehen in
 [ADR-009](adr-009-fall-scope-und-gate-dag.md) und im
 [Vertrag der Prüf-Gates](gate-vertrag-und-versionen.md).
 
@@ -63,9 +67,9 @@ Suite und die Führungsprobe auf demselben Stand. Die Einzelheiten stehen in
 Nach der Migrationsabnahme kommt der übernommene Bestand in die Ablage, in
 der die PLV Tag für Tag geführt wird (ADR-022):
 
-1. **Zugangsprobe.** Zwei Läufe vom Betriebsbeginn über den Stichtag, mit und
-   ohne den Zugang. Ihre Differenz wird gegen den abgenommenen Bestand
-   gehalten.
+1. **Zugangsprobe.** Zwei Läufe auf einem leeren Verzeichnis vom
+   Betriebsbeginn über den Stichtag, mit und ohne den Zugang. Ihre Differenz
+   wird gegen den abgenommenen Bestand gehalten.
 2. **Zugangsabnahme `A-B2`.** Der Betrieb liest den Beleg der Probe und
    zeichnet, bevor der Bestand registriert wird.
 3. **Neuaufsetzen.** Die Ablage wird neu aufgesetzt und vom Betriebsbeginn an

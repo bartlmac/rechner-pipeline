@@ -13,8 +13,9 @@ den Pin-Dateien. Die CI und das Image der Laufzeit entstehen aus denselben
 Pin-Dateien. Auf andere Betriebssysteme wird der Code nicht angepasst; dort
 läuft die Suite im Entwicklungs-Container.
 
-Das Image der Laufzeit (`ghcr.io/bartlmac/rechner-pipeline-plv`, gebaut bei
-jedem Push auf `main`) ist kein Entwicklungswerkzeug. Es enthält nur das
+Das Image der Laufzeit (`ghcr.io/bartlmac/rechner-pipeline-plv`, gebaut,
+wenn ein Push auf `main` den Code, die Pin-Dateien oder `deploy/plv/`
+ändert) ist kein Entwicklungswerkzeug. Es enthält nur das
 Paket und führt den Tageslauf einer bestehenden Ablage aus
 ([deploy/plv/README.md](deploy/plv/README.md)). Zum Entwickeln, Testen und
 Nachfahren eines Falls braucht es den Klon mit einer eigenen Umgebung, wie
@@ -27,6 +28,10 @@ python3.11 -m venv .venv
 .venv/bin/python -m pip install -e . --no-deps
 ```
 
+Die Beispiele ab Abschnitt 3 schreiben `python`. Gemeint ist der Interpreter
+dieser Umgebung: vorher `source .venv/bin/activate` ausführen oder
+`.venv/bin/python` einsetzen.
+
 Installiert wird nur über die Pin-Dateien. Sie enthalten die direkten
 Abhängigkeiten und deren transitive Hülle, `tests/test_abhaengigkeiten.py`
 hält sie geschlossen. Ein `pip install -e ".[dev]"` allein würde die
@@ -36,7 +41,7 @@ Suite rot färben, ohne dass sich hier etwas geändert hat.
 
 **Windows:** Docker Desktop mit WSL 2. Welche Distribution unter WSL 2 läuft,
 zeigt `wsl -l -v` in der Spalte VERSION. Gibt es keine, legt
-`wsl --install -d Ubuntu` eine an. Der Auscheck gehört in das
+`wsl --install -d Ubuntu` eine an. Der Klon gehört in das
 Linux-Dateisystem (das WSL-Home, nicht `/mnt/c`), denn die Suite prüft
 Dateirechte, die ein NTFS-Laufwerk nicht trägt.
 
@@ -55,15 +60,17 @@ macOS (arm64). Beide ergaben dieselbe Prüfsumme der Paketquellen wie Linux;
 die Zeilenenden sind über `.gitattributes` festgelegt.
 
 **Eine neue Plattform melden.** Wer auf einer Plattform rechnet, die hier
-noch nicht genannt ist, meldet neben dem Ergebnis der Suite den Stand des
-Codes:
+noch nicht genannt ist, meldet das als Issue
+([CONTRIBUTING.md](CONTRIBUTING.md)), mit dem Ergebnis der Suite und dem
+Stand des Codes:
 ```
 docker run --rm -v "$PWD":/workspace rechner-pipeline-dev \
   python -c "import json; from pathlib import Path; from rechner_pipeline.gates._provenienz import systemstand; print(json.dumps(systemstand(Path('/workspace')), indent=2))"
 ```
 `quellcode_sha256` ist die Prüfsumme der Paketquellen unter
-`src/rechner_pipeline/`. `dirty` muss `nein` lauten, sonst trägt der Auscheck
-nicht festgeschriebene Änderungen, und der Wert ist nicht vergleichbar.
+`src/rechner_pipeline/`. `dirty` muss `nein` lauten, sonst trägt der
+Arbeitsbaum nicht committete Änderungen, und der Wert ist nicht
+vergleichbar.
 
 ## 2. Die Suite
 
@@ -71,10 +78,11 @@ nicht festgeschriebene Änderungen, und der Wert ist nicht vergleichbar.
 .venv/bin/python -m pytest -n auto --dist loadfile
 ```
 
-Die Suite läuft parallel, eine Testdatei je Prozess
-([ADR-019](docs/architektur/adr-019-parallele-testsuite.md)). Seriell
-braucht sie etwa doppelt so lang. Die CI fährt sie bei jedem Push und jedem
-Pull Request (`.github/workflows/tests.yml`).
+Die Suite läuft parallel; jede Testdatei läuft ganz in einem Prozess
+([ADR-019](docs/architektur/adr-019-parallele-testsuite.md)). Mit zwölf
+Prozessen dauert sie etwa sieben Minuten, seriell ein Vielfaches davon. Bei
+knappem Arbeitsspeicher weniger Prozesse wählen, etwa `-n 4`. Die CI fährt
+sie bei jedem Push und jedem Pull Request (`.github/workflows/tests.yml`).
 
 Zu einem Ergebnis gehören drei Angaben: die Zeile mit `passed` und `failed`,
 die Zeile des Baumwächters und der Exit-Code. Der Baumwächter
@@ -96,15 +104,22 @@ dem übernommenen Bestand:
 deploy/welt/laufzeit_aufstellen.sh ~/plv-welt pakete/baldrian-klv-tg2015-fall3
 ```
 Mit `--bis <haltepunkt>` hält der Lauf an einer Stelle, an der man selbst
-liest und zeichnet; derselbe Aufruf fährt danach weiter. Erprobt ist das
-Nachfahren unter Linux, aus einem Klon mit `.venv`; im Entwicklungs-Container
+liest und zeichnet; derselbe Aufruf ohne `--bis` (oder mit einem späteren
+Haltepunkt) fährt danach weiter. Die Haltepunkte nennt
+[pakete/README.md](pakete/README.md). Der Fall liegt danach im Klon unter
+`faelle/`; ein zweites Nachfahren braucht einen frischen Klon oder den Fall
+vorher unter `faelle/archiv/` (README, Schnellstart). Erprobt ist das
+Nachfahren unter Linux, aus einem Klon mit `.venv`, im Entwicklungs-Container
 bisher nicht. Einzelheiten stehen in
-[deploy/welt/README.md](deploy/welt/README.md) und
-[pakete/README.md](pakete/README.md).
+[deploy/welt/README.md](deploy/welt/README.md).
 
 `main` trägt den Stand nach Fall 3, der Rechenkern kennt den übernommenen
-Tarif also bereits. Wer die Übernahme mit allem durchspielen will, was sie am
-Zielsystem ändert, beginnt auf dem Tag `fall3-vor`.
+Tarif also bereits. Den Stand vor dem Fall trägt der Tag `fall3-vor`. Die
+Skripte unter `deploy/welt/` gibt es dort noch nicht, sie nehmen den
+Codebaum aber über die Variable `BAUM` entgegen. Wer den Fall live mit
+Agenten auf dem alten Stand führen will, legt einen zweiten Klon auf
+`fall3-vor` an und ruft die Skripte aus `main` mit `BAUM=<zweiter Klon>` auf.
+Eine eigene Anleitung dafür gibt es noch nicht.
 
 **Einen Fall anlegen.** Eine Datei kommt nur durch Registrieren in einen
 Fall:
@@ -126,8 +141,10 @@ python -m rechner_pipeline.gates.extract --repo-root . \
 ```
 Danach beginnen die Schritte der Agenten: Sie lesen die vorverdichteten
 Quellen und schlagen Aussagen vor. Ohne Agenten-Werkzeug (Claude Code oder
-Codex im Wurzelverzeichnis) endet ein Durchgang hier mit einem Exit-Code
-ungleich null, und das ist so gewollt. Wie ein Fall vollständig geführt wird,
+Codex im Wurzelverzeichnis) geht es hier nicht weiter: Der nächste Schritt,
+`gates.abox_merge`, findet keine Fragmente und endet mit Exit 20. Mit einem
+Agenten-Werkzeug führt der Skill `migrationsfall-durchfuehren` durch den
+Fall. Wie ein Fall vollständig geführt wird,
 mit Welt, Fallauftrag und allen Gates, beschreibt
 [docs/architektur/ablauf-eines-falls.md](docs/architektur/ablauf-eines-falls.md).
 Die Kommandos dazu stehen in [deploy/welt/README.md](deploy/welt/README.md)
@@ -165,8 +182,9 @@ neues Paket.
 
 **Regeln.**
 
-- **Deterministisch:** In `src/` läuft kein Subprozess, es gibt kein Netz
-  und keine dynamische Ausführung. Gleiche Eingaben ergeben gleiche
+- **Deterministisch:** In `src/` läuft kein Subprozess (bis auf die eine
+  Ausnahme im nächsten Punkt), es gibt kein Netz und keine dynamische
+  Ausführung. Gleiche Eingaben ergeben gleiche
   Ausgaben, serialisiert wird sortiert.
 - **Die eine Ausnahme:** Es gibt genau eine Subprozess-Ausnahme.
   `gates/_provenienz._git_lesen` führt lesende Git-Kommandos aus einer
@@ -183,8 +201,8 @@ neues Paket.
 - **Agenten entscheiden keine Widersprüche:** Eine vorläufige Auflösung trägt
   `vorlaeufig=true` und blockiert jede menschliche Abnahme.
 - **Volle Suite vor jedem Commit.** Neue Abhängigkeiten kommen nur über ein
-  ADR und exakt gepinnt. Beiträge laufen über Pull Requests nach Absprache
-  ([CONTRIBUTING.md](CONTRIBUTING.md)).
+  ADR und exakt gepinnt. Beiträge kommen als Pull Request, vor größeren
+  Änderungen bitte ein Issue ([CONTRIBUTING.md](CONTRIBUTING.md)).
 
 **Laufdaten.** `runs/` ist zum Wegwerfen da, dort darf jeder löschen. Was
 erhalten bleiben soll, gehört in einen Fall (`faelle/<fall>/`, wo `eingang/`

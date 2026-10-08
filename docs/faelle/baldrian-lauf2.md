@@ -237,7 +237,7 @@ Auskunftsschreiben, die Producer-Kette und alle fünf Zeichnungen (A-Q1
 fd793260 bis A-M4 32682e95, gezeichnet am 02.09.2026, 00:48 bis 00:49
 Uhr) — fand auf Systemstand `4b1abf04` statt (Kern 3.3.0,
 Quelltext-Prüfsumme `ef1af1a3...`). Abschnitt 1 nennt diese fünf
-Snapshot-Kennungen und zugleich "Stand f7c545d": Die Kennungen sind die
+Snapshot-Kennungen und zugleich „Stand f7c545d“: Die Kennungen sind die
 des Laufs, der Stand ist der der Neuzeichnung vom 07.09.2026 (Korrekturen
 24 und 25). Beides ist richtig, aber nicht dasselbe. Die fünf Gates
 wurden am 20.09.2026 ein zweites Mal neu gezeichnet, auf `17091b39`

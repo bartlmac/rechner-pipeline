@@ -27,7 +27,7 @@ das je Fall kopiert und ausgefüllt wird.
 | 6 | Migrationscontrolling am $t_0$ über den vollen Bestand, Vorlage für Gate A-M4 | ausgearbeitet |
 | 7 | Aktuarielle Abnahme am $t_a$ je Vertrag auf einer Stichprobe, Vorlage für Gate A-M1 | ausgearbeitet |
 | 8-10 | Fehler- und Klärungsprozess, Archiv, Ablaufplanung | Gerüst mit ⟨TODO⟩ |
-| 11 | Entscheidungen und offene Punkte | zwei offene Entscheidungen (E1, E2) |
+| 11 | Entscheidungen und offene Punkte | zwei Entscheidungen mit festgelegtem Standard (E1, E2); eine Abweichung wird je Bestand begründet |
 
 Zwei Markierungen steuern die Weiterarbeit: **⟨TODO: …⟩** ist noch zu
 erarbeitender Inhalt; **⟨ENTSCHEIDUNG: …⟩** ist eine offene Entscheidung

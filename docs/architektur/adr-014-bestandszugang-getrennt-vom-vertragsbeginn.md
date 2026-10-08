@@ -11,7 +11,7 @@ Versicherungssumme — elf Jahre bevor die Übernahme stattfand. Das
 Jahresraster des Berichts begann 2015-01-01, der Migrationsstichtag ist
 2026-01-01.
 
-Die Ursache ist keine Rechenfehler, sondern eine fehlende
+Die Ursache ist kein Rechenfehler, sondern eine fehlende
 Unterscheidung. Der Stamm kannte genau ein Anfangsdatum,
 `insurance_start`. Das ist der **Vertragsbeginn**, und er ist bei einem
 übernommenen Vertrag korrekt 2015: Der Vertrag wurde damals
@@ -83,9 +83,9 @@ Spalte ist kein Sparse-Fall.
 
 * **Schemabruch.** Bestehende `bestand.parquet` sind schemafremd und
   müssen neu erzeugt werden. Fail-fast statt stiller Vorgabe: Ein
-  Altbestand ohne die Spalte still als "Zugang = Beginn" zu lesen wäre
+  Altbestand ohne die Spalte still als „Zugang = Beginn“ zu lesen wäre
   für eigenes Geschäft richtig und für migriertes genau der Fehler,
-  den dieser ADR behebt.
+  den dieses ADR behebt.
 * **Bestehende Reihen ändern sich nicht**, solange der Bestand eigen
   ist: Dort ist der Zugang der Beginn, und jede Auswertung liefert
   dieselben Zahlen wie zuvor.

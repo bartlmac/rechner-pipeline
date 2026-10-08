@@ -48,8 +48,8 @@ erhalten.
    Agenten erhalten keinen Zugriff auf dieses Schlüsselmaterial; der Mensch
    führt den Annahmeaufruf in seiner Autoritätsumgebung aus.
 6. Eine Ablehnung bleibt ohne Signatur möglich. Das erhält den sicheren
-   Agentenpfad `--rolle agent --entscheid abgelehnt`, ohne ihm eine
-   Annahmeautorität zu geben.
+   Agentenpfad `--rolle agent/<name> --entscheid abgelehnt` (seit ADR-018
+   mit Ebene), ohne ihm eine Annahmeautorität zu geben.
 
 ## Konsequenzen
 
@@ -82,10 +82,10 @@ erhalten.
   einen eigenen Betriebs- und Abhängigkeitsentscheid; das Schema benennt
   sein Verfahren explizit und kann später versioniert erweitert werden.
 - Unveränderliche Attempt-Ledger und ein atomarer Latest-Verweis sind ToDo
-  10.12. Diese ADR macht den aktuell verwendeten Ledger strikt, ersetzt aber
+  10.12. Dieses ADR macht den aktuell verwendeten Ledger strikt, ersetzt aber
   nicht dessen Speichersemantik.
 - Der deklarative Fall-Scope und daraus abgeleitete A-M4-Pflichtbelege sind in
-  ADR-009 entschieden. Diese ADR sichert deren menschliche Freigabe, während
+  ADR-009 entschieden. Dieses ADR sichert deren menschliche Freigabe, während
   ADR-009 bestimmt, welche Belege ein konkreter Scope verlangt.
 
 ## Verworfene Alternativen

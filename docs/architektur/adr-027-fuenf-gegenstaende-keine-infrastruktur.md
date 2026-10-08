@@ -1,10 +1,10 @@
 # ADR-027: Fünf Gegenstände des Repositorys — keine Infrastruktur
 
 **Status:** angenommen am 2026-10-04 (Maintainer, Entscheidung vom
-2026-10-03). Die Umsetzung erfolgt in Schritten; dieses ADR ist
-Schritt 0.
+2026-10-03). Was umgesetzt ist, steht unter „Folgen“, was offen ist, unter
+„Offen“.
 
-## Anlass
+## Kontext
 
 Mit dem dritten Fall der Baldrian liegt im Repository mehr als ein
 Migrationssystem mit seiner Vorzeige: eine Laufzeit, die ohne jede
@@ -85,13 +85,13 @@ Repository liegt und wozu.
 | 2 Migrationssystem | Ebene 2 (KI-Tool) |
 | 3 Fall-Definitionen | Ebene 3 (Lieferung, Fall) und Ebene 4 (`quellsystem/`) |
 | 4 Routinen | kommt in ADR-017 nicht vor |
-| 5 Webseite | in ADR-017 „die Unternehmensseite" als Teil der Vorzeige |
+| 5 Webseite | in ADR-017 „die Unternehmensseite“ als Teil der Vorzeige |
 | quer | Ebene 1 (Entwickler und KI); `models` zählt ADR-017 zum Tool |
 
-„Vorzeige" heißt in ADR-017 das fiktive Unternehmen, nicht die Webseite.
+„Vorzeige“ heißt in ADR-017 das fiktive Unternehmen, nicht die Webseite.
 
 In einem Punkt ändert dieses ADR ADR-017. Dort gilt: „Regie: Mechanik im
-Repo, Auflösungen lokal". Jetzt gilt: Die Auflösung eines **gefahrenen**
+Repo, Auflösungen lokal“. Jetzt gilt: Die Auflösung eines **gefahrenen**
 Falls liegt als Paket im Repository (`pakete/`), damit der Fall ohne
 Agenten nachfahrbar ist. Die Auflösungen **noch nicht gefahrener** Fälle
 bleiben lokal. Eine Sitzung, die einen festgehaltenen Fall live führt,

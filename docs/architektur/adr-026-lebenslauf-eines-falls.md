@@ -440,8 +440,8 @@ der nächste Aufruf, die Historie unterscheidet Annahme und Ablehnung nicht,
 und beide liegen unter `abgeleitet/`, das aufgeräumt werden darf.
 
 Seit Prüfrunde H räumt das Gate liegengebliebene Hardlink-Zwillinge beim
-Eintritt in `entscheide/`, bevor es die Sperre prüft (ADR-025, Nachtrag
-Prüfrunde H, Punkt 4). An der Grenze ändert das nichts.
+Eintritt in `entscheide/`, bevor es die Sperre prüft (ADR-025, zweiter
+Nachtrag zu Prüfrunde H, Punkt 4). An der Grenze ändert das nichts.
 
 ## Nachtrag 2026-10-01: Prüfrunde H — die Linie des Lesers, die Kaskade des Auftrags, die Grenze der Kopie
 
@@ -453,7 +453,7 @@ Unter ihr zeichnete ein Schlüssel, den der Vorstand dem Aktuariat
 inzwischen entzogen hatte, und der Betrieb nahm die A-M4 unter der echten
 Linie an.
 
-**Regel** (gebaut in ADR-025, Nachtrag Prüfrunde H): Jeder gründende Leser
+**Regel** (gebaut in ADR-025, zweiter Nachtrag zu Prüfrunde H, Punkt 1): Jeder gründende Leser
 hält eine Zeichnung gegen die späteren Glieder seiner Linie. Ein Glied, das
 die zeichnende Rolle mindert, trägt eine gezeichnete Erklärung des
 Vorstands: `verfallen` verweigert, `gueltig` trägt Zeichnungen vor der
@@ -521,7 +521,7 @@ Abbruch prüft, ob eine Migrationsabnahme gilt. Alle anderen sperren dann
 (keine geltende Annahme, kein geltender Auftrag, die verwiesene Abnahme
 gilt nicht mehr) oder lassen Ablehnungen außer Betracht (T-Box-Vokabular,
 `abbruch_im_fall`). `tests/test_lebenslauf_runde_i.py` zählt die Aufrufer
-von `gezeichneter_widerruf_fehler` und zeigt mit einer Positivkontrolle,
+von `gezeichneter_widerruf_fehler` und zeigt an einem Gegenbeispiel,
 dass die Zählung trifft. Dass eine unsignierte Ablehnung sperren kann,
 bleibt: Das ist die sichere Richtung.
 
@@ -678,7 +678,7 @@ Ablehnung pinnt keine Belege, bindet keine Vorlage und stiftet kein
 Vokabular, und ein Agent darf weiterhin nur ablehnen (ADR-008, Punkt 6).
 `tests/test_lebenslauf_runde_j.py` hält die Bedingungen fest und prüft,
 dass der Aufruf von `fallauftrag_pruefen` unter `gezeichnet` steht, beides
-mit Positivkontrolle.
+mit einem Gegenbeispiel, das die Prüfung auslösen muss.
 
 ### d) Der Rückzug und der geltende Auftrag bei A-M6
 

@@ -8,9 +8,9 @@ geschrieben.
 
 | Durchgang | Lieferung | Was er ist | Im Repository | Nachfahren |
 |---|---|---|---|---|
-| **Lauf 1** (Fall `baldrian-uebernahme`) | `lieferungen/baldrian/` | der erste durchgängige Fall | die Lieferung | von Hand und mit Agenten, nach `ONBOARDING.md`, Abschnitt 3. Ob er auf dem heutigen Stand durchläuft, ist nicht gemessen. |
-| **Lauf 2** | `lieferungen/baldrian-2/` | derselbe Bestand auf einer neuen, umfangreicheren Lieferung; gezeichnet am 02.09.2026 | die Lieferung, der [Abschlussbericht](baldrian-lauf2.md), [was die Übernahme verändert hat](baldrian-lauf2-veraenderungen.md) | auf dem Stand, auf dem er gezeichnet wurde: [baldrian-lauf2-wiederholen.md](baldrian-lauf2-wiederholen.md) |
-| **Fall 3** (`baldrian-klv-tg2015-fall3`) | dieselbe Lieferung `lieferungen/baldrian-2/`, dazu die Nachlieferungen des Falls | die Neufassung, vom Auftrag des Vorstands bis zum gebundenen Anfangsbestand in der Ablage; geführt am 02.10.2026 | das Paket [pakete/baldrian-klv-tg2015-fall3](../../pakete/README.md) | mit einem Aufruf, ohne Agenten |
+| **Lauf 1** (Fall `baldrian-uebernahme`) | `lieferungen/baldrian/` | der erste durchgängige Fall | die Lieferung | von Hand und mit Agenten; ob er auf dem heutigen Stand durchläuft, ist nicht gemessen |
+| **Lauf 2** (Fall `baldrian-klv-tg2015-lauf2`) | `lieferungen/baldrian-2/` | derselbe Bestand auf einer neuen, umfangreicheren Lieferung; gezeichnet am 02.09.2026 | die Lieferung, der [Abschlussbericht](baldrian-lauf2.md), [was die Übernahme verändert hat](baldrian-lauf2-veraenderungen.md) | auf dem Stand, auf dem er gezeichnet wurde: [baldrian-lauf2-wiederholen.md](baldrian-lauf2-wiederholen.md) |
+| **Fall 3** (`baldrian-klv-tg2015-fall3`) | dieselbe Lieferung `lieferungen/baldrian-2/`, dazu die Nachlieferungen des Falls | die Neufassung, vom Auftrag des Vorstands bis zum gebundenen Anfangsbestand in der Ablage; geführt am 02.10.2026 | das Paket `baldrian-klv-tg2015-fall3` ([pakete/](../../pakete/README.md)) | mit einem Aufruf, ohne Agenten |
 
 ## Warum es Fall 3 gibt
 
@@ -24,6 +24,11 @@ bei Lauf 2 noch nicht gab.
 
 Der Stand vor Fall 3 und der Stand danach tragen die Tags `fall3-vor` und
 `fall3-nach`. `main` trägt den Stand danach.
+
+Ein Fall der Vorführung, der live in einer Welt geführt wird, heißt
+`baldrian-klv-tg2015` (Falldatei `deploy/welt/fall-baldrian-klv-tg2015.conf`).
+Unter demselben Namen lief vor Lauf 1 ein früher Vorlauf, den ADR-007 und
+das Dokument zur Migrations-Pipeline v0.1 nennen.
 
 ## Fall 3 in Zahlen
 

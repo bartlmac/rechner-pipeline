@@ -32,7 +32,10 @@ Migrationskonzepts aufgenommen.
 
 Grundsatzdokumentation und Tarifpläne sind abgenommen: Fall 3 hat sie
 zusammen mit dem Rechenkern (`A-K2`) und dem Tarifwerk (`A-T1`) über
-Prüfsummen gebunden. Eine Änderung braucht deshalb eine neue Abnahme und
-die Zustimmung des Aktuariats (Grundsatzdokumentation, Abschnitt 13).
-Abweichungen zwischen Konzept und Umsetzung werden entschieden und im
-Abweichungsverzeichnis geführt (Abschnitt 12).
+Prüfsummen gebunden. Jede Änderung braucht deshalb eine neue Abnahme,
+`A-K2` für die Grundsatzdokumentation und `A-T1` für die Tarifpläne.
+Substanzielle Änderungen an den Abschnitten 3 bis 9 der
+Grundsatzdokumentation brauchen außerdem die Zustimmung des Aktuariats
+(dort Abschnitt 13). Abweichungen zwischen Konzept und
+Umsetzung werden entschieden und im Abweichungsverzeichnis geführt
+(Abschnitt 12).

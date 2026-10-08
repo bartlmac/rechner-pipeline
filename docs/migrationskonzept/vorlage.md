@@ -81,14 +81,14 @@ Je Tarifplan liegt eine freigegebene Ausgestaltung vor (Grundsatzdokumentation A
 
 ### 5.2 Statusmodell
 
-Hauptpfad: `angeliefert → validiert → verankert → nachgefahren → abgeglichen → migriert`. Seitenausgänge: `klärung(⟨Grund⟩)` (Rückführung in den Hauptpfad nach Behebung), `zurückgestellt` (bewusste Verschiebung, z. B. Folgelieferung). ⟨TODO: formale Zustandsmaschine, Reprocessing-Regeln, Statusreporting⟩
+Hauptpfad: `angeliefert → validiert → verankert → nachgefahren → abgeglichen → migriert`. Seitenausgänge: `klärung(⟨Grund⟩)` (Rückführung in den Hauptpfad nach Behebung), `zurückgestellt` (bewusste Verschiebung, z. B. Folgelieferung). ⟨TODO: formale Zustandsmaschine, Regeln für die Wiederverarbeitung, Statusberichte⟩
 
 ### 5.3 Schrittfolge je Vertrag
 
 | Nr | Schritt | System | Inhalt | Fehlerausgang |
 |---|---|---|---|---|
-| 1 | Intake und Validierung | MIG | Schema-/Pflichtfeldprüfung der Lieferobjekte 1–3; Plausibilitätsregeln ⟨TODO: Regelkatalog⟩; Prüfung Tarifplan-Zulassung (5.1) | klärung(Datenlieferung) |
-| 2 | $t_a$- und Kohortenbestimmung | MIG | $t_a$ gemäß Grundsatzdokumentation 9.12 aus Vertragsstichtag und letztem rechnenden GV (Lieferobjekt 2); fehlt die $t_a$-Lieferung → Fallback-Kohorte $t_0$ (Grundsatzdokumentation 9.12) | Kohorte „Fallback" |
+| 1 | Eingang und Validierung | MIG | Schema-/Pflichtfeldprüfung der Lieferobjekte 1–3; Plausibilitätsregeln ⟨TODO: Regelkatalog⟩; Prüfung Tarifplan-Zulassung (5.1) | klärung(Datenlieferung) |
+| 2 | $t_a$- und Kohortenbestimmung | MIG | $t_a$ gemäß Grundsatzdokumentation 9.12 aus Vertragsstichtag und letztem rechnenden GV (Lieferobjekt 2); fehlt die $t_a$-Lieferung → Fallback-Kohorte $t_0$ (Grundsatzdokumentation 9.12) | Kohorte „Fallback“ |
 | 3 | Zustandsextrakt | MIG | Historienabgeleitete Attribute bereitstellen bzw. per Ableitungsregel (Kap. 4) berechnen: $s_0$, $d_0$, Options-/Rechtszustände, Dynamikzähler, Restzillmerstand, Steueraggregate. GV-Liste verbleibt im MIG (Grenzregel Kap. 2) | klärung(Ableitung) |
 | 4 | Initialanlage | RK | Vertragsanlage mit Ursprungsparametern und mitwandernden Rechnungsgrundlagen (Grundsatzdokumentation 9.1 Schritt 1) über die reguläre Anlage-API | klärung(Tarifabbildung) |
 | 5 | Verankerung | RK | Zustand $(s_0, d_0)$ setzen; $V^{\mathrm{prosp}}$ rechnen; $R_{\mathrm{hist}} = V^{\mathrm{ist}} - V^{\mathrm{prosp}}$; Guardrails gemäß Grundsatzdokumentation 9.10 (pfadweise Floors, Degenerationsschwelle, Vorzeichen/Kappung); $\mathcal{A}(t_a, s_0, d_0, R_{\mathrm{hist}})$; Persistenz des Parametertupels (Grundsatzdokumentation 9.11) | Kappungsfall → Fehlerprozess (Kap. 8); Degeneration → Ausbuchungsweg (Grundsatzdokumentation 9.16) |
@@ -103,7 +103,7 @@ Die Routine ist je Vertrag deterministisch und wiederholbar (Datennachlieferunge
 
 ### 5.5 Kohorten
 
-Standard ($t_a$-Verankerung) · Fallback ($t_0$-Verankerung, Grundsatzdokumentation 9.12) · Kappung (Grundsatzdokumentation 9.10, im Fehlerprozess) · Befund (unsystematische Abgleichsabweichung). Kohorten werden getrennt reportet und tragen eigene Toleranzen (Grundsatzdokumentation 9.15). ⟨TODO: Kennzeichnung im Datenmodell, Grundsatzdokumentation 9.16⟩
+Standard ($t_a$-Verankerung) · Fallback ($t_0$-Verankerung, Grundsatzdokumentation 9.12) · Kappung (Grundsatzdokumentation 9.10, im Fehlerprozess) · Befund (unsystematische Abgleichsabweichung). Kohorten werden getrennt ausgewiesen und tragen eigene Toleranzen (Grundsatzdokumentation 9.15). ⟨TODO: Kennzeichnung im Datenmodell, Grundsatzdokumentation 9.16⟩
 
 ### 5.6 Migrationsprotokoll je Vertrag
 
@@ -115,7 +115,7 @@ Mindestinhalte: Eingangswerte der Lieferobjekte, ermitteltes $t_a$, Kohorte, $(s
 
 ## 6 Migrationscontrolling ($t_0$)
 
-*Rahmen: Projektseitige Ausgestaltung von **Grundsatzdokumentation 9.15**, Zeile „Migrationscontrolling". Die Gate-Architektur entscheidet **ADR-010** (Trennung der Prüfebenen) und **ADR-009** (Fall-Scope und Pflichtbelege); die Handgriffe stehen im Skill `pruefe-migrationscontrolling`.*
+*Rahmen: Projektseitige Ausgestaltung von **Grundsatzdokumentation 9.15**, Zeile „Migrationscontrolling“. Die Gate-Architektur entscheidet **ADR-010** (Trennung der Prüfebenen) und **ADR-009** (Fall-Scope und Pflichtbelege); die Handgriffe stehen im Skill `pruefe-migrationscontrolling`.*
 
 ### 6.1 Zweck und Abgrenzung
 
@@ -157,7 +157,7 @@ Genau deshalb sind es zwei Werkzeuge und nicht eines mit zwei Spalten.
 
 ### 6.3 Vollständigkeit und Prüflücken
 
-„Vollständig geprüft" heißt hier: **jeder Vertrag des Bestands wurde
+„Vollständig geprüft“ heißt hier: **jeder Vertrag des Bestands wurde
 geprüft.** Ein ungeprüfter Vertrag ist eine **Prüflücke** — weder
 bestanden noch fehlgeschlagen, sondern ungeprüft, und beim Lesen des
 Verdikts abzuziehen. Die Prüfmenge wird zusätzlich gegen die
@@ -172,7 +172,7 @@ blockieren offene Prüflücken die Abnahme.
 Inkonsistenzen der Lieferung — ein Geschäftsvorfall außerhalb der
 Stichtage, ein Wert trotz Abgang, ein Abgang ohne Vorfall, ein Vorfall
 auf dem falschen Track — sind **Befunde je Vertrag** und gehen an den
-Menschen. Erwartungswerte werden nie „korrigiert", damit ein Lauf grün
+Menschen. Erwartungswerte werden nie „korrigiert“, damit ein Lauf grün
 wird.
 
 ### 6.4 Artefakte und Nachweiskette
@@ -201,16 +201,19 @@ fachliches Urteil.
 
 ### 6.5 Gate A-M4: der Entscheid
 
-Die Abnahme ist ein menschlicher Entscheid der Projektleitung auf
+Die Abnahme ist ein menschlicher Entscheid des Verantwortlichen Aktuars auf
 Grundlage des Berichts; ein grüner Berichtslauf heißt „Vorlage
-vollständig", nicht „abgenommen". Der Entscheid wird als signierter
+vollständig“, nicht „abgenommen“. Der Entscheid wird als signierter
 Snapshot festgehalten und pinnt die Pflichtbelege, die sich aus dem
 **Fall-Scope** ergeben:
 
 | Scope | Pflichtbelege von A-M4 |
 |---|---|
-| Tarif | P-Q3-Protokoll, geltender A-Q1-Snapshot, **geltender A-M1-Snapshot**, P-K1-Belege je Generation |
-| Bestand | zusätzlich Bestandsprotokoll, vollständige Prüfrechnung, Abnahmebericht |
+| Tarif | P-Q3-Protokoll, geltende Annahmen von A-Q1 und A-M1, P-K1-Belege je Generation, der abgenommene Stand von Kern, T-Box und Tarifwerk |
+| Bestand | zusätzlich die Annahmen von A-M2 und A-M3, das Bestandsprotokoll (P-B1), die Migrationssuite, die Führungsprobe und der Abnahmebericht |
+
+Maßgeblich ist die Menge in `src/rechner_pipeline/models/belegrollen.py`
+(`BELEGROLLEN`); diese Tabelle gibt sie nur wieder.
 
 Die Annahme rechnet ihre Voraussetzungen nach: Sie hasht die
 gebundenen Nachweise auf ihrem aktuellen Stand neu, validiert
@@ -233,13 +236,13 @@ Stichtagen und die Nachfahr-Abweichungen. **Nicht** abgedeckt sind die
   Bestandsgruppen-Aggregate der Bilanz.
 * **$R_{conv}$-Statistik**: Der Konventionsresiduum-Pfad (Grundsatzdokumentation 9.13) ist
   nicht aktiviert; ob er für einen Bestand gefahren wird, ist eine
-  Entscheidung im Kapitel „Entscheidungen und offene Punkte".
+  Entscheidung im Kapitel „Entscheidungen und offene Punkte“.
 * **Überschussprojektion des Folgejahres**: als künftige Erweiterung
   benannt, nicht gebaut (ADR-010).
 
 ## 7 Aktuarielle Abnahme ($t_a$)
 
-*Rahmen: Projektseitige Ausgestaltung von **Grundsatzdokumentation 9.15** (Prüfebene „Aktuarieller Test"), **Grundsatzdokumentation 9.15** (Toleranzdefinition auf der Verteilung) und **Grundsatzdokumentation 9.15** (Verlaufs- und Geschäftsvorfalltests). Die Gate-Architektur dahinter entscheidet **ADR-010**; die Handgriffe stehen im Skill `aktuartest-durchfuehren`. Dieses Kapitel beschreibt das Verfahren: was geprüft wird, woran das Urteil hängt, welche Nachweise entstehen und wer entscheidet.*
+*Rahmen: Projektseitige Ausgestaltung von **Grundsatzdokumentation 9.15** (Prüfebene „Aktuarieller Test“, Toleranz auf der Verteilung, Verlaufs- und Geschäftsvorfalltests). Die Gate-Architektur dahinter entscheidet **ADR-010**; die Handgriffe stehen im Skill `aktuartest-durchfuehren`. Dieses Kapitel beschreibt das Verfahren: was geprüft wird, woran das Urteil hängt, welche Nachweise entstehen und wer entscheidet.*
 
 ### 7.1 Zweck und Abgrenzung
 
@@ -247,7 +250,7 @@ Der aktuarielle Test misst die **methodische Güte** der konstruktiven
 Neuberechnung — nicht die Bilanz. Er fragt: Rechnet das Zielsystem den
 einzelnen Vertrag an dem Punkt richtig, an dem das Quellsystem ihn
 zuletzt exakt gerechnet hat? Die finanzielle Frage („stimmt der Bestand
-am Übernahmestichtag in Summe?") ist Gegenstand des
+am Übernahmestichtag in Summe?“) ist Gegenstand des
 Migrationscontrollings (Kapitel 6).
 
 Die Trennung ist bewusst und in der Reihenfolge bindend: **Die
@@ -289,18 +292,17 @@ vollständiger Policenliste. Die Ziehung gehört zum Nachweis — ohne sie
 ließe sich später nicht nachvollziehen, welche Verträge den Test
 getragen haben.
 
-„Vollständig" heißt auf dieser Prüfebene: **die Stichprobe wurde
+„Vollständig“ heißt auf dieser Prüfebene: **die Stichprobe wurde
 vollständig abgearbeitet.** Die Nichtprüfung der Nicht-Stichprobe ist
 kein Befund, sondern die Definition des Tests. (Im Controlling heißt
 derselbe Begriff etwas anderes — dort ist jeder ungeprüfte Vertrag eine
 Prüflücke, Kapitel 6.)
 
-Der aktuelle Stand kennt genau ein Profil: **`vollbestand`** — die
-Stichprobe ist der ganze Bestand. Für Bestände in der Größenordnung der
-bisherigen Fälle ist das die fachlich richtige Wahl und zugleich der
-Randfall der Parametrisierung. Weitere Profile (geschichtet nach
-Historientyp, risikoorientiert) sind eine bewusste Erweiterungsstelle
-und je Profil eine Festlegung des Aktuariats mit ADR-Nachzug.
+Es gibt zwei Profile (ADR-010, Abschnitt 5): **`vollbestand`**, die
+Stichprobe ist der ganze Bestand, und **`geschichtet`**, je Historientyp
+eine feste Anzahl von Verträgen. Weitere Profile, etwa risikoorientiert,
+sind eine bewusste Erweiterungsstelle (`qa.stichprobe.PROFILE`) und je
+Profil eine Festlegung des Aktuariats mit ADR-Nachzug.
 
 ### 7.4 Was gemessen wird
 
@@ -323,7 +325,7 @@ Mittelwert bei großen Einzelmaxima ist ein Befund, keine Entwarnung.
 
 **Lesehilfe für die Vorlage.** Cent-Größenordnung in den Perzentilen ist
 Rundungsrauschen der Lieferung. Ein Maximum, das deutlich darüber liegt,
-verlangt eine **benannte Ursache je Cluster** — „Rundung" ist als
+verlangt eine **benannte Ursache je Cluster** — „Rundung“ ist als
 Erklärung nur für Cent-Beträge zulässig. Ein Cluster, dessen Verteilung
 sich von den anderen abhebt, zeigt auf seinen Historientyp: dort ist die
 Übergangsbehandlung zu prüfen, nicht der einzelne Vertrag.
@@ -338,7 +340,7 @@ sich von den anderen abhebt, zeigt auf seinen Historientyp: dort ist die
 | Konstruktionsfehler des Auftrags | Unterjähriges $t_a$, unbekannte Größe, undefinierte Zustandskombination | Lauf bricht ab; der Auftragsbau ist zu korrigieren, nicht das Ergebnis |
 
 Toleranzen kommen aus einer Quelle und werden nie aufgeweicht, „um grün
-zu werden". Stellt sich eine Toleranzfrage, ist sie eine fachliche
+zu werden“. Stellt sich eine Toleranzfrage, ist sie eine fachliche
 Entscheidung des Aktuariats und kein Parameter des Laufs.
 
 ### 7.6 Artefakte und Nachweiskette
@@ -372,7 +374,7 @@ Einzelvergleich ist damit ausgeschlossen.
 Der Test **entscheidet nichts**. Die aktuarielle Abnahme ist ein
 menschlicher Entscheid des **Verantwortlichen Aktuars** (Grundsatzdokumentation 9.15,
 § 141 VAG) auf Grundlage der Vorlage. Ein grüner Testlauf heißt „Vorlage
-vollständig und Test bestanden", nicht „abgenommen".
+vollständig und Test bestanden“, nicht „abgenommen“.
 
 Der Entscheid wird als unveränderlicher, signierter Snapshot
 festgehalten (ADR-008). Dabei gilt:
@@ -387,7 +389,8 @@ festgehalten (ADR-008). Dabei gilt:
   auch über einem roten Test. Ein Agent kann an diesem Gate
   ausschließlich ablehnen.
 * **Gate A-M4 verlangt die geltende A-M1-Annahme** auf demselben Eingangs-,
-  A-Box- und Systemstand und pinnt sie als Pflichtbeleg. Ändert sich der
+  A-Box- und Systemstand und pinnt sie als Pflichtbeleg; im Bestands-Scope
+  ebenso die Annahmen von A-M2 und A-M3. Ändert sich der
   Stand, ist die A-M1-Annahme nicht mehr geltend — der Test wird auf dem
   neuen Stand wiederholt und neu entschieden.
 * Die **Rückschleife ist zulässig**: Eine Ablehnung an A-M4 führt zurück
@@ -396,18 +399,16 @@ festgehalten (ADR-008). Dabei gilt:
 
 ### 7.8 Deckungsgrad gegenüber Grundsatzdokumentation 9.15
 
-Der heutige Stand deckt Grundsatzdokumentation 9.15 (Prüfebene, Zeitbezug, Verantwortung)
-und die Auswertungsform aus Grundsatzdokumentation 9.15 (Verteilung statt Mittelwert)
-vollständig ab. **Nicht** abgedeckt sind:
+Aus Grundsatzdokumentation 9.15 deckt der heutige Stand Prüfebene,
+Zeitbezug, Verantwortung und die Auswertung als Verteilung statt
+Mittelwert vollständig ab. Verlaufstest (A-M2) und Geschäftsvorfalltest
+(A-M3) sind eigene Abnahmen und gehen A-M4 im Bestands-Scope voraus; dieses
+Kapitel beschreibt A-M1. Eine A-M1-Annahme belegt die Stichtagstreue am
+Rechenpunkt. Nach Grundsatzdokumentation 9.15 gilt die Methode ohne
+Verlaufstests nicht als abgenommen; Stichtagstreue allein ist notwendig,
+nicht hinreichend.
 
-* **Grundsatzdokumentation 9.15 — Verlaufs- und Geschäftsvorfalltests.** Vorwärtsrechnung
-  über mehrere Jahre gegen eine Schattenrechnung des Quellsystems und
-  die GV-Testmatrix je Vertragskonstellations-Cluster gibt es auf dieser
-  Prüfebene nicht. Grundsatzdokumentation 9.15 ist hier eindeutig: *„Ohne Verlaufstests gilt
-  die Methode als nicht abgenommen; Stichtagstreue allein ist notwendig,
-  nicht hinreichend."* Eine A-M1-Annahme auf dem heutigen Stand belegt
-  also die Stichtagstreue am Rechenpunkt — sie ersetzt die Verlaufstests
-  nicht und darf nicht als deren Erfüllung gelesen werden.
+**Nicht** abgedeckt sind:
 * **Toleranzen auf der Verteilung als Urteilskriterium.** Die Verteilung
   wird ausgewiesen, aber das maschinelle Urteil hängt heute an
   Toleranzen je Einzelwert. Eine Schwelle auf Maximum oder hohem
@@ -421,13 +422,13 @@ vollständig ab. **Nicht** abgedeckt sind:
   Nachweiskette ändern.
 * **Floor-Prüfungen** (§ 169 VVG, Grundsatzdokumentation 9.10) als Teil des Tests.
 
-Diese vier Punkte sind der Arbeitsvorrat dieser Prüfebene. Sie stehen
+Diese drei Punkte sind der Arbeitsvorrat dieser Prüfebene. Sie stehen
 hier, damit eine Abnahme weiß, was sie abnimmt.
 
 ⟨TODO aus dem Gerüst, noch offen: Clusterdefinition nach
 GV-Historientyp aus Lieferobjekt 2; Ausreißer-Klärungsworkflow mit
-Zugriff auf die Quellhistorie; Stichprobenkonzept jenseits des Profils
-`vollbestand`; Form des Abnahmeberichts an den Verantwortlichen
+Zugriff auf die Quellhistorie; Stichprobenkonzept jenseits der
+Profile `vollbestand` und `geschichtet`; Form des Abnahmeberichts an den Verantwortlichen
 Aktuar⟩
 
 ## 8 Fehler- und Klärungsprozess
@@ -436,16 +437,16 @@ Abgrenzung bindend gemäß Grundsatzdokumentation 9.4: Die Korrekturschicht abso
 
 ## 9 Archiv und Auskunftssystem
 
-Anforderungen gemäß Grundsatzdokumentation 9.14 (Rolle „Archiv") und Grundsatzdokumentation 9.14: read-only, dauerhaft, auskunftsfähig für Aufbewahrungspflichten, Auskunftsersuchen und Rückabwicklungsfälle inkl. der dafür nötigen Wertehistorie. Keine Anforderung an den RK. ⟨TODO: Lösungsarchitektur, Auskunftsumfang und -fristen, Betriebsmodell, Löschkonzept⟩
+Anforderungen gemäß Grundsatzdokumentation 9.14 (Rolle „Archiv“) und Grundsatzdokumentation 9.14: read-only, dauerhaft, auskunftsfähig für Aufbewahrungspflichten, Auskunftsersuchen und Rückabwicklungsfälle inkl. der dafür nötigen Wertehistorie. Keine Anforderung an den RK. ⟨TODO: Lösungsarchitektur, Auskunftsumfang und -fristen, Betriebsmodell, Löschkonzept⟩
 
 ## 10 Ablaufplanung
 
-⟨TODO: Migrationsstrategie (Big Bang vs. Wellen), Generalproben, Parallellauf/Schattenbetrieb mit Delta-Reporting (Grundsatzdokumentation 9.15), Cut-over-Drehbuch, Rückfallszenario⟩
+⟨TODO: Migrationsstrategie (Umstellung zu einem Stichtag oder in Wellen), Generalproben, Parallellauf mit Ausweis der Abweichungen (Grundsatzdokumentation 9.15), Umstellungsplan, Rückfallszenario⟩
 
 ## 11 Entscheidungen und offene Punkte
 
 | Nr | Gegenstand | Bezug | Status |
 |---|---|---|---|
 | E1 | GV-Metadatenliste dauerhaft im Zielbestand vs. Verbleib im Migrations-Staging | Grundsatzdokumentation 9.16 | Standard: **Archiv der PLV** (Entscheidung 2026-08-31; das Quellsystem wird stillgelegt und als Archiv genutzt — die Übernahme legt die Liste unter `quellarchiv/` beim Zielbestand ab). Abweichung je Bestand begründen. |
-| E2 | Aktivierung des $R_{\mathrm{conv}}$-Pfads (Zweitverankerung am $t_0$) für diesen Bestand | Grundsatzdokumentation 9.13 | Standard: **aktivieren, sobald systematische Konventionsdifferenzen bestehen** (Entscheidung 2026-08-31: getrennt erfassen — die Schichtdatei trägt je Police `hist` und `conv` mit eigenem `monate_t0`). Der plv-va legt die Klassifikation je Cluster zur Zeichnung vor. |
+| E2 | Aktivierung des $R_{\mathrm{conv}}$-Pfads (Zweitverankerung am $t_0$) für diesen Bestand | Grundsatzdokumentation 9.13 | Standard: **aktivieren, sobald systematische Konventionsdifferenzen bestehen** (Entscheidung 2026-08-31: getrennt erfassen — die Schichtdatei trägt je Police `hist` und `conv` mit eigenem `monate_t0`). Die Klassifikation je Cluster zeichnet der Verantwortliche Aktuar. |
 | E3 | ⟨…⟩ | ⟨…⟩ | ⟨…⟩ |

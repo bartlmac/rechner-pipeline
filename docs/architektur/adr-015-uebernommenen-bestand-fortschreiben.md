@@ -103,7 +103,7 @@ ist ein Startpunkt, kein anderes Modell.
 * Der Zufallsstrom eigener Verträge ist unberührt (``ab_jahr`` 0
   verbraucht dieselben Draws in derselben Reihenfolge) — bestehende
   Läufe liefern dieselben Zahlen.
-* ``cli_fortschreibung`` nimmt ``--übernahme <verzeichnis>`` (das
+* ``cli_fortschreibung`` nimmt ``--uebernahme <verzeichnis>`` (das
   Erzeugnis von ``gates.bestand_uebernehmen``) und fährt eigenen und
   übernommenen Bestand in einem Lauf; die Übernahmebuchungen stellt es
   dem Fortschreibungs-Journal voran. Dazu ``--merkmale``; ohne die

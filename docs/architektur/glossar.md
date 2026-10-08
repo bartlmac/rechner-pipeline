@@ -10,16 +10,16 @@ Die Aussagen über einen konkreten Tarif, die ein Fall aus seinen Quellen
 gewinnt. Jede Aussage nennt ihre Herkunft: Datei, Prüfsumme, Fundstelle.
 Das Vokabular dafür liefert die [T-Box](#t-box).
 
-### Abnahme
-
-Ein menschliches [Gate](#gate): Ein Mensch nimmt einen Stand an oder lehnt
-ihn ab und zeichnet seinen Entscheid.
-
 ### Ablage
 
 Das Datenverzeichnis, in dem die PLV Tag für Tag geführt wird: der Bestand,
 das Journal der Geschäftsvorfälle, die [Abschlüsse](#abschluss) und die
 Berichte.
+
+### Abnahme
+
+Ein menschliches [Gate](#gate): Ein Mensch nimmt einen Stand an oder lehnt
+ihn ab und zeichnet seinen Entscheid.
 
 ### Abschluss
 
@@ -30,9 +30,11 @@ Abschlüsse nicht.
 ### Agent
 
 Ein KI-Werkzeug (Claude Code oder Codex) in einer festgelegten Rolle, etwa
-Aktuariat, Architektur oder Rechenkern. Agenten bereiten vor und legen
-vor. Zeichnen dürfen sie nicht; ein menschliches Gate können sie nur
-ablehnen. Die Rollen beschreibt [skill-architektur.md](skill-architektur.md).
+Aktuariat, Architektur oder Betrieb. Agenten bereiten vor und legen vor.
+Eine Abnahme zeichnen dürfen sie nicht, ein menschliches Gate können sie
+nur ablehnen. Zeichnen dürfen sie nur Urheberschaft, etwa den Ankersatz
+eines Stands-Pakets. Die Rollen beschreibt
+[skill-architektur.md](skill-architektur.md).
 
 ### Auslieferung
 
@@ -58,14 +60,23 @@ Eine Übernahme, von der Lieferung bis zum Zugang in die Ablage. Ein Fall
 lebt in einem Arbeitsbereich `faelle/<name>/` mit drei Teilen: `eingang/`
 (die registrierte Lieferung, unveränderlich), `abgeleitet/`
 (reproduzierbare Ergebnisse) und `entscheide/` (die gezeichneten Belege).
-Der Arbeitsbereich liegt nicht im Repository
-([ADR-002](adr-002-fall-arbeitsbereich.md)).
+Der Arbeitsbereich liegt im Klon, ist aber nicht eingecheckt
+([ADR-002](adr-002-fall-arbeitsbereich.md)). Gelöscht wird ein Fall nie;
+nicht mehr gebrauchte Fälle wandern nach `faelle/archiv/`.
 
 ### Fallauftrag und Fallabbruch
 
-Ein Fall beginnt mit dem Auftrag des Vorstands (`A-M6`). Scheitert er,
-endet er mit dem Abbruch, den die Programmleitung zeichnet (`A-M5`)
+Den Fall beauftragt der Vorstand (`A-M6`), nachdem die Lieferung
+registriert ist. Scheitert der Fall, endet er mit dem Abbruch, den die
+Programmleitung zeichnet (`A-M5`)
 ([ADR-026](adr-026-lebenslauf-eines-falls.md)).
+
+### Führungsprobe
+
+Prüft, ob der geführte Bestand mit derselben Rechnung arbeitet wie die
+Prüfstrecke der Abnahmen: den Anfangszustand je Vertrag und jede Buchung
+der Fortschreibung bis zum Folgestichtag (`gates.fuehrungsprobe`). Im
+Bestands-Scope ist sie ein Pflichtbeleg der Migrationsabnahme.
 
 ### Gate
 
@@ -104,10 +115,20 @@ Lieferungen der Vorführung liegen unter `lieferungen/`.
 
 ### Linie
 
-Ein Verzeichnis außerhalb jedes Falls. Es trägt die Fassungen der
+Ein Verzeichnis außerhalb jedes Falls und außerhalb des Repositorys (in
+einer Welt `<welt>/linie`). Es trägt die Fassungen der
 [Zeichnungsordnung](#zeichnungsordnung) in ihrer Reihenfolge und die
-[Erstabnahmen](#erstabnahme). Jeder Entscheid nennt die Linie, auf die er
-sich bezieht.
+[Erstabnahmen](#erstabnahme). Jede Fassung heißt **Glied**; das jüngste
+Glied ist die **Spitze**. Jedes Glied zeichnet der Vorstand, die
+**Wurzelrolle**. Jeder Entscheid nennt die Linie und das Glied, unter dem
+er gezeichnet wurde.
+
+### Mandat
+
+Das Dokument, mit dem die Leitung einer [Vorführung](#vorführung) einer
+simulierten Rolle das Zeichnen überträgt. Seine Prüfsumme steht in jeder
+Zeichnung dieser Rolle (Vorlage `deploy/welt/mandat.vorlage.txt`,
+[ADR-018](adr-018-rollenmodell-und-schluesselklassen.md)).
 
 ### Migrationsabnahme
 
@@ -116,6 +137,13 @@ Abnahmebericht: das Deckungskapital an zwei Stichtagen und die
 Geschäftsvorfälle dazwischen, geprüft gegen die gelieferten Erwartungswerte.
 Vorher stehen drei aktuarielle Tests je Vertrag: Stichtagstest (`A-M1`),
 Verlaufstest (`A-M2`) und Geschäftsvorfalltest (`A-M3`).
+
+### Migrationssuite
+
+Die Abnahmetests des Migrationscontrollings, auf denen die
+Migrationsabnahme steht: Deckungskapital an zwei Stichtagen, Jahresbeitrag
+und Geschäftsvorfälle je Vertrag, gegen die gelieferten Erwartungswerte
+(`qa.migrationssuite`).
 
 ### Nachfahren
 
@@ -141,18 +169,42 @@ Leben gibt ihren Bestand ab.
 Die Herkunft einer Aussage oder eines Ergebnisses: aus welcher Datei mit
 welcher Prüfsumme, von welchem Werkzeug, auf welchem Code-Stand.
 
+### Prüfrunde
+
+Eine unabhängige Durchsicht eines Bauabschnitts vor dem Merge. Prüfer
+suchen Fehler, jeder Fund wird gegen den Code bestätigt oder widerlegt, und
+bestätigte Funde werden behoben. Die Runden tragen Buchstaben (G bis J),
+ihre Funde Buchstabe und Nummer (etwa G14). Ältere Durchsichten des
+Gesamtstands tragen ein T und eine Nummer (etwa T22), ihre Funde
+zusätzlich eine laufende Nummer (Befund T22-02); die Runden G bis J
+gehören zur Durchsicht T27. Unter diesen Kennungen verweisen ADRs, Code
+und Tests auf die Regeln, die eine Runde hinzugefügt hat.
+
 ### Registrieren
 
 Der einzige Weg einer Datei in einen Fall.
 `python -m rechner_pipeline.fall registrieren` kopiert sie nach `eingang/`,
 hält ihre Prüfsumme fest und setzt sie schreibgeschützt.
 
+### Regie
+
+Die Spielleitung einer [Vorführung](#vorführung): Drehbücher und die
+Auflösungen der Fälle. Sie liegt nicht im Repository.
+
+### Ring
+
+Die Schlüssel, die ein Aufruf mitbringt (`--freigabe-schluessel`,
+mehrfach): zuerst die, mit denen er fremde Signaturen prüft, zuletzt der
+zeichnende. Die Signatur ist symmetrisch (HMAC): Wer einen Schlüssel im
+Ring hält, kann mit ihm auch zeichnen.
+
 ### Schlüssel
 
 Jede Rolle zeichnet mit einem eigenen Schlüssel. Seine Klasse sagt, wer
-dahinter steht: ein Mensch (`mensch`), eine Vorführung (`simulation`) oder
-ein Agent (`agent`). In der Vorführung tragen die menschlichen Rollen die
-Klasse `simulation`, und jeder Beleg sagt das
+dahinter steht: ein Mensch (`mensch`), eine Vorführung (`simulation`), ein
+Agent (`agent`) oder der Tageslauf des Betriebs (`betrieb`). In der
+Vorführung tragen die menschlichen Rollen die Klasse `simulation`, und
+jeder Beleg sagt das
 ([ADR-018](adr-018-rollenmodell-und-schluesselklassen.md)).
 
 ### Spez
@@ -184,19 +236,29 @@ Tarifpläne unter `docs/tarifplaene/` und die eigenen Generationen in den
 Bestands-Configs. Abgenommen wird es am Gate `A-T1`, gebunden über
 Prüfsummen.
 
+### Vorführung
+
+Ein Fall oder Betrieb, in dem die menschlichen Rollen simuliert sind, etwa
+für die Vorzeigeseite oder beim [Nachfahren](#nachfahren). Die Rollen
+zeichnen dann mit Schlüsseln der Klasse `simulation` unter einem
+[Mandat](#mandat).
+
 ### Vorverdichtung
 
-Der erste, deterministische Schritt je Quelle (Gate `P-Q1`). Inhalte aus
-Excel, Word oder PDF werden in lesbare Teile zerlegt, bevor ein Agent sie
-liest.
+Der erste, deterministische Schritt je Quelle: Excel-Mappen über das Gate
+`P-Q1` (`gates.extract`), Word und Text-PDF über
+`quellen.tarifplan_staging`, CSV-Bestandsabzüge über
+`quellen.bestand_profil`. Die Inhalte werden in lesbare Teile zerlegt,
+bevor ein Agent sie liest.
 
 ### Welt
 
 Alles, was neben dem Code nötig ist, damit die PLV läuft und ein Fall
 geführt werden kann: die [Ablage](#ablage), die [Linie](#linie), die
 Schlüssel der Rollen und die Zeichnungsordnung. Je Fall gibt es eine eigene
-Welt, damit er wiederholbar bleibt. Aufgestellt wird sie mit den Routinen
-unter `deploy/welt/`.
+Welt, damit kein Fall die Laufzeit eines anderen berührt. Aufgestellt wird
+sie mit den Routinen unter `deploy/welt/`. Der Arbeitsbereich des Falls
+liegt nicht in der Welt, sondern im Klon.
 
 ### Zeichnen
 
@@ -212,7 +274,8 @@ zeichnen darf. Ihre Fassungen stehen in der [Linie](#linie)
 
 ### Zugang
 
-Der Weg des übernommenen Bestands in die [Ablage](#ablage): eine Probe auf
-einer Kopie, die Abnahme durch den Betrieb (`A-B2`), das Neuaufsetzen der
-Ablage und die Abnahme ihres Anfangsbestands (`A-B3`)
-([ADR-022](adr-022-zugangsabnahme-a-b2.md)).
+Der Weg des übernommenen Bestands in die [Ablage](#ablage): eine Probe (auf
+einer Kopie der laufenden Ablage; wird die Ablage neu aufgesetzt, auf einem
+leeren Verzeichnis), die Abnahme durch den Betrieb (`A-B2`), danach die
+Registrierung oder das Neuaufsetzen der Ablage mit der Abnahme ihres
+Anfangsbestands (`A-B3`) ([ADR-022](adr-022-zugangsabnahme-a-b2.md)).

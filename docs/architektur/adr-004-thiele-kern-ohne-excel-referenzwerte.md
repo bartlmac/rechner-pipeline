@@ -44,7 +44,7 @@ eine historische Workbook.
    Barwerte). Einziger Zweck ist der Kreuz-Check der Rechenschienen
    (`qa/ueberleitung`, Toleranz-Überleitung). Kein Modul des Zielkerns
    importiert ihn.
-3. **Die 617/617-Paritaet ist Geschichte des Übersetzungsakts.** Der
+3. **Die 617/617-Parität ist Geschichte des Übersetzungsakts.** Der
    Dauertest und die Fixtures (`tests/fixtures/kern_klv/`) sind
    entfernt; Doku nennt sie nur noch als historischen
    Übersetzungsbeleg. Festgeschrieben ist der Kern über
@@ -75,7 +75,7 @@ eine historische Workbook.
 
 ## Verworfene Alternative
 
-Kommutation als "tote" Schicht im Kern belassen und nur den 617-Test
+Kommutation als „tote“ Schicht im Kern belassen und nur den 617-Test
 streichen: ließe die irreführende Architekturaussage stehen, der
 Kern rechne auf Kommutationswerten — genau die Verwechslung von
 Übersetzungshistorie und Zielbild, die dieses ADR beendet.

@@ -8,8 +8,7 @@
 
 Kurzanleitung für alle, die den Lauf vom September mit dem Repository und
 dem Paket des Laufs wiederholen wollen. Wer den alten Lauf exakt sehen
-will, findet hier den Stand, die Umgebung und einen Ablauf, der in etwa
-zehn Minuten durchläuft.
+will, findet hier den Stand, die Umgebung und den Ablauf.
 
 ## Der Stand
 
@@ -50,7 +49,7 @@ Klon, bevor ein Container startet:
 Der Container aus `ONBOARDING.md` ist der Weg. Er bringt die Abhängigkeiten
 mit, der Code kommt aus dem ausgecheckten Baum. Das Image einmal auf dem
 Hauptzweig bauen (der hat alle Pins, auch pypdf, das bei 4b1abf04 noch in
-keiner Pin-Datei stand), dann den alten Stand auschecken und den
+keiner Pin-Datei stand), dann den alten Stand holen (`git checkout`) und den
 Container mit Baum, Schlüsselverzeichnis und Paket starten:
 
     cd rechner-pipeline
@@ -80,7 +79,7 @@ Zeichnungen A-M1 bis A-M4. Aufruf aus `/workspace` im Container:
 
 Es läuft unter einer Minute. Am Ende druckt es die Kennzahlen; das
 vollständige Protokoll liegt in `faelle/baldrian-lauf2-w/wiederholen.log`.
-Unterwegs erscheinen Warnungen "Anfangszustand nicht ableitbar" für fünf
+Unterwegs erscheinen Warnungen „Anfangszustand nicht ableitbar“ für fünf
 beitragsfrei gelieferte Verträge ohne Ankerwert; sie gehören zum Lauf und
 ändern die Kennzahlen nicht. Wer die einzelnen Kommandos sehen will, liest
 das Skript. Diese Werte müssen herauskommen:
@@ -96,7 +95,7 @@ das Skript. Diese Werte müssen herauskommen:
 | Abnahmebericht | bestanden, `migrationsabnahme.html` beginnt mit e7fa67f0 |
 
 Die Residuen kommen bit-gleich heraus, die beiden Dateien byte-gleich. Wir
-haben das auf frischen Auscheckungen nachgemessen, und ein Dritter hat den
+haben das in frischen Klonen nachgemessen, und ein Dritter hat den
 Ablauf danach in einem frischen Klon nachgefahren.
 
 ## Zwei Policen

@@ -31,13 +31,16 @@ dafür einsteht. Diese Rollen gab es schon: `mensch/betrieb` zeichnet
    (ADR-020), ihre Differenz ist also eine Rechnung, keine Messung mit
    Rauschen.
 2. **Die Differenz der beiden Abschlüsse ist der Beleg.** Sie muss genau
-   der abgenommene Bestand sein: am Zugangsstichtag Anzahl,
-   Versicherungssumme, Deckungskapital und Jahresbeitrag wie in Übernahme
-   und Abnahme; am Folgetermin, soweit er im Fenster liegt, dieselben
-   Größen wie in der Migrationssuite; im Bewegungskonto Anfang + Zugang −
-   Abgang = Ende, mit dem Zugang gleich der Zahl der übernommenen Verträge,
-   und keine Buchung, die sich zwischen beiden Läufen unterscheidet, außer
-   denen der übernommenen Verträge. Der Beleg (`zugangsprobe.json`) bindet
+   der abgenommene Bestand sein:
+   - am Zugangsstichtag: Anzahl, Versicherungssumme, Deckungskapital und
+     Jahresbeitrag wie in Übernahme und Abnahme;
+   - am Folgetermin, soweit er im Fenster liegt: dieselben Größen wie in
+     der Migrationssuite;
+   - im Bewegungskonto: Anfang + Zugang − Abgang = Ende, mit dem Zugang
+     gleich der Zahl der übernommenen Verträge; keine Buchung unterscheidet
+     sich zwischen beiden Läufen, außer denen der übernommenen Verträge.
+
+   Der Beleg (`zugangsprobe.json`) bindet
    den Stand der Ablage, den Eingang, den A-M4-Snapshot, Manifest und
    Journal beider Läufe, Config, Kern-Version und Systemstand und nennt je
    Größe Soll, Ist und Differenz.
@@ -244,7 +247,7 @@ Die Tests (`tests/test_abnahme_rolle_klasse.py`,
 `tests/test_neuaufsetzen_vorbedingungen_klasse.py`) greifen je Gate und
 Lesestelle an (Ordnung ohne das Gate, neu signiertes Rollenfeld oder neu
 signierte Klasse, abweichend benannte Rolle, Schlüssel ohne Rolle), jeweils
-mit Positivkontrolle, und halten jedes lesende Öffnen unter `entscheide/`
+jeweils mit einem Gegenbeispiel, das die Prüfung auslösen muss, und halten jedes lesende Öffnen unter `entscheide/`
 gegen die erlaubten Leser.
 
 ## Nachtrag 2026-10-01: die Probe vergleicht das Deckungskapital

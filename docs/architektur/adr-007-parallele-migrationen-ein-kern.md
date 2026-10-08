@@ -1,4 +1,4 @@
-# ADR-007: Parallele Migrationen in einem Kern — Trunk, knotengebundene Inkremente, Knoten-Lebenszyklus
+# ADR-007: Parallele Migrationen in einem Kern — ein Hauptzweig, knotengebundene Inkremente, Knoten-Lebenszyklus
 
 **Status:** angenommen am 2026-08-18 (Maintainer).
 
@@ -10,7 +10,7 @@ mehr) unfertige Migrationen im selben Zielsystem unterschieden werden,
 ohne dass der Betrieb im Chaos endet.
 
 Eine naheliegende, aber falsche Verengung stand im Raum (und klingt in
-ADR-006 an, wo der Präzedenzfall TG2012 -> TG2015 als "Parametrierung"
+ADR-006 an, wo der Präzedenzfall TG2012 -> TG2015 als „Parametrierung“
 beschrieben ist): Migration sei im Wesentlichen Parametrierung des
 vorhandenen Kerns. Das gilt nur für den konstruierten Sonderfall. Der
 reale Fall ist das Gegenteil: Ein übernommener Bestand bringt
@@ -21,7 +21,7 @@ des Kerns, die sich über Monate zieht, während parallel die nächste
 
 Randbedingungen:
 
-* Team-Beschluss "Zielsystem führt": Ein monolithischer Kern
+* Team-Beschluss „Zielsystem führt“: Ein monolithischer Kern
   (DAV-Standardansatz). Forks des Kerns je Migration sind damit
   ausgeschlossen.
 * Auch ein langlebiger Git-Branch je Migration wäre keine Lösung:
@@ -34,7 +34,7 @@ Randbedingungen:
 
 ## Entscheidung
 
-**Regel 1 — Ein Kern, ein Trunk.** Es gibt weder Kern-Forks noch
+**Regel 1 — Ein Kern, ein Hauptzweig.** Es gibt weder Kern-Forks noch
 langlebige Branches je Migration. Branches bleiben das Arbeitsvehikel,
 aber je Inkrement (Lebensdauer Tage, nicht Monate).
 
@@ -42,10 +42,10 @@ aber je Inkrement (Lebensdauer Tage, nicht Monate).
 Migration erweitert den Kern um ihre Knoten (neue Generationen, im
 A-O1-Fall neue Familien). Neuer knotengebundener Code ist für alle
 anderen Fälle inert: Er wird erst wirksam, wenn die Spez eines Falls
-ihn parametriert. Die Frage "zu welcher unfertigen Migration gehört
-dieser Baustein?" beantwortet der Knoten, nicht die Branch-Historie.
+ihn parametriert. Die Frage „zu welcher unfertigen Migration gehört
+dieser Baustein?“ beantwortet der Knoten, nicht die Branch-Historie.
 
-**Regel 3 — Inkremente landen klein und früh auf dem Trunk, und jede
+**Regel 3 — Inkremente landen klein und früh auf dem Hauptzweig, und jede
 Landung beweist die Nicht-Berührung der anderen Fälle.** Ein
 Inkrement darf nur landen, wenn die Gesamt-Suite grün ist —
 einschließlich der Referenzwert- und P-K1-Läufe aller anderen offenen und
@@ -81,11 +81,11 @@ arbeiten auf `faelle/<name>/`, eine Ebene tief).
   additiv, provenienzpflichtig, und gleicher Name mit anderen Werten
   ist ein harter Fail-fast — das serialisiert konkurrierende Fälle
   automatisch.
-* Der Knoten-Status (Regel 4) ist in der T-Box noch nicht umgesetzt;
-  Umsetzung als offener Punkt nach dem 2026-08-19 (zusammen mit den
-  Tarifplan-Drift-Tests).
+* Der Knoten-Status (Regel 4) ist bis heute nicht gebaut: Die T-Box
+  kennt keinen Status `in_migration` oder `abgenommen` (Stand
+  2026-10-08).
 * Der erste Baldrian-Fall (`baldrian-klv-tg2015`) wird als Vorlauf
   archiviert; der offene Fall zur Generation `klv/tg2015` ist
   `baldrian-uebernahme`.
-* ADR-006 bleibt gültig; sein Satz zur "Parametrierung" beschreibt den
+* ADR-006 bleibt gültig; sein Satz zur „Parametrierung“ beschreibt den
   dortigen Präzedenzfall, nicht den Normalfall einer Migration.

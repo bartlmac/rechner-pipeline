@@ -13,7 +13,7 @@ Ontologie-Knoten, Erfahrungsannahmen (3. Ordnung), Seeds und Volumina.
 
 Diese Dateien sind prozess- und test-getragen: die Test-Suite lädt sie
 direkt, `impact` führt sie als Daten-Bindung, und der Bestandsbericht
-läuft auf ihnen (siehe `ONBOARDING.md`, Abschnitt 3). Format:
+läuft auf ihnen (siehe `docs/simulation/bestandserzeugung.md`). Format:
 `src/rechner_pipeline/bestand/config.py`.
 
 ## Der Bestand entsteht aus dem Zugangsstrom — es gibt keinen gezogenen Anfangsbestand
@@ -78,11 +78,11 @@ Fachentscheidungen des Konzepts, Abschnitt 10) und in der Config als
 solche markiert.
 
 `nummernkreis = k` legt den Nummernkreis einer Generation fest: Police-Nummern
-`k * 10 Mio + 1 ..`, mit festen Abschnitten fuer Batch, Jahresneuzugang und
-Tagesneugeschaeft; auch die Seeds der Erzeuger haengen daran. Er ist eine
-Eigenschaft der Generation, nicht ihrer Position in der Datei (Review T22-09:
-vorher aenderte eine umsortierte Liste die Identitaet jeder Police und damit
+`k * 10 Mio + 1 ..`, mit festen Abschnitten für Batch, Jahresneuzugang und
+Tagesneugeschäft; auch die Seeds der Erzeuger hängen daran. Er ist eine
+Eigenschaft der Generation, nicht ihrer Position in der Datei (Befund T22-09:
+vorher änderte eine umsortierte Liste die Identität jeder Police und damit
 jede Ereignishistorie). Entweder alle Generationen tragen ihn oder keine; ohne
-ihn gilt die Position wie in der Erstfassung. `bestand_gesamt.toml` traegt ihn
-explizit in der bisherigen Reihenfolge, die bestehenden Bestaende sind damit
+ihn gilt die Position wie in der Erstfassung. `bestand_gesamt.toml` trägt ihn
+explizit in der bisherigen Reihenfolge, die bestehenden Bestände sind damit
 bitidentisch.

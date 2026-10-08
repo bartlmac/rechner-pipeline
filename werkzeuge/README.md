@@ -1,11 +1,15 @@
 # Werkzeuge der Vorführung
 
-Beobachtungshilfen, **kein Bestandteil der Migrations-Pipeline**. Sie
-lesen ein Herstellerformat (Claude-Code-Sitzungstranskripte) und stellen
-Läufe dar; die Fachlichkeit liegt unter `src/`. Die Trennung ist
-absichtlich sichtbar — die allgemeine Frage, was versionierter
-Repo-Bestandteil wird und was eine gekennzeichnete Beispielandockung
-bleibt, steht in `dev-docs/offene-punkte.md`.
+Die Werkzeuge, mit denen die Webseite gebaut wird, und Hilfen zum
+Beobachten eines Laufs (Gegenstand 5 nach ADR-027). Vier davon,
+`vorfuehrung.py`, `lagebild.py`, `aufzeichnung.py` und `sitzungsprobe.py`,
+gehören zum Migrationssystem: Sie dienen dem Live-Lauf eines Falls. Die
+Werkzeuge lesen und stellen dar; die Fachlichkeit liegt unter `src/`.
+`verlaufsprotokoll.py` liest dabei ein Format eines Herstellers
+(Sitzungstranskripte von Claude Code). Die allgemeine Frage, was
+versionierter Bestandteil des Repositorys wird und was eine
+gekennzeichnete Beispielanbindung bleibt, steht in
+`dev-docs/offene-punkte.md`.
 
 | Werkzeug | Zweck |
 |---|---|
@@ -22,7 +26,8 @@ bleibt, steht in `dev-docs/offene-punkte.md`.
 | `fallbericht.py` | Darstellung aus dem Datenmodell rendern |
 | `vorschau.py` | den Entwurf der Seite lokal ansehen, vor dem Schieben |
 | `seitenpruefung.py` | die gebaute Seite prüfen: Verweise, Paket gegen `stand.json`, jede angezeigte Kennung mit Quelle, Breite auf dem Telefon (läuft im Bau mit) |
-| `schau.py` | Screenshots der gebauten Vorschau, breit und schmal (braucht Playwright) |
+| `schau.py` | Screenshots der gebauten Vorschau in drei Breiten (1280, 720 und 390 px; braucht Playwright) |
+| `bereinigung.py` | veröffentlichte Belege von Pfaden des Rechners befreien und die gebaute Seite auf solche Pfade und gesperrte Wörter prüfen |
 | `naht.py` | meldet Bausteine, die ohne Abstand aneinanderkleben (braucht Playwright) |
 | `vorfuehrung.py` | einen Fall in tmux führen: Cockpit und je Agentenrolle ein Fenster |
 | `lagebild.py` | wo ein Fall steht — die Anzeigen der Vorführung, nur lesend |
@@ -56,22 +61,27 @@ zurückbleiben; vor Sichtung und Veröffentlichung einmal laufen
 lassen:
 
 ```
-python werkzeuge/auftritt.py --fall faelle/baldrian-uebernahme \
+python werkzeuge/auftritt.py --fall faelle/baldrian-klv-tg2015-fall3 \
     --name baldrian \
     --abzug baldrian_bestandsabzug_2026-01-01.csv \
     --abzug baldrian_bestandsabzug_2027-01-01.csv \
+    --stands-paket runs/stands-paket \
+    --anker faelle/baldrian-klv-tg2015-fall3/abgeleitet/anker/anker.jsonl \
     [--verlauf verlauf.md]
 ```
+
+Den Fall `faelle/baldrian-klv-tg2015-fall3` legt das Nachfahren an
+(README, Schnellstart); Stands-Paket und Anker entstehen mit dem Export
+weiter unten.
 
 `--name` ist das URL-Segment unter `migrationen/`, so wie die
 Unternehmensseiten den Fall verlinken. Die Schritte der Kette bleiben
 einzeln aufrufbar (`falldaten.py`, `vorzeigeseite.py
 --als-unterseite`, `unternehmensseite.py --daten`, `vorschau.py`).
 
-Die Kennzahlen der Quellseiten sind `{{...}}`-Platzhalter und werden
-beim Bau aus dem falldaten-Modell des Falls aufgelöst — generiert
-statt gepflegt: Eine Zahl, die niemand abtippt, kann dem Fall nicht
-davonlaufen. Ein unauflösbarer Platzhalter bricht den Bau ab. Neben
+Die Kennzahlen der Quellseiten sind `{{...}}`-Platzhalter. Der Bau löst
+sie aus dem falldaten-Modell des Falls auf, damit sie nicht von den
+Artefakten abweichen. Ein unauflösbarer Platzhalter bricht den Bau ab. Neben
 Zahlen (`zahl`, `euro`, `datum`, `text`) gibt es generierte Bausteine
 (`html:kennzahlenband`, `html:toleranz`, `html:stationen`,
 `html:widerspruch`, `html:abgrenzungsband`, `html:berichte`,
@@ -91,9 +101,9 @@ Abgrenzungsband nennt, was die Artefakte hergeben, und behauptet keine
 Vollständigkeit.
 
 `--stands-paket <verzeichnis>` gibt der Kette das Stands-Paket der
-Laufzeitumgebung des Tagesbetriebs mit (`python -m
-rechner_pipeline.betrieb.seite --stand <daten> --paket <verzeichnis>`,
-Fachkonzept `docs/simulation/tagesbetrieb.md`, Abschnitt 8.3): Der
+Laufzeitumgebung des Tagesbetriebs mit (exportiert mit
+`python -m rechner_pipeline.betrieb.seite`, siehe unten; Fachkonzept
+`docs/simulation/tagesbetrieb.md`, Abschnitt 8.3): Der
 lebende Bestand der PLV wird ein Abschnitt des Datenmodells und des
 Fallberichts — mit Stand-Datum, Manifest-Hash und der Zeichnung der
 übernommenen Fälle, aus dem Paket gelesen, nie abgetippt. Ein Paket,
@@ -104,7 +114,7 @@ Geschäftsentwicklung und Finanzen zeigen den geführten Bestand
 (`{{...:betrieb....}}`-Kennzahlen, Tabellen `buchungen_je_art`,
 `abschluesse`, `uebernahmen_im_stand`); ohne Paket bricht der Bau mit
 dem Hinweis auf den Aufruf ab. Die Dateien des Pakets (Paketschema 5:
-die Tagesseite "Bestand heute" als `index.html` und die bezeugten
+die Tagesseite „Bestand heute“ als `index.html` und die bezeugten
 Berichte des jüngsten Abschlusses in der Wurzel, die Monatsabschlüsse
 unter `abschluesse/`) übernimmt `unternehmensseite.py` byteweise nach
 `<out>/plv/`, jede gegen die SHA-256 in `stand.json` gehalten, nichts
@@ -115,24 +125,22 @@ Abschlussdateien und dem Tagesjournal des Pakets nach, nachdem es deren
 Hash geprüft hat. Den Abschluss zwölf Monate vor dem jüngsten trägt
 das Paket nicht; der Vorjahresvergleich entfällt dann benannt.
 
-Einen Stand außerhalb der Laufzeitumgebung `~/apps/plv` (z. B. auf dem
-Entwicklerrechner, Wegwerf unter `runs/`) erzeugt man so — Config
-kopieren, Übernahme registrieren, Tage führen, Paket exportieren:
+Einen Stand außerhalb der Laufzeitumgebung `~/apps/plv` liefert eine
+Welt (`deploy/welt/laufzeit_aufstellen.sh`, siehe
+[deploy/welt/README.md](../deploy/welt/README.md)). Aus ihrer Ablage
+exportiert dieses Kommando das Stands-Paket; die Pfade von
+Betriebsschlüssel und Zeichnungsordnung stehen in
+`<welt>/einstellungen.conf` (`BETRIEB_KEY`, `ORDNUNG`):
 
 ```
-mkdir -p runs/plv-stand/configs
-cp configs/bestand_gesamt.toml runs/plv-stand/configs/bestand.toml
-python -m rechner_pipeline.betrieb.uebernahme --stand runs/plv-stand \
-    --fall faelle/<fall> --stichtag 2026-01-01
-python -m rechner_pipeline.betrieb.tageslauf --stand runs/plv-stand --heute <heute>
-python -m rechner_pipeline.betrieb.seite --stand runs/plv-stand \
-    --paket runs/stands-paket --anker runs/anker
-python werkzeuge/auftritt.py --fall faelle/<fall> --name <kurzname> \
-    --abzug ... --stands-paket runs/stands-paket --anker runs/anker/anker.jsonl
+python -m rechner_pipeline.betrieb.seite --stand <welt>/daten \
+    --paket runs/stands-paket \
+    --anker faelle/<fall>/abgeleitet/anker \
+    --betriebsschluessel <BETRIEB_KEY> --zeichnungsordnung <ORDNUNG>
 ```
 
-Der Anker liegt außerhalb des Pakets (T24-04 Teil 2): Ein Paket, das nur
-sich selbst belegt, kann seine eigene Herkunft behaupten. `runs/anker`
+Der Anker liegt außerhalb des Pakets, denn ein Paket, das nur sich selbst
+belegt, kann seine eigene Herkunft behaupten. `runs/anker`
 taugt dafür nur in der Probe — `runs/` ist Wegwerf, und ein Anker in
 einem Verzeichnis, das jemand planmäßig leert, ist so wenig ein Anker
 wie einer im Paket. Der echte Anker gehört in den Fall-Datenraum.
@@ -155,25 +163,31 @@ sperren, Systemstand und Branch stempeln, `index.md`, `_config.yml` und
 `artefakte/` schreiben.
 
 Welche Datei des Falls an welche Station gehört, erhebt
-`falldaten.belegkette` aus dem, was die Kette selbst sagt — keine Tabelle
-von Hand: der Ort im Fall-Arbeitsbereich, wo kein Gate einen Erzeuger
-nennt, aber nur für eine Datei, die die Kette führt oder das
-Eingangsregister trägt; Entscheid-Snapshots und Prüfprotokolle zur
-Station ihres Gates; Pflichtbelege eines Entscheids über ihre
-Prüfsumme zur Station des Gates, dessen Beleg sie sind; was ein Gate
-geschrieben hat; der Beleg einer Entscheidung, den die A-Box mit Pfad
-und Prüfsumme nennt, zur Quellenabnahme; was ein Gate zur Prüfung
-gelesen oder mit Prüfsumme genannt hat; Geschwister daneben. Das
-Protokoll einer Zeichnung zählt nicht als Leser. Eine Ausnahme ist
-benannt: Die deterministische Vorverdichtung der Quellen
-(`abgeleitet/vorverdichtung/`) bindet kein Protokoll über die
-Prüfsumme; sie steht trotzdem an Station 2, mit dem Vermerk "nicht
-gebunden". Was das Datenmodell für eine Zahl der Seite liest, kommt
-ohne Station mit. Was keine Regel trifft — Arbeitsunterlagen der
-Agenten, Reste früherer Durchgänge, ein Dateiname, der nach einem Gate
-klingt —, kommt nicht auf die Seite und wird gezählt. Die Regeln stehen
-im Docstring der Funktion; die Karte (`migrationen/#prozess`) und die
-Fallseite lesen dieselbe Zuordnung aus dem Modell.
+`falldaten.belegkette` aus dem, was die Kette selbst sagt, nicht aus einer
+Tabelle von Hand. Die erste Regel, die trifft, gilt:
+
+1. Der Ort im Fall-Arbeitsbereich, wo die Kette keinen Erzeuger kennt,
+   aber nur für eine Datei, die die Kette führt oder das Eingangsregister
+   trägt. Ausnahme: Die deterministische Vorverdichtung der Quellen
+   (`abgeleitet/vorverdichtung/`) steht auch ungebunden an Station 2, mit
+   dem Vermerk „nicht gebunden“.
+2. Entscheid-Snapshots und Prüfprotokolle gehören zur Station ihres Gates.
+3. Ein Pflichtbeleg eines Entscheids gehört, über seine Prüfsumme
+   gefunden, zur Station des Gates, dessen Beleg er ist.
+4. Was ein Gate geschrieben hat, gehört zu dessen Station.
+5. Der Beleg einer Entscheidung, den die A-Box mit Pfad und Prüfsumme
+   nennt, gehört zur Quellenabnahme.
+6. Was ein Gate zur Prüfung gelesen oder nur mit seiner Prüfsumme genannt
+   hat, gehört zu dessen Station. Das Protokoll einer Zeichnung zählt
+   dabei nicht als Leser.
+7. Geschwister liegen neben ihrem Beleg.
+
+Was das Datenmodell für eine Zahl der Seite liest, kommt ohne Station mit.
+Was keine Regel trifft (Arbeitsunterlagen der Agenten, Reste früherer
+Durchgänge, ein Dateiname, der nur nach einem Gate klingt), kommt nicht auf
+die Seite und wird gezählt. Die Regeln stehen im Docstring der Funktion;
+die Karte (`migrationen/#prozess`) und die Fallseite lesen dieselbe
+Zuordnung aus dem Modell.
 
 Die Änderung am Zielsystem ist ein Pflichtabschnitt des Modells: Ein
 abgeschlossener Fall trägt sie immer — ein Lauf, dessen Umbau niemand
@@ -197,7 +211,7 @@ Bytes, deren Hash sie geprüft hat. Verlinkt wird nur, was die
 Belegkette einer Station zuordnet und tatsächlich kopiert ist, und die
 Regie-Sperre prüft auch die Verweise aus dem Modell noch einmal selbst. Ein nicht bestandener Test und eine
 gerissene Schranke werden genauso dargestellt wie ein grüner Lauf; eine
-Seite, die nur den Erfolgsfall zeigen kann, wäre eine Werbebroschüre.
+Seite, die nur den Erfolgsfall zeigen kann, sagt nichts über die Prüfung.
 
 ## Umfang eines Laufs messen
 
@@ -214,8 +228,8 @@ Wer einen Migrationsfall löst, darf Code ändern, die Ontologie
 erweitern und Gates umbauen. Was er nicht soll, ist das System nebenbei
 durch ein anderes ersetzen — etwa den Rechenkern von der
 Thiele-Rekursion auf Kommutationszahlen zurückdrehen, weil das gerade
-der kürzere Weg zum grünen Gate wäre. Absicht lässt sich nicht
-abfragen, Umfang schon.
+der kürzere Weg zum grünen Gate wäre. Die Absicht lässt sich nicht
+prüfen, der Umfang schon.
 
 Deshalb wiegt **Löschen schwerer als Hinzufügen**: Hinzufügen ist der
 Auftrag, Löschen ist Ersetzen. Das Gesamtbudget trägt viel (18.000
@@ -274,8 +288,8 @@ es nicht ist, wäre die schlechteste Variante.
 
 ## Veröffentlichen
 
-**Die Artefakte eines Laufs gehören nicht ins Repo.** ADR-002: "Das
-Repo ist das System, nicht der Datenraum"; `faelle/` ist gitignoriert
+**Die Artefakte eines Laufs gehören nicht ins Repo.** ADR-002: „Das
+Repo ist das System, nicht der Datenraum“; `faelle/` ist gitignoriert
 und echte Fälle liegen außerhalb. Deshalb kann auch keine
 GitHub-Action die Seite bauen — sie sieht die Artefakte nicht. Der Weg
 ist: lokal bauen, Ergebnis auf einen eigenen Branch schieben, Pages
@@ -284,7 +298,7 @@ liest diesen Branch.
 ### Bereinigung der veröffentlichten Belege
 
 Es gibt zwei Wege der Veröffentlichung: den Code (die wiederherstellbare
-Routine) und die Vorzeige (die Webseite mit den Artefakten eines Falls).
+Routine) und die Webseite (mit den Artefakten eines Falls).
 Die Belege eines Laufs tragen, was ihre Kommandos gesehen haben — auch die
 absoluten Pfade des Rechners, auf dem sie liefen: den Arbeitsbaum des
 Falls, die Laufzeitumgebung, das Verzeichnis des Schlüsselmaterials. Die
@@ -306,21 +320,21 @@ deshalb nur die veröffentlichte Fassung, als Stufe im Bau der Seite
 - **Ein Entscheid-Snapshot wird nie bereinigt.** Eine Änderung bräche
   seine Signatur und die Verweise der Folgeentscheide. Ein überholter
   Snapshot, der etwas trägt, das nicht auf die Seite gehört, bleibt
-  unveröffentlicht und steht benannt da (Prüfsumme, Status "überholt,
-  nicht veröffentlicht"); trägt es ein geltender oder einer, den das
+  unveröffentlicht und steht benannt da (Prüfsumme, Status „überholt,
+  nicht veröffentlicht“); trägt es ein geltender oder einer, den das
   Modell nicht kennt, hält der Bau an — das entscheidet ein Mensch.
 - **Das Manifest** `artefakte/bereinigung.json` nennt je bereinigter Datei
   die Prüfsumme des Originals im Fall, die Entscheide, die dieses Original
   über seine Prüfsumme binden, die Prüfsumme der veröffentlichten
   Fassung und die Ersetzungen je Regel, dazu jede zurückgehaltene Datei
-  mit ihrer Prüfsumme. "Gebunden" steht nur, wo ein Entscheid die
+  mit ihrer Prüfsumme. „Gebunden“ steht nur, wo ein Entscheid die
   Prüfsumme nennt: In Fall 3 binden Entscheide das Eingangsregister, den
   Abnahmebericht und die Zugangsprobe; die Protokolle der Zeichnungen
   bindet keiner — sie entstehen mit der Zeichnung. Alle übrigen Belege
   unter `artefakte/` sind bytegleich mit ihren Originalen im Fall; die
   Ansichten der Lieferung (`artefakte/lieferung/`) sind Ansichten — eine
   CSV als Vorschau ihrer ersten Zeilen, alles Übrige bytegleich. Die
-  Fallseite sagt das im Abschnitt "Bereinigt veröffentlicht". Die Kette
+  Fallseite sagt das im Abschnitt „Bereinigt veröffentlicht“. Die Kette
   bleibt nachvollziehbar — über das Manifest statt über identische
   Bytes.
 - **Die Wache** liest nach dem Bau jede veröffentlichte Datei: den Namen,
@@ -380,7 +394,7 @@ nicht; es trägt Hostpfade, und die Wache hält den Bau an.
    ```
 
    Der Arbeitsbranch wird am Ende beim Namen genannt, nicht als
-   `git switch -`: Nach einem Orphan-Wechsel gibt es kein "vorher",
+   `git switch -`: Nach einem Orphan-Wechsel gibt es kein „vorher“,
    auf das `-` zeigen könnte, und die Kette bricht ab.
 
    `--orphan` leert das Arbeitsverzeichnis; der Wechsel zurück füllt
@@ -440,19 +454,21 @@ python3 werkzeuge/vorschau.py --seite runs/seite \
     --out runs/vorzeige-vorschau
 ```
 
+`vorschau.py` läuft mit dem System-Python und braucht dort das Paket
+`markdown` (Debian: `apt install python3-markdown`); es ist nicht gepinnt,
+weil es nicht zum System gehört. Alle übrigen Werkzeuge laufen in der
+`.venv`.
+
 Rendert alle Markdown-Seiten des Baums in ein eigenes Verzeichnis und
 verlinkt Artefakte und Assets (Symlink, kein zweiter Datenbestand);
 Zahlen, Tabellen und Links sind damit prüfbar. Eine Lesehilfe, kein Abbild
 des Pages-Themas — die Optik der Live-Seite entsteht erst beim Bau.
 Das Werkzeug weigert sich, ins Push-Verzeichnis zu rendern.
 
-Angesehen wird die Vorschau im Browser über einen internen
-Sichtungs-Server, der per Symlink auf dieses Verzeichnis zeigt — URL
-und Betrieb stehen in der Infra-Doku, nicht im Repo. Zwei Regeln
-daraus für die Seiten selbst: nur relative Links (die Sichtung
-liefert unter einem Pfad-Präfix aus, absolute Pfade ab `/` brechen),
-und der Vorschau-Pfad `runs/vorzeige-vorschau` bleibt stabil, weil der
-Symlink des Servers darauf zeigt.
+Zum Ansehen genügt ein statischer Webserver auf
+`runs/vorzeige-vorschau/`. Die Seiten verwenden nur relative Links, denn
+eine Sichtung kann unter einem Pfad-Präfix ausliefern, und absolute Pfade
+ab `/` brechen dann.
 
 ### Die gebaute Seite prüfen
 
@@ -475,24 +491,26 @@ python werkzeuge/seitenpruefung.py alle --seite runs/<bau>/seite \
 | `breite` | eine Hauptseite, die auf dem Telefon (390 px) breiter ist als der Bildschirm; die übrigen Seiten stehen als Hinweis da (Ansicht am Schreibtisch hat Vorrang, Entscheid 04.10.2026) |
 
 `breite` braucht Playwright wie `schau.py`; fehlt es, meldet `alle`
-"NICHT GEPRUEFT" statt still zu überspringen.
+„NICHT GEPRUEFT“ statt still zu überspringen.
 
 ### Vorher prüfen
 
 Das Werkzeug erzwingt zwei Dinge und lässt drei beim Menschen.
 
-**Erzwungen:** Nichts aus `simulation/` oder `docs-local/` gelangt auf
-die Seite, und `MANIPULATIONEN.md` sowie `NOTIZEN.md` sind gesperrt,
-egal wo sie liegen — dort stehen die Auflösungen des Vorführfalls. Das
+**Erzwungen:** Nichts aus den lokalen, nicht eingecheckten
+Arbeitsbereichen des Maintainers (`simulation/`, `docs-local/`) gelangt auf
+die Seite, und Dateien namens `MANIPULATIONEN.md` oder `NOTIZEN.md` sind
+gesperrt, egal wo sie liegen: Dort stehen die Auflösungen des
+Vorführfalls. Das
 Werkzeug bricht ab, statt zu warnen. Außerdem steht der
 Simulationshinweis vor allem anderen: erfundene Unternehmen,
 synthetische Verträge, Entscheid-Snapshots mit dem Fingerabdruck eines
 Simulationsschlüssels — deren Signatur die Seite nicht verifiziert und
-deshalb auch nicht "gezeichnet" nennt (T20-02). Ohne den Hinweis sähe
+deshalb auch nicht „gezeichnet“ nennt. Ohne den Hinweis sähe
 eine öffentliche Seite mit aktuariellen Abnahmen aus wie eine echte.
 Fehlt dem Fall ein Pflichtabschnitt, steht das auf der Seite im
-Kleingedruckten unter "Grenzen dieses Laufs", und das Werkzeug endet mit
-Exit 3 (T20-03).
+Kleingedruckten unter „Grenzen dieses Laufs“, und das Werkzeug endet mit
+Exit 3.
 
 **Beim Menschen:** Stehen Klarnamen im Verlaufsprotokoll? Trifft der
 Simulationshinweis noch zu? Trägt die Seite etwas, das die Vorführung
@@ -569,19 +587,22 @@ steht:
 Die erzeugten Bausteine liefern ihre Teile ohne Trennzeichen — eine
 Kachel schreibt Titel, Formatmarke, Kennzahl und Zweck hintereinander,
 den Abstand setzt das Stylesheet. Fehlt dort eine Regel, steht auf der
-Seite "A-M1 StichtagstestHTML". Rückgabe 0 heißt sauber, 1 nennt die
+Seite „A-M1 StichtagstestHTML“. Rückgabe 0 heißt sauber, 1 nennt die
 Fundstellen. Treffer können auch aus importierten Fachdokumenten
 stammen (eine Hervorhebung mitten im Wort); dann liegt die Quelle in
 `docs/` und wird dort behoben, nicht auf der Seite.
 
-Was auf diesem Weg gefunden wurde und von keinem Test gesehen wird: eine
-ungültige `font:`-Kurzform (`font: 700 1.3rem/1.3 inherit` — `inherit` ist
-keine Schriftfamilie), die den ganzen Block verwirft; ein SVG ohne
-Breitenanschlag, das hochskaliert und seine Schrift mitnimmt; eine
-Grafik, die breiter gezeichnet ist als ihre Spalte und darum
-heruntergerechnet wird, bis die Beschriftung nicht mehr lesbar ist; eine
-`table` mit `width: 100 %` neben Außenrändern, die rechts hinausläuft
-(Prozente rechnen gegen den Elternblock, die Ränder kommen obendrauf).
+Auf diesem Weg wurden Fehler gefunden, die kein Test sieht:
+
+- eine ungültige `font:`-Kurzform (`font: 700 1.3rem/1.3 inherit`;
+  `inherit` ist keine Schriftfamilie), die den ganzen Block verwirft;
+- ein SVG ohne Breitenanschlag, das hochskaliert und seine Schrift
+  mitnimmt;
+- eine Grafik, die breiter gezeichnet ist als ihre Spalte und darum
+  heruntergerechnet wird, bis die Beschriftung nicht mehr lesbar ist;
+- eine `table` mit `width: 100%` neben Außenrändern, die rechts
+  hinausläuft (Prozente rechnen gegen den Elternblock, die Ränder kommen
+  obendrauf).
 
 ## Drift prüfen
 
@@ -597,7 +618,7 @@ Volatile Stempel (Veröffentlichungsdatum, Systemstand der
 Fall-Seiten, Bau-Commit der Landkarte) zählen nicht als Drift —
 sonst schlüge der Test immer, und ein Alarm, der immer schlägt,
 wird abgeschaltet. Exit 1 listet die Abweichungen; aktualisiert wird
-von Hand (Abschnitt "Je Lauf").
+von Hand (Abschnitt „Je Lauf“).
 
 ## Einen Fall vorführen und aufzeichnen
 
@@ -643,7 +664,7 @@ lesbare Datei als `unlesbar`, nie als `offen`.
 Die Sicht `zugangsprobe` ist keine der Anzeigen rechts: Sie zeigt den Beleg
 der Zugangsprobe als Lesefassung für die Zugangsabnahme A-B2 — Urteil,
 Folgetermin und je Vergleich Soll, Ist und Differenz —, ohne die Prüfsummen
-der Abschlüsse, die den Beleg selbst unlesbar groß machen. "Bestanden"
+der Abschlüsse, die den Beleg selbst unlesbar groß machen. „Bestanden“
 steht dort nur, wenn der Beleg es wörtlich sagt; ein Vergleich ohne Soll
 ist als solcher ausgewiesen.
 
@@ -694,7 +715,7 @@ Werkzeug und prüft vier Schritte: START (es kommt zur Ruhe), EINGABE (eine
 von außen geschriebene Zeile wird beantwortet), RUHE (von außen erkennbar,
 wann die Sitzung fertig ist) und WEITERGABE (eine Sitzung schreibt der
 anderen auf Auftrag eine Zeile ins Fenster). Der Bericht nennt je Schritt das
-Urteil, die Zeilen, an denen man "arbeitet noch" sieht, und die Bildschirme —
+Urteil, die Zeilen, an denen man „arbeitet noch“ sieht, und die Bildschirme —
 auch den einer Rückfrage oder einer Sandbox, an der die Weitergabe hängt.
 
 Die Probe urteilt nach dem Bildschirm und kostet zwei kurze Chats mit

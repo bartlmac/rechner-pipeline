@@ -15,7 +15,7 @@ wirkt deshalb nie in die Bewertung zurück.
 
 | Dokument | Inhalt |
 |---|---|
-| [bestandserzeugung.md](bestandserzeugung.md) | Vom leeren Verzeichnis zum geführten Bestand: das eine Kommando, seine Ausgaben samt Lieferschein, die zwei Daten samt Fehllesarten, Migration und Quellbestand |
+| [bestandserzeugung.md](bestandserzeugung.md) | Vom leeren Verzeichnis zum geführten Bestand: das eine Kommando, seine Ausgaben samt Lieferschein, die zwei Daten samt der häufigsten Fehllesart, Migration und Quellbestand |
 | [erfahrungsannahmen.md](erfahrungsannahmen.md) | Wie die Simulation ihre Ereigniswahrscheinlichkeiten bildet: dritte Ordnung als Transformation der ersten |
 | [tagesbetrieb.md](tagesbetrieb.md) | Fachkonzept: die PLV als laufendes Unternehmen — tägliches Neugeschäft, Buchungstag und Wirkungstag, nächtlicher Lauf, Monatsabschluss, Laufzeitumgebung |
 

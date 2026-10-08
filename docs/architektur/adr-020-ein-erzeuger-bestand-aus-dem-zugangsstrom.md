@@ -2,14 +2,14 @@
 
 **Status:** angenommen am 2026-09-21 (Maintainer), umgesetzt.
 
-## Anlass
+## Kontext
 
 Ein externer Gutachter ist im Dokument zur Bestandserzeugung an der Stelle
-ausgestiegen, die den "Batch" erklären sollte. Beim Nachlesen im Code
+ausgestiegen, die den „Batch“ erklären sollte. Beim Nachlesen im Code
 stellte sich heraus, dass es nicht nur die Erklärung war: Die Codebasis
 kannte drei Erzeuger für eigenes Geschäft, und der Code selbst
 widersprach sich im Vokabular (``generate()`` nannte den Batch eine
-"Auswertung des Zugangs-Stroms", der Nummernkreis-Kommentar dreißig
+„Auswertung des Zugangs-Stroms“, der Nummernkreis-Kommentar dreißig
 Zeilen tiefer führte Batch und Zugangsstrom als zwei Dinge).
 
 | Erzeuger | Seed-Familie | Buchung | Nutzer |
@@ -19,7 +19,7 @@ Zeilen tiefer führte Batch und Zugangsstrom als zwei Dinge).
 | Tagesneugeschäft (``betrieb.neugeschaeft``) | ``[seed, NEUGESCHAEFT_STREAM, name, tag]`` | ``ZUG`` | Vorzeige |
 
 Der Batch war der einzige ohne Buchung: ein auf einmal gezogener Bestand,
-der zum Stichtag "einfach da" ist. Das Bewegungskonto kann ihn nicht
+der zum Stichtag „einfach da“ ist. Das Bewegungskonto kann ihn nicht
 erklären, das Journal kennt ihn nicht. In einem System, dessen Zweck
 Nachrechenbarkeit ist, ist ein Zustand ohne Geschichte ein Fremdkörper.
 
@@ -28,14 +28,15 @@ Nachrechenbarkeit ist, ist ein Zustand ohne Geschichte ein Fremdkörper.
 Bevor etwas entfernt wurde, ist gemessen worden, was der Batch tatsächlich
 beiträgt (Stand 3bc7d25, 2026-09-21):
 
-**Vorzeige** (``runs/plv-stand-20``): 4169 Verträge, 7494 ``ZUG``-Buchungen.
+**Vorzeige** (lokaler Lauf ``runs/plv-stand-20``, nicht im Repository): 4169 Verträge, 7494 ``ZUG``-Buchungen.
 Verträge ohne ``ZUG``: **genau fünf** — die KLV-1994 mit Beginn am
 1994-07-01, dem Betriebsbeginn. Der Tagesgenerator verkauft ab dem
 Betriebsbeginn selbst (Fenster einschließlich), mit Beginn am folgenden
 Monatsersten; der Batch lieferte nur die Verträge des Grenztages.
 
-**Prüfstrecke des Migrationsfalls** (``faelle/baldrian-klv-tg2015-lauf2/
-abgeleitet/bestand-nach``): 3093 Verträge = 834 übernommen + 2259 eigenes
+**Prüfstrecke des Migrationsfalls** (lokaler Fall
+``faelle/baldrian-klv-tg2015-lauf2/abgeleitet/bestand-nach``, nicht im
+Repository): 3093 Verträge = 834 übernommen + 2259 eigenes
 Geschäft, davon **2220 ohne ``ZUG``** — der Batch. Keiner dieser 2220
 steht im Vorzeige-Stand (Policennummern verglichen); sie existierten nur im
 Fallverzeichnis, als Kulisse für die Führungsprobe.
@@ -92,10 +93,10 @@ Journal.
   ``bestand-nach`` trägt die übernommenen Verträge plus den
   Neuzugang ab Stichtag. Der Fall ist auf dem neuen Stand neu zu fahren
   und neu zu zeichnen (A-M4 bindet ``bestand-nach``).
-* Das Dokument zur Bestandserzeugung (``docs/simulation/
-  bestandserzeugung.md``, Zweig ``doku/bestandssimulation``) verliert
-  seinen Abschnitt 3 ("die zwei Fehllesarten"): Es gibt keinen Batch
-  mehr, der eine Fehllesart ermöglichen könnte.
+* Das Dokument zur Bestandserzeugung
+  (``docs/simulation/bestandserzeugung.md``) hat seinen Abschnitt über die
+  zwei Fehllesarten verloren: Es gibt keinen Batch mehr, der eine
+  Fehllesart ermöglichen könnte.
 * Die Testsuite baute ihre synthetischen Bestände in 17 Modulen über
   ``generate()``. Sie bauen sie jetzt über den Zugangsstrom
   (``neuzugaenge``) — dieselbe Attributziehung, aber jeder Vertrag mit
@@ -117,8 +118,8 @@ jährlichen Erzeugers stehen in gezeichneten Belegen.
 ## Verworfene Alternativen
 
 **Den Batch behalten und das Dokument nachbessern.** Das Dokument war
-nicht zu knapp, sondern erklärte etwas, das nicht gebraucht wird. Eine
-bessere Erklärung eines Fremdkörpers macht ihn nicht weniger fremd.
+nicht zu knapp, sondern erklärte etwas, das nicht gebraucht wird; eine
+bessere Erklärung hätte den Batch nicht überflüssig gemacht.
 
 **Die fünf Grenztag-Verträge über eine Sonderregel des
 Tagesgenerators erhalten** (Beginn am Betriebsbeginn selbst statt am

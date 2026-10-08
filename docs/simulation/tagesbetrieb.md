@@ -1,10 +1,10 @@
 # Fachkonzept: Die PLV als laufendes Unternehmen — täglicher Bestandsbetrieb
 
-**Status:** Konzept, beschlossen vom Maintainer am 2026-09-05; Umsetzung in
-Blöcken (Abschnitt 9). **Ebene:** Vorzeige (das Bestandsführungssystem der
-fiktiven Pfefferminzia Lebensversicherung, PLV) und Vorzeige-Werkzeuge
-(Simulation, Laufzeitumgebung). Das KI-Tool selbst wird nicht verändert;
-Abschnitt 8 skizziert nur, wie seine Laufzeitumgebung aussehen könnte.
+**Status:** beschlossen vom Maintainer am 2026-09-05 und umgesetzt
+(Abschnitt 9); nur Abschnitt 8.4 ist ein Konzept für später. **Ebene:**
+Vorzeige (das Bestandsführungssystem der erfundenen Pfefferminzia
+Lebensversicherung, PLV) und Vorzeige-Werkzeuge (Simulation,
+Laufzeitumgebung). Das KI-Tool selbst wird nicht verändert.
 
 ## 1 Ziel
 
@@ -42,7 +42,7 @@ Migration als datierter Zugang eintritt.
 Die bestehende Ereignis-Engine (`bestand.ereignisse.fortschreiben`) ist
 eine reine Funktion von Basisbestand, Config, Horizont und Seed: Sie
 simuliert jeden Vertrag Vertragsjahr für Vertragsjahr und erzeugt einen
-Strom datierter Geschäftsvorfälle. Wer sie mit Horizont "heute" aufruft,
+Strom datierter Geschäftsvorfälle. Wer sie mit Horizont „heute“ aufruft,
 erhält deterministisch denselben Verlauf wie gestern, um die Vorfälle des
 heutigen Tages verlängert.
 
@@ -84,7 +84,7 @@ Der Buchungstag wird deterministisch aus dem Wirkungstag abgeleitet:
 - Neugeschäft: Antrags- und Policierungstag ist der Buchungstag (ein
   Werktag, Abschnitt 4); der Versicherungsbeginn ist der nächste
   Monatserste nach dem Buchungstag. Die Police steht ab Buchungstag im
-  Bestand als "policiert, Beginn folgt", ab Beginn als beitragspflichtig.
+  Bestand als „policiert, Beginn folgt“, ab Beginn als beitragspflichtig.
 
 Das Tagesjournal ist eine neue, nur-anfügbare Tabelle
 `tagesjournal.parquet`: `buchungsdatum`, `police_id`, `ereignis`,
@@ -142,22 +142,23 @@ prüft das bereits.
 
 ## 5 Generationen bis heute
 
-Die Config `configs/bestand_gesamt.toml` trägt bereits KLV-1994 bis
-KLV-2022 (gültig bis 2035) und BU-2000, BU-2017. Für "bis heute" fehlt:
+Die Config `configs/bestand_gesamt.toml` trägt die KLV-Generationen von
+KLV-1994 bis KLV-2025 (KLV-2025 gültig bis 2035) und die BU-Generationen
+BU-2000, BU-2017 und BU-2025. Für den Betrieb „bis heute“ kamen dazu:
 
-- Eine aktuelle KLV-Generation ab 2025 mit eigenen Rechnungsgrundlagen
-  (Rechnungszins, Tafel, Kosten), damit der Generationenwechsel im
-  laufenden Betrieb sichtbar ist; entsprechend eine BU-Generation ab 2025.
-  Die Rechnungsgrundlagen legt das Aktuariat der Vorzeige fest, nicht der
-  Entwickler; das Konzept nennt sie als offene Fachentscheidung.
-- Der Tarifplan (`docs/tarifplaene/klv.md`, `bu.md`) beschreibt heute das
-  Tarifwerk; er bekommt je Generation eine erzeugte Tabelle der
-  Rechnungsgrundlagen aus der Config (P7: erzeugt, nicht abgetippt) und
-  einen Abschnitt, was sich von Generation zu Generation ändert.
-- Der Rechenkern braucht keine neue Formel: Generationen sind
-  Parametrierungen (ADR-004). Je Generation kommt ein
-  Charakterisierungsreferenzwert hinzu (Kern-Abnahmeprotokoll), damit
-  eine Parametrierung nicht still driftet.
+- je eine aktuelle Generation der KLV und der BU ab 2025 mit eigenen
+  Rechnungsgrundlagen (Rechnungszins, Tafel, Kosten), damit der
+  Generationenwechsel im laufenden Betrieb sichtbar ist. Die
+  Rechnungsgrundlagen legt das Aktuariat der Vorzeige fest, nicht der
+  Entwickler (offene Punkte: Abschnitt 10);
+- je Generation im Tarifplan (`docs/tarifplaene/klv.md`, `bu.md`) eine aus
+  der Config erzeugte Tabelle der Rechnungsgrundlagen (P7: erzeugt, nicht
+  abgetippt) und ein Abschnitt, was sich von Generation zu Generation
+  ändert;
+- je Generation ein Charakterisierungsreferenzwert des Kerns
+  (Kern-Abnahmeprotokoll), damit eine Parametrierung nicht still driftet.
+  Eine neue Formel braucht der Rechenkern nicht: Generationen sind
+  Parametrierungen (ADR-004).
 
 Die Übernahme-Generation der Baldrian (KLV TG2015, in Tarifzellen) bleibt
 eine eigene Generation ohne `neuzugang_pro_jahr`: Sie verkauft nichts,
@@ -205,9 +206,9 @@ Bestand-Config der PLV führt dieselben Schalter je Generation
 Führung rechnet Storno je Baustein, Scheiben mit voller Beitragsformel
 und den Rückkaufswert mit Schicht, so wie es das Bedingungswerk der
 Quelle zusagt. Ein Zugang ohne diese Tabellen ist ein Bestand in der
-falschen Welt; der Tageslauf muss Bausteine, Schicht und Verankerung
-des Eingangs in seinen Stand durchreichen (offen, Schritt 9 des
-Fachkonzepts `dev-docs/freischaltung-uebernommener-bestand.md`).
+falschen Welt; der Tageslauf reicht deshalb Bausteine, Schicht und
+Verankerung des Eingangs in seinen Stand durch (Schritt 9 des Fachkonzepts
+`dev-docs/freischaltung-uebernommener-bestand.md`).
 
 ### 6.1 Betriebsfunde: Entwicklerweg oder Betriebsweg
 
@@ -222,7 +223,7 @@ Befund ein gezeichnetes Artefakt des Falls?**
   geschrieben, und das Gate wird neu gezeichnet (mit Vermerk, welcher
   Befund die Neuzeichnung ausgelöst hat). Der Fall bleibt die Wahrheit
   über die Migration; ein Betrieb, der etwas anderes rechnet als der
-  gezeichnete Fall, ist nicht "korrigiert", sondern abgekoppelt.
+  gezeichnete Fall, ist nicht „korrigiert“, sondern abgekoppelt.
 - Wenn nein — der Befund liegt im Betrieb selbst (Tageslauf, Ablage,
   Kennzahlen), das gezeichnete Artefakt bleibt richtig —, dann ist es der
   **Betriebsweg**: Das System wird korrigiert, und der Betrieb wird aus
@@ -233,8 +234,7 @@ Befund ein gezeichnetes Artefakt des Falls?**
 Beide Wege sind Routinen mit Beleg, keine Handarbeit: Der Entwicklerweg
 läuft über die Kommandos des Migrationsfalls (Skill
 `migrationsfall-durchfuehren`), der Betriebsweg über die Werkzeuge der
-Laufzeitumgebung (Abschnitt 8.2; "Betrieb neu aufsetzen" ist als Routine
-noch zu bauen). Was nie geht: den Betrieb still weiterfahren, während
+Laufzeitumgebung (Abschnitt 8.2 und 8.5, `betrieb.neuaufsetzen`). Was nie geht: den Betrieb still weiterfahren, während
 der Fall etwas anderes bezeugt.
 
 ### 6.2 Der Zugang in drei Schritten: Probe, Abnahme, Registrierung
@@ -249,7 +249,7 @@ schon fest (ADR-022). Seitdem hat der Zugang drei Schritte:
    der Lauf-Sperre gezogen; in die eine wird der Eingang registriert,
    dann fahren beide deterministisch vom geführten Tag über den
    Zugangsstichtag bis zum nächsten Monatsabschluss (oder weiter). Die
-   Differenz der Abschlüsse „mit" minus „ohne" muss exakt der abgenommene
+   Differenz der Abschlüsse „mit“ minus „ohne“ muss exakt der abgenommene
    Bestand sein — am Stichtag Anzahl, Versicherungssumme (Übernahme) und
    Jahresbeitrag (Migrationssuite) je Summe und je Vertrag über den
    ganzen Zugang, am Folgetermin die Anzahl in Kraft; dazu die Zugänge,
@@ -262,7 +262,7 @@ schon fest (ADR-022). Seitdem hat der Zugang drei Schritte:
    Bewertungsstrecke gerechnet und von A-M4 mit abgenommen — am
    Zugangsstichtag und am Folgestichtag (dort ohne Verträge mit einem
    gebuchten Vorfall im Fenster, die namentlich ausgenommen sind). Vorher
-   stand das Deckungskapital „nicht vergleichbar" im Beleg, weil der
+   stand das Deckungskapital „nicht vergleichbar“ im Beleg, weil der
    Abschluss den Wert des letzten Jahrestags führte und die Abnahmen die
    Monatsreserve rechneten (ADR-022, Nachtrag 2026-10-01).
    Das Soll stammt nur aus den Bytes, die die geltenden Abnahmen A-M1 und
@@ -326,20 +326,17 @@ gesetzt.
    der den Monatsersten führt, schreibt ihn; beim Nachholen jeder
    übersprungene Monatserste): `cli_abschluss --stichtag <Erster des
    Folgemonats>` (Bewertung zum Monatsersten, festgeschrieben, 0444, nie
-   überschrieben) und der Bestandsbericht des Monats. (Der normative Text
-   sagte „am letzten Kalendertag", Umsetzung und Begründung machten den
-   Ersten — Nebenhinweis des Reviews T22; der Text folgt jetzt dem Code.)
+   überschrieben) und der Bestandsbericht des Monats.
 
    **Bewertung zum Monatsersten heißt: die am Monatsersten gebuchte
-   Sicht** (Review T24-02). Ein Abschluss ist der Stand, den das
+   Sicht.** Ein Abschluss ist der Stand, den das
    Unternehmen an seinem Stichtag hatte, nicht der Stand, den es später
    rückblickend für diesen Stichtag ausrechnet. Ein Todesfall mit Wirkung
    zum 1.1. und Buchung am 13.3. gehört deshalb nicht in den
    Februar-Abschluss: Im Februar wusste niemand von ihm. Er wirkt im
    Abschluss des Monats, in dem er gebucht wurde.
 
-   Das ist keine Feinheit, sondern die Bedingung dafür, dass ein Abschluss
-   überhaupt festschreibbar ist. Mit dem Wissen von heute liefert derselbe
+   Nur so ist ein Abschluss überhaupt festschreibbar. Mit dem Wissen von heute liefert derselbe
    Stichtag zu verschiedenen Zeiten verschiedene Antworten; ihn dann
    schreibgeschützt festzuhalten friert einen beliebigen Moment ein. Nur
    mit dem Schnitt am Stichtag ist der Abschluss eine Funktion seines
@@ -354,13 +351,13 @@ gesetzt.
    Rückkaufswert und Korrekturschicht stehen im Abschluss mit dem Wert am
    Bewertungsstichtag, nicht mit dem des letzten Vertragsjahrestags:
    Zwischen zwei Jahrestagen mischt die Bewertung linear, wie der Kern es
-   kann (Tarifplan KLV, Abschnitt 6, „Bewertung am Monatsstichtag"), für
+   kann (Tarifplan KLV, Abschnitt 6, „Bewertung am Monatsstichtag“), für
    jeden Vertragstyp gleich. Ein Beitragsübertrag ist nicht enthalten; er
    ist zurückgestellt (`dev-docs/offene-punkte.md`). Die BU bleibt bei der
    Jahreszeile, weil der Kern für sie keine unterjährige Reserve führt.
    Jeder Abschluss nennt seine Konvention (Spalte `bewertungskonvention`);
    die vor der Umstellung festgeschriebenen tragen die Spalte nicht, gelten
-   als „Jahreszeile, vor der Umstellung geschrieben" und werden in dieser
+   als „Jahreszeile, vor der Umstellung geschrieben“ und werden in dieser
    Konvention nachgerechnet, nie umgeschrieben. Wer Abschlüsse über die
    Umstellung hinweg in eine Reihe legt, kennzeichnet den Bruch.
 
@@ -433,14 +430,10 @@ dem er entstand (dieselbe Provenienzdisziplin wie die Gate-Ledger).
 
 ### 8.2 Laufzeitumgebung `~/apps/plv`
 
-```
-~/apps/plv/
-  compose.yml          # Image, Volumes daten/ und configs/, kein Netz
-  .env                 # IMAGE_TAG, ZEITZONE; keine Geheimnisse
-  daten/               # Abschnitt 7
-  tageslauf.timer      # systemd --user, OnCalendar=*-*-* 23:00, Persistent=true
-  tageslauf.service    # docker compose run --rm tageslauf
-```
+Aufbau der Laufzeitumgebung und ihre Einrichtung stehen in
+`deploy/plv/README.md`: Compose-Datei, `.env` ohne Geheimnisse, die Ablage
+`daten/`, Schlüssel und Linie außerhalb der Ablage, Timer und Service
+(`systemd --user`, täglich 23:00, `Persistent=true`).
 
 `Persistent=true` sorgt dafür, dass ein verpasster Lauf beim nächsten
 Start nachgeholt wird; das Nachholen selbst leistet der Tageslauf
@@ -452,8 +445,8 @@ wie ADR-011 es verlangt — der Tagesbetrieb schreibt nichts um.
 
 Das Repository liefert unter `deploy/plv/` Compose-Datei, Timer, Service
 und eine README mit dem Einrichtungsweg; die Laufzeitumgebung selbst ist
-kein Repo-Inhalt. Erstbefüllung: Basisbestand aus der Config (einmalig bis
-zum Betriebsbeginn) plus Übernahme-Eingänge plus der Tagesstrom seither.
+kein Repo-Inhalt. Erstbefüllung: Die Ablage beginnt leer; dazu kommen die
+Übernahme-Eingänge und der Tagesstrom seit dem Betriebsbeginn (ADR-020).
 
 **Nummernkreise sind Pflicht, sobald eine Config einen Tagesbetrieb
 führt** (Entscheid des Maintainers, 2026-09-08). Ein Kreis reserviert
@@ -469,7 +462,7 @@ hashgebundene P-B1-Eingangsrolle und hängen an gezeichneten Abnahmen; eine
 Lesepflicht hätte bestehende Fälle unreproduzierbar gemacht.
 
 **Das Zielsystem vergibt die Policennummern übernommener Bestände selbst**
-(Entscheid des Maintainers, 2026-09-15, Review T24-08). Niemand schreibt
+(Entscheid des Maintainers, 2026-09-15). Niemand schreibt
 uns in einer Migration einen Datensatz um: Die Transformation ist Arbeit
 der Zielseite, und es ist ihre Aufgabe, sie kollisionsfrei zu machen.
 
@@ -503,13 +496,13 @@ Eine Folge, die man kennen muss: Die Fortschreibung würfelt je
 simulierte Zukunft als unter seiner Quellnummer — seine gelieferte
 Vergangenheit bleibt, was sie ist, sein künftiges Storno oder sein
 Todesfall verschieben sich. Für die Bewertung ist das folgenlos, für
-Fixtures, die auf einen bestimmten Vertrag getunt sind, nicht.
+Fixtures, die auf einen bestimmten Vertrag abgestimmt sind, nicht.
 
 Der `betriebsbeginn` der Config ist der **erste Verkaufstag**: Der
 Stand beginnt leer, und jeder Vertrag der PLV entsteht Werktag für
 Werktag als eigener Zugang im Journal — die PLV hat ihre ganze
-Geschichte, ab dem 1. Juli 1994. Kein Bericht kennt einen Zeitraum "vor
-dem Betriebsbeginn". Eine vollständige Neugenerierung ist damit ein
+Geschichte, ab dem 1. Juli 1994. Kein Bericht kennt einen Zeitraum „vor
+dem Betriebsbeginn“. Eine vollständige Neugenerierung ist damit ein
 Neuaufsetzen (Abschnitt 8.5) und ein Lauf: rund eine Viertelstunde,
 davon der größte Teil die Monatsabschlüsse seit 1994.
 
@@ -545,21 +538,21 @@ den ein Mensch veröffentlicht. Für den lebenden Bestand gibt es zwei
 Wege, die sich nicht ausschließen:
 
 - **Interne Sicht, täglich.** Der Tageslauf rendert nach
-  `daten/seite/` einen Abschnitt "Bestand heute" (Kennzahlen, Neugeschäft
+  `daten/seite/` einen Abschnitt „Bestand heute“ (Kennzahlen, Neugeschäft
   der Woche, letzte Buchungen, Monatsabschlüsse) mit den bestehenden
   Renderern. Ein Caddy auf dem Betriebsrechner liefert das Verzeichnis
   read-only aus; die Sichtung läuft dort, wo der Maintainer sie ohnehin
   macht.
 - **Öffentliche Sicht, gestempelt.** Die GitHub-Pages-Seite bleibt eine
   vom Menschen veröffentlichte Momentaufnahme mit Datum und Manifest-Hash
-  ("Stand 2026-09-30"). Der Auftritt (`werkzeuge/auftritt.py`) liest die
+  („Stand 2026-09-30“). Der Auftritt (`werkzeuge/auftritt.py`) liest die
   Kennzahlen dann aus einem exportierten Stands-Paket der
   Laufzeitumgebung statt aus einem Fall — eine neue Quelle für
   `falldaten`, dieselbe Drift-Regel: erzeugt, nie abgetippt.
 
-Das Paket trägt seine **Belege** mit (Schema 3, Review T24-04 Teil 1):
+Das Paket trägt seine **Belege** mit (seit Paketschema 3, heute Schema 5):
 `protokoll.jsonl` mit der Kette, `laufmanifest.json` des Stands und
-`tagesjournal.parquet`. Die ersten beiden kamen mit T22-05 und belegten
+`tagesjournal.parquet`. Die ersten beiden kamen zuerst und belegten
 die protokollgespeisten Blöcke von `stand.json`; die journalgespeisten —
 Geschäftsentwicklung, `buchungen.*`, Neugeschäft der Woche — standen
 daneben als bloße Behauptung. Ein Konsument, der sie las, musste dem
@@ -611,14 +604,17 @@ Routine, die nichts Bestehendes löscht:
 ```
 python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
     --fall faelle/<fall> --stichtag 2026-01-01 [--config configs/bestand_gesamt.toml] \
+    --freigabe-schluessel <schlüssel-vorstand> \
     --freigabe-schluessel <schlüssel-mensch-aktuariat> \
     --freigabe-schluessel <schlüssel-mensch-betrieb> \
     --betriebsschluessel <betriebsschlüssel> --zeichnungsordnung <ordnung> \
     --linie ~/apps/plv/linie
 ```
 
-(Zwei Freigabeschlüssel, weil die Registrierung des neuen Eingangs die
-Signaturen von A-M1/A-M4 und von A-B2 prüft. Die Linie ist Pflicht
+(Drei Freigabeschlüssel: der des Vorstands für den Fallauftrag und die
+Glieder der Linie, die des Aktuariats und des Betriebs, weil die
+Registrierung des neuen Eingangs die Signaturen von A-M1/A-M4 und von A-B2
+prüft. Die Linie ist Pflicht
 (ADR-025, Nachtrag 2026-10-01): Jede Abnahme wird gegen den Stand der
 Zeichnungsordnung gelesen, unter dem sie gezeichnet wurde; ohne `--linie`
 gründet kein Kommando des Betriebs auf einer Abnahme. Der Nachtlauf selbst
@@ -710,37 +706,22 @@ die Config zurück, mit der das Protokoll gerechnet hat.
 
 ## 9 Umsetzung in Blöcken
 
-Jeder Block ist ein Commit mit Tests und Mutationsprobe; die volle Suite
-bleibt grün. Neuer Code liegt in einem neuen Paket
-`rechner_pipeline.betrieb` (Tagesbetrieb der Vorzeige) und unter
-`deploy/plv/`; Änderungen an bestehenden Modulen bleiben additiv
-(Config-Felder, Generator-Erweiterung). Damit ist der Strang unabhängig
-vom Architektur-Strang (Rollen, Gates, Skills, Schichtenkarte) und lässt
-sich ohne Konflikte mergen.
+Umgesetzt wurde das Konzept in acht Blöcken, je ein Commit mit Tests.
+Neuer Code liegt im Paket `rechner_pipeline.betrieb` (Tagesbetrieb der
+Vorzeige) und unter `deploy/plv/`; Änderungen an bestehenden Modulen
+blieben additiv. Code und Tests verweisen mit der Blocknummer auf diese
+Tabelle.
 
-| Block | Inhalt | Aufwand |
-|---|---|---|
-| B1 | Config: `neuzugang_trend`, Wochentagsgewichte, Meldeverzug; Validierung; aktuelle Generationen KLV/BU ab 2025 (Rechnungsgrundlagen als offene Fachentscheidung, vorläufige Werte markiert) | 0,5 Tag |
-| B2 | Neugeschäft tagesgranular: Tagesziel, Bernoulli-Rest, Tagesseed, Beginn nächster Monatserster; Test: Jahressumme, Wochenende null, Montag höher, Determinismus je Tag | 1 Tag |
-| B3 | Tagesjournal: Buchungstag-Ableitung, Tabelle, Bijektions-Validator zum Ledger; Test mit Mutationsprobe (Zeile entfernt, Datum verschoben) | 1 Tag |
-| B4 | `betrieb.tageslauf`: Nachholen, Fortschreibung, Wache P-B1, Monatsabschluss, Protokoll; Test über mehrere Tage inkl. Monatswechsel und ausgefallener Nacht | 1,5 Tage |
-| B5 | Übernahme-Eingang: Baldrian `bestand-nach` als `daten/uebernahme/`, Fall-Bezug im Protokoll, Teilbestand im Monatsbericht | 0,5 Tag |
-| B6 | Tarifplan: erzeugte Generationentabellen aus der Config; Kern-Referenzwerte je Generation | 0,5 Tag |
-| B7 | `deploy/plv/`: Dockerfile, Compose, Timer, README; Workflow `plv-image.yml`; Erstbefüllung dokumentiert | 0,5 Tag |
-| B8 | Seite: Abschnitt "Bestand heute" aus dem Stand; Stands-Paket als Quelle für `falldaten` | 1 Tag |
-
-Zusammen etwa sechs bis sieben Arbeitstage. Reihenfolge B1 bis B4 zuerst
-(danach läuft die PLV täglich auf dem Entwicklerrechner), B7 als
-nächstes (danach läuft sie unter `~/apps/plv`), B5, B6 und B8 danach.
-
-**Merge-Weg.** Eigener Branch `plv-betrieb`, abgezweigt vom Stand von
-PR #11 (730fcb0), ohne Umbasieren als Merge-Commit gegen `main` (PR #13,
-gemergt 2026-09-06 als f066b55; Systemstände und Snapshots binden
-Commit-Shas, deshalb kein Rebase). Vorher wurde er in den Seiten-Branch
-gemergt, damit das Redesign der Vorzeigeseite das Stands-Paket und
-„Bestand heute" nutzen konnte. Der Architektur-Strang lief parallel auf
-seinem Branch; die einzige Berührung war die Einordnung des neuen Pakets
-in die Ebenen der Schichtenkarte, und die blieb konfliktfrei.
+| Block | Inhalt |
+|---|---|
+| B1 | Config: `neuzugang_trend`, Wochentagsgewichte, Meldeverzug; Validierung; aktuelle Generationen KLV/BU ab 2025 (Rechnungsgrundlagen als offene Fachentscheidung, vorläufige Werte markiert) |
+| B2 | Neugeschäft tagesgranular: Tagesziel, Bernoulli-Rest, Tagesseed, Beginn nächster Monatserster; Test: Jahressumme, Wochenende null, Montag höher, Determinismus je Tag |
+| B3 | Tagesjournal: Buchungstag-Ableitung, Tabelle, Bijektions-Validator zum Ledger; Test mit Mutationsprobe (Zeile entfernt, Datum verschoben) |
+| B4 | `betrieb.tageslauf`: Nachholen, Fortschreibung, Wache P-B1, Monatsabschluss, Protokoll; Test über mehrere Tage inkl. Monatswechsel und ausgefallener Nacht |
+| B5 | Übernahme-Eingang: Baldrian `bestand-nach` als `daten/uebernahme/`, Fall-Bezug im Protokoll, Teilbestand im Monatsbericht |
+| B6 | Tarifplan: erzeugte Generationentabellen aus der Config; Kern-Referenzwerte je Generation |
+| B7 | `deploy/plv/`: Dockerfile, Compose, Timer, README; Workflow `plv-image.yml`; Erstbefüllung dokumentiert |
+| B8 | Seite: Abschnitt „Bestand heute“ aus dem Stand; Stands-Paket als Quelle für `falldaten` |
 
 ## 10 Offene Fachentscheidungen
 

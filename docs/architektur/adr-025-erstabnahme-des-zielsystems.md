@@ -56,8 +56,9 @@ durch `linie.json` gekennzeichnet; seine Snapshots tragen den Scope `linie`
 (P9-Schema 9) und binden `linie.json` statt `eingang.json` und A-Box.
 Zeichenbar sind dort genau die vier Gegenstände, `A-B3` nur dort.
 
-**Ort:** ein Verzeichnis `linie/` außerhalb des Repositorys (gitignored; die
-Vorgabe ist `stand_belegen linie --linie linie`). Die Snapshots tragen Namen
+**Ort:** ein Verzeichnis `linie/`, das nicht zum Repository gehört (in
+`.gitignore`; die Vorgabe der Kommandos ist `linie/` im Wurzelverzeichnis,
+eine Welt legt es unter `<welt>/linie` an). Die Snapshots tragen Namen
 der Entscheider, Fingerabdrücke von Schlüsseln und Mandats-Hashes einer
 konkreten Installation; das gehört nicht in ein öffentliches Repository,
 dieselbe Regel wie für `faelle/`. Unter `faelle/` liegt es nicht, weil der
@@ -230,7 +231,7 @@ Gestalt der Linie lässt das ohne Umbau zu.
 |---|---|---|---|---|
 | `mensch/rechenkern` | ja | ja | `agent/rechenkern` | A-K2 |
 | `mensch/architektur` | ja | ja | `agent/architektur` | A-O1 |
-| `mensch/aktuariat` | ja | ja | `agent/aktuariat` | A-T1, A-M1 bis A-M4 |
+| `mensch/aktuariat` | ja | ja | `agent/aktuariat` | A-Q1, A-M1 bis A-M4, A-T1 |
 | `mensch/betrieb` | ja | ja | `agent/betrieb` | A-B1, A-B2, A-B3 |
 | `mensch/programmleitung` | nein | ja | `agent/programmleitung` | A-M5 Fallabbruch, Recht aus dem Fallauftrag (ADR-026) |
 | `mensch/quell-aktuar` | nein | ja | keins (Rolle des abgebenden Hauses) | keine |
@@ -355,9 +356,9 @@ Herleitung steht in der Geschichte dieser Datei.
 
 ## Nachtrag 2026-10-01: Die Linie ist Pflicht
 
-Eine Wurzel, die man weglassen kann, ist keine. Die Linie wirkte zunächst
-nur, wenn `--linie` übergeben wurde; ohne sie hielt der Leser die Rolle gegen
-die heutige Ordnung und den Ordnungs-Hash gegen nichts.
+Die Linie wirkte zunächst nur, wenn `--linie` übergeben wurde. Ohne sie
+hielt der Leser die Rolle gegen die heutige Ordnung und prüfte den
+Ordnungs-Hash gar nicht.
 
 1. **Zeichnen:** `gate_entscheid` verlangt `--linie` in Fall und
    Linienbereich, für Annahme und Ablehnung, und zeichnet eine Annahme nur
@@ -490,7 +491,7 @@ vor, den ein Mensch über eine Sicht zeichnet.
    ab, wird nicht gebunden (Exit 2, Felder genannt). Welche Felder
    nachgerechnet werden, steht im Vertrag
    (`models.anfangsbestand.BELEG_BEIM_BINDEN_NACHGERECHNET`, heute alle
-   zwölf; `BELEG_BEIM_BINDEN_GEGLAUBT`, heute leer); eine Ratsche hält die
+   zwölf; `BELEG_BEIM_BINDEN_GEGLAUBT`, heute leer); ein Test hält die
    Vereinigung gegen `BELEG_FELDER`. `BINDUNG_SCHEMA_VERSION` 3.
 2. **Schreibreste:** `belegen` schreibt unter der Sperre der Ablage und räumt
    vorher die Reste desselben Ziels (`tageslauf.raeume_schreibreste_von`).
@@ -504,7 +505,7 @@ vor, den ein Mensch über eine Sicht zeichnet.
 Geschwister. Die Nachrechnung in `binden` fährt die Bestandswache ein
 zweites Mal. Zwei Schreiber des Betriebs räumen ihre Reste nach einem
 Prozessende noch nicht (`seite._schreibe`, `zugangsprobe._schreibe_beleg`);
-die Ratsche führt sie als offen.
+ein Test führt sie als offen.
 
 ## Nachtrag 2026-10-01: Prüfrunde H — ein Glied, das ein Recht mindert, erklärt die früheren Zeichnungen; das Gate rechnet die Grundlage der T-Box-Sicht; der Bytecode gehört zum lebenden Stand; kein Zwilling bleibt liegen
 
@@ -594,7 +595,7 @@ ihre Schlüssel (`linie_fortschreiben`; die Mengen wachsen nur).
 
 Die Folge, die Ausgabe, Vorschau und Sicht nennen (`folge_der_erklaerung`),
 kommt aus `getroffene_abnahmen` und fragt dieselbe Funktion wie der Leser.
-Eine Ratsche hält, dass nur `abloesung_fehler` und `getroffene_abnahmen` die
+Ein Test hält fest, dass nur `abloesung_fehler` und `getroffene_abnahmen` die
 Bestimmung rufen; ein Eigenschaftstest prüft zufällige Linien gegen eine im
 Test formulierte Fassung der Regel (`tests/test_ordnungslinie_rollenlinie.py`).
 Die Linie einer Rolle umfasst alle früheren Namen und Schlüssel; ein

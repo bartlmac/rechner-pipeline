@@ -24,7 +24,8 @@ etwas ändert, ändert das Quellsystem — nicht die PLV.
 
 Die Basiskalkulation ist gegen die **Excel-Ergebnisse** des
 Quell-Tarifrechners abgenommen (`simulation/baldrian/excel_ergebnis_*.csv`,
-717 Vertragszeilen): Erlebens-/Todesfall-Barwert und Rentenbarwerte
+717 Vertragszeilen; diese Dateien liegen nicht im Repository, die
+zugehörigen Tests werden ohne sie übersprungen): Erlebens-/Todesfall-Barwert und Rentenbarwerte
 treffen Excel auf < 1e-12 relativ (reine Float-Kettenreihenfolge; der
 abgenommene Vergleichsmaßstab der Migration sind ohnehin die
 Testtoleranzen). Excel bleibt der Tarifrechner der Quelle.
@@ -45,15 +46,19 @@ Testtoleranzen). Excel bleibt der Tarifrechner der Quelle.
    mit mehreren Vorfällen je Vertrag — Dynamikserien (Einschluss ist
    Vertragsmerkmal), Erhöhung+PEX, Erhöhung+Herabsetzung, Dynamik
    nach der Herabsetzung. Konventionen der Quelle, messbar getestet:
-   Jahres-Batch mit Buchung am Vertragsjahrestag (so belegt es die
-   Alt-Lieferung; die Kalenderjahres-Eigenheit steckt in der
-   Altersermittlung über die Differenz der Kalenderjahre von Beginn
-   und Geburt), Stornoabzug je Scheibe (die Untergrenze greift
-   mehrfach; der Test misst die Differenz zur vertragsweiten Rechnung),
-   Herabsetzung als TEILKUENDIGUNG MIT AUSZAHLUNG nur auf der
-   Grundscheibe, Cent beim Buchen, keine Erhöhung unter fünf Jahren
-   Restlaufzeit (Tarifbestimmungen Ziffer 3 — die VBA-Formel
-   amortisiert Abschlusskosten stur über die Zillmerdauer).
+   - Jahres-Batch mit Buchung am Vertragsjahrestag (so belegt es die
+     Alt-Lieferung; die Kalenderjahres-Eigenheit steckt in der
+     Altersermittlung über die Differenz der Kalenderjahre von Beginn
+     und Geburt);
+   - Stornoabzug je Scheibe (die Untergrenze greift mehrfach; der Test
+     misst die Differenz zur vertragsweiten Rechnung);
+   - Herabsetzung als Teilkündigung mit Auszahlung nur auf der
+     Grundscheibe;
+   - Cent beim Buchen;
+   - keine Erhöhung unter fünf Jahren Restlaufzeit (Tarifbestimmungen
+     Ziffer 3; die VBA-Formel tilgt die Abschlusskosten immer über die
+     ganze Zillmerdauer).
+
    Präzisierung am Golden Master (2026-08-31): Das Blatt rundet die
    Ausgabezellen auf Cent, nicht jeden Zwischenwert — gerundet wird
    beim Buchen je Geschäftsvorfall, nicht in der Rechenkette.
@@ -68,17 +73,18 @@ Testtoleranzen). Excel bleibt der Tarifrechner der Quelle.
    Stichtagsbestand ist eine Rekonstruktion aus dem Journal — spätere
    Vorfälle sind rückwirkend unsichtbar, getestet über Kreuz
    zwischen den Artefakten. STORNO_KZ bleibt im sauberen Export leer
-   (das R/S-Kennzeichen der Vorführ-Lieferung ist Regie, M2).
+   (das R/S-Kennzeichen der Vorführ-Lieferung ist eine bewusst
+   eingebaute Abweichung).
 
 ## Dokumente der Quelle
 
 Die Quelle liefert zwei Dokumente, sauber getrennt (Beschluss
 2026-09-01; vorher stand beides vermischt in einer Datei
-"Tarifbestimmungen"):
+„Tarifbestimmungen“):
 
 * **AVB** (`avb.md`): die vertraglichen Zusagen — rudimentär und ohne
   eine einzige Formel (Abzug je Baustein gesondert, Herabsetzung als
-  Teilkündigung MIT AUSZAHLUNG, Dynamik-Schranke). AVB enthalten
+  Teilkündigung mit Auszahlung, Dynamik-Schranke). AVB enthalten
   keine Aktuarik; darauf steht ein Wächter-Test.
 * **Tarifplan / Mitteilung 143** (`tarifplan.md`): der aktuarielle
   Teil — Rechnungsgrundlagen, Kostensätze je Bestandsgruppe (mehrere
@@ -96,10 +102,10 @@ Altsystem (Schreibmaschinenschrift, Flattersatz ohne Silbentrennung,
 Absatzabstand genau eine Leerzeile — Typst-Vorspann in den Quellen).
 Die Grundformeln übernehmen die Zeichenerklärung der Tarifmeldung
 eins zu eins — einschließlich ihres gewollten Indexfehlers
-(N(x)-Summe ab j=1; Regie F3, nur in der Doku, das Rechenwerk rechnet
-korrekt). `docx.py` bleibt für Office-Artefakte, die es als DOCX
+(N(x)-Summe ab j=1; der Fehler steht absichtlich nur in der Doku, das
+Rechenwerk rechnet korrekt). `docx.py` bleibt für Office-Artefakte, die es als DOCX
 geben muss (Notizen, Mitteilungs-Nachbauten).
 
-Die Baldrian-REGIE (welche Defekte die Lieferung absichtlich trägt,
-Seeds, Nachlieferungen) bleibt in `simulation/baldrian/` — gitignored,
-Spielleiter-Bereich.
+Die Regie der Baldrian (welche Defekte die Lieferung absichtlich trägt,
+Seeds, Nachlieferungen) liegt in `simulation/baldrian/` und gehört nicht
+zum Repository.

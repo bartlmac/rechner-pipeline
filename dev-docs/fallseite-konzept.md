@@ -8,14 +8,14 @@ Wiederholung, Überschneidung, Sprünge.
 **Gebaut.** Die Seite steht: `migrationen/baldrian/` ist eine Seite mit
 dreizehn Stationen, je Station Prüfung, Geschehen, Zahlen und Belege.
 Was dafür an Erzeugern geändert wurde, steht unter „Was der Umbau
-gekostet hat". Was noch umgestellt werden muss und **warum es nicht in
+gekostet hat“. Was noch umgestellt werden muss und **warum es nicht in
 dieser Runde geht**, steht unten — es betrifft ausnahmslos `src/` und
 die Fall-Artefakte, und beides gehört nicht dieser Sitzung.
 
 ## Was schiefgegangen ist
 
-Der Fall wurde an zwei Stellen erzählt — „Der Weg der Übernahme" als
-Erzählung, der „Fallbericht" als Nachschlagewerk — und die Belege lagen
+Der Fall wurde an zwei Stellen erzählt — „Der Weg der Übernahme“ als
+Erzählung, der „Fallbericht“ als Nachschlagewerk — und die Belege lagen
 an einer dritten. Jede Umsortierung hat die Dopplung verschoben, nicht
 beseitigt. Zwischenzeitlich waren es dreizehn Seiten für einen Fall.
 
@@ -97,7 +97,7 @@ gehört in einen ADR, nicht in eine Seitenumstellung.
 
 `aktuartest.html` ist A-M1, `aktuartest-A-M2.html` ist A-M2,
 `migrationsabnahme.html` ist A-M4. Wer an Station 9 einen Beleg sucht,
-sucht „A-M1". **Umbenennen auf `abnahme-A-M1.html` … `abnahme-A-M4.html`**
+sucht „A-M1“. **Umbenennen auf `abnahme-A-M1.html` … `abnahme-A-M4.html`**
 im Erzeuger; die alten Namen stehen in `abnahmebericht.gate.json` und
 brauchen denselben Neulauf wie Punkt 1.
 
@@ -133,20 +133,20 @@ Bereinigung in `werkzeuge/` genau zwei Quellen:
 
 | Quelle | Stelle | Text |
 |---|---|---|
-| `src/rechner_pipeline/gates/register.py` | A-M2 `gegenstand_satz` | „die Deckungsrückstellung **ueber** die Laufzeit" |
-| `src/rechner_pipeline/gates/register.py` | A-M4 `gegenstand_satz` | „bindet die Pflichtbelege … und **prueft** sie erneut" |
-| Fall-Artefakte (`fall.json`) | Beschreibung | „(**Vorfuehrfall** Vier-Rollen-Regie)" |
-| `src/rechner_pipeline/betrieb/seite.py` | Lücken-Wirkung | „nicht auf ein Container-Image **rueckfuehrbar**" |
-| Fall-Artefakte (Umbau) | Begründung | „**Faehigkeiten planmaessig**", „**nachtraeglich** adversarial geprüft" |
+| `src/rechner_pipeline/gates/register.py` | A-M2 `gegenstand_satz` | „die Deckungsrückstellung **über** die Laufzeit“ |
+| `src/rechner_pipeline/gates/register.py` | A-M4 `gegenstand_satz` | „bindet die Pflichtbelege … und **prüft** sie erneut“ |
+| Fall-Artefakte (`fall.json`) | Beschreibung | „(**Vorführfall** Vier-Rollen-Regie)“ |
+| `src/rechner_pipeline/betrieb/seite.py` | Lücken-Wirkung | „nicht auf ein Container-Image **rückführbar**“ |
+| Fall-Artefakte (Umbau) | Begründung | „**Fähigkeiten planmäßig**“, „**nachträglich** adversarial geprüft“ |
 
 Beide Register-Stellen stehen mitten in Sätzen, die sonst Umlaute
-schreiben („Deckungsrückstellung ueber") — das sind Tippfehler, keine
+schreiben („Deckungsrückstellung über“) — das sind Tippfehler, keine
 Umschriftregel. Die Fall-Texte entstehen im Lauf und ändern sich mit
 ihm. **Beides gehört nicht in diese Sitzung**: `src/` gehört der
 dev-Sitzung, die Fall-Artefakte entstehen beim Neulauf aus Punkt 1.
 
 Berichtigung 2026-09-22: Kreuzprobe („Abgänge gegen beendende
-Vorfälle") und die drei Abgrenzungs-Aussagen stammten nicht aus den
+Vorfälle“) und die drei Abgrenzungs-Aussagen stammten nicht aus den
 Fall-Artefakten, sondern aus `werkzeuge/falldaten.py` — also aus dieser
 Sitzung. Dort bereinigt. Die Liste für dev steht jetzt in
 `vorzeige-zielbild-artefakte.md`, Punkt B6.
@@ -163,7 +163,7 @@ umbenannten Artefakte.
 * `werkzeuge/vorzeigeseite.py` — `_stationen()` setzt je Station
   Überschrift, Gate-Kasten, Geschehen, Zahlenblock und Belege; die
   Zahlenblöcke tragen keine eigene Überschrift und keine eigenen Belege
-  mehr. Der Kopf führt „Der Weg im Überblick" mit dreizehn Sprungzielen.
+  mehr. Der Kopf führt „Der Weg im Überblick“ mit dreizehn Sprungzielen.
 * `werkzeuge/unternehmensseite.py` — `_journey` (199 Zeilen) entfällt;
   die Stationserzählung ist zur Fallseite **gewandert**, nicht kopiert
   worden. `{{html:journey}}` gibt es nicht mehr.
@@ -172,7 +172,7 @@ umbenannten Artefakte.
   `datum()`, `GATE_TITEL`, `ART`, `GEGENSTAND_TEXT` und
   `DECKUNG_ZUSTAND` wohnen hier, weil beide Erzeuger sie brauchen.
 * `vorzeige-seite/migrationen/baldrian-weg.md` → `ki.md`: die Seite
-  trägt die Kachel „Künstliche Intelligenz" und ist jetzt fallfrei.
+  trägt die Kachel „Künstliche Intelligenz“ und ist jetzt fallfrei.
 * `stil.css` — `ol.journey` und `.befunde` entfallen, `p.gate` kommt.
 
 ## Was bleibt, was geht

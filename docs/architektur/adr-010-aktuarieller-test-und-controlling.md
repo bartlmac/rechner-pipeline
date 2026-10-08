@@ -12,7 +12,7 @@ instanziiert sie in unserer Gate-Architektur; es definiert nichts
 fachlich neu.
 
 *Zur Herkunft:* Bei Beschluss dieses ADR lag die Methode als Fachkonzept
-„Konstruktive Neuberechnung und Korrekturschicht" v0.2 vor (Kapitel
+„Konstruktive Neuberechnung und Korrekturschicht“ v0.2 vor (Kapitel
 6.1-6.3). Dieses Dokument ist seither vollständig in die
 Grundsatzdokumentation aufgenommen; die Verweise unten sind entsprechend
 umgestellt.
@@ -64,7 +64,7 @@ wäre ohne Aussage.
 
 Die Reihenfolge wird über den Snapshot-Mechanismus abgebildet: Der
 A-M4-Snapshot pinnt die geltende, signierte A-M1-Annahme desselben Stands
-als Pflichtrolle ``am1_snapshot`` (das ``vorgänger``-Feld der Kette
+als Pflichtrolle ``am1_snapshot`` (das ``vorgaenger``-Feld der Kette
 bleibt gate-intern, ADR-008). Damit gilt
 der bestehende Kettenvertrag aus ADR-008 unverändert weiter — Schema,
 kanonischer Hash, Freigabesignatur, Zyklenfreiheit, genau eine Spitze.
@@ -90,7 +90,7 @@ Doku stehen:
   Verteilungsgrößen des Residuums (Grundsatzdokumentation 9.15: Toleranzen auf Maximum und
   hohen Perzentilen, nie auf Mittelwert oder Median).
 * **Prüfsummen sind Transportsicherung, kein fachlicher Abgleich.**
-  Mitgelieferte Summen werden geprüfet und getrennt ausgewiesen, nie als
+  Mitgelieferte Summen werden geprüft und getrennt ausgewiesen, nie als
   Teil des aktuariellen Urteils.
 
 ### 5. Stichprobenprofil
@@ -120,7 +120,7 @@ verschweigen.
 Weitere Profile bleiben offen. Die Erweiterungsstelle ist benannt
 (`qa.stichprobe.PROFILE`); sie erfindet keine Profile auf Vorrat.
 
-### 6. „Vollständig geprüft" bedeutet auf den beiden Ebenen Verschiedenes
+### 6. „Vollständig geprüft“ bedeutet auf den beiden Ebenen Verschiedenes
 
 Im Controlling heißt es: jeder Vertrag des Bestands wurde geprüft — ein
 ungeprüfter Vertrag ist eine Prüflücke. Im aktuariellen Test heißt es:

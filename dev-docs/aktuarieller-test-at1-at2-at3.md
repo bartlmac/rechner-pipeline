@@ -270,9 +270,9 @@ Verdacht auf der Ausscheideordnung oder dem Kostenverlauf statt auf dem
 
 **A-M3 Geschäftsvorfalltest: Beurteilung statt Wertetabelle.** Eine Zeile
 je Vorfallart mit Fallzahl, größtem Residuum und einem Urteilssatz:
-„exakt getroffen", „im Rundungsrauschen der Lieferung", „Abweichung über
-dem Rundungsrauschen — begründen", jeweils mit dem Zusatz „nur N Fälle —
-schmale Grundlage", wo die Stichprobe dünn ist. Nicht getroffene
+„exakt getroffen“, „im Rundungsrauschen der Lieferung“, „Abweichung über
+dem Rundungsrauschen — begründen“, jeweils mit dem Zusatz „nur N Fälle —
+schmale Grundlage“, wo die Stichprobe dünn ist. Nicht getroffene
 Vorfallarten stehen ausdrücklich als solche da, mit dem Satz, dass der
 Test über sie nichts sagt.
 
@@ -304,7 +304,7 @@ dazwischen ist dort ein harter Fehler.
 
 **Dazu ein Befund, der die Begründung zurechtgerückt hat.** Der erste
 Entwurf argumentierte, die Monatsreserve sei „eine gerechnete Größe, kein
-Interpolat". Ein Test, der genau das nachweisen sollte, ist rot geworden:
+Interpolat“. Ein Test, der genau das nachweisen sollte, ist rot geworden:
 Die Monatsreserve des Kerns ist ausdrücklich **linear zwischen den
 Vertragsjahrestagen gemischt** (`klv.monatsreserve`, Grundsatzdokumentation
 Abschnitt 6). Unterjährig wird also sehr wohl gegen einen interpolierten

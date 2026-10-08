@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rechner-pipeline"
 version = "0.1.0"
-description = "Full-agentic, CLI-driven Excel-to-Python actuarial migration pipeline (foundation layer)."
+description = "Migration von Lebensversicherungsbestaenden mit Agenten und deterministischem Code (Prototyp)."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }

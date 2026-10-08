@@ -1,10 +1,10 @@
 # ADR-013: Der Kommutations-Kreuzcheck wird außer Betrieb genommen
 
 **Status:** angenommen am 2026-08-28 (Maintainer). Löst Punkt 2 von
-ADR-004 ab.
-Umgesetzt: `rechner_pipeline.qa.ueberleitung` entfernt; der Zweitkern
-`rechner_pipeline.kommutationskern` bleibt ohne Konsumenten im
-Produktivpfad.
+ADR-004 ab. Umgesetzt: `rechner_pipeline.qa.ueberleitung` ist entfernt.
+Der Zweitkern `rechner_pipeline.kommutationskern` blieb zunächst ohne
+Konsumenten im Paket; seit dem Nachtrag 2026-10-04 liegt er nicht mehr in
+`src`, sondern dient den Tests als Zeuge.
 
 ## Kontext
 
@@ -70,15 +70,14 @@ Rückschritt hinter einen Reviewbefund.
 
 Entscheidend ist die Art der Nutzung: Der Test baut den Zweitkern
 testseitig selbst und vergleicht Skalare. Er hängt ihn nicht in den
-Zielkern ein. Damit hat der Zweitkern keinen Anspruch mehr an den
-lebenden Code — und formt ihn auch nicht mehr. Genau das ist die
-Trennlinie, um die es geht.
+Zielkern ein. Damit stellt der Zweitkern keine Anforderungen mehr an den
+lebenden Code und prägt ihn nicht mehr.
 
 Was bleibt und die Sicherung trägt: die **eingefrorenen
 Referenzwerte** in `tests/fixtures/kern_referenzwerte/`. Sie nageln
 `berechne()` für sechs Modellpunkte bit-exakt fest und sind laut ihrem
-eigenen Test "seit dem Backbone-Wechsel die Voll-Präzisions-Referenz
-des produktiven Pfads". Ein Diff dort ist eine Verhaltensänderung und
+eigenen Test „seit dem Backbone-Wechsel die Voll-Präzisions-Referenz
+des produktiven Pfads“. Ein Diff dort ist eine Verhaltensänderung und
 braucht eine bewusste, fachlich begründete Abnahme.
 
 **Der Nachweis nach dem Muster von ADR-006**: Es wird keine geprüfte

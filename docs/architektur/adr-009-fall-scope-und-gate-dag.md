@@ -32,7 +32,7 @@ Eingangs-, A-Box-, Code-, Bestands- und Stichtagsstand beschreiben.
    binden. P-B1 muss außerdem den aktuellen Systemstand tragen; die Suite muss
    genau die beiden chronologischen Berichtsstichtage binden.
 5. `gates.abnahmebericht` erzeugt ein grünes Ledger nur mit
-   Transformationsspecifikation, Transformationsergebnis und zwei vorhandenen,
+   Transformationsspezifikation, Transformationsergebnis und zwei vorhandenen,
    verschiedenen Vor-/Nachberichten. Alle Eingabe-, die HTML-Ausgabe- und die
    Gate-Ledger-Rolle müssen paarweise verschiedene Dateien bezeichnen;
    kanonische Pfad- und Hardlink-Aliase blockieren vor dem Rendern.
@@ -125,7 +125,7 @@ Eingangs-, A-Box-, Code-, Bestands- und Stichtagsstand beschreiben.
 
 Die Pflichtbelegmenge dieses ADR beschreibt ab hier das Gate A-M4. Mit
 ADR-010 wird die scope-getriebene Belegmenge je Gate aufgelöst
-(`fall.BELEGROLLEN`): Das neue menschliche Gate A-M1 (aktuarielle
+(`fall.BELEGROLLEN`, seit ADR-021 `models.belegrollen.BELEGROLLEN`): Das neue menschliche Gate A-M1 (aktuarielle
 Abnahme) trägt eine eigene Rollenmenge — im Bestands-Scope das
 Testergebnis und der Bericht des aktuariellen Tests, im Tarif-Scope
 keine eigenen Rollen. A-M4 verlangt zusätzlich den geltenden
@@ -136,4 +136,6 @@ aus ADR-008. Das P9-Schema hebt seine Version auf 5 (Gate-Version
 Altketten werden nach dem Verfahren dieses ADR revisionsfest archiviert
 und neu entschieden. Die hier verworfene Alternative eines allgemeinen
 Gate-DAG bleibt verworfen: Auch die Je-Gate-Auflösung ist eine
-deklarierte Tabelle, kein frei konfigurierbarer Graph.
+deklarierte Tabelle, kein frei konfigurierbarer Graph. Die heute geltende
+Menge steht in `models/belegrollen.py`; sie wuchs mit ADR-018 (Nachtrag
+2026-10-01), ADR-025 und ADR-026.

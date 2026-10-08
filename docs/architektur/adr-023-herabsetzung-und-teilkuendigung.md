@@ -13,7 +13,7 @@ Teilkündigung, und nach dem Beitragsende (Vertragsjahr $\geq t$) war nur
 dieses Verfahren definiert.
 
 Der Entscheid des Maintainers vom 2026-10-01, ein ausfinanzierter Vertrag
-müsse in jeder Generation herabsetzbar sein, wurde zunächst als "Regel A"
+müsse in jeder Generation herabsetzbar sein, wurde zunächst als „Regel A“
 gebaut: nach dem Beitragsende rechnet jede Herabsetzung still als
 Teilkündigung (eine Funktion im Kern deutete das Verfahren nach dem Jahr
 um). Der Maintainer hat das am selben Tag ersetzt:
@@ -31,7 +31,7 @@ um). Der Maintainer hat das am selben Tag ersetzt:
    (`prospektiv` oder `mit_abzug`); es fließt kein Geld. Nur während der
    Beitragszahlung ($0 < a_0 < t$) und ohne Beitragsfreistellung. Danach
    verweigern Kern, Datenmodell und Bindung benannt, mit dem Ausweg
-   "Teilkündigung".
+   „Teilkündigung“.
 2. **Teilkündigung (`TKU`).** Der Anteil $(1-f)$ der Grundversicherung wird
    gekündigt und mit seinem Rückkaufswert nach dem Tarifwerk der Generation
    (mit Stornoabzug) ausgezahlt; der Vertrag läuft mit $f \cdot S$
@@ -62,9 +62,9 @@ Leser, der `RED` sieht, darf keine Auszahlung vermuten müssen.
   `dDK_absorption`, `RKW_teilkuendigung` und `Kappung_teilkuendigung`; die
   Herabsetzung bucht nur noch `VS_herabsetzung` und `dDK_absorption`.
   Jeder Leser (P-B1, Führungsprobe, Bewegungskonto mit eigener Position
-  "Teilkündigung", Bestandsbericht, Abschluss, Betriebsseite,
-  Korrekturschicht) kennt ihn; eine Ratsche über die Aufzähler hält die
-  Menge fest, sodass der nächste neue Code an einer Stelle auffällt.
+  „Teilkündigung“, Bestandsbericht, Abschluss, Betriebsseite,
+  Korrekturschicht) kennt ihn. Ein Test hält die Menge der Codes fest,
+  sodass ein neuer Code an einer Stelle auffällt.
 * Eigene Generationen ohne Teilkündigungsrate rechnen bitgleich wie vor
   dem Entscheid (Rate 0 als Vorgabe, Ziehung hinter der Jahresbedingung,
   eigener Strom). Eine Generation mit `red_verfahren = teilkuendigung`
@@ -104,7 +104,7 @@ A3 und A4 und die Verweigerungen der ersten Fassung:
   anteilig; der übernommene Tarif TG2015 kündigt nur die Grundversicherung
   (B1). Beides ist **ein** Merkmal des Tarifwerks je Generation,
   `tku_umfang`.
-* Der übernommene Tarif kennt **einen** Vorgang: Seine "Herabsetzung" ist
+* Der übernommene Tarif kennt **einen** Vorgang: Seine „Herabsetzung“ ist
   die Teilkündigung der PLV und kommt allein aus deren Rate (die frühere
   Annahme A1 und ihre zweite Rate entfallen). Der Code `RED` der Quelle
   bleibt Provenienzname; ab der Migration gilt das Vokabular des
@@ -123,10 +123,10 @@ Tarifplan ist eine Auswahl; die Menge der zulässigen Folgen beschreibt eine
 Regel dort, und Eigenschaftstests über erzeugte Folgen halten sie.
 
 **Verworfene Alternative.** Die Verkettung je Leser nachzubauen (jeder Leser
-erweitert seinen Einzelvorgang-Weg um "zweiter Vorgang"). Verworfen, weil
+erweitert seinen Einzelvorgang-Weg um „zweiter Vorgang“). Verworfen, weil
 genau das die Klasse war, die die erste Fassung verweigern ließ: Jeder Leser
 hatte seine eigene Rekonstruktion, und eine Regel, die nur in einem Leser
-steht, läuft den anderen davon. Eine Ratsche
+steht, läuft den anderen davon. Ein Test
 (`tests/test_vorgangsfolge_ratsche.py`) hält fest, dass kein Leser mehr einen
 einzelnen Vorgang annimmt.
 
@@ -137,9 +137,9 @@ einzelnen Vorgang annimmt.
   sich: Verträge mit mehr als einem Vorgang, Teilkündigungen eigener Tarife
   mit Erhöhungsscheiben (jetzt anteilig über alle Bausteine) und
   Teilkündigungen nach der Beitragsfreistellung (jetzt gezogen).
-* Die Prüfstrecke rechnet Folge-Geschäftsvorfälle, statt sie als "nicht
-  abgebildet" zu melden; ein Rückkauf nach der Beitragsfreistellung wird
-  gemessen statt als "nicht definiert" gemeldet. Die Übernahme führt eine
+* Die Prüfstrecke rechnet Folge-Geschäftsvorfälle, statt sie als „nicht
+  abgebildet“ zu melden; ein Rückkauf nach der Beitragsfreistellung wird
+  gemessen statt als „nicht definiert“ gemeldet. Die Übernahme führt eine
   Vorgeschichte mit mehreren Absetzungen; einen durch eine Herabsetzung der
   Vorgeschichte geteilten Vertrag schaltet sie weiter benannt nicht frei.
 * Versionen: Kern `3.17.0`.

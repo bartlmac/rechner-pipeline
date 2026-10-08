@@ -1409,15 +1409,16 @@ def test_die_version_des_abnahmeberichts_nennt_den_grund():
 
     gate_dokument = (REPO_ROOT / "docs/architektur/gate-vertrag-und-versionen.md"
                      ).read_text(encoding="utf-8")
-    zeile = next(z for z in gate_dokument.splitlines()
-                 if z.startswith("| G2-Vorlage (Version `"))
-    # 7.0.0 (Pruefer-Befund B1, 2026-10-01), 8.0.0 (Fuehrungswert,
+    # Die Geschichte der Version steht im Abschnitt der A-M4-Vorlage unter
+    # der Tabelle: 7.0.0 (Pruefrunde 2026-10-01), 8.0.0 (Fuehrungswert,
     # 2026-10-01), 9.0.0 (Tarifregeln aus der Spez, ADR-024 Nachtrag) und
     # 10.0.0 (Pruefrunde G: Fuehrungswert nachgerechnet, Belege an der Spez)
-    # erweitern dieselbe Zeile; der Grund fuer 6.0.0 steht weiter darin.
+    # erweitern denselben Abschnitt; der Grund fuer 6.0.0 steht weiter darin.
+    abschnitt = gate_dokument.split("\n### A-M4-Vorlage", 1)[1].split("\n## ", 1)[0]
+    versionen = {z.split("`")[1]: z for z in abschnitt.splitlines() if z.startswith("- `")}
     assert abnahmebericht.GATE_VERSION == "10.0.0"
-    assert "`10.0.0`" in zeile and "nachgerechnet" in zeile
-    assert "`9.0.0`" in zeile and "Spez" in zeile
-    assert "`6.0.0`" in zeile and "red_anteile_datei" in zeile
-    assert "`7.0.0`" in zeile and "pflichtschicht" in zeile
-    assert "`8.0.0`" in zeile and "fuehrungswert" in zeile
+    assert "nachgerechnet" in versionen["10.0.0"]
+    assert "Spez" in versionen["9.0.0"]
+    assert "red_anteile_datei" in versionen["6.0.0"]
+    assert "pflichtschicht" in versionen["7.0.0"]
+    assert "fuehrungswert" in versionen["8.0.0"]

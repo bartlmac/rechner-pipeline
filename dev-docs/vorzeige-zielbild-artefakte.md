@@ -26,7 +26,7 @@ des Falls und danach die Neuzeichnung von A-M4, weil A-M4 die Prüfsummen
 der betroffenen Artefakte bindet. Das ist teuer und soll GENAU EINMAL
 geschehen — deshalb erst Gruppe C entscheiden (sie bestimmt, wie A2 bis
 A4 gebaut werden), dann Gruppe B (billig, ohne Neulauf), dann Gruppe A in
-einem Zug. Die Spalte „Offen" nennt, was vor dem Bau mit der
+einem Zug. Die Spalte „Offen“ nennt, was vor dem Bau mit der
 Seiten-Session zu schärfen ist.
 
 Erledigt und hier nur zur Einordnung: der eigene Monatsbericht
@@ -72,7 +72,7 @@ Layoutänderung entwertet die Zeichnung.
    die Vorzeige zeigt beide Stände nebeneinander, bis neu gezeichnet ist.
 
 Weg 1 ist der sauberere Schnitt (er entspricht der Regel „die Seite
-rechnet nichts, sie setzt"); Weg 2 ist näher am heutigen Code. Die
+rechnet nichts, sie setzt“); Weg 2 ist näher am heutigen Code. Die
 Seiten-Session empfiehlt Weg 1.
 
 **Wirkung.** Architekturentscheidung (ADR), danach Neulauf. Bestimmt A2,
@@ -93,8 +93,8 @@ Seite liest diesen Index und setzt ihn; sie leitet nichts ab.
 **Ist.** `werkzeuge/falldaten.py` (rund 1.500 Zeilen) LEITET das Modell
 aus den Artefakten AB: Es zählt Diskrepanzen und gruppiert sie, rechnet
 Kreuzproben (`Abgänge gegen beendende Vorfälle`), bildet Abgrenzungen
-(„die Stichtage sind unterschiedlich tief geprüft", „Entscheide auf
-9 Systemständen"), misst Lücken, ordnet Berichte Stationen zu
+(„die Stichtage sind unterschiedlich tief geprüft“, „Entscheide auf
+9 Systemständen“), misst Lücken, ordnet Berichte Stationen zu
 (`darstellung.STATION`) und Gates zeichnenden Rollen
 (`unternehmensseite.GATE_ZEICHNER`). Das ist Fachlogik im
 Darstellungswerkzeug — und sie ist die Stelle, an der die Seite dem Lauf
@@ -128,9 +128,9 @@ Unternehmens.
 **Ist.** Die Freigabe ist ein HMAC (`gate_entscheid.py`,
 `P9_FREIGABE_VERFAHREN`): symmetrisch, der Prüfer braucht den Schlüssel.
 Die Seite verifiziert deshalb bewusst keine Signatur und darf das Wort
-„gezeichnet" nicht tragen (T20-02, Test
+„gezeichnet“ nicht tragen (T20-02, Test
 `test_vorzeigeseite_nennt_nichts_gezeichnet_ohne_verifizierte_signatur`).
-Sie zeigt „Entscheid liegt vor" und die Schlüsselklasse aus dem
+Sie zeigt „Entscheid liegt vor“ und die Schlüsselklasse aus dem
 Snapshot.
 
 **Lücke.** Die stärkste Aussage des Verfahrens — ein Mensch hat
@@ -139,13 +139,13 @@ gezeichnet — ist öffentlich nicht nachprüfbar.
 **Zu bauen.** Asymmetrische Signatur (etwa Ed25519) je Rolle; der
 öffentliche Schlüssel steht in der Zeichnungsordnung, deren Hash ohnehin
 in jedem Snapshot liegt. Die Seite prüft beim Bau und schreibt dann
-„gezeichnet: Verantwortlicher Aktuar, Schlüssel: Simulation".
+„gezeichnet: Verantwortlicher Aktuar, Schlüssel: Simulation“.
 
 **Wirkung.** ADR (ersetzt das Freigabeverfahren P9); Neulauf, weil alle
 Snapshots neu entstehen. Nicht vor C1.
 
 **Offen.** Ob die Vorzeige das braucht oder ob „Entscheid liegt vor,
-Klasse simulation" für die Vorführung genügt. Das ist eine Frage an den
+Klasse simulation“ für die Vorführung genügt. Das ist eine Frage an den
 Maintainer, keine an dev.
 
 ## A · Ein Neulauf, eine Neuzeichnung
@@ -157,24 +157,24 @@ wirksam; danach zeichnet der Verantwortliche Aktuar A-M4 neu.
 | Nr | Stelle | Zielbild | Ist | Lücke / zu bauen |
 |---|---|---|---|---|
 | A1 | Belege an Station 1 und 13, Ausgangslage | Drei Bestandsberichte auf denselben Horizont: Übernahmestichtag 01.01.2026, keine Projektion; der gelieferte Bestand ohne Verlaufsteile, weil er keine Historie hat | Eigener Bestand bis 2046, gelieferter bis 2026, geführter bis 2027, je mit Projektion. Die Schalter `--berichtsstichtag` und `--ohne-verlauf` sind gebaut und in den Skills dokumentiert | Der Fall muss mit den Schaltern laufen; `abnahmebericht.gate.json` bindet die Prüfsummen von `bestandsbericht-vor/-nach.html` → Neuzeichnung. Mit C1 Weg 1 entfällt die Bindung der HTML |
-| A2 | Belege an Station 9–12 | Ein Prüfbericht heißt nach seinem Gate: `abnahme-A-M1.html` … `abnahme-A-M4.html`, ebenso die JSON. Wer an Station 9 sucht, sucht „A-M1" | `aktuartest.html` ist A-M1, `aktuartest-A-M2.html` A-M2, `migrationsabnahme.html` A-M4; die JSON tragen keine Gate-Kennung als Feld (`aktuartest.json` hat weder `gate` noch `abnahme`). Die Seite kennt die Zuordnung nur aus `darstellung.STATION` | Erzeuger (`gates.aktuartest`, `gates.abnahmebericht`) schreiben Gate-Kennung in Dateiname UND als Feld; `fall.BELEGROLLEN` und die Skills ziehen nach. Die alten Namen stehen in den Ledgern → Neulauf |
+| A2 | Belege an Station 9–12 | Ein Prüfbericht heißt nach seinem Gate: `abnahme-A-M1.html` … `abnahme-A-M4.html`, ebenso die JSON. Wer an Station 9 sucht, sucht „A-M1“ | `aktuartest.html` ist A-M1, `aktuartest-A-M2.html` A-M2, `migrationsabnahme.html` A-M4; die JSON tragen keine Gate-Kennung als Feld (`aktuartest.json` hat weder `gate` noch `abnahme`). Die Seite kennt die Zuordnung nur aus `darstellung.STATION` | Erzeuger (`gates.aktuartest`, `gates.abnahmebericht`) schreiben Gate-Kennung in Dateiname UND als Feld; `fall.BELEGROLLEN` und die Skills ziehen nach. Die alten Namen stehen in den Ledgern → Neulauf |
 | A3 | Station 6 | Der Übersetzungsbericht entsteht im Lauf und ist gebunden | `transformation_anwenden --bericht` kann ihn schreiben, kein Skill ruft es; im Fall fehlt er. Die Seite rendert eine Ausweichseite `uebersetzung.html` aus dem Modell (`vorzeigeseite._uebersetzungsbericht`) | Skill `transformiere-quellbestand` ruft `--bericht abgeleitet/berichte/uebersetzungsbericht.html`; A-M4 bindet ihn (unter `renderer_artefakte` stehen heute nur Spec und Ergebnis). Die Ausweichseite wird gelöscht |
 | A4 | Station 2, 3, 4, 7, 8 | Je Station EIN lesbarer Bericht aus den gebundenen Daten: Quellfragmente (2), Faktenbasis mit Diskrepanzen (3), Abdeckungsbericht (4), Golden-Master-Beleg je Generation (7), Verankerungsbericht (8) | Die Daten liegen im Fall und sind gebunden — `abox/abox.json`, `abox/coverage.json`, `generation_golden.<generation>.<hash>.beleg.json` stehen in den 68 Artefakt-Hashes von A-M4 —, aber nur als JSON. Die Seite schreibt Sätze daraus und verlinkt das Ledger | Renderer je Bericht (nach C1). Bis dahin zeigt die Seite an diesen Stationen Zahlen ohne Belegkachel |
-| A5 | Verzeichnis der Artefakte, „Alle Prüfläufe und ihre Ledger" | Ein Ledger heißt nach seinem Gate: `P-Q1.quellfragment.gate.json` | `extract.gate.json`, `abox_merge.gate.json`, `gate_entscheid_am1.gate.json` — benannt nach dem Kommando. Das Feld `gate` im Ledger trägt die Kennung; die Seite löst über die Kette auf | Beim nächsten Neulauf mitnehmen, nicht allein dafür laufen. `BELEGROLLEN` (`pq3_ledger`, `pb1_ledger`) nennt die Pfade |
+| A5 | Verzeichnis der Artefakte, „Alle Prüfläufe und ihre Ledger“ | Ein Ledger heißt nach seinem Gate: `P-Q1.quellfragment.gate.json` | `extract.gate.json`, `abox_merge.gate.json`, `gate_entscheid_am1.gate.json` — benannt nach dem Kommando. Das Feld `gate` im Ledger trägt die Kennung; die Seite löst über die Kette auf | Beim nächsten Neulauf mitnehmen, nicht allein dafür laufen. `BELEGROLLEN` (`pq3_ledger`, `pb1_ledger`) nennt die Pfade |
 | A6 | Was sich am System änderte | Der Umbau des Zielsystems ist Teil der Abnahmekette: ein Gate hält ihn an, die Abschlusszeichnung bindet ihn, die Seite zeigt ihn an seiner Station mit Gate | `umbaubudget.json`/`umbaubericht.html` werden gemessen und ausgewiesen; kein Gate, keine Bindung. Die Seite führt ihn als Rahmenkapitel und sagt das | Architekturentscheidung: Pflichtbeleg von A-M4 oder eigenes Gate an Station 7 (Rechenkern). ADR zuerst, dann Neulauf |
-| A7 | Lücke im Kopf der Seite | Kein Lauf ohne Image-Digest; die Seite trägt keine Lücke „nicht auf ein Container-Image rückführbar" | Der Lauf vom 20.09. lief lokal; `betrieb/seite.py:luecken` weist es aus, der Seitenbau sagt „so nicht veröffentlichen" | Kein Code: Der Neulauf dieser Gruppe läuft in der Laufzeitumgebung (Container), dann steht der Digest im Protokoll |
+| A7 | Lücke im Kopf der Seite | Kein Lauf ohne Image-Digest; die Seite trägt keine Lücke „nicht auf ein Container-Image rückführbar“ | Der Lauf vom 20.09. lief lokal; `betrieb/seite.py:luecken` weist es aus, der Seitenbau sagt „so nicht veröffentlichen“ | Kein Code: Der Neulauf dieser Gruppe läuft in der Laufzeitumgebung (Container), dann steht der Digest im Protokoll |
 
 ## B · Erzeuger und Verträge, ohne Neulauf der Gates
 
 | Nr | Stelle | Zielbild | Ist | Lücke / zu bauen |
 |---|---|---|---|---|
-| B1 | Kopf der Fallseite, Block auf der Startseite | Der Fall nennt sich selbst: abgebende Gesellschaft, Tarifgeneration, Übernahme- und Kontrollstichtag, eine Beschreibung in Unternehmenssprache | `fall.json` = `{name, beschreibung, scope, angelegt_am}`. Die Seite schneidet „Baldrian" aus dem Verzeichnisnamen (`_fallname_kurz`), holt die Stichtage aus dem Controlling und die Generation aus den Parametern; die Beschreibung lautet „Vorfuehrfall Vier-Rollen-Regie" | `fall.json` um `abgebende_gesellschaft`, `tarifgeneration`, `uebernahmestichtag`, `kontrollstichtag` ergänzen (Schema 2 des Manifests); `fall.lade_scope` prüft sie. Kein Neulauf: Manifest, kein Beleg |
+| B1 | Kopf der Fallseite, Block auf der Startseite | Der Fall nennt sich selbst: abgebende Gesellschaft, Tarifgeneration, Übernahme- und Kontrollstichtag, eine Beschreibung in Unternehmenssprache | `fall.json` = `{name, beschreibung, scope, angelegt_am}`. Die Seite schneidet „Baldrian“ aus dem Verzeichnisnamen (`_fallname_kurz`), holt die Stichtage aus dem Controlling und die Generation aus den Parametern; die Beschreibung lautet „Vorführfall Vier-Rollen-Regie“ | `fall.json` um `abgebende_gesellschaft`, `tarifgeneration`, `uebernahmestichtag`, `kontrollstichtag` ergänzen (Schema 2 des Manifests); `fall.lade_scope` prüft sie. Kein Neulauf: Manifest, kein Beleg |
 | B2 | Station 1 | Jede registrierte Datei trägt ihre Rolle in der Lieferung: Bestandsabzug (mit Stichtag), Tarifbeschreibung, Tarifrechner, Erwartungswerte (wofür), Auskunft auf Nachfrage. Die Seite gruppiert danach statt Dateinamen aufzuzählen | `eingang.json` je Quelle `{datei, bytes, sha256, quelle_pfad, registriert_am, nachgereicht}`. Die Rolle steht nirgends; die Seite erkennt Bestandsabzüge am Namen (`--abzug`) | Feld `art` je Quelle, vergeben bei der Registrierung (`gates.registriere_eingang`, Skill `migrationsfall-durchfuehren`). Die Ansichten (CSV-Vorschau, PDF) baut weiterhin die Seite — das ist Darstellung |
 | B3 | Station 5 bis 12, KI-Seite | Das Register sagt je A-Gate, welche menschliche Rolle zeichnet | `gates.register.Gate` kennt Art (P/A) und Gegenstand, keine Rolle. Die Zuordnung steht in ADR-010/-012/-018 und im Docstring von `gate_entscheid`; die Seite pflegt sie als `unternehmensseite.GATE_ZEICHNER`, ein Test hält sie gegen `GUELTIGE_GATES` | Feld `zeichnet` am `Gate` (etwa `"mensch/aktuariat"`), Test gegen `models.zeichnung`; die Seite liest es und löscht `GATE_ZEICHNER`. Denselben Satz braucht `it/pruefgates` |
 | B4 | KI-Seite, Rollen | Die Rollen des Repos stimmen mit ADR-018 überein | `faelle/zeichnungsordnung.json` ist Schema 1, das `models.zeichnung` abweist (tote Datei, bis 722d40c von der Seite gelesen). ADR-018-Nachtrag nennt `agent/betrieb` als fünfte Agentenrolle, es gibt keine Definition; AGENTS.md sagt vier | Tote Datei löschen oder durch Schema 2 ersetzen (Schlüsselmaterial: Maintainer); `agent/betrieb` definieren oder den Nachtrag präzisieren; AGENTS.md nachziehen |
-| B5 | Block je Übernahme auf der Startseite | Dauer und Kosten einer Übernahme stehen im Fall | Beide Zeilen sind Platzhalter „noch nicht erfasst". Die kalendarische Dauer ist heute schon ableitbar (erste Registrierung in `eingang.json` bis Abschluss-Entscheid A-M4); Aufwand und Kosten stehen nur im Sitzungstranskript, das `werkzeuge/verlaufsprotokoll.py` liest — herstellergebunden, kein Pipeline-Teil | `abgeleitet/aufwand.json`, geschrieben vom Abschluss (A-M4): Dauer aus Registrierung und Entscheid, Aufwand als DEKLARIERTER Wert aus dem Mandat oder dem Protokoll des Operators. Wie Kosten gemessen werden (Token, Stunden), ist eine Frage an den Maintainer (vgl. `vorzeige-backlog.md`, Zeile „Dauer und Kosten je Migration") |
-| B6 | überall, wo Text des Laufs auf die Seite gelangt | Unternehmenssprache mit Umlauten in jedem Text, den ein Leser sieht | `gates/register.py` Z. 104 „ueber", Z. 113 „prueft" — Tippfehler in Sätzen, die sonst Umlaute schreiben. `betrieb/seite.py:586,590` „rueckfuehrbar" (Lücken-Wirkung). Im Fall: `fall.json` „Vorfuehrfall", Umbau-Begründung „Faehigkeiten planmaessig", „nachtraeglich" | Register und Betriebs-Lücken korrigieren; die Fall-Texte entstehen beim Neulauf neu (B1, Umbau-Begründung im Mandat). Die vier Sätze aus `werkzeuge/falldaten.py` (Kreuzprobe, Abgrenzungen) gehören der Seiten-Session und sind dort bereinigt |
-| B7 | Startseite, „Laufende Übernahme" | Ein Fall im Modell trägt den Status „laufend", der Kasten entsteht daraus | Prosa-Platzhalter „Baldrian Rentenversicherungen" | `fall.json` bekommt `status` (laufend, abgeschlossen); gehört mit B1 in dasselbe Schema |
+| B5 | Block je Übernahme auf der Startseite | Dauer und Kosten einer Übernahme stehen im Fall | Beide Zeilen sind Platzhalter „noch nicht erfasst“. Die kalendarische Dauer ist heute schon ableitbar (erste Registrierung in `eingang.json` bis Abschluss-Entscheid A-M4); Aufwand und Kosten stehen nur im Sitzungstranskript, das `werkzeuge/verlaufsprotokoll.py` liest — herstellergebunden, kein Pipeline-Teil | `abgeleitet/aufwand.json`, geschrieben vom Abschluss (A-M4): Dauer aus Registrierung und Entscheid, Aufwand als DEKLARIERTER Wert aus dem Mandat oder dem Protokoll des Operators. Wie Kosten gemessen werden (Token, Stunden), ist eine Frage an den Maintainer (vgl. `vorzeige-backlog.md`, Zeile „Dauer und Kosten je Migration“) |
+| B6 | überall, wo Text des Laufs auf die Seite gelangt | Unternehmenssprache mit Umlauten in jedem Text, den ein Leser sieht | `gates/register.py` Z. 104 „über“, Z. 113 „prüft“ — Tippfehler in Sätzen, die sonst Umlaute schreiben. `betrieb/seite.py:586,590` „rückführbar“ (Lücken-Wirkung). Im Fall: `fall.json` „Vorführfall“, Umbau-Begründung „Fähigkeiten planmäßig“, „nachträglich“ | Register und Betriebs-Lücken korrigieren; die Fall-Texte entstehen beim Neulauf neu (B1, Umbau-Begründung im Mandat). Die vier Sätze aus `werkzeuge/falldaten.py` (Kreuzprobe, Abgrenzungen) gehören der Seiten-Session und sind dort bereinigt |
+| B7 | Startseite, „Laufende Übernahme“ | Ein Fall im Modell trägt den Status „laufend“, der Kasten entsteht daraus | Prosa-Platzhalter „Baldrian Rentenversicherungen“ | `fall.json` bekommt `status` (laufend, abgeschlossen); gehört mit B1 in dasselbe Schema |
 
 ## Aus der Abstimmung vom 29.09. (Workshop 06.10.)
 
@@ -182,12 +182,12 @@ wirksam; danach zeichnet der Verantwortliche Aktuar A-M4 neu.
   soll anfassbar sein: neben dem Umbaubericht ein Baubericht zum Einbau
   der Tarifgeneration, danach je Korrekturiteration die Diff-Dateien bis
   auf Code-Ebene, als Fall-Artefakte unter `abgeleitet/berichte/`. Die
-  Prozesskarte nennt die Zeile heute als „In Arbeit".
-* **Prüfung und Abnahme bei „Bestand übersetzen"** — an der Station der
+  Prozesskarte nennt die Zeile heute als „In Arbeit“.
+* **Prüfung und Abnahme bei „Bestand übersetzen“** — an der Station der
   ganzen Datentransformation gibt es weder ein Gate noch eine Zeichnung.
   Als Systemmangel benannt, zu beheben bis 13.10., nach dem Workshop. Die
-  Karte zeigt den Kasten grau und die Zeile „Prüfung und Abnahme" als
-  „In Arbeit".
+  Karte zeigt den Kasten grau und die Zeile „Prüfung und Abnahme“ als
+  „In Arbeit“.
 * **Je Station eine Seite** — je Kachel der Prozesskarte eine Seite mit
   den Prüfungen und den typischen Artefakten dieser Station, die
   Prüfungen inhaltlich angesehen, nicht nur verlinkt. Ausdrücklich erst
@@ -211,7 +211,7 @@ haben; hier nur, damit die Liste für dev vollständig ist:
   Richtungen.
 * **Tagesseite im Layout des Auftritts** — `betrieb/seite.py` rendert
   `plv/seite/` mit eigenem Stylesheet; die Unternehmensseite sagt
-  deshalb „sieht anders aus als die übrigen". Zielbild wie C1: das Paket
+  deshalb „sieht anders aus als die übrigen“. Zielbild wie C1: das Paket
   liefert Daten, die Seite setzt. Niedrige Dringlichkeit.
 
 ## Was die Seite dann wegwirft

@@ -61,7 +61,7 @@ Angezeigt wird der Titel der Funktion, etwa „Verantwortlicher Aktuar“ für
 gehört zum abgebenden Haus.
 
 Die früheren Kennungen `plv-aktuar`, `plv-va`, `quelle-experte`,
-`programmleiter` und der Platzhalter `mensch` entfallen; die Vorzeige
+`programmleiter` und der Platzhalter `mensch` entfallen; die Vorführung
 bildet sie auf die neuen ab. Ebenso entfallen die zwischenzeitlichen Namen
 nach der Verantwortung (`verantwortlicher-aktuar`, `it-verantwortung`,
 `entwicklungsverantwortung`, `betriebsverantwortung`). Wer zeichnet, ist
@@ -75,7 +75,7 @@ Die Zeichnungsordnung trägt je Rolle eine **Schlüsselklasse**:
 | Klasse | Bedeutung | Darf zeichnen |
 |---|---|---|
 | `mensch` | ein Schlüssel in der Hand einer natürlichen Person | ja |
-| `simulation` | ein Schlüssel, mit dem die Vorzeige eine menschliche Rolle nachahmt | ja, und jeder Beleg sagt es |
+| `simulation` | ein Schlüssel, mit dem eine Vorführung eine menschliche Rolle nachahmt | ja, und jeder Beleg sagt es |
 | `agent` | ein Schlüssel einer Agentenrolle | nein; er weist die Herkunft einer Vorlage aus |
 
 Die Rollenkennung bleibt bei Simulation dieselbe wie in der Wirklichkeit,
@@ -98,7 +98,7 @@ Der Abzugsabgleich erzeugt nur Belege. Eine Diskrepanz löst nie eine
 Maschine endgültig auf; der Satz „die Auflösung darf ohne Menschen
 erfolgen“ in Skill und Docstring wurde gestrichen. P2 bleibt: Agenten
 lösen nur vorläufig auf, die endgültige Auflösung zeichnet eine menschliche
-Rolle, in der Vorzeige mit Simulationsschlüssel.
+Rolle, in der Vorführung mit Simulationsschlüssel.
 
 ### 5. Der zweite Baldrian-Lauf ist eine ausgewiesene Ausnahme
 
@@ -114,8 +114,11 @@ laufen unter diesem ADR.
 - `models.zeichnung`: Ordnung Schema 2 mit `schluesselklasse` und den neuen
   Kennungen; Agentenrollen ohne Gate-Berechtigung; alte Kennungen werden mit
   Meldung abgewiesen, nicht still umgedeutet.
-- `gates.gate_entscheid` und `ontologie.entscheide`: `--rolle` entfällt
-  zugunsten der Ordnung, ohne Ordnung keine Annahme. Bei Schlüsselklasse
+- `gates.gate_entscheid` und `ontologie.entscheide`: Bei einer Annahme
+  wird die Rolle aus dem Schlüssel über die Ordnung bestimmt; `--rolle` ist
+  dann nicht mehr nötig, und ein gesetzter Wert muss übereinstimmen. Ohne
+  Ordnung keine Annahme. Eine unsignierte Ablehnung nennt ihre Rolle mit
+  `--rolle`. Bei Schlüsselklasse
   `simulation` ist `--mandat` Pflicht; Gate, Entscheidungskommando und
   Snapshot-Schema verweigern eine simulierte Zeichnung ohne Mandats-Hash.
   Eine Ablehnung durch eine Agentenrolle bleibt möglich (ADR-008, Punkt 6).
@@ -126,13 +129,13 @@ laufen unter diesem ADR.
   Gleichheit beider prüft ein Test.
 - Fachbericht, Fallseite und Fachspezifikation zeigen Rolle und Klasse;
   „gezeichnet“ steht nur bei geprüfter Signatur.
-- Die Regie der Vorzeige (Ebene 4, ADR-017) hält die Auftragsprofile der
+- Die Regie der Vorführung (Ebene 4, ADR-017) hält die Auftragsprofile der
   simulierten Menschen und erzeugt deren Mandate. Die Auftragsprofile der
   Agentenrollen gehören zum Werkzeug und liegen im Repository.
 
 ## Nachträge
 
-Die Nachträge sind nach Datum adressiert; Code und Tests verweisen in
+Die Nachträge sind nach Datum und Überschrift adressiert; Code und Tests verweisen in
 dieser Form auf sie (etwa „ADR-018, Nachtrag 2026-09-30“). Die Herleitung
 im Einzelnen steht in der Geschichte dieser Datei.
 
@@ -231,7 +234,7 @@ hinterlassen hatte.
 
 Entscheid des Maintainers: Der Betrieb bekommt einen Schlüssel wie die
 übrigen Rollen. Die Schlüsseldatei liegt beim Menschen außerhalb der
-Ablage (0600, ein Hardlink, 32 bis 4096 Byte), der Fingerabdruck steht in
+Ablage (Modus 0600, ohne weitere Hardlinks, 32 bis 4096 Byte), der Fingerabdruck steht in
 der Zeichnungsordnung, gezeichnet wird mit HMAC nach `models.anker`
 (Verfahren `hmac-sha256-v2`). Neu ist nur die Rolle:
 
@@ -300,10 +303,10 @@ Signatur der alten Ablage nicht nach und archiviert sie.
 
 `A-K2.kernaenderung` war vorgesehen, aber unwirksam: Es gab keinen
 Produzenten für die Belege, kein Gate verlangte die Abnahme, und kein
-Ablauf nannte sie. Der Rechenkern war außerhalb jedes Falls von Version
-3.6.0 auf 3.15.0 gewachsen, ohne eine einzige Abnahme. Der Maintainer
-entschied, das Gate vor dem Merge in Prozess, Dokumentation und Vorzeige
-aufzunehmen, ebenso die Erweiterung der T-Box als Abnahmepunkt.
+Ablauf nannte sie. Der Rechenkern war bis dahin außerhalb jedes Falls von
+Version 3.6.0 auf 3.15.0 gewachsen, ohne eine einzige Abnahme. Der
+Maintainer entschied, das Gate vor dem Merge in Prozess, Dokumentation und
+Vorführung aufzunehmen, ebenso die Erweiterung der T-Box als Abnahmepunkt.
 
 1. **Gegenstand ist der Kernstand, auf dem ein Fall rechnet,**
    einschließlich der Änderungen, die außerhalb eines Falls entstanden

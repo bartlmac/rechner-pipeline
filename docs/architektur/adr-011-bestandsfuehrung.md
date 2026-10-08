@@ -25,7 +25,7 @@ im Zustand wird bei jeder Bewertung aus der Historie zurückgerechnet
 (`_bu_phasenbeginne`, `_pex_jahre`).
 
 Kein Bestandsführungssystem arbeitet so. Es führt den Zustand als
-DATUM im Vertragssatz ("Status BU seit 01.04.2023"), gesetzt in dem
+DATUM im Vertragssatz („Status BU seit 01.04.2023“), gesetzt in dem
 Moment, in dem der Geschäftsvorfall gebucht wird; die Historie ist ein
 Journal für Nachweis und Auskunft, nicht die Eingabe der Bewertung.
 
@@ -114,7 +114,7 @@ Kleinen.
 
 ### 3. Auskunft statt Zeitscheibe
 
-Die Rückschau "Bestand am Tag X" ist eine **Auskunftsfunktion aus dem
+Die Rückschau „Bestand am Tag X“ ist eine **Auskunftsfunktion aus dem
 Journal** (`fuehrung.bestand_am`): Sie rekonstruiert den geführten
 Zustand zu jedem früheren Datum — möglich, weil das Journal
 vollständig gespeichert bleibt. Berichte (Verlaufe, Bewegungskonto,
@@ -193,7 +193,7 @@ geschriebenen Ausgabe — deterministisch wie die Ausgaben selbst.
 * Der Abschluss-Produzent verlangt das Manifest: Ohne Manifest wird
   nichts festgeschrieben, `--bis` muss der belegte Horizont sein, und
   jede gelesene Datei muss bytegleich die vom Lauf geschriebene sein.
-  Pflicht und fail-fast, nicht "optional mit Vorbehalt" — ein
+  Pflicht und fail-fast, nicht „optional mit Vorbehalt“ — ein
   festgeschriebener Stand trägt keinen Vorbehalt.
 * Gate P-B1 bindet das Manifest auf Wunsch (`--manifest`) und trägt
   die Bindung im Beleg. Optional, weil das Gate auch einzelne Tabellen
@@ -205,7 +205,7 @@ geschriebenen Ausgabe — deterministisch wie die Ausgaben selbst.
 ## Konsequenzen
 
 * Ausgewiesene Werte ändern sich dort, wo der gamma1-Defekt wirkte
-  (Beitraege/Reserven der Erhöhungsscheiben im Bestandsbericht). Das
+  (Beiträge und Reserven der Erhöhungsscheiben im Bestandsbericht). Das
   ist die Behebung eines Fehlers, keine Modelländerung. *(Beziffert am
   PLV-Gesamtbestand, 26.08.: Beitragssumme −0,20 % — rund 7.400 EUR am
   Stichtag 2026 —, Deckungskapital +0,003 %; je Beispielscheibe
@@ -233,14 +233,14 @@ geschriebenen Ausgabe — deterministisch wie die Ausgaben selbst.
 
 ## Nachtrag 2026-10-01: Der Abschluss bewertet monatsgenau
 
-Entscheid des Maintainers: "Bisher dachte ich, dass der Monatsabschluss
+Entscheid des Maintainers: „Bisher dachte ich, dass der Monatsabschluss
 die Werte monatlich fortschreibt. Wie wollen wir einen Monatsabschluss
-mit angebrochenen Jahreswerten machen?" Gemessen war: Die eine
+mit angebrochenen Jahreswerten machen?“ Gemessen war: Die eine
 Bewertungsstrecke (`auswertung.einzelwerte_am`) las Deckungskapital,
 Rückkaufswert und beitragsfreie Reserve aus der Zeile des angebrochenen
 Vertragsjahres (`zustand_am`, beim herabgesetzten Vertrag und nach einer
-Beitragsfreistellung ebenso — dorthin hatten die Funde N5/N11 der
-Prüfrunde T27 die Zweige vereinheitlicht). Der Abschluss zum 1.12. wies
+Beitragsfreistellung ebenso — dorthin hatte die Prüfrunde T27 die
+Zweige vereinheitlicht). Der Abschluss zum 1.12. wies
 damit den Stand des letzten Jahrestags aus; am Referenzvertrag Monat 95
 26.060,73 statt 29.934,67, eine Treppe statt einer Fortschreibung.
 
@@ -264,7 +264,7 @@ geführt (`models.bestand.KONVENTION_JE_PRODUKT`).
 `bewertungskonvention` (`jahreszeile` oder `monatsgenau`). Was ein
 gelesener Abschluss ist, sagt eine Funktion
 (`models.bestand.abschluss_konvention`): der Spaltenwert, oder bei
-fehlender Spalte "Jahreszeile, vor der Umstellung geschrieben" — das
+fehlender Spalte „Jahreszeile, vor der Umstellung geschrieben“ — das
 Fehlen ist eine Aussage über den Schreiber, kein Rückfall. Jeder Leser
 einer Abschlussdatei geht über `bestand.abschluss.lies_abschluss`.
 Die 387 festgeschriebenen Abschlüsse der Laufzeit bleiben, wie sie sind
@@ -309,9 +309,9 @@ Ereignisgitter.
 hinterlassen weder im Stamm noch in der Historie eine Spur, nur in
 `reduktionen`. `schreibe_abschluss` und `pruefe_abschluss` verlangen deshalb
 jede Nebentabelle (Scheiben, Merkmale, Schichten, Verankerung, Reduktionen)
-ohne Vorgabewert; `None` ist die Aussage "dieser Lauf hat keine". Anlass war
+ohne Vorgabewert; `None` ist die Aussage „dieser Lauf hat keine“. Anlass war
 ein Befund aus dem Raten-Block (2026-10-01): Die In-Prozess-Abschlusstests
 gaben nur die Scheiben mit und bewerteten herabgesetzte und teilgekündigte
 Verträge ungekürzt, während die Produzenten (`cli_abschluss`,
-`tageslauf`) die Tabelle mitgaben. Eine Ratsche hält jeden Aufruf der
-Bewertungsstrecke in `src` auf alle fünf Tabellen.
+`tageslauf`) die Tabelle mitgaben. Ein Test hält fest, dass jeder Aufruf
+der Bewertungsstrecke in `src` alle fünf Tabellen mitgibt.

@@ -51,17 +51,17 @@ Vier Abschnitte, mehr braucht es nicht:
 | [Offene Punkte](offene-punkte.md) | kleinere Vorhaben, Nachzüge, Reviewfunde | laufend |
 | [Aktuarieller Test AT-1/AT-2/AT-3](aktuarieller-test-at1-at2-at3.md) | Vorhaben | gebaut am 2026-08-27; offen sind die Stichprobenprofile |
 | [Korrekturschicht umsetzen](korrekturschicht-umsetzung.md) | Vorhaben | Stufe N7.1 gebaut am 2026-08-27; was fehlt, steht dort in Abschnitt 7 |
-| [Zahlungspfade migrierter Vertraege](zahlungspfade-migrierter-vertraege.md) | Vorhaben | der akute Fall ist seit dem 2026-08-28 gelöst (Zweiteilung des herabgesetzten Vertrags); der allgemeine Pfad ist offen |
+| [Zahlungspfade migrierter Verträge](zahlungspfade-migrierter-vertraege.md) | Vorhaben | der akute Fall ist seit dem 2026-08-28 gelöst (Zweiteilung des herabgesetzten Vertrags); der allgemeine Pfad ist offen |
 | [Freischaltung des übernommenen Bestands](freischaltung-uebernommener-bestand.md) | Fachkonzept mit Schrittliste | Stand je Schritt in Abschnitt 6; Tarifplan, Skills und ADR-017 verweisen darauf |
 | [Rollentrennung der Agenten](agenten-rollentrennung.md) | Herleitung | entschieden und umgesetzt als ADR-017 und ADR-018 |
 | [Rückbau des zweiten Baldrian-Laufs](rueckbau-fall2.md) | Herleitung | umgesetzt; der dritte Fall hat darauf aufgesetzt (2026-10-02) |
 | [Annahmen vom 2026-09-20](annahmen-2026-09-20.md), [Entscheidungsvorlage Laufmanifest](entscheidungsvorlage-am4-laufmanifest.md) | Belege zur Neuzeichnung des zweiten Laufs | vom Abschlussbericht des Laufs zitiert (`docs/faelle/baldrian-lauf2.md`) |
-| [Regie](regie.md) | Stub | Konzept benannt, Dokumentation ausstehend |
+| [Regie](regie.md) | Platzhalter | die Spielleitung der Vorführung: Drehbücher und Auflösungen der Fälle, nicht im Repository; Dokumentation ausstehend |
 | [Fallseite: Konzept](fallseite-konzept.md) | wie eine Bestandsübernahme auf dem Auftritt erzählt wird | Stand 2026-09-22 |
 | [Vorzeigeseite: Seitenkonzept](vorzeige-seitenkonzept.md) | Maßstab für `vorzeige-seite/` und `werkzeuge/` | beschlossen am 2026-09-08 |
 | [Vorzeigeseite: Backlog](vorzeige-backlog.md) | Vorhaben für den Auftritt; Erledigtes wird gelöscht | laufend |
 | [Vorzeigeseite: statische Stellen](vorzeige-statische-stellen.md) | statische Stellen der Seite und ihre Automatisierung | erhoben 2026-09-02, gelesen nach dem Seitenkonzept |
-| [Zielbild der Vorzeige](vorzeige-zielbild-artefakte.md) | Übergabe der Seiten-Session: was der Lauf liefern muss | Stand 2026-09-22 |
+| [Zielbild der Vorzeige](vorzeige-zielbild-artefakte.md) | was ein Lauf für die Webseite liefern muss | Stand 2026-09-22 |
 
 Befundlisten, Reviews und Merge-Pläne abgeschlossener Runden liegen nicht
 mehr hier; sie stehen in der Geschichte des Repositorys.

@@ -1,44 +1,47 @@
 # Skill-Architektur: die Agenten-Rollen des Gesamtsystems
 
-Stand: 2026-09-05 (Rollen-Katalog v2 nach ADR-018; v1 vom 2026-08-19
-darunter als Skill-Katalog). Die Skills sind das Betriebsmodell des Systems: sie
-tragen das Urteils-Wissen der Agenten-Rollen, versioniert im Repo,
-CLI-neutral gespiegelt (`.claude/skills/` + `.agents/skills/`,
-Parität test-tragend), und ihr Git-Stand gehört in die Provenienz
-jeder Agenten-Aussage (Akteur-Konvention
+Stand: 2026-10-08 (Rollen-Katalog nach ADR-018, mit `agent/betrieb`;
+darunter der Skill-Katalog vom 2026-08-19). Die Skills tragen das Wissen,
+mit dem die Agentenrollen urteilen. Sie sind im Repository versioniert und
+für beide Werkzeuge gespiegelt (`.claude/skills/` und `.agents/skills/`,
+die Gleichheit prüft ein Test), und ihr Git-Stand gehört in die Herkunft
+jeder Aussage eines Agenten (Akteur-Konvention
 ``<modell>/<skill>@<git-sha-kurz>``, P1).
 
-## Die Verteilungsregel (Wiederholung aus dem Pipeline-Dokument, weil
-sie die Skill-Grenzen definiert)
+## Die Verteilungsregel
+
+Die Regel steht auch im Dokument zur Migrations-Pipeline; hier legt sie die
+Grenzen der Skills fest.
 
 Was gelten muss, lebt in Code und Gates (erzwungen, nicht empfohlen).
 Was Urteilen anleitet, lebt in Skills. Was zeigt, lebt im
-Präzedenzfall. Ein Skill, der versucht, Geltung zu erzeugen
-("bitte halte dich an ..."), ist ein Architekturfehler — die Regel
-gehört dann in ein Gate oder einen Validator.
+Präzedenzfall. Ein Skill, der versucht, Geltung zu erzeugen („bitte
+halte dich an …“), ist ein Architekturfehler; die Regel gehört dann in ein
+Gate oder einen Validator.
 
-## Rollen-Katalog v2: die vier Agentenrollen des KI-Tools (ADR-018)
+## Rollen-Katalog: die fünf Agentenrollen des KI-Tools (ADR-018)
 
-Skills sind Fähigkeiten; Rollen sind, wer sie in welchem Auftrag
-ausübt. Seit ADR-018 gibt es genau vier Agentenrollen, versioniert als
-Definitionen unter `.claude/agents/` (gespiegelt in `.agents/agents/`,
-Parität test-tragend). Sie legen vor und zeichnen nie; jede hat ein
-menschliches Gegenstück, das mit seinem Schlüssel zeichnet. Es trägt
-seit dem Entscheid vom 2026-09-16 denselben Namen mit dem Präfix
-`mensch/` — `agent/rechenkern` legt vor, `mensch/rechenkern` zeichnet.
+Skills sind Fähigkeiten; Rollen sind, wer sie in welchem Auftrag ausübt.
+Es gibt fünf Agentenrollen, versioniert als Definitionen unter
+`.claude/agents/` (gespiegelt in `.agents/agents/`, die Gleichheit prüft
+ein Test). Sie legen vor und zeichnen keine Abnahme; jede hat ein
+menschliches Gegenstück, das mit seinem Schlüssel zeichnet. Es trägt seit
+dem Entscheid vom 2026-09-16 denselben Namen mit dem Präfix `mensch/`:
+`agent/rechenkern` legt vor, `mensch/rechenkern` zeichnet.
 
 | Agentenrolle | Ziel (Perspektive eines laufenden Unternehmens) | Skills |
 |---|---|---|
-| `agent/aktuariat` | fachlich richtig abgebildet: Transformation, drei aktuarielle Abnahmen, Controlling, Bestandsfortführung | transformiere-quellbestand, extrahiere-quellfragment, bereite-fachkonflikt-auf, aktuartest-durchführen, prüfe-migrationscontrolling |
+| `agent/aktuariat` | fachlich richtig abgebildet: Transformation, drei aktuarielle Abnahmen, Controlling, Bestandsfortführung | transformiere-quellbestand, extrahiere-quellfragment, bereite-fachkonflikt-auf, `aktuartest-durchfuehren`, `pruefe-migrationscontrolling` |
 | `agent/architektur` | in der vorgegebenen Architektur: Schichtenkarte, Nachweiskette, Vertrauensgrenzen, Betrieb | entwickle-im-zielsystem (als Maßstab), author-rechner-toolbox-gate, teste-adversarial, integriere-migrationsinkrement, dokumentiere-system |
 | `agent/rechenkern` | stabiles Zielsystem: Regressionstests, Referenzwerte, Doku, Inkremente unter ADR-007 | entwickle-im-zielsystem, integriere-migrationsinkrement, teste-adversarial, dokumentiere-system |
-| `agent/programmleitung` | Migration effizient geliefert; orchestriert die drei anderen, hält an jedem Gate an | migrationsfall-durchführen |
+| `agent/betrieb` | der übernommene Bestand wird danach richtig geführt: Zugangsprobe (A-B2), Anfangsbestand einer neu aufgesetzten Ablage (A-B3), Auslieferung eines Stands (A-B1) | kein eigener Skill; die Kommandos stehen in `deploy/plv/README.md` |
+| `agent/programmleitung` | Migration effizient geliefert; orchestriert die vier anderen, hält an jedem Gate an | `migrationsfall-durchfuehren` |
 
 Die Gegenseite des abgebenden Hauses (`mensch/quell-aktuar`) hat kein
 Agenten-Gegenstück: Sie liefert, sie zeichnet keine Abnahme des
 aufnehmenden Unternehmens. In der Vorführung werden alle menschlichen
 Rollen simuliert (Schlüsselklasse `simulation`); die Regie der
-Vorzeige hält ihre Auftragsprofile (ADR-017).
+Vorführung hält ihre Auftragsprofile (ADR-017).
 
 ## Skill-Katalog (v1, Fähigkeiten je Skill)
 
@@ -46,14 +49,14 @@ Vorzeige hält ihre Auftragsprofile (ADR-017).
 |---|---|---|---|
 | Fall-Orchestrierung | `migrationsfall-durchfuehren` | einen Migrationsfall systematisch durch die drei Stufen und Gates führen | menschliche Gates überspringen; Diskrepanzen endgültig auflösen |
 | Quell-Extraktion | `extrahiere-quellfragment` | Eine Quelle in ein QuellFragment übersetzen (Structured Output, generiertes Schema) | die andere Quelle sehen; raten statt `nicht_belegt`; Rohquellen lesen |
-| Entwicklung | `entwickle-im-zielsystem` | Code unter der nicht verhandelbaren Architektur bauen (Schichtenkarte, Determinismus, Fail-fast, Knoten-Annotation, Test-Pflicht) | Architektur "pragmatisch" brechen; ohne Tests committen; Kern-Verankerungen anfassen |
+| Entwicklung | `entwickle-im-zielsystem` | Code unter der nicht verhandelbaren Architektur bauen (Schichtenkarte, Determinismus, Fail-fast, Knoten-Annotation, Test-Pflicht) | Architektur „pragmatisch“ brechen; ohne Tests committen; Kern-Verankerungen anfassen |
 | Qualitätssicherung | `teste-adversarial` | Blöcke adversarial reviewen (Finden -> Widerlegen -> Fixen -> Regressionstest) und die Test-Disziplin tragen (Mutations-Denken, unabhängige Kontrollrechnung) | Findings ungeprüft übernehmen; grüne Suiten als Beleg für Vollständigkeit lesen |
 | Dokumentation | `dokumentiere-system` | Doku unter den Repo-Regeln (generiert schlägt handgeschrieben, ein Zuhause je Typ, ADR-Format, Ehrlichkeits-Abschnitte) | Inhalte doppeln (Drift); Grenzen beschönigen |
-| Quellbestand-Transformation | `transformiere-quellbestand` | Mapping des gelieferten Bestandsabzugs in die Ziel-Ontologie vorschlagen (TransformationsSpec); Berechnungen nur aus dem Katalog, Unklarheit wird offener Konflikt | Mapping anwenden/pruefen (deterministischer Code); offene Konflikte entscheiden (Mensch); Ontologie erweitern (A-O1) |
-| Fachkonflikt-Aufbereitung | `bereite-fachkonflikt-auf` | Diskrepanzen verifizieren, einordnen, Auswirkungen rechnen, Entscheidungs-Dossier + Empfehlung liefern, dann STOPP | entscheiden (auch nicht "offensichtliche" Fälle); Quellen-Hierarchie festlegen |
+| Quellbestand-Transformation | `transformiere-quellbestand` | Mapping des gelieferten Bestandsabzugs in die Ziel-Ontologie vorschlagen (TransformationsSpec); Berechnungen nur aus dem Katalog, Unklarheit wird offener Konflikt | Mapping anwenden oder prüfen (deterministischer Code); offene Konflikte entscheiden (Mensch); Ontologie erweitern (A-O1) |
+| Fachkonflikt-Aufbereitung | `bereite-fachkonflikt-auf` | Diskrepanzen verifizieren, einordnen, Auswirkungen rechnen, Entscheidungs-Dossier mit Empfehlung liefern, dann anhalten | entscheiden (auch nicht „offensichtliche“ Fälle); Quellen-Hierarchie festlegen |
 | Gate-Autorenschaft | `author-rechner-toolbox-gate` | neue Prüf-CLIs unter dem Ledger-/Exit-Contract | Fachlogik außerhalb des Prüfens |
 | Aktuarieller Test | `aktuartest-durchfuehren` | die drei Abnahmen je Vertrag an seinen eigenen Rechenpunkten fahren (Engine, aktuartest-Gate) und je Abnahme eine Vorlage aufbereiten: A-M1 Stichtagstest, A-M2 Verlaufstest, A-M3 Geschäftsvorfalltest | abnehmen (Mensch, A-M1); Werte selbst rechnen; interpolieren oder summieren (Engine verbietet es); Toleranzen aufweichen |
-| Migrationscontrolling | `pruefe-migrationscontrolling` | deterministisches Controlling über zwei Stichtage und jeden Vertrag (Migrationssuite, GeVo-Vergleich, Mapping-Tabelle, Bestandsberichte vor/nach) als A-M4-Vorlage aufbereiten | abnehmen (Mensch, A-M4); Werte selbst rechnen; Toleranzen aufweichen; Erwartungswerte "korrigieren" |
+| Migrationscontrolling | `pruefe-migrationscontrolling` | deterministisches Controlling über zwei Stichtage und jeden Vertrag (Migrationssuite, GeVo-Vergleich, Mapping-Tabelle, Bestandsberichte vor/nach) als A-M4-Vorlage aufbereiten | abnehmen (Mensch, A-M4); Werte selbst rechnen; Toleranzen aufweichen; Erwartungswerte „korrigieren“ |
 | Migrations-CI | `integriere-migrationsinkrement` | Code-Änderungen während laufender Migrationen als kleine knotengebundene Inkremente integrieren (ADR-007: Impact, Gesamt-Suite inkl. aller Fälle, benanntes Staging) | langlebige Branches oder Kern-Forks; Landung ohne fallübergreifenden Beweis; Rückgrat ohne Koordination; Push (Mensch) |
 
 ## Zusammenspiel (wer übergibt an wen)
@@ -119,7 +122,7 @@ als eigener Skill mit demselben Muster:
    `tests/test_agent_workflow_docs.py`; Kernregeln der Migrations-
    Skills sind dort zusätzlich maschinell gesichert (Löschen fällt rot aus).
 3. Ein Skill nennt seine Grenze so präzise wie seinen Auftrag —
-   "Skip for" ist Pflicht, Überlappungen zwischen Skills sind ein
+   „Skip for“ ist Pflicht, Überlappungen zwischen Skills sind ein
    Befund.
 4. Prinzipien (P1-P10) werden in Skills zitiert, nicht dupliziert;
    die Quelle ist das Architektur-Dokument.

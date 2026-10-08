@@ -6,14 +6,16 @@
 > **Teilweise abgelöst durch [ADR-006](adr-006-portierung-ausser-betrieb.md)**
 > (2026-08-17): Den Befehl `assurance --fall` gibt es nicht mehr. Der
 > Fall-Arbeitsbereich und seine Regeln gelten unverändert; die Gates
-> operieren einzeln auf dem Fall (`--fall <pfad>`).
+> operieren einzeln auf dem Fall (`--fall <pfad>`). Auch die „Bekannte
+> Einschränkung“ unten (G5/G7) ist damit gegenstandslos: Diese Gates gibt
+> es nicht mehr.
 
 ## Kontext
 
 Bisher formulierten README und AGENTS.md den Einstieg als
 `--input examples/...` plus drei lose Verzeichnis-Flags. Das verwechselt
 Demo-Material mit dem Eingangskanal des Systems: einem Kunden lässt
-sich nicht erklären, dass `examples/` "das Input-Verzeichnis" sei, und
+sich nicht erklären, dass `examples/` „das Input-Verzeichnis“ sei, und
 ob eine Quelle synthetisch oder echt ist, ist für den Code irrelevant —
 relevant ist nur, was in ein öffentliches Repo darf. Es fehlte der Ort,
 an dem ein Migrationsfall lebt.
@@ -89,8 +91,8 @@ aus den P9-Snapshots gebaut ist, gilt: abox.json nicht löschen.
 Die Gate-Kette verlangt heute den InputBundle-Ordner unterhalb von
 `--repo-root` (G5/G7 brechen sonst ab). Ein Fall außerhalb der
 Repo-Wurzel wird deshalb vor dem Lauf mit einer Anweisung abgewiesen
-statt mitten im Lauf zu scheitern. Das steht der Zielaussage "echte
-Fälle liegen außerhalb des Repos" entgegen und wird im
+statt mitten im Lauf zu scheitern. Das steht der Zielaussage „echte
+Fälle liegen außerhalb des Repos“ entgegen und wird im
 Pipeline-Entwurf aufgelöst (die Repo-Wurzel ist dort der Ort des
 Systems, nicht der Ort der Daten).
 
@@ -133,7 +135,7 @@ Herabsetzungsanteile verarbeiten (`bestand_uebernehmen`,
   die Datei ohne Vorgeschichte (die Anteile wirkten sonst nicht) werden
   verweigert.
 
-Nachbesserung nach der Prüfung (Block F):
+Nachbesserung nach einer Prüfrunde:
 
 * Wertebereich: Ein Anteil ist endlich und liegt echt zwischen 0 und 1
   (`nan`, `inf`, 0, 1, Prozentwerte werden mit Police, Datum, Wert und
@@ -156,11 +158,12 @@ Nachbesserung nach der Prüfung (Block F):
   verschärfte Akzeptanzmenge (ADR-012): `GATE_VERSION` des Abnahmeberichts
   `6.0.0`.
 
-`tests/test_auskunft_registriert_klasse.py` hält die Klasse zu: Ratsche an
-der Senke (jeder Anteil, der in `anfangszustaende_je_police` oder
-`_serienzustand` geht, stammt aus `lies_auskuenfte`; jedes Modul mit einem
-solchen Aufruf kennt `--red-anteile-datei`; kein Argument unter `gates/`
-liefert je Police einen Anteil) und ein Zähltest je Kommando.
+`tests/test_auskunft_registriert_klasse.py` hält die Klasse geschlossen.
+Er prüft an der Stelle, an der die Anteile wirken: Jeder Anteil, der in
+`anfangszustaende_je_police` oder `_serienzustand` geht, stammt aus
+`lies_auskuenfte`; jedes Modul mit einem solchen Aufruf kennt
+`--red-anteile-datei`; kein Argument unter `gates/` liefert je Police einen
+Anteil. Dazu zählt je Kommando ein Test die Aufrufe.
 
 ## Nachtrag 2026-10-01: Alt-Absetzung nach dem Beitragsende
 
@@ -176,7 +179,7 @@ Unbekannten, und nach t gibt es keine Beitragsgleichung.
 * Einzelfall: Der Vertrag ist der zustandslose Vertrag mit der gelieferten
   Summe und wird ohne Anfangszustand übernommen; der Anteil wirkt nicht auf
   den Wert, eine Auskunft ist dafür nicht nötig, und der Vertrag ist nicht
-  "gedeckt" (die Auskunft bestimmt an ihm nichts).
+  „gedeckt“ (die Auskunft bestimmt an ihm nichts).
 * Serie (Erhöhungen vor t, Absetzung danach): Der Anteil verteilt die
   gelieferte Summe auf Grund und Erhöhungen und kommt aus derselben
   registrierten Auskunft wie oben (`--red-anteile-datei`); ohne sie
@@ -186,7 +189,7 @@ Unbekannten, und nach t gibt es keine Beitragsgleichung.
   `kalibriere_absetzung_aus_dk` verweigern unter der Teilkündigung mit dem
   Ausweg (`auskunft_meldung`).
 
-**Nicht ableitbar heißt verweigert, nicht zustandslos** (Prüfer-Befund B1).
+**Nicht ableitbar heißt verweigert, nicht zustandslos.**
 Bis dahin wurde ein Vertrag, dessen Anfangszustand die Ableitung nicht
 bestimmen konnte, mit einer Warnung und einem Eintrag `ohne_anfangszustand`
 als Grundvertrag mit der gelieferten Summe übernommen, und die ganze Kette
@@ -200,8 +203,8 @@ Verweigerung.
 
 *Was ist Deckung?* Gedeckt ist ein Anfangszustand nur durch das, was seine
 **Struktur** bestimmt: die registrierte Auskunft der Quelle je Ereignis (mit
-`BEZUG` auch eine dokumentierte Arbeits-Lesart des Aktuars). "Die Werte an
-den Bewertungspunkten stimmen" ist keine Deckung: Nach dem Beitragsende sind
+`BEZUG` auch eine dokumentierte Arbeits-Lesart des Aktuars). „Die Werte an
+den Bewertungspunkten stimmen“ ist keine Deckung: Nach dem Beitragsende sind
 A-M1, A-M2 und die Suite gegen die Zerlegung in Grund und Erhöhungen blind
 — jede Zerlegung mit derselben Summe erzeugt dieselben Werte bis auf die
 Centrundung, und eine spätere Teilkündigung zahlte trotzdem falsch aus.
@@ -215,7 +218,7 @@ SHA-256, Bezug), die Belege führen dieselbe Menge (`pflichtschicht`,
 
 **Grenzen, benannt.** Die Grenzen eines gelieferten Vorgangs (`0 < Jahr <
 n`, Datum nicht nach dem Stichtag, Jahrestag) prüft eine Stelle vor jeder
-Verzweigung (`vorgeschichte_grenzfehler`, Prüfer-Befund B2). Eine
+Verzweigung (`vorgeschichte_grenzfehler`). Eine
 registrierte Auskunft, die *falsch* ist, bestimmt eine falsche Zerlegung mit
 richtiger Summe; nach dem Beitragsende sieht das keine Wertprüfung. Die
 Verantwortung liegt bei dem, der die Auskunft registriert; eine
@@ -233,7 +236,7 @@ Prüfers als Verweigerungen.
 
 Ein Fall entsteht weiterhin, indem jemand ihn anlegt und die Lieferung
 registriert; geführt wird er erst mit dem gezeichneten **Fallauftrag**
-(`A-M6`, Vorstand). Der Auftrag bindet genau die Bytes, die dieser ADR zur
+(`A-M6`, Vorstand). Der Auftrag bindet genau die Bytes, die dieses ADR zur
 Provenienzkette macht: `eingang.json` mit je Quelle Name und SHA-256, dazu
 `fall.json` (Name, Scope). Eine nachgereichte Quelle ändert das Register und
 entzieht dem Auftrag die Geltung; der Vorstand beauftragt neu. Die Zone

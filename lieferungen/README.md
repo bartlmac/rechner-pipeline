@@ -1,12 +1,11 @@
 # Lieferungen
 
-Frachtgut der Showcase-Migrationen: je Verzeichnis die Lieferung eines
-fiktiven abgebenden Unternehmens, mit der jeder eine Migration selbst
-durchführen kann. Die Lieferungen enthalten keine echten Vertrags-,
-Kunden- oder Bestandsdaten; Unternehmen und Bestände sind frei erfunden
-— und die
-Lieferungen können (gewollt) Fehler und Eigenheiten enthalten: genau
-die soll die Pipeline finden.
+Die Lieferungen der vorgeführten Migrationen: je Verzeichnis die
+Lieferung eines erfundenen abgebenden Unternehmens, mit der jeder eine
+Migration selbst durchführen kann. Die Lieferungen enthalten keine echten
+Vertrags-, Kunden- oder Bestandsdaten; Unternehmen und Bestände sind frei
+erfunden. Sie enthalten gewollt Fehler und Eigenheiten, und genau die soll
+die Pipeline finden.
 
 Kein Eingangskanal: kein Code liest dieses Verzeichnis implizit. In
 einen Migrationsfall gelangt eine Lieferung ausschließlich über die
@@ -81,7 +80,9 @@ abgebendes Unternehmen lieferte Werte in seinem eigenen Format, und die
 Übersetzung in Prüfaufträge wäre selbst ein Arbeitsschritt. Die
 Abkürzung spart diesen Schritt; sie ändert nichts an den Werten.
 
-**Durchführung:** siehe `ONBOARDING.md`, Abschnitt 3.
+**Durchführung:** Lauf 1 wurde von Hand und mit Agenten geführt. Ob er auf
+dem heutigen Stand durchläuft, ist nicht gemessen; der heute gepflegte Weg
+ist Fall 3 (`docs/faelle/README.md`).
 
 ## baldrian-2/
 
@@ -100,8 +101,8 @@ nicht aus der Lieferung stammt, sondern erzeugt wird:
 
 Für Fall 3 gibt es keine eigene Lieferung und kein Verzeichnis
 `baldrian-3`. Fall 3 hat die Übernahme von vorn neu geführt, und zwar auf
-genau dieser Lieferung: Registriert wurden die zwölf Dateien, die der
-Lieferschein nennt. Die vier Auskunftsschreiben in diesem Verzeichnis
+genau dieser Lieferung: Registriert wurden der Lieferschein und die elf
+Dateien, die er nennt. Die vier Auskunftsschreiben in diesem Verzeichnis
 gehören zum zweiten Lauf; in Fall 3 wurden sie nicht verwendet.
 
 Was die Gesellschaft in Fall 3 auf Rückfrage nachgeliefert hat, liegt mit

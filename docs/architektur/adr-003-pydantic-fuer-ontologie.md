@@ -1,7 +1,7 @@
 # ADR-003: Pydantic für T-Box und A-Box
 
-**Status:** angenommen am 2026-08-14 (Maintainer, Frage D1 der
-Architektur-Fragerunde). Betrifft ausschließlich
+**Status:** angenommen am 2026-08-14 (Maintainer, nach einer Fragerunde
+zur Architektur). Betrifft ausschließlich
 `rechner_pipeline.ontologie` und `rechner_pipeline.spez`.
 
 ## Kontext

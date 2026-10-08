@@ -21,7 +21,7 @@ wurde je Eigenschaft, nie unterstellt:
 | Gegenstand | vor Lauf 2 | nach Lauf 2 | Grund und Beleg |
 |---|---|---|---|
 | Beitragsformel dynamischer Erhöhungen | Stückkosten verbleiben auf der Grundsumme (Regel der ersten Lieferung) | volle Beitragsformel je Erhöhungsbaustein, wählbar je Lieferung | Bedingungswerk Ziffer 3; belegt auf 2 Cent am Referenzvertrag |
-| Stornoabzug | vertragsweit erhoben | Mindest-/Hoechstbetrag je Baustein, Rückkaufswert als Summe der Baustein-Rückkaufswerte | Bedingungswerk Ziffer 4; Residuenmuster in Grenzen-Vielfachen |
+| Stornoabzug | vertragsweit erhoben | Mindest-/Höchstbetrag je Baustein, Rückkaufswert als Summe der Baustein-Rückkaufswerte | Bedingungswerk Ziffer 4; Residuenmuster in Grenzen-Vielfachen |
 | Herabsetzung | anteilige, verlustfreie Vertragsteilung bzw. Verfahren mit Abzug | drittes Verfahren: Teilkündigung der Grundversicherung MIT Auszahlung, zustandslose Fortführung | Bedingungswerk Ziffer 6; A-M3-Befund des Laufs |
 | Deckungskapital-Konvention | kalendertägliche Interpolation | Stand zum letzten Vertragsjahrestag, wählbar je Lieferung | Mitteilung Nr. 143 Abschnitt 6 |
 | Dynamiksatz der Vorgeschichte | nicht geführt | einheitlich 5 Prozent je Erhöhungstermin, als registrierte Auskunft | Auskunft Nr. 1 der abgebenden Gesellschaft |

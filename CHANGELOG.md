@@ -10,16 +10,16 @@ Entscheidungen dahinter als ADRs unter `docs/architektur/`.
 
 ### Was das System kann
 
-* **Ein Migrationsfall vom Auftrag bis in die Ablage.** Der Vorstand
-  beauftragt den Fall (`A-M6`); die Lieferung wird registriert, je Quelle
-  vorverdichtet und extrahiert, zur A-Box mit Herkunft je Aussage
+* **Ein Migrationsfall vom Auftrag bis in die Ablage.** Die Lieferung wird
+  registriert, und der Vorstand beauftragt den Fall (`A-M6`); jede Quelle
+  wird vorverdichtet und extrahiert, zur A-Box mit Herkunft je Aussage
   zusammengeführt; Widersprüche werden Diskrepanz-Objekte und von einem
   Menschen entschieden; daraus entstehen Spez und parametrierter Kern; der
   Bestand wird transformiert und übernommen, in drei aktuariellen Tests und
   dem Migrationscontrolling abgenommen und danach in die Ablage des
   Tagesbetriebs gebracht. Ein scheiternder Fall endet mit dem gezeichneten
   Abbruch (`A-M5`). Ablauf: `docs/architektur/ablauf-eines-falls.md`.
-* **Der dritte Fall der Baldrian ist so geführt:** 834 Verträge der
+* **Der dritte Fall der Baldrian:** 834 Verträge der
   Tarifgeneration KLV TG2015, übernommen zum 01.01.2026. Der Rechenkern
   ging dabei von 3.21.0 auf 3.22.0; die Ablage trägt danach 388
   Monatsabschlüsse.
@@ -85,7 +85,7 @@ Entscheidungen dahinter als ADRs unter `docs/architektur/`.
   Tarifplan.
 * **Die Regression des Kerns für `A-K2` ist nicht gebaut.** Die Abnahme
   führt sie als benannte Ausnahme „nicht gefahren, Werkzeug noch nicht
-  erstellt"; sie deckt dann nur die qualitative Prüfung der Änderungen.
+  erstellt“; sie deckt dann nur die qualitative Prüfung der Änderungen.
 * **Belege tragen Pfade des Rechners, auf dem sie entstanden.** Die
   Ledger der Gates halten die Kommandozeile wörtlich fest, das
   Eingangsregister den Herkunftspfad jeder Datei. Unkenntlich gemacht
@@ -103,7 +103,7 @@ Entscheidungen dahinter als ADRs unter `docs/architektur/`.
 
 Weitere offene Punkte, fachlich und technisch: `dev-docs/offene-punkte.md`.
 
-### Was seit dem Stand vom 2026-09-01 dazugekommen ist
+### Entscheidungen seit ADR-016 (2026-09-01)
 
 | Entscheidung | Inhalt |
 |---|---|
@@ -111,7 +111,7 @@ Weitere offene Punkte, fachlich und technisch: `dev-docs/offene-punkte.md`.
 | ADR-019 (2026-09-20) | die Testsuite läuft parallel |
 | ADR-020 (2026-09-21) | der Bestand entsteht aus dem Zugangsstrom |
 | ADR-021 (2026-09-22) | Belegrollen und Freigabesignatur als gemeinsamer Vertrag |
-| ADR-022 (2026-10-01) | Zugangsabnahme `A-B2` mit Zugangsprobe |
+| ADR-022 (2026-09-30) | Zugangsabnahme `A-B2` mit Zugangsprobe |
 | ADR-023 (2026-10-01) | Herabsetzung und Teilkündigung getrennt |
 | ADR-024 (2026-10-01) | T-Box 0.2.0: Tarifwerk, Geschäftsvorfälle, Zustandsextrakt |
 | ADR-025 (2026-10-01) | Erstabnahme des Zielsystems in der Linie |

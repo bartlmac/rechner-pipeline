@@ -9,8 +9,25 @@ Bestand.
 deploy/welt/laufzeit_aufstellen.sh <welt> pakete/<paket> [--bis <haltepunkt>]
 ```
 
-Wie der Aufruf arbeitet, wo er anhält und wie man an einem Haltepunkt selbst
-zeichnet, steht in [deploy/welt/README.md](../deploy/welt/README.md).
+Wie der Aufruf arbeitet und wie man an einem Haltepunkt selbst zeichnet,
+steht in [deploy/welt/README.md](../deploy/welt/README.md). Ein Lauf mit
+`--bis <haltepunkt>` endet am genannten Haltepunkt; derselbe Aufruf ohne
+`--bis` (oder mit einem späteren Haltepunkt) fährt weiter.
+
+Die Haltepunkte von `baldrian-klv-tg2015-fall3`, in ihrer Reihenfolge:
+
+| Haltepunkt | Was dann zum Lesen bereitliegt |
+|---|---|
+| `auftrag` | der angelegte Fall mit registrierter Lieferung und die Vorlage des Fallauftrags |
+| `eingang` | der gezeichnete Auftrag und die Nachlieferungen der Quelle |
+| `diskrepanzen` | die A-Box aus den Fragmenten mit den offenen Widersprüchen der Quellen |
+| `vor-A-K2` | die entschiedenen Diskrepanzen, Spez und Fachspez der Generation und die Vorlage der Kernabnahme `A-K2` |
+| `vor-A-Q1` | Spez, Übernahme, Transformation und die Vorlagen der aktuariellen Tests `A-M1` bis `A-M3` |
+| `vor-A-M4` | die gezeichneten Abnahmen der Quellen, der Tests und des Tarifwerks; der Abnahmebericht |
+| `abgenommen` | die gezeichnete Migrationsabnahme |
+| `vor-A-B2` | der Beleg der Zugangsprobe |
+| `vor-A-B3` | die neu aufgesetzte Ablage nach dem Aufbaulauf und der Beleg ihres Anfangsbestands |
+| `zugang` | die Ablage mit gebundenem Anfangsbestand: das Ende des Laufs |
 
 ## Was in einem Paket liegt
 
@@ -69,7 +86,7 @@ Welche Fälle es außerdem gab und in welchem Verhältnis sie stehen:
 ## Ein Paket bauen
 
 Aus einem geführten Fall baut `deploy/welt/paket_bauen.sh` das Paket; der
-Abschnitt „Das Paket bauen" in
+Abschnitt „Das Paket bauen“ in
 [deploy/welt/README.md](../deploy/welt/README.md) beschreibt es. Im
 Repository liegt ein Paket nur, wenn es seinen Prüfsummen entspricht und
 keine Datei darüber hinaus trägt.

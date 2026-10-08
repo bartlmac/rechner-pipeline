@@ -108,14 +108,14 @@ unter dem Gegenstand `K` — dem Rechenkern, mit dem sie nichts zu tun
 hat. Der Rechner rechnet; die T-Box legt fest, welche Begriffe das
 Zielsystem überhaupt kennt.
 
-Der alte Name war ein unbereinigter Rest: `G-T` hieß "Gate Tarif" und
-nahm wirklich eine Tarifgeneration ab. Seit Review T22-02 verlangt der
+Der alte Name war ein unbereinigter Rest: `G-T` hieß „Gate Tarif“ und
+nahm wirklich eine Tarifgeneration ab. Seit Befund T22-02 verlangt der
 Belegvertrag aber `tbox_aenderung`, und die Tarifgeneration wird von
 `P-K1` und `A-M4` abgenommen. Register und Beleg sagten seither
 Verschiedenes; jetzt sagen sie dasselbe.
 
 Dafür bekommt die Ontologie einen eigenen Gegenstand `O`, und `Q`
-schärft sich auf "Quellen und ihre A-Box". Das ist keine Spitzfindigkeit:
+schärft sich auf „Quellen und ihre A-Box“. Das ist keine Spitzfindigkeit:
 Die A-Box sind die Instanzen, die aus einer Quelle kommen, je Fall; die
 T-Box ist das Vokabular des Zielsystems, fallübergreifend. `P-Q1` bis
 `P-Q3` und `A-Q1` bleiben deshalb, wo sie sind — sie betreffen wirklich
@@ -143,8 +143,8 @@ Schlüssel, kein Snapshot.
 
 Auslöser ist die Änderung am Kern, gleich aus welchem Anlass. Eine
 neue Tarifgeneration löst sie ausdrücklich nicht aus: Sie ist
-Parametrierung (ADR-006 — "der Präzedenzfall TG2012 -> TG2015 lief ohne
-eine einzige Formeländerung durch") und wird von `P-K1` deterministisch
+Parametrierung (ADR-006 — „der Präzedenzfall TG2012 -> TG2015 lief ohne
+eine einzige Formeländerung durch“) und wird von `P-K1` deterministisch
 und von `A-M4` menschlich abgenommen, das `pk1_belege` in beiden Scopes
 pinnt. Machte man sie zum Auslöser, entstünde regelmäßig eine
 Unterschrift über einen unveränderten Kern.
@@ -160,17 +160,17 @@ weiter, und diese Wirkung sieht sonst niemand.
 dem ein Fall rechnet, einschließlich der Änderungen außerhalb eines
 Falls. `A-M4` verlangt in beiden Scopes, dass er abgenommen ist
 (Pflichtrolle `kernstand`): im Fall gezeichnet, oder bei unverändertem
-Stand "keine Änderung seit Abnahme <snapshot>" über einen Verweis auf
+Stand „keine Änderung seit Abnahme <snapshot>“ über einen Verweis auf
 einen früher angenommenen A-K2-Snapshot. Dieselbe Regel gilt für
 `A-O1` und den T-Box-Stand (Pflichtrolle `tboxstand`; zusätzlich die
 Basislinie: eine Versionslinie mit einem Element hat keinen Übergang).
-Damit gilt der Satz oben "löst eine Tarifgeneration nicht aus" weiter
+Damit gilt der Satz oben „löst eine Tarifgeneration nicht aus“ weiter
 für den Anlass — eine Tarifgeneration erzwingt keine Kernänderung —,
 aber jeder Fall rechnet auf einem abgenommenen Kernstand. Zwei Prüfungen: die
 qualitative Prüfung der Änderungen entlang der Module mit den Commits
 des Zweigs (Produzent `gates.kernstand_belegen`, das Gate rechnet nach)
 und die Regression. Die Regression ist bis zu ihrem Produzenten eine
-benannte Ausnahme ("nicht gefahren, Werkzeug noch nicht erstellt"),
+benannte Ausnahme („nicht gefahren, Werkzeug noch nicht erstellt“),
 nie ein Ergebnis; A-K2 ist damit zeichenbar, und die Zeichnung deckt
 ausdrücklich nur die qualitative Prüfung. Der folgende Absatz zum
 alten Kern gilt mit einer Änderung: Der Vergleichsstand ist der
@@ -186,11 +186,12 @@ Zwei Bedingungen machen den Vergleich erst ehrlich, und beide sperren:
 Änderungen ist nicht reproduzierbar —, und der Zweig muss auf der
 Spitze von `main` liegen (`merge_base == referenz_commit`). Läuft
 `main` weiter, mischt die Differenz die eigene Änderung mit einer
-fremden; dann wird rebast und neu gerechnet.
+fremden; dann wird der Zweig auf die neue Spitze gesetzt und neu
+gerechnet.
 
 Der Git-Stand im Beleg wird gegen den lebenden Stand gehalten, nicht nur
 gegen sich selbst: Ein Beleg, der einen fremden, in sich schlüssigen
-Commit nennt, fällt auf. Innere Stimmigkeit bezeugt nichts (T24-04).
+Commit nennt, fällt auf (Befund T24-04).
 
 Zwei Kernstände in einem Lauf gibt es dabei nicht: Dynamische Lader
 sind in `src` ein Befund der Code-Karte, weil sie ein Modul an jeder
@@ -221,7 +222,7 @@ nichts nachrutscht.
 
 Das Entscheid-Kommando baute seinen Ledger-Namen bisher dynamisch als
 `P9.<gate>` — `P9` ist das Kürzel des Prinzips „unveränderliche
-Gate-Snapshots" aus `prinzipien.md`. Mit `P` als Kürzel für Prüfung
+Gate-Snapshots“ aus `prinzipien.md`. Mit `P` als Kürzel für Prüfung
 hätte `P9.A-M1` zwei verschiedene `P` in einem Namen.
 
 Aufgelöst wird das zugunsten der Lesbarkeit: Ein Ledger-Name sagt, was
@@ -291,10 +292,10 @@ Beide stehen im Register (Abschnitt 2).
 
 ## Nachtrag 2026-09-05: Versionierungsregel der Gates
 
-Beschluss des Maintainers nach dem externen Review T21-09 (P-B1 hatte
-seine Akzeptanzmenge geändert und trug weiter `2.1.0`); die Regel war
-seit der Runde T16 als Folgearbeit notiert und wurde dreimal als Befund
-gemeldet. Jedes Gate trägt eine `GATE_VERSION` nach dieser Regel:
+Beschluss des Maintainers nach Befund T21-09 einer externen Prüfung
+(P-B1 hatte seine Akzeptanzmenge geändert und trug weiter `2.1.0`); die
+Regel war seit Längerem als Folgearbeit notiert und wurde dreimal als
+Befund gemeldet. Jedes Gate trägt eine `GATE_VERSION` nach dieser Regel:
 
 * **Major** (`x.0.0`), wenn sich die Akzeptanzmenge ändert: ein vorher
   grüner Beleg kann rot werden oder umgekehrt. Dazu zählt jede neue
@@ -307,10 +308,11 @@ gemeldet. Jedes Gate trägt eine `GATE_VERSION` nach dieser Regel:
   auf das Urteil.
 
 Jede Änderung der Version nennt im Commit den Grund und in der
-Gate-Tabelle des README die Zeile des Gates (Was hat sich geändert,
-warum dieser Sprung). `tests/test_gate_versionsregel.py` hält Version
-und README-Zeile zusammen: Trägt eine README-Zeile eine Version, muss
-sie der `GATE_VERSION` des Moduls entsprechen. Was die Regel nicht
+Gate-Tabelle von `docs/architektur/gate-vertrag-und-versionen.md` (bis
+ADR-027 im README) die Zeile des Gates: Was hat sich geändert, warum
+dieser Sprung. `tests/test_gate_versionsregel.py` hält Version und Zeile
+zusammen: Trägt eine Zeile dieser Tabelle eine Version, muss sie der
+`GATE_VERSION` des Moduls entsprechen. Was die Regel nicht
 leistet: Sie erkennt eine geänderte Akzeptanzmenge nicht selbst —
 das bleibt Urteil des Autors und Gegenstand des Reviews.
 
@@ -318,7 +320,7 @@ das bleibt Urteil des Autors und Gegenstand des Reviews.
 
 * **`G` für menschliche Abnahmen behalten** (`G-M1` statt `A-M1`).
   Hätte das eingeführte Team-Vokabular geschont und den Satz „G heißt:
-  ein Mensch entscheidet" erst wahr gemacht. Verworfen, weil `P` und `A`
+  ein Mensch entscheidet“ erst wahr gemacht. Verworfen, weil `P` und `A`
   symmetrisch nebeneinander stehen und kein Buchstabe eine Altlast
   trägt: `G` hatte drei Bedeutungen, und eine davon zu behalten hätte
   die anderen beiden als Gedächtnisrest zurückgelassen.

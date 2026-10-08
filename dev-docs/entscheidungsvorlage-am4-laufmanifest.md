@@ -3,7 +3,7 @@
 Stand 2026-09-20, dev-Session. Gefunden beim Fahren des Falls
 `baldrian-klv-tg2015-lauf2` auf Systemstand `9e9ca7e` — nicht von der
 Suite; dieselbe Sorte Befund wie Korrektur-Protokoll Nr. 25, die nur
-beim tatsaechlichen Lauf auftritt.
+beim tatsächlichen Lauf auftritt.
 
 **Der Befund ist NICHT Folge des PEX-Zuschlag-Commits.** Er entsteht
 allein aus dem Entscheid vom 2026-09-16 (Laufmanifest ist im
@@ -21,7 +21,7 @@ P-B1-Beleg der UEBERNAHME — und verlangt darin `summary.manifest`:
     muesste aus der Abwesenheit schliessen. P-B1 mit --manifest erneut
     fahren
 
-Das ist der EINZIGE Befund; alles andere ist gruen. Aber:
+Das ist der EINZIGE Befund; alles andere ist grün. Aber:
 `gates.bestand_uebernehmen` schreibt kein Laufmanifest. Nur
 `bestand.cli_fortschreibung`, `betrieb.tageslauf` und
 `bestand.cli_abschluss` tun das.
@@ -34,34 +34,34 @@ desselben Gates — zu Recht:
     P-B1-Portfoliozeilen, Suite-Pruefmenge und erwartete Anzahl muessen
     uebereinstimmen
 
-Die Migrationssuite prueft die 834 uebernommenen Vertraege; die
-Fortschreibung fuehrt 3093 (834 uebernommene plus eigenes Geschaeft).
+Die Migrationssuite prüft die 834 übernommenen Verträge; die
+Fortschreibung führt 3093 (834 übernommene plus eigenes Geschäft).
 Beide Mengen sind richtig, aber es sind zwei verschiedene.
 
 ## Warum die naheliegende Reparatur nicht reicht
 
-"Dann schreibt die Uebernahme eben ein Manifest" trifft auf drei
+„Dann schreibt die Übernahme eben ein Manifest“ trifft auf drei
 Contract-Festlegungen in `bestand/manifest.py`:
 
 1. `ERZEUGER = "bestand_fortschreibung"` ist gepinnt;
    `validate_manifest` weist jeden anderen Erzeuger ab.
 2. `ROLLEN_DATEIEN["portfolio"] = "bestand_gesamt.parquet"`. Die
-   Uebernahme schreibt `bestand.parquet`.
+   Übernahme schreibt `bestand.parquet`.
 3. Und der schwerste: Die Rolle `schichten` entsteht gar nicht in der
-   Uebernahme, sondern in `gates.verankerung_belegen`. Ein Manifest, das
-   die Uebernahme allein schreibt, nennt `schichten.parquet` nicht unter
-   seinen Ausgaben — und genau darauf schlaegt A-M4 dann an ("der
-   belegte Lauf nennt sie nicht unter seinen Ausgaben"). Der Fall haette
+   Übernahme, sondern in `gates.verankerung_belegen`. Ein Manifest, das
+   die Übernahme allein schreibt, nennt `schichten.parquet` nicht unter
+   seinen Ausgaben — und genau darauf schlägt A-M4 dann an („der
+   belegte Lauf nennt sie nicht unter seinen Ausgaben“). Der Fall hätte
    den Blocker nur verschoben.
 
-4. Und der entscheidende: `_manifest_befund` haelt die Config, mit der
-   P-B1 laeuft, gegen `manifest["config"]["sha256"]`. P-B1 laeuft mit
+4. Und der entscheidende: `_manifest_befund` hält die Config, mit der
+   P-B1 läuft, gegen `manifest["config"]["sha256"]`. P-B1 läuft mit
    `abgeleitet/bestand-config.toml` — die entsteht aber ERST NACH der
-   Uebernahme, aus dem `generation-zellen.toml`, das die Uebernahme
-   schreibt. Die Uebernahme kann diese Datei nicht binden; sie existiert
+   Übernahme, aus dem `generation-zellen.toml`, das die Übernahme
+   schreibt. Die Übernahme kann diese Datei nicht binden; sie existiert
    zu ihrer Laufzeit nicht.
 
-Der "belegte Lauf" eines Migrationsfalls hat also ZWEI Produzenten, und
+Der „belegte Lauf“ eines Migrationsfalls hat also ZWEI Produzenten, und
 der erste von ihnen ERZEUGT die Config, die das Manifest binden soll,
 statt sie zu konsumieren. Das Manifest-Modell kennt einen Produzenten,
 der eine fertige Config liest. Das ist kein Tippfehler im Contract,
@@ -71,53 +71,53 @@ Gegenprobe im Repo: Die A-M4-Tests
 (`tests/test_am4_vollprofil_t22.py`, `_t23.py`) legen ihren belegten
 Lauf immer als FORTSCHREIBUNG nach `abgeleitet/bestand` — mit
 `bestand_gesamt.parquet` und Manifest. Die Lage eines echten
-Migrationsfalls (Uebernahme in `abgeleitet/bestand`, Fortschreibung in
+Migrationsfalls (Übernahme in `abgeleitet/bestand`, Fortschreibung in
 `abgeleitet/bestand-nach`) kommt in keinem Test vor. Der e2e-Lauf
-`tests/test_baldrian2_e2e.py` faehrt `abnahmebericht` nicht mit. Deshalb
-ist die Luecke gruen durch die Suite gegangen.
+`tests/test_baldrian2_e2e.py` fährt `abnahmebericht` nicht mit. Deshalb
+ist die Lücke grün durch die Suite gegangen.
 
 ## Vier Wege
 
-**A — Die Uebernahme wird manifest-schreibender Produzent.**
-`ERZEUGER` wird eine Menge; `ROLLEN_DATEIEN["portfolio"]` haengt am
+**A — Die Übernahme wird manifest-schreibender Produzent.**
+`ERZEUGER` wird eine Menge; `ROLLEN_DATEIEN["portfolio"]` hängt am
 Erzeuger; `gates.verankerung_belegen` ERGAENZT das Manifest der
-Uebernahme um `schichten.parquet`, weil es in dasselbe Verzeichnis
-schreibt. Haelt den Entscheid vom 2026-09-16 vollstaendig ("ein Beleg,
-der nichts sagt, ist kein Beleg") und laesst den Produzenten sagen, was
-er erzeugt hat. Kostet eine Aenderung an einem geteilten Vertrag
+Übernahme um `schichten.parquet`, weil es in dasselbe Verzeichnis
+schreibt. Hält den Entscheid vom 2026-09-16 vollständig („ein Beleg,
+der nichts sagt, ist kein Beleg“) und lässt den Produzenten sagen, was
+er erzeugt hat. Kostet eine Änderung an einem geteilten Vertrag
 (`bestand/manifest.py`) und damit eine ADR-Notiz.
 
-**B — Das Manifest ist nur fuer Fortschreibungs-Laeufe Pflicht.**
-Kleinste Aenderung, aber sie oeffnet genau das Loch wieder, das der
+**B — Das Manifest ist nur für Fortschreibungs-Läufe Pflicht.**
+Kleinste Änderung, aber sie öffnet genau das Loch wieder, das der
 Entscheid geschlossen hat: Wer kein Manifest will, deklariert seinen
-Lauf als Uebernahme.
+Lauf als Übernahme.
 
-**C — Die Fallablage aendern**, so dass der belegte Lauf die
+**C — Die Fallablage ändern**, so dass der belegte Lauf die
 Fortschreibung ist. Bricht die Mengengleichheit mit der Migrationssuite
-und damit die Aussage, dass genau der abgenommene Bestand geprueft
+und damit die Aussage, dass genau der abgenommene Bestand geprüft
 wurde. Nicht empfohlen.
 
-**D — Ein eigener Manifest-Schritt fuer den Migrationslauf**
-(Empfehlung, ersetzt A). Nicht die Uebernahme schreibt das Manifest,
+**D — Ein eigener Manifest-Schritt für den Migrationslauf**
+(Empfehlung, ersetzt A). Nicht die Übernahme schreibt das Manifest,
 sondern der letzte Schritt, der in dasselbe Verzeichnis schreibt und die
 Config schon kennt: `gates.verankerung_belegen`. Zu diesem Zeitpunkt
-liegen alle Rollendateien vor (die sechs der Uebernahme plus die
+liegen alle Rollendateien vor (die sechs der Übernahme plus die
 `schichten.parquet`, die er selbst erzeugt), und `bestand-config.toml`
 existiert. Er bekommt ein `--config` und schreibt
 `abgeleitet/bestand/laufmanifest.json` mit `erzeuger =
 "bestand_migrationszugang"` und `horizont` = Migrationsstichtag.
-Dafuer noetig: `ERZEUGER` wird eine Menge, und die Portfolio-Rolle
-heisst je nach Erzeuger `bestand.parquet` statt
-`bestand_gesamt.parquet`. Kein bestehender Check wird schwaecher, der
-Entscheid vom 2026-09-16 bleibt vollstaendig, und es bleibt bei EINEM
+Dafür nötig: `ERZEUGER` wird eine Menge, und die Portfolio-Rolle
+heißt je nach Erzeuger `bestand.parquet` statt
+`bestand_gesamt.parquet`. Kein bestehender Check wird schwächer, der
+Entscheid vom 2026-09-16 bleibt vollständig, und es bleibt bei EINEM
 Manifest-Schreiber je Lauf.
 
-Warum A (die Uebernahme schreibt selbst) nicht geht, steht oben unter
+Warum A (die Übernahme schreibt selbst) nicht geht, steht oben unter
 Punkt 3 und 4: Sie kennt weder die Schicht noch die Config.
 
 ## Was bis zur Entscheidung steht
 
-Die ganze Producer-Kette ist auf `9e9ca7e` gefahren und gruen:
+Die ganze Producer-Kette ist auf `9e9ca7e` gefahren und grün:
 
     Uebernahme          834 Vertraege, 994 Ledgerzeilen, 12 PEX-Zuschlaege
     Verankerung         834/834 getragen, max |R| 0,02
@@ -131,26 +131,26 @@ Die ganze Producer-Kette ist auf `9e9ca7e` gefahren und gruen:
     A-M4                ROT (nur dieser Befund)
 
 Die Zeichnungen A-Q1/A-M1/A-M2/A-M3 sind NICHT gesetzt. Grund: Jeder der
-drei Wege aendert Code und damit den Systemstand; auf dem alten Stand
-gezeichnet waeren sie sofort wieder entwertet. Sie werden zusammen mit
-A-M4 auf dem Stand gezeichnet, der die Entscheidung traegt.
+drei Wege ändert Code und damit den Systemstand; auf dem alten Stand
+gezeichnet wären sie sofort wieder entwertet. Sie werden zusammen mit
+A-M4 auf dem Stand gezeichnet, der die Entscheidung trägt.
 
-Folge fuer die Vorzeige: `betrieb.uebernahme` verlangt einen
-angenommenen A-M4-Snapshot ("eine Uebernahme ohne Migrationsabnahme gibt
-es nicht"). Die Vorzeige-Session bleibt bis zu dieser Entscheidung
+Folge für die Vorzeige: `betrieb.uebernahme` verlangt einen
+angenommenen A-M4-Snapshot („eine Übernahme ohne Migrationsabnahme gibt
+es nicht“). Die Vorzeige-Session bleibt bis zu dieser Entscheidung
 blockiert — an diesem Punkt, nicht mehr am PEX-Zuschlag.
 
-## Was Weg D konkret kostet (ausgemessen, nicht geschaetzt)
+## Was Weg D konkret kostet (ausgemessen, nicht geschätzt)
 
 Ein zweiter `erzeuger`-Wert ist nur dann sicher, wenn jeder Leser eines
 Manifests sagt, welche Sorte Lauf er erwartet. Sonst nimmt ein
 Betriebs-Kommando klaglos das Manifest eines Migrationszugangs. Alle
-Leser, vollstaendig:
+Leser, vollständig:
 
 | Modul | liest | unter D zu tun |
 |---|---|---|
-| `bestand/vorbedingungen.py` (P-B1-Engine) | Rollen ueber `ROLLEN_DATEIEN` | Rollentabelle je Erzeuger nachschlagen |
-| `gates/abnahmebericht.py` (A-M4) | dieselbe Tabelle ueber `PB1_ROLLEN_DATEIEN` | dito |
+| `bestand/vorbedingungen.py` (P-B1-Engine) | Rollen über `ROLLEN_DATEIEN` | Rollentabelle je Erzeuger nachschlagen |
+| `gates/abnahmebericht.py` (A-M4) | dieselbe Tabelle über `PB1_ROLLEN_DATEIEN` | dito |
 | `bestand/cli_abschluss.py` | `lies_manifest` + Rollen | `erzeuger == bestand_fortschreibung` verlangen |
 | `betrieb/tageslauf.py` | `lies_manifest` + Rollen | dito |
 | `betrieb/seite.py` | `lies_manifest` (Horizont) | dito |
@@ -158,17 +158,17 @@ Leser, vollstaendig:
 `ERZEUGER` in `gates/bestand_validate.py` ist eine Namensgleichheit
 (`ERZEUGER_HINWEIS`, der Ausweg-Text), kein Manifest-Leser.
 
-Summe: zwei Stellen werden erzeuger-abhaengig, drei bekommen eine
-Zusicherung, die sie heute implizit machen. Kein Leser wird schwaecher.
+Summe: zwei Stellen werden erzeuger-abhängig, drei bekommen eine
+Zusicherung, die sie heute implizit machen. Kein Leser wird schwächer.
 
 ## Und der Test, der gefehlt hat
 
-Zur Reparatur gehoert — unabhaengig davon, welcher Weg gewaehlt wird —
+Zur Reparatur gehört — unabhängig davon, welcher Weg gewählt wird —
 ein Test, der A-M4 auf der Ablage eines ECHTEN Migrationsfalls fahrt:
-Uebernahme in `abgeleitet/bestand`, Fortschreibung in
+Übernahme in `abgeleitet/bestand`, Fortschreibung in
 `abgeleitet/bestand-nach`, Schicht aus `verankerung_belegen`. Heute legen
 alle A-M4-Tests ihren belegten Lauf als Fortschreibung an, und
-`tests/test_baldrian2_e2e.py` faehrt `gates.abnahmebericht` nicht mit —
-deshalb ist die Luecke monatelang gruen geblieben. Der Test kann erst
-mit der Entscheidung geschrieben werden; vorher waere er rot und wuerde
+`tests/test_baldrian2_e2e.py` fährt `gates.abnahmebericht` nicht mit —
+deshalb ist die Lücke monatelang grün geblieben. Der Test kann erst
+mit der Entscheidung geschrieben werden; vorher wäre er rot und würde
 nur den Defekt festschreiben.

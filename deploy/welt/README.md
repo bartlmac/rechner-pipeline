@@ -5,8 +5,11 @@ und ein Migrationsfall geführt werden kann: die Ablage des Tagesbetriebs
 (`daten/`), die Linie mit ihrer Ordnungslinie und den Erstabnahmen (`linie/`)
 und — außerhalb von beidem — die Schlüssel der Rollen, die
 Zeichnungsordnung und das Mandat. Die Welt startet ohne übernommenen
-Bestand; ein Fall bringt ihn hinein. Je Fall eine eigene Welt: So bleibt ein
-Fall wiederholbar, und kein Fall berührt die Laufzeit eines anderen.
+Bestand; ein Fall bringt ihn hinein. Je Fall eine eigene Welt: So berührt
+kein Fall die Laufzeit eines anderen. Der Arbeitsbereich des Falls liegt
+nicht in der Welt, sondern im Codebaum unter `faelle/<name>`; ein zweiter
+Lauf desselben Falls braucht deshalb einen eigenen Codebaum oder den Fall
+vorher unter `faelle/archiv/`.
 
 Die Skripte hier fahren die Bedienfolgen, die in ADR-025 (Erstabnahmen),
 ADR-026 (Fallauftrag) und `deploy/plv/README.md` (Ablage) beschrieben sind —
@@ -63,8 +66,10 @@ Was die Phase `schluessel` festlegt, lässt sich beim Aufruf setzen:
 - **Kein Schlüssel wird überschrieben, keiner verlässt den Rechner.**
   Trägt das Schlüsselverzeichnis schon eine Ordnung, hält das Skript an;
   eine zweite Welt bekommt ein eigenes Verzeichnis (`SCHLUESSEL=...`).
-- **Alle Rollen haben die Schlüsselklasse `simulation`.** Jede Zeichnung
-  dieser Welt weist sich als simuliert aus und nennt das Mandat. Die
+- **Alle menschlichen Rollen haben die Schlüsselklasse `simulation`.** Jede
+  ihrer Zeichnungen weist sich als simuliert aus und nennt das Mandat. Der
+  Schlüssel des Tageslaufs hat die Klasse `betrieb` und zeichnet nur
+  Urheberschaft. Die
   Schlüssel sind symmetrisch: Wer eine Zeichnung prüfen kann, kann sie auch
   leisten. Wer in einer Übung welche Rolle zeichnet, ist deshalb eine Regel
   der Leitung, keine Eigenschaft der Technik.
@@ -127,7 +132,7 @@ Gate prüft es und nennt, was fehlt.
 
 Nach der Migrationsabnahme (A-M4) kommt der übernommene Bestand in die
 Ablage der Welt (ADR-022; die Bedienfolge und ihre Begründung stehen in
-`deploy/plv/README.md`, "Reihenfolge des Hochziehens"):
+`deploy/plv/README.md`, „Reihenfolge des Hochziehens“):
 
 ```
 deploy/welt/zugang.sh <welt> probe
@@ -161,7 +166,7 @@ Was Agenten und Menschen darin erarbeitet haben, wird mitgebracht; was das
 System rechnet, rechnet es neu; gezeichnet wird neu, mit den Schlüsseln der
 Welt. So wird eine Laufzeit aus dem Stand des Repositorys neu aufgestellt,
 ein Fall nach einer Code-Änderung gegengeprüft oder in einer Übung an
-eine bestimmte Stelle "vorgespult".
+eine bestimmte Stelle „vorgespult“.
 
 ```
 deploy/welt/fall_nachfahren.sh <welt> <paket> [--bis <haltepunkt>] [--wechseln]
@@ -212,9 +217,11 @@ In den Kommandos stehen `$PY` (der Interpreter), `$F` (`faelle/<name>`),
 zuletzt angenommen hat.
 
 - **Nichts läuft doppelt.** Ein Lauf merkt sich, wie weit er kam
-  (`<welt>/nachfahren.stand`). Derselbe Aufruf fährt hinter dem letzten
-  erledigten Schritt weiter — nach einem Haltepunkt ebenso wie nach einem
-  behobenen Fehler. Protokoll: `<welt>/nachfahren.log`.
+  (`<welt>/nachfahren.stand`). Derselbe Aufruf, ohne `--bis` oder mit einem
+  späteren Haltepunkt, fährt hinter dem letzten erledigten Schritt weiter,
+  nach einem Haltepunkt ebenso wie nach einem behobenen Fehler. Protokoll:
+  `<welt>/nachfahren.log`. Die Namen der Haltepunkte nennt
+  `pakete/README.md`.
 - **Entscheidungen werden neu getroffen, nicht mitgebracht.** Die Auflösung
   einer Diskrepanz trägt in der A-Box die Zeichnung ihrer Rolle. Eine
   mitgebrachte A-Box trüge die Schlüssel des festgehaltenen Laufs; deshalb
@@ -272,9 +279,10 @@ Repositorys hält das Skript an, bevor es etwas anlegt.
 
 Die Schlüssel der Welt liegen dabei unter `~/.plv-schluessel/<name der
 welt>` (anders nur mit `SCHLUESSEL=...`): je Welt ein eigenes Verzeichnis.
-Bricht das Aufstellen ab, beginnt ein neuer Versuch einfach unter einem
-anderen Namen der Welt; die angefangene bleibt liegen, bis jemand sie
-ansieht und entfernt.
+Bricht das Aufstellen ab, bevor der Fall angelegt ist, beginnt ein neuer
+Versuch unter einem anderen Namen der Welt; die angefangene bleibt liegen,
+bis jemand sie ansieht und entfernt. Liegt der Fall schon im Codebaum,
+hält ein Lauf in einer neuen Welt an: Ein Fall wird nie überschrieben.
 
 Derselbe Aufruf ist wiederholbar: Steht die Welt schon, fährt er nur das
 Paket weiter, hinter dem letzten erledigten Schritt. So wird aus dem Stand
@@ -324,10 +332,10 @@ Entscheider oder Pfade des Rechners trägt, ist es nie.
   ein Glied der Ordnungslinie sind hier nicht gefasst.
 - Eine Welt führt einen Fall zur Zeit. Ein zweiter bekommt eine zweite
   Welt — oder löst den ersten ab, wenn er nachgefahren wird (`--wechseln`).
-- Das Skript zum Nachfahren fährt ein Paket. Ein Paket für den Fall der
-  Vorführung ist nicht Teil dieses Stands: Es trägt die Auflösung des
-  Falls und liegt deshalb nicht im Codebaum, auf dem derselbe Fall mit
-  Agenten geführt wird.
+- Das Skript zum Nachfahren fährt ein Paket. Das Paket von Fall 3 liegt
+  unter `pakete/`. Es trägt die Auflösung des Falls und ist zum Nachfahren
+  da, nicht als Lesestoff für eine Sitzung, die denselben Fall live mit
+  Agenten führt (`pakete/README.md`).
 - Ein Rezept ist an ein Paket gebunden: Wird es geändert, gilt der Stand
   eines begonnenen Laufs nicht mehr, und das neue Paket braucht eine neue
   Welt.

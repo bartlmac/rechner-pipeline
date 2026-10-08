@@ -168,7 +168,7 @@ erste echte Bestand läuft.
 ## 7 Ausbaustufen
 
 **N7.1 — GEBAUT.** Erstverankerung bei $t_a$, Formfunktion Default plus
-konstantes Fenster, vererbend nur "Tod mit fester Versicherungssumme"
+konstantes Fenster, vererbend nur „Tod mit fester Versicherungssumme“
 (der KLV-Default aus 9.7), beide Guardrails, Parameter-Persistenz.
 
 Zwei Messungen aus dem Bau, die den Entwurf bestätigen: $\Pi$ stimmt

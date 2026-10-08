@@ -1,6 +1,7 @@
 # Migrations-Pipeline v0.1: Ontologie als Stage-Interface
 
-> **Teilweise überholt (Stand des Dokuments: 2026-08-15).** Es
+> **Teilweise überholt (Stand des Dokuments: 2026-08-15, einzelne
+> Ergänzungen bis 2026-10-01).** Es
 > beschreibt den Stand vor
 > [ADR-006](adr-006-portierung-ausser-betrieb.md) (Portierung außer
 > Betrieb) und [ADR-007](adr-007-parallele-migrationen-ein-kern.md)
@@ -13,12 +14,15 @@
 > Aussage, in Stufe 1 gebe es keine Bestandsdaten-Quelle (Abschnitt 8);
 > der Skill-Zuschnitt (Abschnitt 9); und die ADR-Liste (Abschnitt 10).
 > Die Prinzipien, die Stufenlogik und die Objektmodelle gelten
-> unverändert — mit einer Erweiterung: ADR-010 schaltet dem Gate A-M4
-> das menschliche Gate A-M1 (aktuarielle Abnahme, Vorlage
-> `gates.aktuartest`) zwingend vor. Aktueller Rollen-Katalog:
-> [skill-architektur.md](skill-architektur.md).
+> unverändert. Seit diesem Stand kamen hinzu: die aktuariellen Abnahmen
+> A-M1 bis A-M3 vor A-M4 (ADR-010, ADR-012), der abgenommene Stand des
+> Zielsystems aus Kern, T-Box und Tarifwerk (ADR-018, ADR-025), der
+> Fallauftrag (ADR-026) und der Zugang in die Ablage (ADR-022). Die
+> Pflichtbelege je Gate stehen in
+> [gate-vertrag-und-versionen.md](gate-vertrag-und-versionen.md), der
+> aktuelle Rollen-Katalog in [skill-architektur.md](skill-architektur.md).
 
-Stand: 2026-08-15. Am Migrationsfall KLV TG2012 -> TG2015 mechanisch
+Stand: 2026-08-15, einzelne Ergänzungen bis 2026-10-01. Am Migrationsfall KLV TG2012 -> TG2015 maschinell
 abgenommen (Gate P-K1: 616 Werte gegen den Quell-Rechner, 0 Abweichungen);
 die menschlichen Gates A-Q1/A-M1/A-M4 des Falls stehen aus (8 vorläufige
 Diskrepanz-Auflösungen warten auf die fachliche Entscheidung). Dieses
@@ -109,7 +113,7 @@ Stufe 3  Abnahme
 
 LLM-Agenten tun genau eines: die Vorverdichtung einer Quelle lesen und
 ein Fragment vorschlagen (mit Fundstellen, Konfidenz, explizitem
-"gesucht, nicht gefunden"). Alles andere ist Code: Merge, Konflikt,
+„gesucht, nicht gefunden“). Alles andere ist Code: Merge, Konflikt,
 Coverage, Struktur-Urteil, Projektion, Tafel-Ableitung, Vergleich,
 Gates. Ein Widerspruch zwischen Quellen entsteht im Merge-Code, nie im
 Agenten-Urteil; die Auflösung ist ein Mensch.
@@ -125,13 +129,13 @@ Erwartungswerte, übersprungene Erwartungsreste).
 
 ## 6 Der Präzedenzfall TG2012 -> TG2015
 
-Die fachliche Vorgabe — "erkennen, dass der neue Rechner strukturell zum alten
-passt, und integrieren statt duplizieren" — ist als berechnetes
+Die fachliche Vorgabe — „erkennen, dass der neue Rechner strukturell zum alten
+passt, und integrieren statt duplizieren“ — ist als berechnetes
 StrukturUrteil umgesetzt: `parametrierung`, mit zwei neuen
 Merkmalsdimensionen (Tarifart, Raucherstatus), neun geänderten
 Parametern und sechs Tafel-Anforderungen. Die Unisex-Vorgabe U70 wurde
 zur abgeleiteten Mischtafel (`qx = min(1, 0.7*qx_M + 0.3*qx_F)`,
-Double-Arithmetik VBA-treu) — NULL Kern-Formeländerung, weil die exakte
+Double-Arithmetik VBA-treu), ohne eine Formeländerung am Kern, weil die exakte
 Tafelnamens-Auflösung des Kerns genau dafür vorgesehen war. U70 ist
 eine Kalkulations-Vorgabe (alle Verträge werden unisex bewertet); das
 Geschlecht bleibt Bestandsmerkmal ohne Tarifwirkung.
@@ -145,7 +149,7 @@ als Diskrepanz-Objekte erfasst, vorläufig zur Rechner-Lesart gelöst
 Die O-Gates (P-Q3, P-K1) und P9-Snapshots stehen neben der G0-G8-Kette und
 teilen nur den Ledger-Mechanismus (`gates/_common`). Die G-Kette bleibt
 der Abnahme-Weg des Sechs-Datei-Vergleichskerns; die Integration beider
-Wege ist eine Team-Entscheidung nach Fall 1 (Fragerunde F2).
+Wege ist eine Team-Entscheidung nach Fall 1.
 
 **Überholt seit ADR-006:** die G0-G8-Kette und der
 Sechs-Datei-Vergleichskern sind außer Betrieb — `gates.validate`,
@@ -162,7 +166,7 @@ noch den O-/P9-Weg auf dem stabilen Zielkern.
   Gate P-K1 weist das Komplement aus.
 * Der deterministische Formel-Rück-Check (quellen/formeln.py, in Gate
   P-Q3 eingebaut) deckt die IF-Staffeln; andere Formelformen prüft er
-  fail-fast als "nicht prüfbar" — ein breiterer Formel-Parser bleibt
+  fail-fast als „nicht prüfbar“ — ein breiterer Formel-Parser bleibt
   offen.
 * Kein Graph-Store, keine Embeddings, keine BU-/FLV-/Renten-Klassen in
   der T-Box (kommen mit ihren Fällen über A-O1), kein Legacy-Code-
@@ -184,20 +188,19 @@ noch den O-/P9-Weg auf dem stabilen Zielkern.
 * Fall-Artefakte (A-Box, Spez, Entscheide) liegen im gitignorierten
   Fall-Arbeitsbereich — die Versionierung echter Fälle außerhalb des
   Repos ist ADR-002-Zielbild, in v0.1 nicht ausgebaut. Die
-  Nachweiskette endet damit an einem Einzelplatz (Systemprüfung 21):
-  ein geteilter, versionierter Fall-Speicher ist Team-Entscheidung.
+  Nachweiskette endet damit an einem Einzelplatz; ein geteilter,
+  versionierter Fall-Speicher ist Team-Entscheidung.
 * Das Struktur-Urteil arbeitet innerhalb einer menschlich vorgegebenen
   Produktfamilie: es kann Parametrierung von Erweiterung unterscheiden,
-  aber 'neue Produktfamilie' nicht selbst feststellen — die T-Box
-  kennt kein Leistungsversprechen/Zahlungsprofil (Systemprüfung 5/29).
-  Kommt mit Fall 2 (Risiko/Rente zwingen Zahlungsprofile in T-Box und
-  Spez — die 'gebundene Spez' der D2-Entscheidung ist erst zur Hälfte
-  gebaut: Zustandsraum, Zahlungsprofile, GeVo-Katalog fehlen).
+  aber „neue Produktfamilie“ nicht selbst feststellen — die T-Box
+  kennt kein Leistungsversprechen/Zahlungsprofil. Kommt mit Fall 2
+  (Risiko/Rente zwingen Zahlungsprofile in T-Box und Spez — die
+  gebundene Spez ist erst zur Hälfte gebaut: Zustandsraum,
+  Zahlungsprofile, GeVo-Katalog fehlen).
 * Gate P-K1 nimmt strukturell die Rechner-Lesart ab (der GM reproduziert
   den Quell-Rechner). Entscheidet A-Q1 fachlich gegen den Rechner
   (z. B. Zins 1,25 % der Meldung), braucht die Abnahme korrigierte
-  Erwartungswerte des Lieferanten — diesen Pfad gibt es noch nicht
-  (Systemprüfung 23).
+  Erwartungswerte des Lieferanten — diesen Pfad gibt es noch nicht.
 * Die 1M-LOC-Mechanik ist seit ADR-005 gebaut: hierarchische Knoten
   (`familie[/generation]`, Wurzel validiert), Test-Knoten-Bindung
   (jede Testdatei, drift-geprüft), nachrechenbare Schichtenkarte
@@ -206,8 +209,8 @@ noch den O-/P9-Weg auf dem stabilen Zielkern.
   berechneter Änderungs-Impact (`ontologie.impact`, Lineage-Selektion,
   konservativ bei jeder Unsicherheit). Noch nicht gebaut: Tafel-/
   Zellen-Granularität der Daten und die Verdrahtung als selektive
-  Gates — CI und Vor-Commit fahren weiter die volle Suite
-  (Systemprüfung 6/13/28, Rest-Auslöser Fall 2).
+  Gates — CI und Vor-Commit fahren weiter die volle Suite (der Rest
+  folgt mit Fall 2).
 * P10 ist für Extraktions-Agenten instruiert (Skill), nicht technisch
   erzwungen (kein Sandbox-Zwang auf die Vorverdichtung).
 
@@ -251,7 +254,7 @@ ausdrücklich dem Menschen zu: Abnahme gegen den Tarifplan
 Rück-Check (`quellen/formeln.py`, in Gate P-Q3) ist die einzige
 Ausnahme und beschreibt seinen Umfang selbst ehrlich: er prüft die
 IF-Staffeln des Rechners gegen die extrahierten Werte und meldet jede
-andere Formelform als "nicht prüfbar" — er vergleicht also innerhalb
+andere Formelform als „nicht prüfbar“ — er vergleicht also innerhalb
 einer Quelle, nicht zwischen zweien.
 
 **Ausbaupfad (nicht in v0.1).** Feld `formeln` im QuellFragment
@@ -264,7 +267,7 @@ eine A-Q1-Entscheidung gegen den Rechner.
 
 ## 9 Wissensverteilung: wo das Migrations-Know-how lebt
 
-Das System wird nicht "trainiert" — sein Wissen ist verteilt auf vier
+Das System wird nicht „trainiert“ — sein Wissen ist verteilt auf vier
 Schichten, jede versioniert, jede mit eigener Änderungs-Disziplin:
 
 | Schicht | Trägt | Ort | Ändert sich durch |
@@ -274,11 +277,11 @@ Schichten, jede versioniert, jede mit eigener Änderungs-Disziplin:
 | Skills (Agenten-Anweisungen) | Wie die probabilistischen Schritte urteilen: Extraktionsregeln je Quelltyp, das systematische Vorgehen eines Falls, Abbruchkriterien | `.claude/skills/` + `.agents/skills/` (Parität test-tragend): `migrationsfall-durchfuehren` (Runbook), `extrahiere-quellfragment` (Stage-1-Agent) | Commits; der Skill-Stand (Git-SHA) gehört in den Akteur-String der Provenienz (P1) |
 | Präzedenzfall | Wie ein fertiges Ergebnis aussieht: A-Box, Spez, Fachspez, Diskrepanzen, Gate-Ledger des Falls KLV TG2012->TG2015 | `faelle/baldrian-klv-tg2015` (lokal; echte Fälle außerhalb des Repos) | jeder abgeschlossene Fall wird Referenz des nächsten |
 
-Überholt ist die Skill-Zeile in ihrem Umfang: aus den zwei genannten
-Skills sind inzwischen zehn geworden (Extraktion, Runbook, Transformation
-des Quellbestands, Konfliktaufbereitung, Migrationsabnahme, Entwicklung
-im Zielsystem, Gate-Autorenschaft, Inkrement-Integration, Doku,
-adversariales Testen). Verbindlicher Katalog mit Rollen und Grenzen:
+Überholt ist die Skill-Zeile in ihrem Umfang: Aus den zwei genannten
+Skills sind inzwischen elf geworden (Extraktion, Runbook, Transformation
+des Quellbestands, Konfliktaufbereitung, aktuarieller Test,
+Migrationscontrolling, Entwicklung im Zielsystem, Gate-Autorenschaft,
+Inkrement-Integration, Doku, adversariales Testen). Verbindlicher Katalog mit Rollen und Grenzen:
 [skill-architektur.md](skill-architektur.md).
 
 Die Verteilungsregel dahinter: Wissen, das gelten muss, wandert in Code
@@ -302,8 +305,7 @@ Excel-Referenzwerte; Kommutation als separater Zweitkern), ADR-005
 seit Redaktionsschluss dieses Dokuments — und für den heutigen Stand
 maßgeblich: ADR-006 (Portierungs-Anwendungsfall außer Betrieb; die
 G-Kette entfällt), ADR-007 (parallele Migrationen in einem Kern;
-knotengebundene Inkremente auf einem Trunk), ADR-008 (signierte
+knotengebundene Inkremente auf einem Hauptzweig), ADR-008 (signierte
 P9-Freigaben) und ADR-009 (Fall-Scope und Bestands-Pflichtbelege).
-Entscheidungsgrundlage: die
-Architektur-Fragerunde (D1-D4, F1-F3; privat dokumentiert, Ergebnisse
-in diesen ADRs).
+Entscheidungsgrundlage war eine Fragerunde zur Architektur; ihre
+Ergebnisse stehen in diesen ADRs.
