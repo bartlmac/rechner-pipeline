@@ -1,210 +1,255 @@
 # ONBOARDING — rechner-pipeline
 
-## 1. What this is
-A system for **life-insurance portfolio migration**, with **no LLM SDK in the
-codebase** (the CLI agent *is* the model; Python code pre-digests, validates,
-computes and accepts):
+Für alle, die mit dem Repository arbeiten wollen: einrichten, die Laufzeit
+aufstellen, einen Fall führen, die Regeln kennen. Was das Repository ist und
+wo welches Dokument liegt, steht im [README](README.md).
 
-The repository carries **four levels** (ADR-017): the developer's work
-with the AI (reviews, ADRs, the suite); the **KI-Tool**, the agentic
-migration system that any insurer could use unchanged (ontology, spec
-contract, gates, roles, skills, report generators); the **Vorzeige**, a
-fictional insurer at which the tool shows itself and can be tested
-(reference target kernel, portfolio management, the migration case, the
-company site); and the **Vorzeige tools** that produce the Vorzeige
-(portfolio simulation, source-system generation, direction mechanics).
-The layer map records the level of every layer and pins the edges from
-the tool into the Vorzeige as a ratchet.
+## 1. Was das ist
 
-1. **The target kernel** (`rechner_pipeline.kern`, version 3.4.0, part of
-   the Vorzeige as the reference target system): a stable, versioned
-   calculation kernel formulated entirely in the state-model world
-   (semi-Markov backbone, Thiele recursion on pure decrement probabilities).
-   Two products — endowment (KLV) and disability (BU) — are *configurations*
-   of that backbone, not separate engines. The commutation second kernel is
-   out of service (ADR-013); it survives only as an independent witness in
-   the algebraic property tests.
-2. **The portfolio module** (`rechner_pipeline.bestand`): synthetic,
-   forward-projectable portfolios that the target kernel can compute directly.
-   Every amount comes from the kernel; the module carries no actuarial
-   formulas of its own.
-3. **The migration pipeline** (the main path): heterogeneous sources
-   (Tarifmeldung DOCX, Tarifrechner XLSM) -> ontology (T-Box/A-Box with
-   per-statement provenance and discrepancy objects) -> Tarif-Spez ->
-   parametrized kernel -> acceptance against the source calculator, with human
-   gates (A-Q1, A-O1, A-K2, A-M1 to A-M4) and immutable decision snapshots.
+Ein System für die **Bestandsmigration Leben**, mit **keinem LLM-SDK im
+Code**: Der CLI-Agent ist das Modell; Python-Code verdichtet vor, validiert,
+rechnet und nimmt ab.
 
-Read `docs/architektur/migrations-pipeline-v01.md` first, then the role catalog
-`docs/architektur/skill-architektur.md`, then the ADRs in
+Das Repository trägt fünf Gegenstände (ADR-027): die Laufzeit der PLV, das
+Migrationssystem, die Fall-Definitionen, die Routinen und die Webseite. Für
+die Arbeit am Code sind drei Teile des Pakets wichtig:
+
+1. **Der Zielkern** (`rechner_pipeline.kern`): ein stabiler, versionierter
+   Rechenkern, ganz in der Welt des Zustandsmodells formuliert
+   (Semi-Markov-Rückgrat, Thiele-Rekursion auf reinen
+   Ausscheidewahrscheinlichkeiten). Zwei Produkte — die gemischte
+   Versicherung (KLV) und die Berufsunfähigkeit (BU) — sind *Konfigurationen*
+   dieses Rückgrats, keine eigenen Rechenwerke. Die klassische
+   Kommutationsrechnung ist kein Teil des Pakets; sie lebt als unabhängiger
+   Zeuge in den Tests des Kerns (`tests/kommutationszeuge.py`).
+2. **Der Bestand** (`rechner_pipeline.bestand`) und der **Tagesbetrieb**
+   (`rechner_pipeline.betrieb`): synthetische, fortschreibbare Bestände, die
+   der Zielkern unmittelbar rechnet. Jeder Betrag kommt aus dem Kern; das
+   Modul trägt keine eigenen aktuariellen Formeln.
+3. **Die Migrations-Pipeline** (der Hauptpfad): heterogene Quellen
+   (Tarifmeldung, Bedingungen, Tarifrechner, Bestandsabzüge) -> Ontologie
+   (T-Box und A-Box mit Herkunft je Aussage und Diskrepanz-Objekten) ->
+   Tarif-Spez -> parametrierter Kern -> Abnahme gegen die Lieferung, mit
+   menschlichen Gates und unveränderlichen, gezeichneten Snapshots.
+
+Zuerst lesen: `docs/architektur/ablauf-eines-falls.md`, dann den
+Rollenkatalog `docs/architektur/skill-architektur.md`, dann die ADRs unter
 `docs/architektur/`.
 
-**Historical note:** the project started from a one-time *translation act* — a
-coding agent ported an Excel/VBA calculator into a six-file Python kernel,
-accepted by a deterministic gate chain (617/617 values, 2026-07-22). That proof
-is complete. The porting machinery was retired on 2026-08-17; the retired
-state is archived by the maintainer (not a published branch).
+**Zur Geschichte:** Das Projekt begann mit einem einmaligen
+*Übersetzungsakt* — ein Coding-Agent portierte einen Excel/VBA-Rechner in
+einen Python-Kern, abgenommen von einer deterministischen Gate-Kette
+(617 von 617 Werten, 2026-07-22). Dieser Beweis ist erbracht. Die
+Portierungs-Mechanik ist seit dem 2026-08-17 außer Betrieb.
 
-What replaces it is NOT "every migration is parametrization". That
-reading was explicitly corrected in ADR-007: a generation the target
-system already covers is parametrization over the model point — the
-precedent TG2012 -> TG2015 ran through without a single formula change.
-The **normal case is the opposite**: a ceded portfolio brings benefit
-features the kernel does not know yet, and the migration is an intensive,
-node-bound CODE extension of the one trunk (small increments, landing
-only with the full suite green including every other case's frozen reference values,
-`integriere-migrationsinkrement`). New products come through the T-Box
-(gate A-O1, the T-Box state, signed by `mensch/architektur`); a change to
-the kernel is accepted as the kernel state under A-K2 (signed by
-`mensch/rechenkern`) — in either case not by translating another workbook.
+Was sie ersetzt, ist NICHT „jede Migration ist Parametrierung". Diese
+Lesart ist in ADR-007 ausdrücklich berichtigt: Eine Generation, die das
+Zielsystem schon abdeckt, ist eine Parametrierung über den Modellpunkt. Der
+**Normalfall ist das Gegenteil**: Ein abgegebener Bestand bringt
+Leistungsmerkmale mit, die der Kern noch nicht kennt, und die Migration ist
+eine intensive, knotengebundene CODE-Erweiterung des einen Trunks — in
+kleinen Inkrementen, die nur mit grüner Gesamt-Suite landen, einschließlich
+der eingefrorenen Referenzwerte aller anderen Fälle
+(`integriere-migrationsinkrement`). Neue Produkte kommen über die T-Box
+(Gate A-O1, der T-Box-Stand, gezeichnet von `mensch/architektur`); eine
+Änderung am Kern wird als Kernstand unter A-K2 abgenommen (gezeichnet von
+`mensch/rechenkern`).
 
-A migration case lives in a **Fall-Arbeitsbereich** (`python -m
-rechner_pipeline.fall`, ADR-002). The artifacts of this workspace belong to
-**Pfefferminzia Lebensversicherung (PLV)** — the fictitious insurer the
-system is demonstrated on. `configs/` holds the PLV portfolio
-configurations (TOML, suite-loaded); `tests/fixtures/` holds synthetic
-source workbooks for the extraction tests; `lieferungen/` ships the
-showcase deliveries of fictitious ceding insurers. There is no
-implicit input channel — sources enter a case only through explicit
-registration (below).
+Ein Migrationsfall lebt in einem **Fall-Arbeitsbereich**
+(`python -m rechner_pipeline.fall`, ADR-002). Die Artefakte dort gehören der
+**Pfefferminzia Lebensversicherung (PLV)** — dem erfundenen Versicherer, an
+dem das System vorgeführt wird. `configs/` hält die Bestands-Konfigurationen
+der PLV, `tests/fixtures/` synthetische Quellmappen für die
+Extraktions-Tests, `lieferungen/` die Lieferungen erfundener abgebender
+Gesellschaften. Es gibt keinen impliziten Eingangskanal: In einen Fall
+gelangt eine Quelle nur über die ausdrückliche Registrierung (unten).
 
-## 2. Setup
-The reference environment is **Linux with CPython 3.11** and the exact
-pins below — what CI runs and what the runtime image is built from. The
-project does not harden its code for other operating systems (maintainer
-decision 2026-09-06): if you are not on Linux, run everything inside the
-container, which IS the reference environment.
+## 2. Einrichten
 
-**On Linux**, no LLM key needed:
+Die Referenzumgebung ist **Linux mit CPython 3.11** und genau den Pins
+unten — das fährt die CI, und daraus entsteht das Image der Laufzeit. Der
+Code wird nicht auf andere Betriebssysteme gehärtet (Entscheid des
+Maintainers 2026-09-06): Wer nicht auf Linux arbeitet, fährt alles im
+Container, der die Referenzumgebung IST.
+
+**Unter Linux**, ohne LLM-Key:
 ```
 python -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pip install -e . --no-deps
 ```
-**On Windows, check WSL 2 first.** Docker Desktop's WSL integration
-requires a distribution running **WSL version 2**. A Windows machine may
-already carry a WSL environment that is still on version 1; the
-integration then cannot be enabled at all, and the failure is not
-obvious. Check before building:
+
+**Unter Windows zuerst WSL 2 prüfen.** Die WSL-Integration von Docker
+Desktop verlangt eine Distribution unter **WSL Version 2**. Ein
+Windows-Rechner kann eine WSL-Umgebung tragen, die noch auf Version 1
+steht; dann lässt sich die Integration gar nicht einschalten, und der
+Fehler ist nicht offensichtlich. Vor dem Bauen prüfen:
 ```
 wsl -l -v
 ```
-Every distribution you intend to use must show `VERSION 2`. If none does,
-install a fresh one — this is the route a team member actually ran:
+Jede Distribution, die benutzt werden soll, muss `VERSION 2` zeigen. Wenn
+keine das tut, eine frische installieren — diesen Weg ist ein Teammitglied
+tatsächlich gegangen:
 ```
 wsl --install -d Ubuntu
 wsl -d Ubuntu
 ```
-Converting an existing version-1 distribution in place is possible
-(`wsl --set-version <distribution> 2`, with the name from the first column
-of `wsl -l -v`), but nobody here has run that route.
+Eine vorhandene Distribution der Version 1 lässt sich umstellen
+(`wsl --set-version <distribution> 2`, mit dem Namen aus der ersten Spalte
+von `wsl -l -v`); diesen Weg ist hier noch niemand gegangen.
 
-**Anywhere else** (Windows with Docker Desktop and WSL2, macOS): build the
-development image once and run the suite in it; the working tree is
-mounted, so code changes need no rebuild.
+**Überall sonst** (Windows mit Docker Desktop und WSL 2, macOS): das
+Entwicklungs-Image einmal bauen und die Suite darin fahren. Der Arbeitsbaum
+ist eingehängt, Code-Änderungen brauchen also keinen neuen Bau.
 ```
 docker build -f deploy/dev/Dockerfile -t rechner-pipeline-dev .
-docker run --rm -v "$PWD":/workspace rechner-pipeline-dev            # full suite
-docker run --rm -it -v "$PWD":/workspace rechner-pipeline-dev bash   # shell
+docker run --rm -v "$PWD":/workspace rechner-pipeline-dev            # volle Suite
+docker run --rm -it -v "$PWD":/workspace rechner-pipeline-dev bash   # Shell
 ```
-**Platforms that have been verified.** The container route is not a
-theory here; two team members have run it and reported provenance, not
-just a suite line:
 
-| Platform | Measured |
+**Gemessene Plattformen.** Der Weg über den Container ist keine Theorie;
+zwei Teammitglieder sind ihn gegangen und haben die Provenienz gemeldet,
+nicht nur eine Suite-Zeile:
+
+| Plattform | Gemessen |
 |---|---|
-| Windows 11, WSL 2 (Ubuntu), Docker Desktop | suite green 2026-09-14; provenance 2026-09-20 on commit `f518b6a`: 2212 passed, 3 skipped in 908 s |
-| macOS 26.6.2, arm64 | same commit `f518b6a`: 2212 passed, 3 skipped in 595 s |
+| Windows 11, WSL 2 (Ubuntu), Docker Desktop | Suite grün 2026-09-14; Provenienz 2026-09-20 auf Commit `f518b6a`: 2212 passed, 3 skipped in 908 s |
+| macOS 26.6.2, arm64 | derselbe Commit `f518b6a`: 2212 passed, 3 skipped in 595 s |
 
-Two results matter beyond "it ran". First, both platforms reported the
-SAME `quellcode_sha256` on the same commit (`c4bffa4f...`) — so the
-checkout is byte-identical across platforms and the LF pinning in
-`.gitattributes` does what it claims; a Windows checkout is not a
-different tree. Second, `systemstand` carried real values on Windows,
-not `unbekannt`: git reads the mounted tree from inside the container
-there too, so gate belege produced on Windows carry the same provenance
-as on Linux. That was the actual worry, and it is answered.
+Zwei Ergebnisse zählen über „es lief" hinaus. Erstens meldeten beide
+Plattformen auf demselben Commit DENSELBEN `quellcode_sha256`
+(`c4bffa4f...`) — der Auscheck ist also über Plattformen byte-gleich, und
+das LF-Pinning in `.gitattributes` leistet, was es behauptet. Zweitens trug
+`systemstand` unter Windows echte Werte, nicht `unbekannt`: Git liest den
+eingehängten Baum auch dort aus dem Container heraus, also tragen
+Gate-Belege, die unter Windows entstehen, dieselbe Provenienz wie unter
+Linux.
 
-The pitfall is the one described above: the WSL environment
-preinstalled on a machine may still be version 1, and the Docker Desktop
-integration then cannot be enabled at all. Installing a fresh Ubuntu and
-working in it is the route that was actually run.
-
-**Reporting an environment.** When you report a run — a new machine, a
-platform we have not verified — send the provenance of the code you ran,
-not just the suite line. Same container, one command:
+**Eine Umgebung melden.** Wer einen Lauf meldet — ein neuer Rechner, eine
+Plattform, die noch nicht gemessen ist —, schickt die Provenienz des Codes,
+den er gefahren hat, nicht nur die Suite-Zeile. Derselbe Container, ein
+Kommando:
 ```
 docker run --rm -v "$PWD":/workspace rechner-pipeline-dev \
   python -c "import json; from pathlib import Path; from rechner_pipeline.gates._provenienz import systemstand; print(json.dumps(systemstand(Path('/workspace')), indent=2))"
 ```
-It prints four values. `quellcode_sha256` covers the package sources
-(`.py` and `.xml` under `src/rechner_pipeline/`) and nothing else — a
-docs-only or tests-only commit leaves it unchanged, a code change moves
-it. `dirty` must read `nein`; otherwise the checkout carries uncommitted
-edits and the hash is not comparable. If `commit` or `branch` read
-`unbekannt`, git cannot read the tree from inside the container — on
-Linux it can, elsewhere this is worth reporting.
+Es gibt vier Werte aus. `quellcode_sha256` deckt die Paketquellen (`.py`
+und `.xml` unter `src/rechner_pipeline/`) und sonst nichts — ein Commit, der
+nur Dokumente oder Tests ändert, lässt ihn unverändert, eine Code-Änderung
+bewegt ihn. `dirty` muss `nein` lauten; sonst trägt der Auscheck
+uncommittete Änderungen, und der Hash ist nicht vergleichbar. Lauten
+`commit` oder `branch` `unbekannt`, kann Git den Baum aus dem Container
+nicht lesen — unter Linux kann es das, anderswo ist das eine Meldung wert.
 
-The expected `quellcode_sha256` is not printed here on purpose: it belongs
-to one commit and would age with the next code change. Whoever asks you to
-run this names the value together with the commit it belongs to.
+Der erwartete `quellcode_sha256` steht hier absichtlich nicht: Er gehört zu
+einem Commit und würde mit der nächsten Code-Änderung altern. Wer um den
+Lauf bittet, nennt den Wert zusammen mit dem Commit.
 
-VS Code users open the repo with the Dev Containers extension; the
-definition in `.devcontainer/` builds the same image. Keep the checkout on
-a Linux filesystem (your WSL2 home, not `/mnt/c`): the suite checks file
-permissions and umask, which an NTFS mount does not carry. Line endings
-are pinned to LF by `.gitattributes`; deliveries and fixtures are
-excluded from that rule because their bytes are hashed.
+Wer VS Code nutzt, öffnet das Repository mit der Erweiterung Dev
+Containers; die Definition unter `.devcontainer/` baut dasselbe Image. Der
+Auscheck gehört auf ein Linux-Dateisystem (das WSL-2-Home, nicht `/mnt/c`):
+Die Suite prüft Dateirechte und umask, die ein NTFS-Mount nicht trägt.
+Zeilenenden sind über `.gitattributes` auf LF gepinnt; Lieferungen und
+Fixtures sind davon ausgenommen, weil ihre Bytes gehasht werden.
 
-This is the one documented install path, identical to CI. The pin files
-carry the direct dependencies (`pyproject.toml`: `openpyxl`, `oletools`,
-`pandas`, `pyarrow`, `matplotlib`, `pydantic`, `pypdf`; dev: `pytest`,
-`hypothesis`, `pytest-xdist`) AND their complete transitive closure;
-`tests/test_abhaengigkeiten.py` keeps that closure closed. Installing
-with `pip install -e ".[dev]"` alone pins only the direct dependencies
-and lets pip resolve everything transitive freshly — with
-`filterwarnings = ["error"]` on, a new warning in a third-party package
-then turns the suite red without anything here having changed. That path
-is therefore not documented (external review T19-04/T20-08).
-`requirements.txt` / `requirements-dev.txt` pin the direct dependencies
-plus their transitive closure as installed from public pypi.org (verified
-under CPython 3.11 on 2026-08-19). Nine purely transitive packages
+Das ist der eine dokumentierte Installationsweg, derselbe wie in der CI.
+Die Pin-Dateien tragen die direkten Abhängigkeiten (`pyproject.toml`:
+`openpyxl`, `oletools`, `pandas`, `pyarrow`, `matplotlib`, `pydantic`,
+`pypdf`; für die Entwicklung `pytest`, `hypothesis`, `pytest-xdist`) UND
+ihre vollständige transitive Hülle; `tests/test_abhaengigkeiten.py` hält
+diese Hülle geschlossen. Eine Installation nur mit `pip install -e ".[dev]"`
+pinnt die direkten Abhängigkeiten und lässt pip alles Transitive frisch
+auflösen — mit `filterwarnings = ["error"]` färbt dann eine neue Warnung in
+einer Fremdbibliothek die Suite rot, ohne dass sich hier etwas geändert
+hat. Dieser Weg ist deshalb nicht dokumentiert. Neun rein transitive Pakete
 (`annotated-types`, `contourpy`, `cycler`, `fonttools`, `kiwisolver`,
-`pillow`, `pydantic-core`, `typing-extensions`, `typing-inspection`) are
-still resolved by pip — the closure is tight, not hermetic. Use a lock
-tool if you need hermetic.
+`pillow`, `pydantic-core`, `typing-extensions`, `typing-inspection`) löst
+pip weiterhin selbst auf — die Hülle ist dicht, nicht hermetisch.
 
-## 3. Run it
-**Create a case and register its sources.** Registration is the ONLY
-way into a case — never copy files into `eingang/` by hand. The command
-takes the delivery wherever it landed (download folder, scp target),
-copies it into `eingang/` (optionally renamed via `--als`), records
-SHA-256, origin path and size in the `eingang.json` register, and sets
-the copy read-only. Every later statement in the case traces back to
-these hashes — the provenance chain starts here:
+**Die Suite** läuft parallel (ADR-019), eine Testdatei je Arbeiter. Ohne
+`-n` läuft sie seriell und braucht rund doppelt so lang.
+```
+.venv/bin/python -m pytest -n 12 --dist loadfile
+```
+
+## 3. Ausführen
+
+**Die Laufzeit mit einem Aufruf aufstellen.** Aus dem Stand des
+Repositorys und einem festgehaltenen Fall entsteht, ohne Agenten, eine
+Laufzeit mit übernommenem Bestand:
+```
+deploy/welt/laufzeit_aufstellen.sh ~/plv-welt pakete/baldrian-klv-tg2015-fall3
+```
+Das rechnet rund 45 Minuten. Mit `--bis <haltepunkt>` endet der Lauf an
+einer Stelle des Falls, an der man selbst liest und zeichnet. Einzelheiten
+in `deploy/welt/README.md`, zu den Paketen in `pakete/README.md`.
+
+**Einen Fall anlegen und seine Quellen registrieren.** Die Registrierung
+ist der EINZIGE Weg in einen Fall — nie Dateien von Hand nach `eingang/`
+kopieren. Das Kommando nimmt die Lieferung, wo immer sie gelandet ist,
+kopiert sie nach `eingang/` (mit `--als` unter anderem Namen), hält SHA-256,
+Herkunft und Größe im Register `eingang.json` fest und setzt die Kopie auf
+nur lesbar. Jede spätere Aussage im Fall führt auf diese Prüfsummen zurück
+— die Kette der Herkunft beginnt hier:
 ```
 python -m rechner_pipeline.fall anlegen --fall faelle/klv-tg2012 --scope tarif
 python -m rechner_pipeline.fall registrieren --fall faelle/klv-tg2012 \
     --datei tests/fixtures/Tarifrechner_KLV_TG2012.xlsm
 python -m rechner_pipeline.fall status --fall faelle/klv-tg2012
 ```
-`status` (and every pipeline run) checks the register against the file
-system in both directions: a registered file that is missing or whose
-content deviates from its hash is a hard error, and so is any
-hand-copied file without a register entry. Re-registering the same
-content reports `bereits_registriert`; a lost copy is restored from
-the source without touching the register; the same name with different
-content is a hard conflict showing both hashes — there is no silent
-overwrite. If a delivery genuinely replaces an earlier one, set up a
-fresh case (or archive the old one under `faelle/archiv/`).
+`status` (und jeder Lauf der Pipeline) hält das Register in beide
+Richtungen gegen das Dateisystem: Eine registrierte Datei, die fehlt oder
+deren Inhalt von der Prüfsumme abweicht, ist ein harter Fehler, ebenso jede
+von Hand kopierte Datei ohne Registereintrag. Dieselben Bytes noch einmal
+zu registrieren meldet `bereits_registriert`; eine verlorene Kopie wird aus
+der Quelle wiederhergestellt, ohne das Register zu berühren; derselbe Name
+mit anderem Inhalt ist ein harter Konflikt, der beide Prüfsummen zeigt —
+es gibt kein stilles Überschreiben. Ersetzt eine Lieferung wirklich eine
+frühere, wird ein neuer Fall angelegt (oder der alte unter
+`faelle/archiv/` abgelegt). Liegt der Arbeitsbereich schon, hält `anlegen`
+mit einem harten Fehler an, statt hineinzuschreiben: `eingang/` ist nicht
+regenerierbar (ADR-002).
 
-**Run the showcase migration.** `lieferungen/baldrian/` ships the
-delivery of the fictitious insurer Baldrian Leben — the inputs of a real
-portfolio migration (faulty tariff calculator, tariff notification,
-portfolio data delivery with two reporting dates, a GeVo protocol, and
-the metadata list of the business events that happened BEFORE the
-migration date). Register it into a fresh case — the case is named
-`baldrian-uebernahme` throughout the docs, the skills and the ADRs, so
-keep that name:
+Parallele Aufrufe von `fall registrieren` auf demselben Fall werden über
+eine Dateisperre des Falls hintereinander ausgeführt. `eingang.json` wird
+erst nach dem vollständigen Schreiben und Synchronisieren einer temporären
+Datei atomar ersetzt; so verliert kein Aufruf die Quellen eines anderen,
+und Leser sehen nie ein halb geschriebenes Register.
+
+**Einen Migrationsfall führen.** Seit ADR-025 und ADR-026 braucht ein Fall
+eine Welt: eine Linie mit den Erstabnahmen des Zielsystems, Schlüssel der
+Rollen und den gezeichneten Auftrag des Vorstands. Die Routinen unter
+`deploy/welt/` stellen das auf und starten den Fall der Vorführung, die
+Übernahme des Bestands KLV TG2015 der Baldrian Leben auf der Lieferung
+`lieferungen/baldrian-2/`:
+```
+deploy/welt/welt_aufstellen.sh <welt>
+deploy/welt/fall_starten.sh <welt> anlegen deploy/welt/fall-baldrian-klv-tg2015.conf
+deploy/welt/fall_starten.sh <welt> vorlage
+deploy/welt/fall_zeichnen.sh <welt> A-M6 angenommen "<begruendung>"
+```
+Danach führen die Agenten den Fall, über ihre Skills
+(`migrationsfall-durchfuehren` orchestriert; Rollenkatalog in
+`docs/architektur/skill-architektur.md`): Vorverdichtung und Extraktion je
+Quelle, Zusammenführung zur A-Box, Diskrepanzen an das menschliche Gate
+A-Q1, Spez, Abnahme des Zielsystems, Transformation und Übernahme des
+Bestands, die drei aktuariellen Tests, die Migrationssuite mit dem
+HTML-Abnahmebericht für A-M4 und der Zugang in die Ablage. Die Lieferungen
+dürfen absichtliche Fehler und Eigenheiten des Quellsystems enthalten — sie
+zu finden IST die Vorführung.
+
+Zwei Dinge dazu:
+
+* `main` trägt den Stand **nach** dem dritten Fall: Der Kern kennt den
+  übernommenen Tarif schon. Wer die Übernahme mit allem durchspielen will,
+  was sie am Zielsystem verändert, startet auf dem Stand davor (Tag
+  `fall3-vor`).
+* Eine Sitzung, die diesen Fall live führt, liest nicht in `pakete/`: Dort
+  liegt seine Auflösung.
+
+Die ältere Lieferung `lieferungen/baldrian/` gehört zum ersten Durchgang
+derselben Übernahme (`docs/faelle/README.md`). Sie eignet sich zum Üben von
+Registrieren und Vorverdichten:
 ```
 python -m rechner_pipeline.fall anlegen --fall faelle/baldrian-uebernahme --scope bestand
 for f in lieferungen/baldrian/*.xlsm lieferungen/baldrian/Mitteilung_143_KLV_TG2015.docx \
@@ -213,77 +258,132 @@ for f in lieferungen/baldrian/*.xlsm lieferungen/baldrian/Mitteilung_143_KLV_TG2
 done
 python -m rechner_pipeline.fall status --fall faelle/baldrian-uebernahme
 ```
-Note which file the loop does NOT pick up:
-`Aktuarielle_Notiz_Beitragsabsetzung.docx`. The tariff notification does
-not describe how a premium reduction is computed, and the delivery is
-deliberately incomplete there. The note is what the ceding insurer sends
-AFTER the gap has surfaced and someone asked — register it then, not
-before. Registering it upfront skips the very step this showcase
-demonstrates.
-If that workspace already exists, `anlegen` stops with a hard error
-("Fall existiert bereits") instead of writing into it — by design, since
-`eingang/` is not regenerable (ADR-002). Pick another name or archive the
-old one under `faelle/archiv/`.
+Die Schleife nimmt eine Datei bewusst NICHT mit:
+`Aktuarielle_Notiz_Beitragsabsetzung.docx`. Die Tarifmeldung beschreibt
+nicht, wie eine Beitragsherabsetzung gerechnet wird, und die Lieferung ist
+dort absichtlich unvollständig. Die Notiz schickt die abgebende
+Gesellschaft, NACHDEM die Lücke aufgefallen ist und jemand gefragt hat —
+erst dann wird sie registriert.
 
-The stages after registration run through the agent skills
-(`migrationsfall-durchfuehren` orchestrates; role catalog in
-`docs/architektur/skill-architektur.md`): pre-digestion and extraction
-per source, merge into the A-Box, discrepancies to the human gate A-Q1,
-transformation of the portfolio extract, Spez, acceptance gates, and the
-two-reporting-date migration suite with its HTML acceptance report for
-gate A-M4. The deliveries may contain deliberate errors and source-system
-quirks — finding them IS the demonstration. To repeat the second Baldrian
-run (`lieferungen/baldrian-2/`) on the exact commit it was signed on —
-including the receiving company's own portfolio, which is generated, not
-delivered — follow `docs/faelle/baldrian-lauf2-wiederholen.md`.
-
-**Pre-digest a source (gate P-Q1):**
+**Eine Quelle vorverdichten (Gate P-Q1):**
 ```
 python -m rechner_pipeline.gates.extract --repo-root . \
     --input faelle/klv-tg2012/eingang/Tarifrechner_KLV_TG2012.xlsm \
     --out-dir faelle/klv-tg2012/abgeleitet/vorverdichtung/xlsm-TG2012 --adapter excel
 ```
-The ontology gates cannot follow directly on a fresh case: P-Q3
-(`gates.abox_validate`) validates an A-Box, and P-K1
-(`gates.generation_golden`) validates a Tarif-Spez — neither exists
-yet. The A-Box is produced by the Stage-1 extraction agents plus the
-deterministic merge (`gates.abox_merge`), and the Spez is projected
-from the accepted A-Box. Calling P-Q3 or P-K1 on a bare case fails with
-exit 2 **by design**: no silent default, the error names what is
-missing. Run them the way `migrationsfall-durchfuehren` does — after
-the stage that produces their input, and with the same `--generation`
-the case actually carries.
+Die Gates der Ontologie folgen auf einem frischen Fall nicht unmittelbar:
+P-Q3 (`gates.abox_validate`) prüft eine A-Box, P-K1
+(`gates.generation_golden`) eine Tarif-Spez — beides gibt es noch nicht.
+Die A-Box entsteht aus der Extraktion der Agenten und der deterministischen
+Zusammenführung (`gates.abox_merge`), die Spez aus der abgenommenen A-Box.
+P-Q3 oder P-K1 auf einem nackten Fall enden **planmäßig** mit Exit 2: kein
+stiller Default, die Meldung nennt, was fehlt.
+```
+python -m rechner_pipeline.gates.abox_validate --fall faelle/mein-fall --repo-root .   # P-Q3
+python -m rechner_pipeline.quellen.tafel_import --fall faelle/mein-fall --generation klv/tgX
+python -m rechner_pipeline.gates.generation_golden --fall faelle/mein-fall \
+    --generation klv/tgX --repo-root .                                                 # P-K1
+```
 
-**Where the deterministic walkthrough ends — read this before you get
-stuck.** `anlegen`, `registrieren`, `status` and the P-Q1 pre-digestion
-above are plain Python: they run for anyone who cloned the repo, no key,
-no agent. What comes next does not. Extraction per source, the reading
-of the Tarifmeldung and the transformation proposal for the portfolio
-extract are **agent** steps (that is the point of the architecture — the
-model proposes, deterministic code decides), and A-Q1/A-M4 are human
-decisions, not commands. So a walkthrough without an agent CLI ends
-here, with a non-zero exit that is the contract and not a broken
-install. To continue you need Claude Code or Codex in the repo root and
-the skills under `.claude/skills/` / `.agents/skills/`.
+**Wo der deterministische Durchgang endet.** `anlegen`, `registrieren`,
+`status` und die Vorverdichtung P-Q1 sind reines Python: Sie laufen für
+jeden, der das Repository geklont hat, ohne Key und ohne Agenten. Was
+danach kommt, nicht. Die Extraktion je Quelle, das Lesen der Tarifmeldung
+und der Vorschlag der Übersetzung für den Bestandsabzug sind Schritte der
+**Agenten** (das ist der Sinn der Architektur — das Modell schlägt vor,
+deterministischer Code entscheidet), und die Abnahmen sind menschliche
+Entscheidungen, keine Kommandos. Ein Durchgang ohne Agenten-CLI endet also
+hier, mit einem Exit ungleich null, der der Vertrag ist und keine kaputte
+Installation. Zum Weitermachen braucht es Claude Code oder Codex im
+Wurzelverzeichnis und die Skills unter `.claude/skills/` bzw.
+`.agents/skills/` — oder das Nachfahren eines festgehaltenen Falls (oben).
 
-What you CAN still exercise end-to-end on your own: the portfolio
-generator and its report (next), gate P-Q1 on any workbook, the
-code-ontology tools, the actuarial documentation
-(`docs/mathematik/grundsatzdokumentation.md` for the shared maths,
-`docs/tarifplaene/` for each product's elaboration), and the
-test suite.
+**Der Fallauftrag und die menschlichen Gates.** Wer zeichnet, steht in der
+**Zeichnungsordnung** (ADR-018): Rollen heißen `mensch/<funktion>` oder
+`agent/<name>`, jede trägt eine Schlüsselklasse (`mensch`, `simulation`,
+`agent`) und die Gates, die sie zeichnen darf. Die Rolle wird aus dem
+Schlüssel BESTIMMT, nicht behauptet, und wandert samt Klasse mitsigniert in
+den Snapshot. Agentenrollen legen vor und zeichnen nie; sie können ein
+menschliches Gate nur **ablehnen**. In der Vorführung tragen die
+menschlichen Rollen die Schlüsselklasse `simulation`, und jeder Beleg sagt
+das.
+```
+# der Fallauftrag (ADR-026): Vorlage, ansehen, der Vorstand zeichnet A-M6 —
+# vor jedem anderen Abnahmepunkt
+python -m rechner_pipeline.gates.fall_belegen auftrag --fall faelle/mein-fall \
+    --linie linie --zeichnungsordnung /sicher/zeichnungsordnung.json \
+    --programmleitung-schluessel /sicher/programmleitung.key \
+    --programmleitung-klasse mensch --auftrag "..."
+python -m rechner_pipeline.gates.gate_entscheid --fall faelle/mein-fall --gate A-M6 \
+    --entscheid angenommen --entscheider ... --begruendung ... --linie linie \
+    --zeichnungsordnung /sicher/zeichnungsordnung.json \
+    --freigabe-schluessel /sicher/vorstand.key
 
-**Generate a portfolio and its report.** A portfolio is built from its
-access stream: the run starts empty and every contract enters as a
-dated `ZUG` event (ADR-020). `--neuzugang-ab` names the day the stream
-starts — for a portfolio built from scratch that is the first sales day
-of the oldest generation; `--bis` is the simulation horizon (how far
-events are projected). The report's `--stichtag` only marks the
-history/projection boundary; it is optional and defaults to
-`meta.referenzstichtag` from the config (so it only applies when
-`--config` is passed) — the reference date is a property of the
-portfolio, kept in its config, and the flag merely overrides it. Setting
-`--bis` to "today" silently kills the projection.
+# eine Diskrepanz entscheiden, dann A-Q1 zeichnen
+python -m rechner_pipeline.ontologie.entscheide --fall ... --diskrepanz ... \
+    --wert ... --entscheider ... --begruendung ... \
+    --zeichnungsordnung /sicher/zeichnungsordnung.json \
+    --freigabe-schluessel /sicher/verantwortlicher-aktuar.key
+python -m rechner_pipeline.gates.gate_entscheid --fall ... --gate A-Q1 \
+    --entscheid angenommen --entscheider ... --begruendung ... --linie linie \
+    --zeichnungsordnung /sicher/zeichnungsordnung.json \
+    --freigabe-schluessel /sicher/vorstand.key \
+    --freigabe-schluessel /sicher/verantwortlicher-aktuar.key
+```
+Jeder Entscheid nennt die Linie (ADR-025). Der Ring trägt den Schlüssel
+des Vorstands, der den Fallauftrag und die Glieder der Linie prüft
+(ADR-026, ADR-025); `--repo-root` ist der Baum des Pakets, das rechnet. Ein
+Abbruch läuft über `fall_belegen abbruch` und A-M5 (Bedienfolgen in
+`docs/architektur/adr-026-lebenslauf-eines-falls.md`).
+
+**Tarifregeln eines übernommenen Tarifs.** Sie stehen einmal, belegt, in
+der A-Box und daraus in der Spez der Generation (ADR-024, Nachtrag): das
+Tarifwerk (`scheiben_mit_gamma1`, `stoab_je_baustein`, `red_verfahren`,
+`tku_umfang`) und das Verfahren der Quelle (`red_verfahren` als Lesart der
+Lieferung, `erhoehungssatz`, `dk_stichtag`, `formfunktion`, `fenster`). Im
+Bestands-Scope verlangt P-Q3 sie, und die fünf Kommandos der
+Bestandsstrecke (`gates.bestand_uebernehmen`, `verankerung_belegen`,
+`aktuartest_lauf`, `migrationssuite_lauf`, `fuehrungsprobe`) lesen sie aus
+der Spez — ohne Schalter und ohne Vorgabe. Ein Dynamiksatz, den der Tarif
+nicht kennt, steht in der Spez als ausdrückliche Feststellung
+`"nicht_belegt"`; fehlt der Eintrag, ist er nie erhoben, und jedes Kommando
+verweigert wie P-Q3.
+
+**Auskünfte zu Herabsetzungsanteilen** (`POLNR;GEVO;DATUM;ANTEIL`,
+optional `BEZUG` als Quellenangabe) kommen als registrierte Datei in den
+Fall und werden in allen fünf Kommandos der Bestandsstrecke mit
+`--red-anteile-datei <Dateiname>` genannt: erst `fall registrieren`, dann
+der Schalter. Ein Anteil je Police am Aufruf wird nicht angenommen — er
+wäre für die Zeichnung nicht bindbar. Die Belege nennen die Datei mit ihrer
+Prüfsumme.
+
+**Herabsetzung und Teilkündigung** sind zwei Geschäftsvorfälle (ADR-023;
+Tarifplan KLV, Abschnitte 7.1 bis 7.3): Die Herabsetzung (`RED`) senkt den
+Beitrag und gibt es nur, solange er gezahlt wird; die Teilkündigung (`TKU`)
+zahlt einen Summenanteil aus und ist auch nach dem Beitragsende und nach
+der Beitragsfreistellung möglich. Ein Vertrag, dessen Anfangszustand nicht
+ableitbar ist, wird nicht still als Grundvertrag übernommen: Die Kommandos
+verweigern und nennen `--red-anteile-datei` als Ausweg.
+
+**Tafelimport.** Er nimmt nur eine vollständige Exportkette: Das
+`export_manifest.json` muss die registrierte XLSM und die konkrete
+`Tafeln.csv` mit ihren vollständigen SHA-256-Werten binden. Fehlende
+Manifeste, alte Exporte oder nachträglich veränderte Blatt-CSVs blockieren
+schon den `--dry-run`; dann die registrierte XLSM erneut mit P-Q1
+extrahieren. P-Q1 plant die Dateinamen aller Blatt- und Folgeartefakte vor
+dem ersten Blattexport kollisionsfrei; `sheet_artifacts` im Exportmanifest
+bindet jeden Originalblattnamen an seinen tatsächlichen Dateinamen. Alle
+Altersvektoren müssen genau die ganzzahligen Alter 0 bis 123 tragen, jeder
+qx-Wert muss endlich sein und in `[0,1]` liegen — erzwungen beim Import und
+erneut beim Laden des Kern-XML.
+
+**Einen Bestand erzeugen und berichten.** Ein Bestand entsteht aus seinem
+Zugangsstrom: Der Lauf beginnt leer, und jeder Vertrag tritt mit einem
+datierten `ZUG`-Ereignis ein (ADR-020). `--neuzugang-ab` nennt den Tag, an
+dem der Strom beginnt; `--bis` ist der Horizont der Simulation. Der
+`--stichtag` des Berichts markiert nur die Grenze zwischen Historie und
+Projektion; ohne Angabe gilt `meta.referenzstichtag` aus der Config. Wer
+`--bis` auf „heute" setzt, schneidet die Projektion still ab.
 ```
 python -m rechner_pipeline.bestand.cli_fortschreibung \
     --config configs/bestand_gesamt.toml --neuzugang-ab 1994-07-01 \
@@ -293,128 +393,137 @@ python -m rechner_pipeline.bestand.cli_report --portfolio runs/bestand/bestand_g
     --scheiben runs/bestand/scheiben.parquet --config configs/bestand_gesamt.toml \
     --bis 2046-01-01 --stichtag 2026-01-01 --out runs/berichte/bestandsbericht.html
 ```
-The run reports `0 Basisvertraege, 4441 Neuzugaenge` — the zero is
-correct and the one number that invites misreading: there is no base
-portfolio any more, every one of the 4441 contracts is a new entry with
-its own `ZUG` in the ledger (1213 of them start after 01.01.2026, the
-yearly target shrinks with `neuzugang_trend`). A run given neither
-`--portfolio` nor `--uebernahme` nor `--neuzugang-ab` has nothing to
-carry and says so (exit 2) instead of inventing a portfolio.
+Der Lauf schreibt auch `runs/bestand/laufmanifest.json`, seinen
+Lieferschein: den simulierten Horizont, die Prüfsumme der Config und eine
+SHA-256 je Ausgabe. `cli_abschluss` weist ein Laufverzeichnis ohne ihn ab,
+und `--bis` muss dem Horizont gleichen, den das Manifest bezeugt. Ein Lauf,
+der weder `--portfolio` noch `--uebernahme` noch `--neuzugang-ab` bekommt,
+hat nichts zu tragen und sagt das (Exit 2), statt einen Bestand zu
+erfinden.
 
-The run also writes `runs/bestand/laufmanifest.json`, its delivery
-note: the simulated horizon, the config hash and a SHA-256 per output.
-`cli_abschluss` refuses a run directory without it, and `--bis` must
-equal the horizon the manifest attests — the horizon is a property of
-the run, not of the call that reads it. Gate P-B1 binds the manifest
-on request (`--manifest`).
+Für ihr eigenes Geschäft nutzt die Vorführung dieses Kommando nicht: Die
+Pfefferminzia wird Tag für Tag geführt (`betrieb.tageslauf`, derselbe
+Zugangsstrom in täglicher Auflösung, siehe
+`docs/simulation/tagesbetrieb.md`). `cli_fortschreibung` ist die
+Prüfstrecke eines Migrationsfalls und der schnellste Weg zu einem
+synthetischen Bestand mit voller Historie.
 
-The demo itself does not use this command for its own business: the
-Pfefferminzia is run day by day (`betrieb.tageslauf`, same access
-stream at daily resolution, see `docs/simulation/tagesbetrieb.md`).
-`cli_fortschreibung` is the test track of a migration case
-(`--uebernahme`, see the migration skill) and the quickest way to a
-synthetic portfolio with full history.
-
-**Navigate the codebase** (fundstellen are derived, not searched — ADR-005):
+**Im Code navigieren** (Fundstellen sind abgeleitet, nicht gesucht —
+ADR-005):
 ```
-python -m rechner_pipeline.ontologie.code_index --tests tests   # node <-> module/test
-python -m rechner_pipeline.ontologie.code_karte                 # layer rules
+python -m rechner_pipeline.ontologie.code_index --tests tests   # Knoten <-> Modul und Test
+python -m rechner_pipeline.ontologie.code_karte                 # Schichtregeln
 git diff --name-only | python -m rechner_pipeline.ontologie.impact
 python -m rechner_pipeline.ontologie.landkarte --out runs/landkarte.html
 ```
 
-## 4. The gates
-Each gate is one command, writes one JSON to stdout plus a
-`<command>.gate.json` ledger into `--diagnostics-dir`. A non-zero exit is
-**blocking** and is never softened into a warning.
+## 4. Die Gates
 
-| Gate | Command | Proves |
+Jedes Gate ist ein Kommando, schreibt ein JSON auf stdout und ein Ledger
+`<kommando>.gate.json` nach `--diagnostics-dir`. Ein Exit ungleich null
+**blockiert** und wird nie zur Warnung abgeschwächt.
+
+| Gate | Kommando | Belegt |
 |---|---|---|
-| P-Q1 | `gates.extract` | deterministic pre-digest of a source workbook (formulas, cached values, defined names via openpyxl; VBA via `oletools.olevba`) |
-| P-Q2 | `gates.abox_merge` | fragments merged into the A-Box, with a chain ledger binding it to its sources |
-| P-Q3 | `gates.abox_validate` | A-Box against T-Box, coverage, plausibility ranges, formula back-check, chain re-computation; the A-Box must carry the current T-Box version |
-| P-K1 | `gates.generation_golden` | the parametrized kernel against the source calculator's expectation values; writes one content-addressed proof per generation, bound to the A-Box and system state; spec, A-Box and code must speak the same T-Box version |
-| P9 | `gates.gate_entscheid` | schema- and chain-validated snapshots of the human gates (A-Q1, A-O1, A-K2, A-T1, A-M1 to A-M6, A-B1, A-B2, A-B3); every acceptance in a case requires the case mandate A-M6 signed by the board (`mensch/vorstand`) on the current delivery, and the case abort A-M5 (signed by the programme lead named in the mandate) closes the case for good (ADR-026); every decision names `--linie` (mandatory, ADR-025 addendum 2026-10-01): signed only under the tip of the signing-order version line, preconditions read against the order they were signed under; in a case or — with `--linie` alone — in the line area of the initial acceptance of the target system (ADR-025); accepted decisions require an externally held HMAC key, A-M1 and A-M4 require the per-gate evidence roles for the declared case scope, and A-M4 requires a current signed A-M1 acceptance on the same state, pinned as the evidence role `am1_snapshot` (ADR-010); in scope `bestand` A-M4 also requires the release proof `gates.fuehrungsprobe` as evidence role `fuehrungsprobe` — the proof that the portfolio ledger carries the world the acceptances tested (Freischaltung, dev-docs/freischaltung-uebernommener-bestand.md); A-O1 requires the T-Box change record `abgeleitet/tbox/aenderung.json` (old and new version, hash of the T-Box module, change artefact); A-K2 (signed by `mensch/rechenkern`) accepts the kernel state a case computes on — the change record `abgeleitet/kern/aenderung.json` from `gates.kernstand_belegen` (changes along the kernel modules with the branch commits since the last accepted kernel state, re-derived by the gate) and the regression record, which until its producer exists is the named EXCEPTION "not run, tool not yet built", never a result; A-M4 requires in both scopes that the state the case runs on is accepted — kernel state (A-K2, role `kernstand`) and T-Box state (A-O1, role `tboxstand`) under ONE rule: accepted in the case, or "keine Aenderung seit Abnahme ..." via a reference to the CURRENT acceptance of the line (`gates.stand_belegen verweisen --linie`; signature, role and state re-checked, and the gate holds that it is still the current accepted tip of the line's chain — review round G), or for the T-Box its single-element version line (ADR-018, addendum 2026-10-01); a simulated role signs only with a mandate (ADR-018); agents may only reject |
-| A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | re-derives the actuarial test result from the inside out (per-contract comparison at each contract's own anchor date, no interpolation, no summation — only residual distribution measures) and renders the decision template for the respective gate A-M1, A-M2 or A-M3 (in scope `bestand` all three are mandatory predecessors of A-M4, in scope `tarif` only A-M1); transport-security digests are reported separately |
-| P-B1 | `gates.bestand_validate` | portfolio contract and movement identities |
-| G2 template | `gates.abnahmebericht` | passes only with the transformation specification/result, distinct before/after reports, a gap-free suite, congruent row counts, no transformation finding and no unresolved conflict; for scope `bestand`, also validates and binds P-B1, the suite and HTML report on one state |
+| P-Q1 | `gates.extract` | die deterministische Vorverdichtung einer Quelle |
+| P-Q2 | `gates.abox_merge` | die Zusammenführung der Fragmente zur A-Box, mit einem Ketten-Ledger |
+| P-Q3 | `gates.abox_validate` | die A-Box gegen die T-Box: Abdeckung, Wertebereiche, Rück-Check der Formeln |
+| P-K1 | `gates.generation_golden` | den parametrierten Kern gegen die Erwartungswerte der Lieferung |
+| P-B1 | `gates.bestand_validate` | den Vertrag des Bestands und die Bewegungs-Identitäten |
+| P9 | `gates.gate_entscheid` | die gezeichneten Snapshots der menschlichen Gates |
+| Vorlagen A-M1 bis A-M3 | `gates.aktuartest` | das Ergebnis des aktuariellen Tests, nachgerechnet, als Entscheidungsvorlage |
+| Vorlage A-M4 | `gates.abnahmebericht` | den Abnahmebericht mit seinen Pflichtartefakten |
 
-An accepted P9 decision additionally requires
-`--freigabe-schluessel /secure/p9-approval.key`. The human operator keeps this
-file outside the case and outside agent access; it must contain at least 32
-cryptographically random bytes, have POSIX mode 0600, and exactly one hard
-link. Repeat the option with old keys first and the
-active signing key last when rotating. Key bytes and paths are never persisted.
-P9 revalidates the strict ledger/snapshot schemas, canonical content hash,
-full-hash filename, HMAC, predecessor existence, cycles, and the unique chain
-tip on every read (ADR-008).
+Was jedes Gate im Einzelnen hält und warum es seine Version trägt, steht in
+`docs/architektur/gate-vertrag-und-versionen.md`. Wer welches menschliche
+Gate zeichnet und worüber, steht in ADR-012 und ADR-018; den Ablauf zeigt
+`docs/architektur/ablauf-eines-falls.md`.
 
-For A-M4, `fall.json` also carries `scope.typ` (`tarif` or `bestand`). Missing
-declarations are never inferred from files. A tariff case requires no portfolio
-artifacts; a portfolio case requires a green P-B1 ledger, complete suite, a
-passed release proof (`gates.fuehrungsprobe`: the migrated portfolio and its
-continuation are held against the acceptance engines — same initial state,
-same tariff switches, same correction layer) and the HTML report, all bound by
-the green `abnahmebericht` ledger. A-M4 rehashes their current bytes, reruns
-the P-B1 engines, revalidates the suite and the release proof, and
-deterministically rerenders the report for a byte comparison instead of
-trusting that editable ledger (ADR-009).
+Eine Annahme braucht `--freigabe-schluessel`. Die Datei verwahrt der Mensch
+außerhalb des Falls und außerhalb des Agentenzugriffs; sie muss mindestens
+32 kryptografisch zufällige Byte lang sein und unter POSIX die Rechte 0600
+und genau einen Hardlink haben. Bei einer Schlüsselrotation wird die Option
+wiederholt: alte Schlüssel zuerst, der aktive zuletzt. Weder Schlüsselbytes
+noch Pfad werden gespeichert. P9 rechnet bei jedem Lesen Schema,
+Inhalts-Hash, Dateinamen, Signatur sowie Existenz, Zyklen und eindeutige
+Spitze der Vorgängerkette nach (ADR-008).
 
-## 5. Non-negotiables
-- **Deterministic and SDK-free** in `src/`: no network, no dynamic execution,
-  no subprocess; same input -> same output; sorted serialization. There is
-  exactly ONE subprocess exception, and it is bounded by a test: the shared
-  P-K1/P9/A-K2 proof provenance (`gates/_provenienz._git_lesen`) runs only
-  READING git commands from a closed list — `rev-parse HEAD`,
-  `rev-parse --abbrev-ref HEAD` and `status --porcelain` record the Git state
-  proved or decided on; since 2026-10-01 `rev-parse --verify`, `merge-base`,
-  `diff --numstat`, `log`, `ls-tree`, `show` and a path-limited `status`
-  record the kernel changes since the last accepted kernel state for A-K2
-  and the tariff-work changes for A-T1 (`gates.tarifwerk_belegen`).
-  Everything after the command is data (commits, paths) and may never start
-  with a dash. It computes and judges nothing. A pure-Python SHA-256 over the installed package sources
-  distinguishes different dirty code states. If git is unavailable, its
-  fields carry the named value `unbekannt`, never a silent default. Any
-  further subprocess import, any
-  other command, and any process start via `os` turns
+Für A-M4 trägt `fall.json` `scope.typ` (`tarif` oder `bestand`). Eine
+fehlende Angabe wird nie aus Dateien erschlossen. Ein Tariffall braucht
+keine Bestandsartefakte; ein Bestandsfall braucht ein grünes P-B1-Ledger,
+eine vollständige Suite, eine bestandene Führungsprobe
+(`gates.fuehrungsprobe`) und den HTML-Bericht, alle gebunden durch das
+grüne Ledger des Abnahmeberichts. A-M4 hasht ihre Bytes neu, fährt die
+Engines von P-B1 erneut, prüft Suite und Führungsprobe nach und rendert den
+Bericht deterministisch neu für einen Bytevergleich, statt dem editierbaren
+Ledger zu trauen (ADR-009).
+
+## 5. Nicht verhandelbar
+
+- **Deterministisch und SDK-frei** in `src/`: kein Netz, keine dynamische
+  Ausführung, kein Subprozess; gleiche Eingabe -> gleiche Ausgabe; sortierte
+  Serialisierung. Es gibt genau EINE Subprozess-Ausnahme, und ein Test
+  begrenzt sie: Die gemeinsame Provenienz der Belege
+  (`gates/_provenienz._git_lesen`) fährt nur LESENDE Git-Kommandos aus einer
+  geschlossenen Liste — `rev-parse HEAD`, `rev-parse --abbrev-ref HEAD` und
+  `status --porcelain` halten den Git-Stand fest, auf dem belegt oder
+  entschieden wird; seit dem 2026-10-01 halten `rev-parse --verify`,
+  `merge-base`, `diff --numstat`, `log`, `ls-tree`, `show` und ein auf Pfade
+  begrenztes `status` die Änderungen am Kern seit dem letzten abgenommenen
+  Kernstand fest (A-K2) und die Änderungen am Tarifwerk (A-T1,
+  `gates.tarifwerk_belegen`). Alles nach dem Kommando ist Datum (Commits,
+  Pfade) und darf nie mit einem Strich beginnen. Die Stelle rechnet und
+  urteilt nichts. Ein reines Python-SHA-256 über die installierten
+  Paketquellen unterscheidet verschiedene uncommittete Code-Stände. Ist Git
+  nicht verfügbar, tragen seine Felder den benannten Wert `unbekannt`, nie
+  einen stillen Default. Jeder weitere Subprozess-Import, jedes andere
+  Kommando und jeder Prozessstart über `os` färbt
   `tests/test_fachspez_und_p9.py::test_subprozess_bleibt_auf_die_beweisprovenienz_beschraenkt`
-  red.
-- **Fail-fast, never silent**: no silent overwrite, no silent default. Doubt is
-  a named state (`nicht_belegt`/`mehrdeutig`/`widerspruechlich`) or a hard
-  error whose message names the way out.
-- **Agents never decide** contradictions between sources. Provisional
-  resolutions carry `vorlaeufig=true` and block every human acceptance.
-- **Nodes** (`Knoten: klv/tg2015`) in every module and test docstring; the same
-  IDs as the A-Box and gate P-K1. `code_index` must stay drift-free,
-  `code_karte` finding-free.
-- **Full suite before every commit** (`.venv/bin/python -m pytest`). The impact
-  tool is informational — it never narrows what has to run. CI
-  (`.github/workflows/tests.yml`) runs the full suite on every push and
-  pull request. The mandatory `tests/test_pk1_fixture_e2e.py` job uses the
-  versioned, anonymised `tests/fixtures/pk1_am4_minimal/` data and performs real
-  extraction, formula checking and P-K1 from a fresh temporary case. The
-  positive path in `tests/test_pk1_am4_beweisvertrag.py` continues through A-M4
-  on the same fixture contract. Missing or hash-drifted fixture input is a
-  hard failure, never a skip. Local and real case workspaces under `faelle/`
-  remain gitignored and are not a prerequisite for a green suite.
-- Direct dependencies pinned exactly (`pyproject.toml`), their transitive
-  closure pinned in `requirements*.txt` (section 2); new dependencies only
-  via ADR. Push is the human's job.
+  rot.
+- **Fail fast, nie still:** kein stilles Überschreiben, kein stiller
+  Default. Zweifel ist ein benannter Zustand
+  (`nicht_belegt`/`mehrdeutig`/`widerspruechlich`) oder ein harter Fehler,
+  dessen Meldung den Ausweg nennt.
+- **Agenten entscheiden nie** Widersprüche zwischen Quellen. Vorläufige
+  Auflösungen tragen `vorlaeufig=true` und blockieren jede menschliche
+  Abnahme.
+- **Knoten** (`Knoten: klv/tg2015`) im Docstring jedes Moduls und jedes
+  Tests; dieselben Kennungen wie in der A-Box und im Gate P-K1.
+  `code_index` bleibt ohne Drift, `code_karte` ohne Befund.
+- **Abgenommene Gegenstände ändern sich nicht nebenbei.** Kern (das Paket
+  `kern`, die eingefrorenen Referenzwerte, die Grundsatzdokumentation) und
+  Tarifwerk (`docs/tarifplaene`, die Bestands-Configs) sind gezeichnet
+  (A-K2, A-T1). Ein festgehaltener Fall ist nur auf einem Baum nachfahrbar,
+  der sie unverändert trägt (`tests/test_pakete.py`, ADR-027).
+- **Volle Suite vor jedem Commit**, parallel (Abschnitt 2). Das
+  Impact-Werkzeug ist informativ — es verengt nie, was laufen muss. Die CI
+  (`.github/workflows/tests.yml`) fährt die volle Suite bei jedem Push und
+  jedem Pull Request. Der Pflichttest `tests/test_pk1_fixture_e2e.py` nutzt
+  die versionierten, anonymisierten Daten unter
+  `tests/fixtures/pk1_am4_minimal/` und fährt echte Extraktion,
+  Formelprüfung und P-K1 auf einem frischen temporären Fall;
+  `tests/test_pk1_am4_beweisvertrag.py` führt denselben Belegpfad bis A-M4.
+  Fehlende oder im Hash abweichende Fixture-Eingaben sind ein harter
+  Fehler, nie ein Skip. Lokale Fall-Arbeitsbereiche unter `faelle/` sind
+  gitignoriert und keine Voraussetzung für eine grüne Suite.
+- Direkte Abhängigkeiten exakt gepinnt (`pyproject.toml`), ihre transitive
+  Hülle in `requirements*.txt` (Abschnitt 2); neue Abhängigkeiten nur per
+  ADR. Den Push macht der Mensch.
 
 ## Laufdaten: was Wegwerf ist und was sich wehrt
 
-`runs/` ist **Wegwerf**: Jeder darf dort loeschen, nichts darin ist die
+`runs/` ist **Wegwerf**: Jeder darf dort löschen, nichts darin ist die
 einzige Kopie von etwas Wichtigem. Was festgehalten werden soll, lebt an
 zwei Orten mit eigenem Schutz:
 
 * im **Fall** (`faelle/<fall>/` — `eingang/` und `entscheide/` sind
   unantastbar, `abgeleitet/` ist reproduzierbar), oder
-* als **Abschluss** (`bestand.cli_abschluss`): festgeschriebene Staende
-  schreiben sich selbst schreibgeschuetzt (0444) — ein `rm` ohne `-f`
-  fragt nach, ein Ueberschreiben scheitert. Gegen `rm -rf` schuetzt kein
-  Dateirecht; deshalb die Verhaltensregel: vor jedem Aufraeumen unter
-  `runs/` pruefen, ob echte Laufdaten dort liegen — besser: sie liegen
-  dort gar nicht erst.
+* als **Abschluss** (`bestand.cli_abschluss`): Festgeschriebene Stände
+  schreiben sich selbst schreibgeschützt (0444) — ein `rm` ohne `-f` fragt
+  nach, ein Überschreiben scheitert. Gegen `rm -rf` schützt kein
+  Dateirecht; deshalb die Verhaltensregel: vor jedem Aufräumen unter `runs/`
+  prüfen, ob echte Laufdaten dort liegen — besser: Sie liegen dort gar
+  nicht erst.
 
-Anlass ist ein realer Verlust: 2026-06-05 hat ein aufraeumendes
-`rm -r runs` die Artefakte eines echten Laufs zerstoert.
+Anlass ist ein realer Verlust: Am 2026-06-05 hat ein aufräumendes
+`rm -r runs` die Artefakte eines echten Laufs zerstört.

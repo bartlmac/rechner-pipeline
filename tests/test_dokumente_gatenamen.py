@@ -25,11 +25,18 @@ from rechner_pipeline.models.zeichnung import GUELTIGE_GATES
 REPO = Path(__file__).resolve().parents[1]
 GATE_NAME = re.compile(r"\bA-[A-Z][0-9]+\b")
 ORDNUNGSAENDERUNG = "A-Z1"
+#: Die Dokumente, in die der Ablauf eines Falls und die Gate-Tabelle aus dem
+#: README gezogen sind (ADR-027) — sie nennen Gates wie zuvor das README.
+ARCHITEKTUR_DOKUMENTE = (
+    "docs/architektur/ablauf-eines-falls.md",
+    "docs/architektur/gate-vertrag-und-versionen.md",
+)
 
 
 def _dokumente(repo: Path) -> list:
     """Die Dokumente, nach denen Agenten und Team arbeiten."""
-    dokumente = [repo / n for n in ("README.md", "ONBOARDING.md", "AGENTS.md")]
+    dokumente = [repo / n for n in ("README.md", "ONBOARDING.md", "AGENTS.md",
+                                    *ARCHITEKTUR_DOKUMENTE)]
     for baum in (".claude", ".agents"):
         dokumente += sorted((repo / baum / "agents").glob("*.md"))
         dokumente += sorted((repo / baum / "skills").glob("*/SKILL.md"))
@@ -56,7 +63,7 @@ def _unbekannte_gates(repo: Path) -> Counter:
 HISTORISCH_ENTFALLEN = {
     # P9-Versionsgeschichte, Version 1.0.0: der Beleg der T-Box-Aenderung hiess
     # damals A-K1 (ADR-012: heute A-O1).
-    ("README.md", "A-K1", True): 1,
+    ("docs/architektur/gate-vertrag-und-versionen.md", "A-K1", True): 1,
 }
 
 
@@ -66,7 +73,7 @@ def test_jedes_genannte_gate_gibt_es():
     assert all(entfallen for (_, _, entfallen) in HISTORISCH_ENTFALLEN)
     # Die Menge der Dokumente ist nicht leer und deckt beide Baeume.
     namen = {str(d.relative_to(REPO)) for d in _dokumente(REPO)}
-    assert {"README.md", "ONBOARDING.md", "AGENTS.md",
+    assert {"README.md", "ONBOARDING.md", "AGENTS.md", *ARCHITEKTUR_DOKUMENTE,
             ".claude/agents/rechenkern.md", ".agents/agents/rechenkern.md"} <= namen
 
 

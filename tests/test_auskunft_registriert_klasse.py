@@ -1402,13 +1402,14 @@ def test_der_abnahmebericht_haelt_suite_und_fuehrungsprobe_auf_einer_auskunft(
 
 def test_die_version_des_abnahmeberichts_nennt_den_grund():
     """ADR-012: Die Akzeptanzmenge hat sich geaendert (eine Suite ohne das
-    Feld war vorher gueltig) — Major, und die README-Zeile erzaehlt den
+    Feld war vorher gueltig) — Major, und die Zeile im Gate-Dokument erzaehlt den
     Sprung. ``tests/test_gate_versionsregel.py`` haelt Version und Zeile
     zusammen; hier steht, WARUM 6.0.0."""
     from rechner_pipeline.gates import abnahmebericht
 
-    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    zeile = next(z for z in readme.splitlines()
+    gate_dokument = (REPO_ROOT / "docs/architektur/gate-vertrag-und-versionen.md"
+                     ).read_text(encoding="utf-8")
+    zeile = next(z for z in gate_dokument.splitlines()
                  if z.startswith("| G2-Vorlage (Version `"))
     # 7.0.0 (Pruefer-Befund B1, 2026-10-01), 8.0.0 (Fuehrungswert,
     # 2026-10-01), 9.0.0 (Tarifregeln aus der Spez, ADR-024 Nachtrag) und

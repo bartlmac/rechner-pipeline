@@ -146,3 +146,20 @@ Ansprueche; der Code folgt dann von selbst.
 * Die Excel-Paritaet des Quellrechners (Gate P-K1). Sie prueft eine
   LIEFERUNG gegen ihren eigenen Rechner und hat mit den internen
   Rechenschienen nichts zu tun.
+
+## Nachtrag 2026-10-04: Der Zweitkern liegt nicht mehr im Paket
+
+Mit ADR-027 ist `rechner_pipeline.kommutationskern` aus `src` entfernt. Der
+Code lebt als Zeuge der Kern-Tests weiter (`tests/kommutationszeuge.py`):
+Die algebraischen Tests halten die Whole-Life-Durchreicher und das
+Äquivalenzprinzip auf dem produktiven Beitragspfad weiterhin gegen diesen
+zweiten, unabhängig gebauten Rechenweg.
+
+Die Sonderregel der Schichtenkarte (`ZWEITKERN_KONSUMENTEN`) entfällt mit
+der Schicht. Kehrte ein solches Paket nach `src` zurück, wäre es eine
+Schicht ohne Regel-Eintrag und damit ein Befund der Karte.
+
+Im Kern selbst, in der Grundsatzdokumentation und im Tarifplan KLV wird der
+Zweitkern noch genannt. Diese Dateien sind abgenommene Gegenstände
+(Kernstand, Tarifwerk) und werden mit ihrer nächsten Abnahme nachgezogen
+(`dev-docs/offene-punkte.md`).

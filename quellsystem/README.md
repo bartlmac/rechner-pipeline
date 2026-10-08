@@ -2,8 +2,8 @@
 
 Simulations-Tooling, **kein Teil des Systems** (Beschluss 2026-08-31:
 ADRs gelten dem System — KI, Rechenkern, Bestandsfuehrung der PLV; dieses
-Paket gehoert wie die Bestands-Simulation zum Gesamtbild, Komponente (5)
-im README-Bild). Es ersetzt den Windows-/Excel-Umweg der
+Paket gehoert zu den Fall-Definitionen, Gegenstand 3 nach ADR-027: Es
+erzeugt die Lieferungen). Es ersetzt den Windows-/Excel-Umweg der
 Lieferungserzeugung: Bestand aufbauen, Geschaeftsvorfaelle ueber Jahre
 fuehren (auch MEHRERE je Vertrag), Lieferungen exportieren.
 

@@ -1,7 +1,7 @@
 """Architektur-Werkzeuge: Code-Karte-Regeln, Knoten-Hierarchie, Impact.
 
-Sichert die 1M-LOC-Mechanik maschinell ab: die Schichtenkarte ist nachrechenbar
-(ADR-004-Regel inklusive), Knoten-Wurzeln sind validiert, jede
+Sichert die 1M-LOC-Mechanik maschinell ab: die Schichtenkarte ist nachrechenbar,
+Knoten-Wurzeln sind validiert, jede
 Testdatei ist an Knoten gebunden, und der Impact einer Aenderung ist
 BERECHNET — selektiv bei sauberer Annotation, konservativ (volle
 Suite) bei jeder Unsicherheit.
@@ -54,23 +54,11 @@ TESTS = REPO / "tests"
 def test_karte_des_repos_haelt_die_schichtregeln():
     karte = baue_karte(SRC)
     assert validate(karte) == []
-    # ADR-013: Der Zweitkern hat KEINEN Konsumenten im Produktivpfad
-    # mehr. Frueher verlangte dieser Test die Kreuz-Check-Kante
-    # qa -> Zweitkern; sie ist mit der Toleranz-Ueberleitung entfallen.
-    # Was den Zweitkern noch nutzt, sind die algebraischen
-    # Eigenschaftstests — testseitig, ohne Kante in der Code-Karte.
-    #
-    # Die Umkehrung ist jetzt die Aussage: Findet sich hier je wieder
-    # eine Kante, hat sich der Produktivpfad an eine stillgelegte
-    # Rechenschiene gebunden, und genau das soll nicht passieren.
-    zweitkern_kanten = [
-        (k["von"], k["nach"]) for k in karte["kanten"]
-        if k["nach"].startswith("rechner_pipeline/kommutationskern/")
-        and not k["von"].startswith("rechner_pipeline/kommutationskern/")
-    ]
-    assert not zweitkern_kanten, (
-        "Der Produktivpfad importiert den stillgelegten Zweitkern "
-        f"(ADR-013): {zweitkern_kanten}")
+    # Der Kommutations-Zweitkern ist seit ADR-027 kein Paket mehr; er lebt
+    # als Zeuge der Kern-Tests (tests/kommutationszeuge.py). Kehrte er als
+    # Schicht in src zurueck, waere das eine Schicht ohne Regel-Eintrag —
+    # validate() meldete sie oben.
+    assert not (SRC / "kommutationskern").exists()
 
 
 def test_karte_ist_deterministisch():
@@ -177,14 +165,15 @@ def test_namenskollisionen_erzeugen_keine_phantomkanten_und_rendern(
     assert "flowchart TD" in gerendert
 
 
-def test_karte_faengt_zweitkern_import_im_kern(tmp_path: Path):
+def test_karte_faengt_verbotene_schichtkante(tmp_path: Path):
+    """Der Kern importiert nur aus dem Kern: Eine Kante kern -> gates ist
+    keine erlaubte, und die Karte nennt beide Schichten."""
     src = tmp_path / "rechner_pipeline"
     _schreibe(src / "kern" / "boese.py",
-              "from rechner_pipeline.kommutationskern.kommutation import fuer\n")
-    _schreibe(src / "kommutationskern" / "kommutation.py", "fuer = None\n")
+              "from rechner_pipeline.gates.extract import main\n")
+    _schreibe(src / "gates" / "extract.py", "main = None\n")
     befunde = validate(baue_karte(src))
-    assert any("ADR-004" in b for b in befunde)
-    assert any("darf nicht aus 'kommutationskern'" in b for b in befunde)
+    assert any("Schicht 'kern' darf nicht aus 'gates'" in b for b in befunde), befunde
 
 
 def test_karte_faengt_sdk_import(tmp_path: Path):
@@ -545,17 +534,17 @@ def test_skill_katalog_ist_an_system_skills_gebunden():
 
 
 def test_karte_faengt_dynamischen_import(tmp_path: Path):
-    """Review-Befund: importlib/__import__ umging Schicht-Allowlist,
-    ADR-004-Regel und SDK-Verbot vollstaendig."""
+    """Review-Befund: importlib/__import__ umging Schicht-Allowlist und
+    SDK-Verbot vollstaendig."""
     src = tmp_path / "rechner_pipeline"
     _schreibe(src / "kern" / "schmuggel.py",
               "import importlib\n"
               "m = importlib.import_module('rechner_pipeline."
-              "kommutationskern.kommutation')\n"
+              "gates.extract')\n"
               "s = __import__('openai')\n")
-    _schreibe(src / "kommutationskern" / "kommutation.py", "fuer = None\n")
+    _schreibe(src / "gates" / "extract.py", "main = None\n")
     befunde = validate(baue_karte(src))
-    assert any("ADR-004" in b for b in befunde)
+    assert any("Schicht 'kern' darf nicht aus 'gates'" in b for b in befunde), befunde
     assert any("SDK-Import 'openai'" in b for b in befunde)
 
 
@@ -608,7 +597,7 @@ def test_karte_meldet_berechneten_namen_auch_nach_umbenennung(tmp_path: Path, qu
 
 
 @pytest.mark.parametrize("quelltext", [
-    "import sys\nm = sys.modules['rechner_pipeline.kommutationskern.kommutation']\n",
+    "import sys\nm = sys.modules['rechner_pipeline.gates.extract']\n",
     "import sys\nm = sys.modules.get('openai')\n",
     # Review Block 5: Alias von sys, from sys import modules
     "import sys as s\nm = s.modules['openai']\n",

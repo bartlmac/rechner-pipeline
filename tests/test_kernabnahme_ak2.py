@@ -676,5 +676,5 @@ def test_der_gegenstand_ist_einmal_bestimmt():
         "src/rechner_pipeline/kern/produkte"
     assert ka.kernmodul("tests/fixtures/kern_referenzwerte/referenz_jung.json") == \
         ka.KERN_REFERENZWERTE
-    assert ka.kernmodul("src/rechner_pipeline/kommutationskern/x.py") is None
+    assert ka.kernmodul("src/rechner_pipeline/bestand/x.py") is None
     assert ka.kernmodul("src/rechner_pipeline/kernel.py") is None

@@ -47,8 +47,6 @@ KERN_REFERENZWERTE = "tests/fixtures/kern_referenzwerte"
 #:
 #: Bewusst NICHT im Gegenstand:
 #:
-#: * ``kommutationskern`` — der Zweitkern ist seit ADR-013 kein Teil des
-#:   Kerns, sondern ein unabhaengiger Zeuge der algebraischen Tests.
 #: * ``spez/`` und die Tarif-Spez eines Falls — Parametrierung (ADR-006),
 #:   abgenommen von P-K1 und A-M4, nicht von A-K2.
 #: * ``bestand/``, ``betrieb/``, ``gates/`` — sie benutzen den Kern, sie

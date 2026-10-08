@@ -37,10 +37,8 @@ ist ihre Lesefassung und muss mit ihr uebereinstimmen.
 | `bestand/` | synthetische Bestaende, Fortschreibung, Bericht | Kern-Umgehungen (Betraege kommen aus dem Kern) |
 | `betrieb/` | Tagesbetrieb der Vorzeige (Neugeschaeft, Tageslauf, Tagesjournal); Betraege aus dem Kern, Wache ueber die P-B1-Engine | eigene Ereignis-Engine; Import aus `gates/` |
 | `models/` | paketuebergreifende Datenvertraege | Verhaltenslogik |
-| `qa/` | deterministische Vergleichs-Engines (Golden Master, Ueberleitung, Diff) | LLM-Pfade |
-| `kommutationskern/` | separater Zweitkern (Kommutation, klassische Barwerte) NUR fuer den Kreuz-Check | jeder Konsument ausser `qa/` — der Zielkern rechnet ohne Kommutation (ADR-004) |
+| `qa/` | deterministische Vergleichs-Engines (Golden Master, aktuarieller Test, Migrationssuite, Abzugsabgleich) | LLM-Pfade |
 | `fall.py` | Fall-Arbeitsbereich (Eingang unantastbar, ADR-002) | Aufraeumlogik fuer `eingang/` oder `entscheide/` |
-| `cli.py` | Kommandozeilen-Einstieg (assurance-Kette, Fall-Flags) | Fach- oder Pruflogik |
 
 Neuer Code, der in keine Schicht passt, ist ein Architekturbefund —
 STOPP, Vorschlag formulieren, Mensch entscheidet.

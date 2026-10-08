@@ -33,7 +33,7 @@ from rechner_pipeline.kern import (
     berechne,
 )
 from rechner_pipeline.kern import tafeln
-from rechner_pipeline.kommutationskern.kommutation import fuer
+from tests.kommutationszeuge import fuer
 from rechner_pipeline.kern.produkte import UnbekanntesProduktError, hole
 from rechner_pipeline.kern.produkte.klv import KLV, VERLAUFSWERTE_SPALTEN
 from rechner_pipeline.models.bestand import MODEL_POINT_FIELDS, model_point_kwargs

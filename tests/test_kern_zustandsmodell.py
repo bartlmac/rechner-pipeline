@@ -8,8 +8,7 @@ from __future__ import annotations
 import pytest
 
 from rechner_pipeline.kern import KLV_DEFAULT
-from rechner_pipeline.kommutationskern.barwerte import Barwerte
-from rechner_pipeline.kommutationskern.kommutation import fuer
+from tests.kommutationszeuge import Barwerte, fuer
 from rechner_pipeline.kern import tafeln
 from rechner_pipeline.kern.konventionen import MAX_ALTER
 from rechner_pipeline.kern.zustandsmodell import Zustandsmodell, ZustandsBarwerte
@@ -214,7 +213,6 @@ def test_spalten_pass_ist_bitidentisch_zum_einzelaufruf(basen):
 
 
 def test_pass_cache_wird_ueber_instanzen_geteilt(basen):
-    from rechner_pipeline.kommutationskern.kommutation import fuer
     from rechner_pipeline.kern.zustandsmodell import _PASS_CACHE
 
     _, zustand = basen

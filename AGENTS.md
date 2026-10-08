@@ -43,11 +43,29 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
 
 ## Repo Map (what an agent needs to know first)
 
+- **Five things live here, and no infrastructure** (ADR-027): (1) the
+  PLV runtime — `src/rechner_pipeline/kern`, `bestand`, `betrieb` and
+  `configs/`; (2) the migration system — `gates`, `ontologie`, `spez`,
+  `quellen`, `qa`, `fall.py` and the agent roles under `.claude/` and
+  `.agents/`; (3) case definitions — `lieferungen/`, `quellsystem/`,
+  `pakete/`; (4) routines that set up a world and replay a case —
+  `deploy/welt/`, `deploy/plv/`; (5) the website — `vorzeige-seite/` and
+  its tools in `werkzeuge/`. `tests/`, `docs/`, `dev-docs/` and `models`
+  cut across all five. Cut changes along these lines: several of them
+  go into one pull request only if `main` would be unexplained with
+  just one part; the website never travels with 1 to 4.
+- **Accepted objects do not change silently.** The kernel state (the
+  `kern` package, the frozen reference values, the
+  Grundsatzdokumentation) and the Tarifwerk (`docs/tarifplaene`, the
+  portfolio configs) are signed (A-K2, A-T1). A recorded case replays
+  only on a tree that carries them as recorded
+  (`tests/test_pakete.py`). Touching one of them — even a docstring in
+  `kern/` — is a change of the target system: it needs an acceptance in
+  the line, and the package has to be recorded again. Do not do it as a
+  side effect.
 - **Layer map** (import allowlist enforced by
   `python -m rechner_pipeline.ontologie.code_karte`):
-  `quellen -> ontologie -> spez -> kern -> bestand -> qa -> gates`,
-  plus `kommutationskern` as a separate second kernel consumed only by
-  `qa` (cross-check rail).
+  `quellen -> ontologie -> spez -> kern -> bestand -> qa -> gates`.
 - **Node annotation is mandatory:** every module and test file declares
   its ontology node in the docstring (`Knoten: klv/tg2015`); a building
   block without a node is a hard drift error

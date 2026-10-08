@@ -27,7 +27,10 @@ Arbeitsbereich des Maintainers. Was hier steht, ist fuer das Team.
 
 Ein Vorhaben, das umgesetzt ist, verschwindet hier und lebt in seinem
 ADR, seinem Code und seinen Tests weiter. Diese Ablage waechst also
-nicht monoton — sie ist eine Warteschlange, kein Archiv.
+nicht monoton — sie ist eine Warteschlange, kein Archiv. Stehen bleibt
+ein umgesetztes Vorhaben nur, wenn andere Dokumente darauf verweisen
+oder es ausdruecklich als Herleitung gefuehrt wird; die Tabelle unten
+sagt das je Dokument.
 
 ## Aufbau eines Vorhabens
 
@@ -41,13 +44,19 @@ Vier Abschnitte, mehr braucht es nicht:
 4. **Einordnung** — Aufwand grob, Abhaengigkeiten, wer entscheidet, und
    woran man merkt, dass es faellig wird.
 
-## Aktuelle Vorhaben
+## Was hier liegt
 
-| Vorhaben | Stand |
-|---|---|
-| [Aktuarieller Test AT-1/AT-2/AT-3](aktuarieller-test-at1-at2-at3.md) | gebaut; offen sind Stichprobenprofile und BU-Vorfaelle |
-| [Korrekturschicht umsetzen](korrekturschicht-umsetzung.md) | Stufe N7.1 gebaut; N7.2 bis N7.4 offen |
-| [Rollentrennung der Agenten](agenten-rollentrennung.md) | Skizze, wartet auf Entscheidung |
-| [Zahlungspfade migrierter Vertraege](zahlungspfade-migrierter-vertraege.md) | Richtung bejaht 2026-08-28; blockiert A-M4 des zweiten Baldrian-Falls |
-| [Freischaltung des uebernommenen Bestands](freischaltung-uebernommener-bestand.md) | Fachkonzept 2026-09-07; Schritt 1 gemessen, Umsetzung auf Branch `freischaltung` laeuft |
-| [Offene Punkte](offene-punkte.md) | laufend |
+| Dokument | Was es ist | Stand laut Dokument |
+|---|---|---|
+| [Offene Punkte](offene-punkte.md) | kleinere Vorhaben, Nachzuege, Reviewfunde | laufend |
+| [Aktuarieller Test AT-1/AT-2/AT-3](aktuarieller-test-at1-at2-at3.md) | Vorhaben | gebaut am 2026-08-27; offen sind die Stichprobenprofile |
+| [Korrekturschicht umsetzen](korrekturschicht-umsetzung.md) | Vorhaben | Stufe N7.1 gebaut am 2026-08-27; was fehlt, steht dort in Abschnitt 7 |
+| [Zahlungspfade migrierter Vertraege](zahlungspfade-migrierter-vertraege.md) | Vorhaben | der akute Fall ist seit dem 2026-08-28 geloest (Zweiteilung des herabgesetzten Vertrags); der allgemeine Pfad ist offen |
+| [Freischaltung des uebernommenen Bestands](freischaltung-uebernommener-bestand.md) | Fachkonzept mit Schrittliste | Stand je Schritt in Abschnitt 6; Tarifplan, Skills und ADR-017 verweisen darauf |
+| [Rollentrennung der Agenten](agenten-rollentrennung.md) | Herleitung | entschieden und umgesetzt als ADR-017 und ADR-018 |
+| [Rueckbau des zweiten Baldrian-Laufs](rueckbau-fall2.md) | Herleitung | umgesetzt; der dritte Fall hat darauf aufgesetzt (2026-10-02) |
+| [Annahmen vom 2026-09-20](annahmen-2026-09-20.md), [Entscheidungsvorlage Laufmanifest](entscheidungsvorlage-am4-laufmanifest.md) | Belege zur Neuzeichnung des zweiten Laufs | vom Abschlussbericht des Laufs zitiert (`docs/faelle/baldrian-lauf2.md`) |
+| [Regie](regie.md) | Stub | Konzept benannt, Dokumentation ausstehend |
+
+Befundlisten, Reviews und Merge-Plaene abgeschlossener Runden liegen nicht
+mehr hier; sie stehen in der Geschichte des Repositorys.
