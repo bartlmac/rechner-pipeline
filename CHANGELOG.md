@@ -22,7 +22,10 @@ Entscheidungen dahinter als ADRs unter `docs/architektur/`.
 * **Der dritte Fall der Baldrian:** 834 Verträge der
   Tarifgeneration KLV TG2015, übernommen zum 01.01.2026. Der Rechenkern
   ging dabei von 3.21.0 auf 3.22.0; die Ablage trägt danach 388
-  Monatsabschlüsse.
+  Monatsabschlüsse. Am 08.10.2026 sind Kern-Docstrings,
+  Grundsatzdokumentation und Tarifpläne redaktionell überarbeitet und neu
+  abgenommen worden (keine Regel, kein Wert); das Paket von Fall 3 ist auf
+  diesem Stand neu festgehalten.
 * **Nachfahren ohne Agenten.** Ein festgehaltener Fall liegt als Paket im
   Repository (`pakete/`). Ein Aufruf stellt eine Welt auf dem Stand vor dem
   Fall auf, fährt den Fall nach und erzeugt eine Laufzeit mit übernommenem

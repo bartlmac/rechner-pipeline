@@ -159,7 +159,8 @@ Die Sonderregel der Schichtenkarte (`ZWEITKERN_KONSUMENTEN`) entfällt mit
 der Schicht. Kehrte ein solches Paket nach `src` zurück, wäre es eine
 Schicht ohne Regel-Eintrag und damit ein Befund der Karte.
 
-Im Kern selbst, in der Grundsatzdokumentation und im Tarifplan KLV wird der
-Zweitkern noch genannt. Diese Dateien sind abgenommene Gegenstände
-(Kernstand, Tarifwerk) und werden mit ihrer nächsten Abnahme nachgezogen
-(`dev-docs/offene-punkte.md`).
+Im Kern selbst, in der Grundsatzdokumentation und im Tarifplan KLV wurde der
+Zweitkern danach noch genannt. Diese Dateien sind abgenommene Gegenstände
+(Kernstand, Tarifwerk); sie sind am 2026-10-08 redaktionell nachgezogen und
+neu abgenommen, und das Paket von Fall 3 ist auf diesem Stand neu
+festgehalten.

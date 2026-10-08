@@ -24,14 +24,14 @@ Mathematischer Rahmen:
   als unabhängiger Selbsttest (Vorwärts- == Rückwärtsbewertung, testseitig
   festgeschrieben).
 
-Abgrenzung zur Kommutations-Schiene (:mod:`rechner_pipeline.kern.barwerte`):
-Die Kommutation ist die geschlossene Summenform des 2-Zustands-Falls mit den
-Excel-Rundungsartefakten des migrierten Quell-Workbooks. Das Zustandsmodell
-rechnet dieselbe Mathematik ohne diese Artefakte — Abweichungen sind reine
-Rundungsreihenfolgen-Differenzen und werden über die Toleranz-Überleitung
+Abgrenzung zur Kommutation: Die Kommutation ist die geschlossene
+Summenform des 2-Zustands-Falls mit den Excel-Rundungsartefakten des
+migrierten Quell-Workbooks. Das Zustandsmodell rechnet dieselbe Mathematik
+ohne diese Artefakte; die Abweichungen waren reine
+Rundungsreihenfolgen-Differenzen und wurden über die Toleranz-Überleitung
 klassifiziert. Der Wechsel des produktiven KLV-Pfads auf diese Schiene
 wurde am 2026-08-12 abgenommen (kern 2.0.0); mit ADR-013 ist die
-Ueberleitung ausser Betrieb, weil ihr Beleg erbracht ist.
+Überleitung außer Betrieb, weil ihr Beleg erbracht ist.
 Die klassische Tafel-Domäne gilt unverändert: Anker-Alter mit Dx = 0
 (Tafel erschöpft) sind fail-fast (:class:`TafelBereichError`) statt
 stiller bedingter Werte.
@@ -224,7 +224,7 @@ class Zustandsmodell:
 #: Kommutations-Spaltenapparat, aber ohne Excel-Rundung): ein
 #: Rückwärts-Pass je (Basis, Zahlungsart, Endalter) liefert die Werte für
 #: ALLE Startalter — bit-identisch zu Einzelaufrufen (gleiche
-#: Suffix-Rekursion). Unbegrenzt wie kommutation._CACHE.
+#: Suffix-Rekursion). Unbegrenzt, wie früher der Cache der Kommutation.
 _PASS_CACHE: Dict[Tuple, list] = {}
 
 
@@ -234,10 +234,10 @@ class ZustandsBarwerte:
     Der 2-Zustands-Spezialfall (aktiv/tot) auf einer
     :class:`~rechner_pipeline.kern.tafeln.Tafelbasis` (reine qx, fail-fast
     Tafelzugriff) — Ueberlebenswahrscheinlichkeiten sind reine
-    (1-qx)-Produkte, ohne Kommutations-Ableitungen. Der separate
-    Kommutationskern dient nur der Kreuz-Schiene
-    (algebraische Eigenschaftstests; die Toleranz-Überleitung ist mit
-    ADR-013 ausser Betrieb).
+    (1-qx)-Produkte, ohne Kommutations-Ableitungen. Ein separater
+    Kommutationsrechner dient nur noch als Zeuge der algebraischen
+    Eigenschaftstests (``tests/kommutationszeuge.py``); die
+    Toleranz-Überleitung ist mit ADR-013 außer Betrieb.
 
     Performance über Spalten-Pässe: je (Basis, Zahlungsart, Endalter) läuft
     die Thiele-Rekursion genau einmal (:meth:`Zustandsmodell.barwert_verlauf`)

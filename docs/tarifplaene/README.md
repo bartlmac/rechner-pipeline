@@ -1,12 +1,12 @@
 # Tarifpläne
 
-Fachdokumente des **Beispiel-Rechenkerns** (`rechner_pipeline.kern`) —
+Fachdokumente des **Beispiel-Rechenkerns** (`rechner_pipeline.kern`):
 Teil des Illustrationsobjekts, der fiktiven Pfefferminzia LV, nicht der
 System-Dokumentation (die liegt unter `docs/architektur/`).
 
 Je Produkt ein Tarifplan mit der **Ausgestaltung**: Zustandsraum des
 Tarifs, Leistungen, Beiträge, Reservebegriffe, GeVo-Katalog,
-Stellschrauben, Gültigkeitsgrenzen, Bestandsgenerationen — und bei
+Stellschrauben, Gültigkeitsgrenzen, Bestandsgenerationen, und bei
 migrierten Produkten die Parameter der Korrekturmathematik
 (Grundsatzdokumentation Abschnitt 10 Nr. 9). Das **gemeinsame Rückgrat** aller Produkte
 (Zustandsmodell, Thiele-Rekursion, Rechnungsgrundlagen-Schicht,
@@ -22,7 +22,7 @@ Die Generationentabellen in Paragraf 13 sind **erzeugt, nicht
 abgetippt** (P7): `python -m rechner_pipeline.bestand.tarifplan_tabellen
 --config configs/bestand_gesamt.toml --produkt klv --einsetzen
 docs/tarifplaene/klv.md` ersetzt den markierten Block aus der
-Bestand-Config — Generationen mit Rechnungsgrundlagen und Vertrieb, die
+Bestand-Config: Generationen mit Rechnungsgrundlagen und Vertrieb, die
 Tarifzellen übernommener Generationen und was sich von Generation zu
 Generation ändert. Ein Test hält den Block gegen den Generator; je
 Generation hält der Kern einen Charakterisierungs-Referenzwert

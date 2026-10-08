@@ -49,11 +49,13 @@ PRUEFSCHRITTE = {
 #: ``models.kernabnahme.KERNSTAND``) je Paket, gemessen am Stand, den der
 #: Fall hinterlassen hat. Das Rezept prueft Code und Referenzwerte einzeln;
 #: die Grundsatzdokumentation deckt nur dieser Wert.
-#: baldrian-klv-tg2015-fall3: Stand 6aa7c14 (``git archive`` der Pfade des
-#: Kernstands, ``kernstand_belegen.kernstand_hash``).
+#: baldrian-klv-tg2015-fall3: gemessen am 2026-10-08 nach der redaktionellen
+#: Ueberarbeitung von Kern-Docstrings und Grundsatzdokumentation, mit der das
+#: Paket neu festgehalten wurde (vorher Stand 6aa7c14: 90705868...;
+#: ``kernstand_belegen.kernstand_hash``).
 KERNSTAND_DES_FALLS = {
     "baldrian-klv-tg2015-fall3":
-        "90705868db828c421d0b921f70fc5a4dfd827d567ad63ba86c0e3702c0fdf957",
+        "c4d5a35cfb139af4ad1b9df1ddcbbcd48fa7289c9f56f5c22df310dc71f8f105",
 }
 
 AUSWEG = (

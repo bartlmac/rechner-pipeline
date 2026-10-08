@@ -9,8 +9,8 @@ format:
 
 > Tarifplan des **Zielrechenkerns** für das BU-Beispielprodukt
 > (`kern/produkte/bu.py`): die **Ausgestaltung** dieses Produkts. Das
-> gemeinsame Rückgrat — Zustandsraum, Thiele-Rekursion,
-> Rechnungsgrundlagen-Schicht, Numerik — steht einmal in der
+> gemeinsame Rückgrat (Zustandsraum, Thiele-Rekursion,
+> Rechnungsgrundlagen-Schicht, Numerik) steht einmal in der
 > [Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md) und
 > wird hier nicht wiederholt; die Gliederung ist für
 > alle Produkte des Kerns dieselbe. Rechnungsgrundlagen sind die
@@ -43,7 +43,7 @@ Drei Zustände, vier Übergänge:
 | bu $\to$ tot | Invalidensterblichkeit $q^{i}(x, d)$ | `tafel_ti` = DAV1997\_TI (**Select**) |
 
 $d$ ist die Zahl voller Jahre im Zustand `bu` (Select-Dauer, gekappt auf
-die Select-Periode der Tafeln — hier 5). Der Verbleib je Zustand ist das
+die Select-Periode der Tafeln, hier 5). Der Verbleib je Zustand ist das
 Residuum.
 
 # 3 Bewertung
@@ -102,7 +102,7 @@ in der Select-Dauer $d$ (geringere Reaktivierungschance).
 
 Hinweis zur Prämienstruktur: bei konstanter Nettoprämie über die volle
 Laufzeit wird $V_{\text{aktiv}}$ in den letzten Vertragsjahren leicht
-negativ — der Wert einer Invalidisierung fällt mit der Restlaufzeit
+negativ: der Wert einer Invalidisierung fällt mit der Restlaufzeit
 schneller, als das Invalidisierungsrisiko steigt. Rechnerisch korrekt
 ($V(0) = V(n) = 0$), bilanziell nicht ansetzbar; der Feinschliff der
 Produktdefinition ist zurückgestellt.
@@ -151,10 +151,10 @@ Beispielpunkt: $x=35$, $n=30$, $R = 12\,000$, $i = 1{,}75\,\%$.
   der Aktivensterblichkeit übersteigt die Wegzugsumme dort 1, und die
   Engine bricht fail-fast ab. Für Deckungen bis Endalter 67 ist der
   Bereich unerreichbar; die Bestands-Config prüft die Grenze beim Laden.
-  Eine Erfahrungsannahme darf diese Grenze nicht wegtransformieren —
+  Eine Erfahrungsannahme darf diese Grenze nicht wegtransformieren;
   die Prüfung läuft auf der untransformierten Tafel.
 * Ein Modellpunkt ohne Leistungsmöglichkeit (Leistungsbarwert 0, z. B.
-  $n = 1$ im Jahresmodell) ist fail-fast „nicht tarifierbar".
+  $n = 1$ im Jahresmodell) ist fail-fast „nicht tarifierbar“.
 * Reserven im Zustand `bu`: fachliche Grenze $d \le a - 1$ (frühester
   BU-Eintritt am Ende von Jahr 0); oberhalb der Select-Periode wird auf
   deren Ultimate-Stufe gekappt. Ungleiche Select-Perioden von RI/TI sind
@@ -167,7 +167,7 @@ Rechnungsgrundlagen erster Ordnung. Wie ein Bestand dieses Produkts im
 Vorzeigebetrieb fortgeschrieben wird, ist keine Eigenschaft des Tarifs,
 sondern des Simulationswerkzeugs
 (`docs/simulation/erfahrungsannahmen.md`); die dort verwendeten
-Annahmen wirken nie in Beitrag oder Reserve zurueck
+Annahmen wirken nie in Beitrag oder Reserve zurück
 ([Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
 Abschnitt 5.2).
 
@@ -177,7 +177,7 @@ Das Abnahme-Protokoll gilt für alle Produkte
 ([Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
 Abschnitt 11). Für dieses Produkt sind
 verankert: der Charakterisierungs-Anker `anker_bu_beispiel.json` (volle
-Float-Präzision, Provenienz „DAV 1997 I"), der Engine-Selbsttest
+Float-Präzision, Provenienz „DAV 1997 I“), der Engine-Selbsttest
 Vorwärts- gegen Rückwärtsbewertung auf der echten BU-Konfiguration und
 der Monte-Carlo-Abgleich der Bestandssimulation gegen die
 Zustandsverteilung derselben Ordnung.
@@ -186,7 +186,7 @@ Zustandsverteilung derselben Ordnung.
 
 Karenzzeit, Leistungsdynamik und Beitragsdynamik, Kostenstruktur
 ($\alpha/\beta/\gamma$ statt Pauschalzuschlag), unterjährige Zahlweise,
-Rückkauf- und Beitragsfreistellungsregeln — jeweils als GeVo-Formeln in
+Rückkauf- und Beitragsfreistellungsregeln: jeweils als GeVo-Formeln in
 Abschnitt 7 zu ergänzen, bevor sie implementiert werden.
 
 # 13 PLV-Bestandsgenerationen

@@ -8,7 +8,7 @@ format:
 
 > **Die Mathematik und Numerik, der die Umsetzung folgt.** Sie gilt für
 > **alle** Produkte des Zielrechenkerns; was ein einzelnes Produkt
-> ausmacht, steht in seinem Tarifplan (`docs/tarifplaene/`) — und dort
+> ausmacht, steht in seinem Tarifplan (`docs/tarifplaene/`), und dort
 > auch nur dort. Der Migrationszugang samt Korrekturschicht steht in
 > Abschnitt 9.
 >
@@ -20,7 +20,7 @@ format:
 > Abweichungsverzeichnis (Abschnitt 12).
 >
 > **Herkunft:** Die Methode des Migrationszugangs (Abschnitt 9) geht auf
-> das Fachkonzept „Konstruktive Neuberechnung und Korrekturschicht"
+> das Fachkonzept „Konstruktive Neuberechnung und Korrekturschicht“
 > v0.2 zurück und ist hier vollständig aufgenommen.
 
 # 1 Zweck und Geltung
@@ -28,7 +28,7 @@ format:
 Dieses Dokument beschreibt das gemeinsame Rückgrat: den Zustandsraum,
 die Bewertungsgleichung, die Rechnungsgrundlagen-Schicht, die
 numerischen Konventionen und das Verhältnis der Bewertungsschichten
-zueinander. Es ist die einzige Quelle für diese Aussagen — kein
+zueinander. Es ist die einzige Quelle für diese Aussagen; kein
 Tarifplan wiederholt sie.
 
 Die Abgrenzung nach oben und unten:
@@ -96,7 +96,7 @@ Daraus folgen zwei harte Regeln der Rechenschicht:
 * Die **Summe der Wegzüge je Zustand muss $\le 1$ sein**; andernfalls
   bricht die Rechnung ab (fail-fast). Innerhalb eines
   Float-Epsilon-Fensters von $10^{-12}$ oberhalb von $1$ wird
-  renormiert statt eine Gesamtmasse über eins zu akzeptieren — jenseits
+  renormiert statt eine Gesamtmasse über eins zu akzeptieren; jenseits
   davon ist die Rechnungsgrundlage falsch, nicht die Numerik.
 
 ## 3.3 Verweildauer und Select-Kappung
@@ -104,7 +104,7 @@ Daraus folgen zwei harte Regeln der Rechenschicht:
 Semi-Markov-Verhalten entsteht durch **Zustandsraum-Erweiterung**, nicht
 durch eine zweite Uhr: Die Verweildauer $d$ zählt volle Jahre im
 aktuellen Zustand, wird beim Zustandswechsel auf null gesetzt und beim
-Verbleib um eins erhöht — gekappt auf die maximale Dauer des Modells
+Verbleib um eins erhöht, gekappt auf die maximale Dauer des Modells
 ($d \le d_{\max}$). Die Kappung bildet die Select-Periode der
 Rechnungsgrundlagen ab: Jenseits davon sind die Tafeln nach Alter
 aggregiert.
@@ -119,7 +119,7 @@ markovsch.
 ## 4.1 Die Rekursion
 
 Alle Produkte des Kerns bewerten auf demselben Rückgrat. Bewertet wird
-auf dem **erweiterten Zustand** $(s, d)$ — Zustand und Verweildauer
+auf dem **erweiterten Zustand** $(s, d)$: Zustand und Verweildauer
 zusammen (3.3). Der Barwert zu Beginn des Jahres $j$ folgt der
 Rückwärtsrekursion
 
@@ -141,7 +141,7 @@ Darstellung:
 
 * **Die Verweildauer wird beim Zustandswechsel auf null gesetzt und
   beim Verbleib fortgeschrieben.** Sie ist Teil des Arguments, nicht
-  ein Parameter der Übergangsfunktion allein — sonst ist der Barwert
+  ein Parameter der Übergangsfunktion allein; sonst ist der Barwert
   eines dauerabhängigen Produkts unterbestimmt.
 * **Übergangszahlungen fallen nur beim echten Zustandswechsel an**
   ($s' \neq s$). Eine am Jahresende fällige Zahlung, die den Zustand
@@ -154,9 +154,9 @@ zusammen.
 
 ## 4.2 Fälligkeitskonventionen
 
-* **Zustandszahlungen $z$ sind vorschüssig** — fällig zu Beginn des
+* **Zustandszahlungen $z$ sind vorschüssig**: fällig zu Beginn des
   Jahres, in dem der Zustand besteht.
-* **Übergangszahlungen $u$ sind nachschüssig** — fällig am Ende des
+* **Übergangszahlungen $u$ sind nachschüssig**: fällig am Ende des
   Jahres, in dem der Übergang stattfindet, und nur bei echtem
   Zustandswechsel (4.1).
 
@@ -187,22 +187,22 @@ Lücken sind ein Fehler.
 
 Die Auflösung eines Tafelnamens berücksichtigt das Geschlecht des
 Modellpunkts. Eine Anfrage jenseits der tabellierten Domäne ist ein
-benannter Fehler, kein stiller Nullwert — ein Vertrag, dessen
+benannter Fehler, kein stiller Nullwert: ein Vertrag, dessen
 Bewertungshorizont die Tafel erschöpft, muss als solcher auffallen.
 
 ## 5.2 Ordnung der Rechnungsgrundlagen
 
-Die Bewertung rechnet auf Rechnungsgrundlagen **erster Ordnung** — den
+Die Bewertung rechnet auf Rechnungsgrundlagen **erster Ordnung**: den
 vorsichtig angesetzten Werten des Tarifwerks. Sie sind die einzigen
 Werte, die in Beitrag, Reserve und Leistung eingehen.
 
 Davon strikt getrennt sind Annahmen **dritter Ordnung**, also erwartete
-statt vorsichtige Werte. Sie werden in diesem System ausschliesslich
-vom Simulationswerkzeug verwendet, das die Vorzeigebestaende erzeugt
+statt vorsichtige Werte. Sie werden in diesem System ausschließlich
+vom Simulationswerkzeug verwendet, das die Vorzeigebestände erzeugt
 (`docs/simulation/erfahrungsannahmen.md`). Für die Bewertung gilt:
 
 > Eine Annahme dritter Ordnung darf nie in die Bewertung
-> zurueckwirken.
+> zurückwirken.
 
 Das ist nicht verhandelbar. Ein Wert, der aus einer Erwartung statt aus
 dem Tarifwerk stammt, hat in Beitrag und Reserve nichts zu suchen.
@@ -218,22 +218,22 @@ dem Tarifwerk stammt, hat in Beitrag und Reserve nichts zu suchen.
   | **Zustand am Stichtag** | Werte des angebrochenen Vertragsjahres, also der Verlaufszeile $\lfloor m/12 \rfloor$ bei $m$ vollen Vertragsmonaten — **keine** Interpolation | Bestandsführung und ihre Bewertung, aktuarielle Prüfung |
   | **Monatsreserve** | lineare Interpolation zwischen den Jahresstützstellen $\lfloor m/12 \rfloor$ und $+1$; an einer Stützstelle bit-identisch zur Jahreszeile | Bilanzstichtage zwischen zwei Jahrestagen, Migrationscontrolling |
 
-  Welche Konvention gilt, sagt der aufrufende Pfad — beide zu mischen
+  Welche Konvention gilt, sagt der aufrufende Pfad; beide zu mischen
   oder eine für die andere zu halten, ist ein Fehler: An einem
   Stichtag mitten im Vertragsjahr liegen sie um Größenordnungen
   auseinander.
 * **Rechenpunkt.** Bewertungen, die eine Aussage über die **Methode**
   tragen sollen (aktuarielle Prüfung, Verankerung), werden am
-  Rechenpunkt gebildet — am Vertragsjahrestag, nicht am interpolierten
+  Rechenpunkt gebildet: am Vertragsjahrestag, nicht am interpolierten
   Zwischenwert (9.12).
 * **Rundung.** Rundung ist eine Konvention der Darstellung, nicht der
   Rekursion: Zwischenergebnisse der Bewertung laufen in voller
   Gleitkomma-Präzision. Wo gerundet wird, gilt **kaufmännisch von der
-  Null weg** (half away from zero) — nicht das Runden zur geraden
+  Null weg** (half away from zero), nicht das Runden zur geraden
   Ziffer, das Python voreinstellt.
 * **Radix und Rundungsordnung der Kommutation.** Die Radix
   $l_0 = 1\,000\,000$ und die Rundung auf 16 Stellen sind Konventionen
-  der **Kommutations-Vergleichsschiene** (Abschnitt 11), nicht des
+  der klassischen **Kommutationsrechnung** (Abschnitt 11), nicht des
   Zielkerns: Dieser führt keine $l_x$-Kette, sondern rechnet
   Verbleibswahrscheinlichkeiten direkt aus den Ausscheidewerten. Wer
   ein neues Produkt baut, braucht beide Größen nicht.
@@ -261,19 +261,19 @@ Vorgang des Zielsystems übersetzt, der dieselbe Wirkung hatte. Gebucht,
 bewertet und geprüft wird der Vorgang des Zielsystems mit seinem Code; der
 Code der Quelle bleibt in der Lieferung und in den Belegen als
 Provenienzname stehen. Die Übersetzung ist **eine benannte Regel an einer
-Stelle** — sie liest das Verfahren der Quelle, das als Beleg der Migration
+Stelle** (sie liest das Verfahren der Quelle, das als Beleg der Migration
 registriert ist, und für Absetzungen zusätzlich, ob der Vertrag zum
-Zeitpunkt noch Beitrag zahlte —, nie eine Umdeutung eines Vorgangs des
+Zeitpunkt noch Beitrag zahlte), nie eine Umdeutung eines Vorgangs des
 Zielsystems. Jeder Leser (Ableitung des Anfangszustands, Migrationssuite,
 aktuarieller Test, Führung) fragt dieselbe Regel; die nachrechenbare
 Fassung ist `alt_absetzung_ist_teilkuendigung` in `models/bestand.py`.
 
 Welche Vorgänge der Quelle in welche des Zielsystems übergehen, legt der
 Tarifplan des Produkts fest, das den Bestand aufnimmt (KLV: Abschnitt 7.2,
-für den übernommenen Tarif TG2015). *Entscheid des Maintainers
+für den übernommenen Tarif TG2015). *Entscheid vom
 2026-10-01.* Verworfen wurden: das Vokabular der Quelle in die Führung
-mitzunehmen — derselbe Code hätte im Ledger zwei Bedeutungen, je nachdem,
-woher der Vertrag kam —, und die Lieferung beim Eingang umzuschreiben — der
+mitzunehmen (derselbe Code hätte im Ledger zwei Bedeutungen, je nachdem,
+woher der Vertrag kam), und die Lieferung beim Eingang umzuschreiben; der
 Eingang ist unantastbar (ADR-002), die Übersetzung gehört in die abgeleitete
 Schicht.
 
@@ -281,7 +281,7 @@ Schicht.
 
 Ein Vertrag trägt beliebig viele Vorgänge in jeder Reihenfolge. **Der
 Zustand eines Vertrags ist die Folge seiner Vorgänge**, und jeder Vorgang
-wirkt auf den Zustand, den der Vertrag gerade hat — nicht auf den
+wirkt auf den Zustand, den der Vertrag gerade hat, nicht auf den
 Ursprungsvertrag. Fallen mehrere Vorgänge auf denselben Jahrestag, gilt eine
 feste Reihenfolge; Rückkauf, Tod und Ablauf sehen den Zustand vor den
 Vorgängen ihres Tages. Jeder Leser (Ereignis-Engine, Bewertung und
@@ -289,7 +289,7 @@ Abschluss, Ledger-Herleitung, Bewegungskonto, Führungsprobe,
 Migrationssuite, aktuarieller Test) rechnet dieselbe Folge; die
 nachrechenbare Fassung ist `kern/vorgangsfolge.py`. Welche Folgen ein
 Produkt zulässt und wie jeder Vorgang den Zustand ändert, legt der
-Tarifplan fest (KLV: Abschnitt 7.3). *Entscheid des Maintainers
+Tarifplan fest (KLV: Abschnitt 7.3). *Entscheid vom
 2026-10-01.*
 
 # 8 Schichten der Bewertung
@@ -327,7 +327,7 @@ noch **nicht implementiert**. Offen sind die technischen Freiheitsgrade
 (siehe 9.16).
 
 **Zur Notation:** Zustände sind $s, s'$, die Verweildauer ist $d$, das
-Vertragsjahr $j$ (Abschnitt 2) — durchgehend, auch in diesem
+Vertragsjahr $j$ (Abschnitt 2), durchgehend, auch in diesem
 Abschnitt.
 
 ## 9.1 Zwei-Schritt-Prinzip
@@ -365,8 +365,8 @@ gehört je Produkt in den Tarifplan (Abschnitt 10 Nr. 9).
 
 Zur Deckungskapital-Invarianz: Gefordert ist **kein unerklärter Sprung**
 am Übernahmepunkt, **keine Unterschreitung von Mindestwerten** zu
-irgendeinem Zeitpunkt und **Konsistenz im Aggregat** einschließlich ZZR
-— nicht bitgenaue Konstanz jedes Einzelwerts über die Laufzeit.
+irgendeinem Zeitpunkt und **Konsistenz im Aggregat** einschließlich ZZR,
+nicht bitgenaue Konstanz jedes Einzelwerts über die Laufzeit.
 
 ## 9.3 Das Residuum
 
@@ -374,13 +374,13 @@ Sind die Anker 1 bis 3 hart, ist das Residuum vollständig determiniert:
 
 $$R(t_a) \;=\; V^{\mathrm{ist}}(t_a) \;-\; V^{\mathrm{prosp}}(t_a;\, S, B)$$
 
-Es gibt **keinen Freiheitsgrad in der Höhe** von $R$ — nur in seiner
+Es gibt **keinen Freiheitsgrad in der Höhe** von $R$, nur in seiner
 Fortschreibung (9.5 bis 9.9).
 
 Die erwartete Verteilung über einen Bestand ist **bimodal**: Verträge
 ohne Geschäftsvorfallhistorie liegen bei $R \approx 0$ (prospektive
 Konsistenz per Konstruktion), Verträge mit Historie bilden einen
-zweiten Cluster — getrieben vor allem durch die Zillmer-Amortisation des
+zweiten Cluster, getrieben vor allem durch die Zillmer-Amortisation des
 Quellsystems, Dynamik-Schichtung, Beitragsabgrenzung und Kostenentnahmen
 in beitragsfreien Zeiten. $R$ ist damit zugleich
 **Migrationsqualitätskennzahl**; seine nach Historientyp geclusterte
@@ -403,27 +403,27 @@ Zwei strikt getrennte Mechanismen, deren Vermischung nicht heilbar ist:
   Kommunikationsthema mit eigenem Prozess und läuft **niemals** über die
   Korrekturschicht.
 
-Beide müssen ex post unterscheidbar bleiben — sonst ist später nicht
+Beide müssen ex post unterscheidbar bleiben; sonst ist später nicht
 mehr feststellbar, ob eine Differenz Modellrest oder Anspruch war.
 
 ## 9.5 Overlay-Prinzip
 
 Die Korrekturschicht ist ein zusätzliches Paar von Zahlungsfunktionen
 auf dem **vorhandenen** Zustandsraum, ausgewertet entlang desselben
-Pfades wie Basis- und Bonusschicht. Ihre Ströme sind **fiktiv** — reine
+Pfades wie Basis- und Bonusschicht. Ihre Ströme sind **fiktiv**: reine
 Bewertungsgrößen ohne reale Zahlung; ihr Zweck ist, dem Korrekturwert
 $V^{\mathrm{korr}}$ eine wohldefinierte Thiele-Dynamik zu geben. Der
 „Abbau von $R$" *ist* dieser fiktive Strom.
 
 Drei Anti-Pattern sind verbindlich ausgeschlossen:
 
-* **Kein Zustand „migriert"** im Zustandsraum: Er würde die
+* **Kein Zustand „migriert“** im Zustandsraum: Er würde die
   Verweildauer-Uhr zurücksetzen und die Biometrie verfälschen. Die
   Migration ist ein Ereignis mit statischem Attribut $t_a$
   beziehungsweise $t_0$, kein Zustand.
 * **Keine dritte Uhr.** Die Zahlungsfunktion darf von Zeit,
   Verweildauer und statischen Vertragsattributen abhängen; „Zeit seit
-  Migration" ist $t - t_a$ und damit kein zusätzlicher Zustandsraum.
+  Migration“ ist $t - t_a$ und damit kein zusätzlicher Zustandsraum.
   Auf die Verweildauer-Abhängigkeit soll **verzichtet** werden, wo es
   möglich ist; sie bleibt zulässig, ist aber begründungspflichtig.
 * **Kein skalarer Restposten** in der Datenhaltung mit tabellarischer
@@ -443,7 +443,7 @@ $$(\partial_t + \partial_d)\, V_s(t,d) \;=\; \delta(t)\, V_s \;-\; b_s
 **Klassifikation der Übergänge.** Für die Korrekturschicht wird jeder
 Übergang einer von zwei Klassen zugeordnet:
 
-* **Wertkontinuierlich.** Der Schichtwert geht eins zu eins weiter —
+* **Wertkontinuierlich.** Der Schichtwert geht eins zu eins weiter:
   entweder als Übertrag, dann ist $b_{s s'} = 0$ und
   $V^{\mathrm{korr}}_{s'}(t,0) = V^{\mathrm{korr}}_s(t,d^-)$, oder als
   Auszahlung mit anschließender Absorption, dann ist
@@ -462,7 +462,7 @@ $$(\partial_t + \partial_d)\, V^{\mathrm{korr}} \;=\;
 \;-\; c_s(t,d),
 \qquad V^{\mathrm{korr}}(T) = 0$$
 
-**Diskrete Form — hier festgelegt** (Grundsatzdokumentation 9.6 delegiert die
+**Diskrete Form: hier festgelegt** (Grundsatzdokumentation 9.6 delegiert die
 Diskretisierung an dieses Dokument). Auf dem Jahresgitter aus Abschnitt
 6 und mit denselben Ersetzungen wie im übrigen Kern
 ($e^{-\delta} \to v$, $\mu_{s s'} \to p_{s \to s'}$ für $s' \neq s$):
@@ -476,7 +476,7 @@ mit $d^{+} = \min(d+1,\, d_{\max})$ wie in Abschnitt 4.
 
 **Wie sie zu lesen ist.** Im Zustand $s$ zehren ausschließlich die
 **vererbenden** Ausscheideursachen am Schichtwert. Die
-wertkontinuierlichen Übergänge erscheinen nicht in der Rekursion — nicht
+wertkontinuierlichen Übergänge erscheinen nicht in der Rekursion, nicht
 weil sie ignoriert würden, sondern weil die Wertgleichheit oben sie
 herausfallen lässt: Beim Übertrag gilt
 $V^{\mathrm{korr}}_{j+1}(s', 0) = V^{\mathrm{korr}}_{j+1}(s, d^{+})$
@@ -492,17 +492,17 @@ rechnender Geschäftsvorfall setzt ihn), wird die Schicht auf dem
 Jahresgitter **ab dem Jahrestag $j$** gerechnet, mit zwei Festlegungen:
 
 1. Das erste Gitterjahr trägt den Einheitsstrom **pro rata** mit dem
-   Faktor $(12-m)/12$ — nur dieser Teil des Jahres liegt nach $t_a$.
-2. Werte an unterjährigen Zeitpunkten — einschließlich $t_a$ selbst und
-   damit $\Pi(t_a)$ für die Verankerung $\rho = R/\Pi(t_a)$ — sind die
+   Faktor $(12-m)/12$: nur dieser Teil des Jahres liegt nach $t_a$.
+2. Werte an unterjährigen Zeitpunkten (einschließlich $t_a$ selbst und
+   damit $\Pi(t_a)$ für die Verankerung $\rho = R/\Pi(t_a)$) sind die
    **lineare Mischung der Gitterränder**, dieselbe Monatskonvention wie
    im übrigen Kern (9.14). Die Schicht bekommt keine eigene Zeitachse
-   ("Overlay ohne dritte Uhr", 9.5).
+   („Overlay ohne dritte Uhr“, 9.5).
 
 $m = 0$ reduziert beides auf die Jahresverankerung; der Selbsttest der
 Verankerung ($V^{\mathrm{korr}}(t_a) = R$ konstruktionsbedingt) bleibt
 für jedes $m$ erhalten. Die Konvention regelt die **Verankerung und
-Bewertung** der Schicht am Rumpfjahr — die unterjährige *Ausführung*
+Bewertung** der Schicht am Rumpfjahr; die unterjährige *Ausführung*
 eines Geschäftsvorfalls (etwa eine Herabsetzung zwischen zwei
 Jahrestagen) ist davon unberührt und weiterhin gesondert festzulegen.
 
@@ -516,12 +516,12 @@ Produkt in den Tarifplan.
 Leitgedanke der Zuordnung: Das Residuum soll so früh wie möglich
 verschwinden, aber nur dort, wo der Vertrag **ohnehin neu gerechnet
 wird**. Wo nichts neu gerechnet wird, gibt es keinen Anlass, die Schicht
-aufzulösen — sie aufzulösen hieße, eine Differenz verschwinden zu lassen,
+aufzulösen: sie aufzulösen hieße, eine Differenz verschwinden zu lassen,
 die noch besteht.
 
 | Ereignis / Übergang | Klasse | Behandlung |
 |---|---|---|
-| Rechnender Geschäftsvorfall (Beitragsfreistellung, Herabsetzung, Zuzahlung, Teilrückkauf, Verlängerung) | A | **Absorption:** Das Gesamt-Deckungskapital *einschließlich der Schicht* wird angerechnet, danach Kalibrierungsfaktor null. Der Vertrag ist ab dem ersten rechnenden Vorfall rein prospektiv — „geheilt". |
+| Rechnender Geschäftsvorfall (Beitragsfreistellung, Herabsetzung, Zuzahlung, Teilrückkauf, Verlängerung) | A | **Absorption:** Das Gesamt-Deckungskapital *einschließlich der Schicht* wird angerechnet, danach Kalibrierungsfaktor null. Der Vertrag ist ab dem ersten rechnenden Vorfall rein prospektiv — „geheilt“. |
 | Dynamische Erhöhung | B | **nicht rechnend:** Sie legt eine neue Scheibe an und lässt den bestehenden Vertrag unberührt. Es wird nichts neu gerechnet, also löst sie die Schicht auch nicht auf. *Präzisierung 2026-08-28: Eine frühere Fassung führte die Dynamik unter Klasse A. Das trifft für ein Scheibenmodell nicht zu — dort entsteht ein zusätzlicher Vertragsteil, keine Neuberechnung des vorhandenen.* |
 | Rückkauf | B | wertkontinuierlich: Die Schicht zahlt sich im Rückkaufswert aus. Konvention: Den Stornoabzug trägt die Basisschicht. |
 | Tod mit fester Versicherungssumme | B | **vererbend:** Die Leistung ist Anker und bleibt unangetastet, der Schichtwert verfällt. Die Sterblichkeit finanziert die Amortisation anteilig mit. |
@@ -533,8 +533,8 @@ die noch besteht.
 eines migrierten Produkts nichts anderes festlegt (Abschnitt 10 Nr. 9),
 gilt: Eine verankerte Korrekturschicht (9.12) wird mit dem **nächsten
 rechnenden Geschäftsvorfall** konsumiert. Der Vertrag wird dabei
-konstruktiv neu gerechnet — Startwert ist das Gesamt-Deckungskapital
-einschließlich Schicht —, und der Schichtwert geht in die Leistungsseite
+konstruktiv neu gerechnet (Startwert ist das Gesamt-Deckungskapital
+einschließlich Schicht), und der Schichtwert geht in die Leistungsseite
 dieses Vorfalls ein; danach führt allein die Logik des Zielsystems, eine
 eigene Schicht gibt es nicht mehr. Vor der Verankerung trägt die Schicht
 nicht, und ein nicht rechnender Vorfall lässt sie stehen. Die
@@ -546,7 +546,7 @@ nachrechenbare Fassung dieser Zuordnung ist `HEILUNG` in
 |---|---|---|
 | Beitragsfreistellung (`PEX`) | konsumiert | wertstetig als Zuschlag auf die beitragsfreie Summe (`VS_bfr`) |
 | Beitragsherabsetzung (`RED`), prospektiv oder mit Abzug, nur vor dem Beitragsende | konsumiert | in die beitragsfreie Summe des umgewandelten Teils; Ledger-Zeile `dDK_absorption`, keine Auszahlung. Mit Abzug trifft der Stornoabzug $(1-f)\cdot$StoAb nur den Grundvertrag, nicht die Schicht (Konvention wie beim Rückkauf). *Präzisierung 2026-09-26.* |
-| Teilkündigung (`TKU`), eigener Geschäftsvorfall jeder Generation, vor und nach dem Beitragsende und nach der Beitragsfreistellung | konsumiert | **vollständig in die Auszahlung** des gekündigten Anteils: `RKW_teilkuendigung` $= (1-f)\cdot$ Rückkaufswert der betroffenen Bausteine $+$ Schichtwert. Der Stornoabzug trifft nur den Rückkaufswert, nicht die Schicht (Konvention wie beim Rückkauf). *Präzisierung 2026-09-22.* Herabsetzung und Teilkündigung sind zwei Vorgänge mit eigenen Codes; eine Teilkündigung ist nie als `RED` gebucht (Tarifplan KLV 7.2, ADR-023; *Entscheid des Maintainers 2026-10-01*). |
+| Teilkündigung (`TKU`), eigener Geschäftsvorfall jeder Generation, vor und nach dem Beitragsende und nach der Beitragsfreistellung | konsumiert | **vollständig in die Auszahlung** des gekündigten Anteils: `RKW_teilkuendigung` $= (1-f)\cdot$ Rückkaufswert der betroffenen Bausteine $+$ Schichtwert. Der Stornoabzug trifft nur den Rückkaufswert, nicht die Schicht (Konvention wie beim Rückkauf). *Präzisierung 2026-09-22.* Herabsetzung und Teilkündigung sind zwei Vorgänge mit eigenen Codes; eine Teilkündigung ist nie als `RED` gebucht (Tarifplan KLV 7.2, ADR-023; *Entscheid vom 2026-10-01*). |
 | Rückkauf (`STO`) | ausgezahlt | im Rückkaufswert (`RKW`); wertkontinuierlich |
 | zweiter und jeder weitere Vorgang einer Folge (7.2) | — | Die Schicht ist mit dem ersten rechnenden Vorgang nach der Verankerung konsumiert; ein späterer Vorgang findet keine Schicht mehr und rechnet allein auf dem Zustand, den der erste hinterlassen hat. Ein Vorgang **vor** der Verankerung (Vorgeschichte) konsumiert nichts. *Präzisierung 2026-10-01.* |
 | Dynamische Erhöhung (`ERH`) | bleibt | nicht rechnend — die Schicht wartet auf den nächsten rechnenden Vorfall |
@@ -561,7 +561,7 @@ $$\mathcal{A}(t, s, d, R):\qquad
 \rho \;:=\; \frac{R}{\Pi_s(t,d)}, \qquad c_s \;=\; \rho\, g$$
 
 $\Pi_s(t,d)$ ist der Barwert des Einheitsstroms $g$ unter der Dynamik
-aus 9.6 — numerisch **dieselbe Rekursion** mit $c = g$ statt
+aus 9.6: numerisch **dieselbe Rekursion** mit $c = g$ statt
 $c = c_s$. Eine geschlossene Form ist **nicht erforderlich**; der Kern
 bewertet $\Pi$ mit derselben Rekursion wie $V^{\mathrm{korr}}$ selbst.
 
@@ -578,7 +578,7 @@ Ein Operator, vier Aufrufkontexte:
 Versicherungsnehmers (Storno, Beitragsfreistellung und weitere)
 wertkontinuierlich sind, treten ihre Intensitäten in $\Pi$ nicht auf.
 Der Kalibrierungsfaktor $\rho$ hängt damit nur vom Rechnungszins und den
-vererbenden biometrischen Ausscheideursachen ab — **Stornoannahmen
+vererbenden biometrischen Ausscheideursachen ab: **Stornoannahmen
 spielen in der Migrationsbewertung keine Rolle.**
 
 ## 9.9 Formfunktion
@@ -591,12 +591,12 @@ Restlaufzeit integrierbar mit $\Pi > 0$.
 
 Zulässige Kandidaten, Wahl je Tarifplan:
 
-1. $g \propto V^{\mathrm{base}}(t)$ — glatt und überall definiert.
+1. $g \propto V^{\mathrm{base}}(t)$: glatt und überall definiert.
    **Default.**
-2. $g \equiv 1$ auf einem Amortisationsfenster $[t_a,\, t_a + n]$ — am
+2. $g \equiv 1$ auf einem Amortisationsfenster $[t_a,\, t_a + n]$: am
    leichtesten zu erklären; $n$ ist Produktparameter; ungeeignet bei
    kurzer Restlaufzeit.
-3. Beitragsproportional — nur zulässig zusammen mit einer
+3. Beitragsproportional: nur zulässig zusammen mit einer
    Fortsetzungsregel für beitragsfreie Zustände.
 
 Optional kann die Form **per Kleinste-Quadrate** gegen
@@ -609,7 +609,7 @@ in der Ausgestaltung des Tarifplans zu dokumentieren.
 
 * **$R < 0$** (Ist unter prospektiv; typisch bei nicht getilgtem
   Abschlusskostenanteil): **pfadweise** Floor-Prüfung zur
-  Kalibrierungszeit — Basiswert plus Korrekturwert muss die
+  Kalibrierungszeit: Basiswert plus Korrekturwert muss die
   Mindestwerte nach § 169 VVG und DeckRV **für alle Zeitpunkte**
   einhalten, nicht nur am Verankerungspunkt. Bei Verletzung wird $R$
   gekappt; der gekappte Teil geht in den Fehler- und Klärungsprozess
@@ -617,18 +617,18 @@ in der Ausgestaltung des Tarifplans zu dokumentieren.
 * **$R > 0$** ist aufsichtsrechtlich unkritisch. Beim Abbau wird
   Ergebnis frei, das in Rohüberschuss und Überschussbeteiligung läuft
   (§ 153 VVG, RfB). **Ob und wie** es dem Bestand zusteht, ist
-  Unternehmensentscheidung — der Kern muss den Effekt **sichtbar
+  Unternehmensentscheidung; der Kern muss den Effekt **sichtbar
   ausweisen** können.
 * **Kein Amortisationsraum ($\Pi = 0$):** Trägt die Formfunktion über
   den erlebten Zeitraum keinen Einheitsstrom, ist $\rho$ nicht
   definiert. Das ist der einzige zwingende Grenzfall und ein harter
-  Fehler — es gibt nichts, worauf sich das Residuum verteilen ließe.
+  Fehler: es gibt nichts, worauf sich das Residuum verteilen ließe.
 * **Kurze Restlaufzeit ist dagegen KEIN Grenzfall.** Eine frühere
   Fassung dieses Abschnitts verlangte eine Schwelle mit der Begründung,
   unterhalb davon explodiere $\rho$. Das trägt nicht: $\rho$ ist ein
   Zwischenwert der Kalibrierung, kein Ausweiswert. Er wächst bei
   kürzerer Restlaufzeit zwar, wird aber mit einem im selben Maß
-  kleineren Einheitsstrom multipliziert — der Schichtwert bleibt in
+  kleineren Einheitsstrom multipliziert: der Schichtwert bleibt in
   jedem Fall exakt $R$ und der Terminalwert exakt null.
 
   Eine feste Schwelle hätte deshalb kein Ergebnis beurteilt, sondern die
@@ -644,11 +644,11 @@ in der Ausgestaltung des Tarifplans zu dokumentieren.
   Residuen unterhalb einer Restlaufzeit sofort über das Ergebnis
   ausbucht, weil ein sehr steiler Abbau bilanziell einem Einmaleffekt
   gleichkommt. Wird das so festgelegt, ist es zu parametrieren und im
-  Beleg auszuweisen — nicht im Rechenkern zu verdrahten. Und die
+  Beleg auszuweisen, nicht im Rechenkern zu verdrahten. Und die
   Ausbuchung ist im Ergebnis sichtbar zu machen.
 * **Flags:** Die Schicht ist Deckungskapital, trägt den Rechnungszins
   ihrer Bestandsgruppe und ist im Default in Überschussbemessung und
-  ZZR-Ermittlung **enthalten** — beides als Konfiguration je
+  ZZR-Ermittlung **enthalten**, beides als Konfiguration je
   Bestandsgruppe, nie als fest verdrahtete Regel.
 
 ## 9.11 Persistenz und Reporting
@@ -673,8 +673,8 @@ An einem Rechenpunkt vergleicht die Methode geschäftsplanmäßige
 Rechenwerte. Am unterjährigen Migrationsstichtag verglichen würde $R$
 zusätzlich Interpolationskonventionen und Beitragsabgrenzung messen und
 wäre als Diagnoseinstrument entwertet. Zudem ist der zu
-rekonstruierende Zustand innerhalb des Jahres dort minimal — Zillmerjahr,
-Dynamikofferten, verdiente Beitragsanteile —, und der Wert am $t_a$
+rekonstruierende Zustand innerhalb des Jahres dort minimal (Zillmerjahr,
+Dynamikofferten, verdiente Beitragsanteile), und der Wert am $t_a$
 entspricht der letzten Standmitteilung nach § 155 VAG: Kundenkonsistenz
 ist wörtlich erfüllt.
 
@@ -690,7 +690,7 @@ Migrationskonzept.
 
 **Fallback-Kohorte.** Kann die Quelle für einzelne Verträge nur den
 Snapshot am $t_0$ liefern, wird auf eine Verankerung am $t_0$
-ausgewichen — als **gekennzeichnete Kohorte mit eigener Toleranz**,
+ausgewichen, als **gekennzeichnete Kohorte mit eigener Toleranz**,
 **niemals stillschweigend gemischt**. Die Kennzeichnung ist
 Pflichtattribut (9.11).
 
@@ -699,15 +699,15 @@ Pflichtattribut (9.11).
 Aus der Verankerungsregel folgen zwei getrennte Residuen mit eigenen
 Ursachen, Verteilungen und Toleranzen:
 
-* $R_{\mathrm{hist}}$ — Verankerung bei $t_a$, enthält ausschließlich
+* $R_{\mathrm{hist}}$: Verankerung bei $t_a$, enthält ausschließlich
   Pfad- und Historienresiduen. **Primäre Qualitätskennzahl.**
-* $R_{\mathrm{conv}}$ — optional. Wird bitgenaue Gleichheit am
+* $R_{\mathrm{conv}}$: optional. Wird bitgenaue Gleichheit am
   Migrationsstichtag gefordert (etwa zum Bilanzstichtag), wird die
   Konventionsdifferenz **primär eliminiert**, indem der Kern die
   unterjährigen Rechen- und Interpolationskonventionen des Altbestands
   als Teil der mitwandernden Rechnungsgrundlagen führt. Ein
   verbleibender Rest $\delta_{\mathrm{conv}}$ geht per Zweitverankerung
-  (9.8) in eine **eigene Schicht** — getrennt persistiert, getrennt
+  (9.8) in eine **eigene Schicht**, getrennt persistiert, getrennt
   berichtet, mit eigener Toleranz. Im Kern kostet die Zweitschicht
   nichts, weil der Mechanismus identisch ist.
 
@@ -727,14 +727,14 @@ wechselt die Rolle:
 | **Archiv** | Vollhistorie dauerhaft auskunftsfähig: Aufbewahrungspflichten, Auskunftsersuchen, Rückabwicklung bei Widerruf — **Letzteres kann ein prospektiv verankerter Vertrag konstruktionsbedingt nicht liefern** | Auskunftssystem außerhalb des Rechenkerns |
 
 Zwei Grundsätze sind bindend: Die **Ableitungslast liegt quellseitig
-oder im Migrationssystem** — führt das Quellsystem die abgeleiteten
+oder im Migrationssystem**: führt das Quellsystem die abgeleiteten
 Attribute nicht als Bestandsfelder, berechnet sie die
 Übernahmestrecke. Und der **Rechenkern bleibt historienfrei**: Er sieht
 die Geschäftsvorfall-Liste zu keinem Zeitpunkt; sein einziger
 Historieninput ist das Attributset des Zustandssnapshots.
 
 **Ohne die Geschäftsvorfall-Metadatenliste ist die aktuarielle Abnahme
-nicht durchführbar** — ohne sie gibt es keine Historien-Clusterung und
+nicht durchführbar**: ohne sie gibt es keine Historien-Clusterung und
 keine erklärbaren Ausreißer. Sie ist Abnahmevoraussetzung, nicht
 Komfort.
 
@@ -756,11 +756,11 @@ Ebenen** geprüft. Die Trennung ist methodisch, nicht organisatorisch:
 Das Controlling misst am Übernahmepunkt gegen die Bilanz, der
 aktuarielle Test am Rechenpunkt gegen die Methode.
 
-**Toleranzform.** Toleranzen werden auf der **Verteilung** definiert —
-Maximum, hohe Perzentile, Betragssumme je Bestandsgruppe — **niemals
+**Toleranzform.** Toleranzen werden auf der **Verteilung** definiert:
+Maximum, hohe Perzentile, Betragssumme je Bestandsgruppe; **niemals
 auf Mittelwert oder Median**. Erwartet wird Bimodalität (9.3); ein
 unauffälliger Mittelwert bei großen Einzelmaxima ist ein Befund, keine
-Entwarnung. „Rundung" ist als Ursache nur für Differenzen in
+Entwarnung. „Rundung“ ist als Ursache nur für Differenzen in
 Cent-Größenordnung zulässig; größere Beträge verlangen eine benannte
 Ursache je Cluster.
 
@@ -786,7 +786,7 @@ DeckRV (Mindestwerte, Höchstzillmerung, 9.10), § 153 VVG
 (Schicht in Bestandsgruppe und ZZR-Ermittlung, 9.10) sowie die
 mitwandernden Rechnungsgrundlagen (9.1).
 
-Das Verfahren beider Prüfebenen — Artefakte, Gates, Entscheidungswege —
+Das Verfahren beider Prüfebenen (Artefakte, Gates, Entscheidungswege)
 steht in der Migrationskonzept-Vorlage, Kapitel 6 und 7.
 
 ## 9.16 Offene Freiheitsgrade
@@ -794,7 +794,7 @@ steht in der Migrationskonzept-Vorlage, Kapitel 6 und 7.
 Die Mathematik oben ist verbindlich. Offen sind die folgenden Punkte
 der Methode; sie sind **zwischen Entwicklung und
 fachverantwortlichem Aktuar** zu entscheiden und danach hier oder im
-Tarifplan zu belegen — nicht beim Implementieren nebenbei:
+Tarifplan zu belegen, nicht beim Implementieren nebenbei:
 
 | Gegenstand | bindend ist | offen ist |
 |---|---|---|
@@ -804,7 +804,7 @@ Tarifplan zu belegen — nicht beim Implementieren nebenbei:
 | Klasse-C-Neuverankerung | Operator nach 9.8 | Auslösemechanik (Ereignis-Haken oder Neubewertung) |
 | Unterjährige Altkonventionen | als konfigurierbare Rechnungsgrundlage, nicht als Sonderlogik im Rechenpfad | Konfigurationsmodell, Granularität |
 | Kein Amortisationsraum | $\Pi = 0$ ist ein harter Fehler (9.10) | — |
-| Ausbuchung statt Verteilung | falls festgelegt: parametriert und im Beleg ausgewiesen, Ausbuchung im Ergebnis sichtbar (9.10) | ob ueberhaupt, ab welcher Restlaufzeit, Buchungsweg |
+| Ausbuchung statt Verteilung | falls festgelegt: parametriert und im Beleg ausgewiesen, Ausbuchung im Ergebnis sichtbar (9.10) | ob überhaupt, ab welcher Restlaufzeit, Buchungsweg |
 | Floor-Prüfung | pfadweise zur Kalibrierungszeit (9.10) | Prüfraster, Performance-Strategie |
 | Persistenz | Parameter statt Werte, Reproduzierbarkeit (9.11) | Speichermodell, Versionierung |
 | Reporting | eigene Position je Vertrag und aggregiert, beide Residuen getrennt | Kontenanbindung, Berichtsformate |
@@ -823,7 +823,7 @@ Residuen (9.13) und die Historienfreiheit des Kerns (9.14).
 # 10 Produkt-Contract: was ein Tarifplan festlegt
 
 Ein Produkt ist im Kern eine Belegung dieses Rückgrats. Der Tarifplan
-eines Produkts legt fest — und nur er:
+eines Produkts legt fest, und nur er:
 
 1. **Zustandsraum und Übergänge** des Tarifs samt zugeordneten
    Rechnungsgrundlagen.
@@ -849,16 +849,14 @@ Produkten dient (`Knoten: klv, bu`), gehört hierher; was ein Modul mit
 genau einem Produktknoten beschreibt, gehört in den Tarifplan. **Kein
 Satz steht an beiden Orten.**
 
-# 11 Abnahme und Referenzwerte   [Achtung: docs/tarifplaene/klv.md und bu.md verweisen als "Abschnitt 11" hierher]
+# 11 Abnahme und Referenzwerte
 
 Änderungen am Kern folgen seinem Abnahme-Protokoll
 (`rechner_pipeline.kern`): eingefrorene Referenzwerte (Charakterisierungstests) in voller
-Float-Präzision, algebraische Identitätsprüfungen, je Migrationsfall
-Gate P-K1 gegen den Quell-Rechner, und für Produkte mit
-Kommutations-Vergleichsschiene die Toleranz-Überleitung
-(`qa/ueberleitung`). Die klassische Kommutationsrechnung lebt als
-separater Zweitkern ausschließlich als Kreuz-Check; sie ist kein
-Bestandteil des Zielkerns.
+Float-Präzision, algebraische Identitätsprüfungen und je Migrationsfall
+Gate P-K1 gegen den Quell-Rechner. Die klassische Kommutationsrechnung
+ist kein Bestandteil des Zielkerns; die Toleranz-Überleitung gegen einen
+separaten Zweitkern ist außer Betrieb, ihr Beleg ist erbracht (ADR-013).
 
 Die Abnahme einer **Migration** ist davon getrennt und läuft über die
 beiden Prüfebenen (9.15; Verfahren im Migrationskonzept,
@@ -880,14 +878,14 @@ feststellt, löst sie nicht implizit auf, sondern trägt sie hier ein
 
 # 13 Versionierung und Änderungsprozess
 
-Dieses Dokument ist versioniert, und die Umsetzung folgt ihm — nicht
+Dieses Dokument ist versioniert, und die Umsetzung folgt ihm, nicht
 umgekehrt. Jede Änderung trägt ihren Änderungsgrund und ist
 nachvollziehbar historisiert.
 
 Substanzielle Änderungen an den Abschnitten 3 bis 9 sind fachliche
 Änderungen und brauchen die **Zustimmung des Aktuariats**; für
 Abschnitt 9 (Korrekturschicht) gilt zusätzlich die Konfliktregel aus
-9.16 — entschieden wird zwischen Entwicklung und fachverantwortlichem
+9.16: entschieden wird zwischen Entwicklung und fachverantwortlichem
 Aktuar. Redaktionelle Änderungen an den übrigen Abschnitten laufen im
 regulären Änderungsverfahren der Systemdokumentation.
 

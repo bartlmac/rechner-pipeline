@@ -9,11 +9,10 @@ Beschluss 2026-08-16 (Maintainer): Der Kern ist vollstaendig in der
 Zustandsmodell-Welt — die historische Excel-Paritaet (617/617) war die
 EINMALIGE Abnahme des Uebersetzungsakts und ist KEIN laufender Referenzwert
 mehr; die klassischen Kommutationsspalten sind kein Bestandteil des
-Kerns, sondern leben als separater Zweitkern
-(:mod:`rechner_pipeline.kommutationskern`). Seit ADR-013 hat er KEINEN
-Konsumenten im Produktivpfad mehr: Die Toleranz-Ueberleitung ist ausser
-Betrieb, und der Zweitkern lebt nur noch als unabhaengiger Zeuge der
-algebraischen Eigenschaftstests, die ihn testseitig direkt bauen.
+Kerns. Seit ADR-013 ist die Toleranz-Ueberleitung gegen den separaten
+Zweitkern ausser Betrieb; seit ADR-027 liegt der Zweitkern nicht mehr im
+Paket und lebt nur noch als unabhaengiger Zeuge der algebraischen
+Eigenschaftstests (``tests/kommutationszeuge.py``).
 
 Schichten::
 
@@ -44,8 +43,9 @@ Abnahme-Protokoll fuer Kern-Aenderungen:
    Kommutationskern war der Uebersetzungsbeleg des Backbone-Wechsels
    und ist erbracht. Was von der Unabhaengigkeit bleibt, steht in den
    algebraischen Eigenschaftstests: Sie halten die Durchreicher
-   ``pv_benefits``/``pv_premiums``/``net_premium`` gegen den Zweitkern,
-   damit dort nicht der Methodenrumpf gegen sich selbst prueft.
+   ``pv_benefits``/``pv_premiums``/``net_premium`` gegen den Zweitkern
+   (``tests/kommutationszeuge.py``), damit dort nicht der Methodenrumpf
+   gegen sich selbst prueft.
 3. Die algebraischen Eigenschaften (qa_contract, Hypothesis) muessen
    halten.
 4. Je MIGRATIONSFALL gilt der Generations-Golden-Master (Gate P-K1):
@@ -90,9 +90,9 @@ from rechner_pipeline.kern.vorgangsfolge import (
 #: 1.x/2.x = Migrations- und Backbone-Aera (Historie in Git).
 #: 3.0.0 = Zielbild-Schnitt (Beschluss Maintainer 2026-08-16): Kern
 #: vollstaendig in der Zustandsmodell-Welt; Kommutation als separater
-#: Zweitkern (rechner_pipeline.kommutationskern), seit ADR-013 ohne
-#: Konsumenten im Produktivpfad und nur noch Zeuge der algebraischen
-#: Eigenschaftstests;
+#: Zweitkern (damals rechner_pipeline.kommutationskern; seit ADR-013 ohne
+#: Konsumenten im Produktivpfad, seit ADR-027 nur noch Zeuge der
+#: algebraischen Eigenschaftstests in tests/kommutationszeuge.py);
 #: Excel-Paritaet 617/617 als Kern-Referenzwert entfernt (sie war die einmalige
 #: Abnahme des Uebersetzungsakts); Tafel-Schicht eigenstaendig
 #: (kern/tafeln.py, Erschoepfungs-Domaene rein aus qx); Verlaufswerte
