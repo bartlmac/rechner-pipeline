@@ -61,6 +61,11 @@ def test_eine_homogene_reihe_traegt_keine_naht():
     for konvention in (KONVENTION_MONATSGENAU, KONVENTION_JAHRESZEILE):
         html = _bericht(lambda i: konvention)
         assert not any(m in html for m in MARKEN), konvention
+        # Ohne Naht bleibt der Bericht, wie er vor der Naht-Pruefung war:
+        # keine leere Zeile an der Stelle des Hinweises (pipeline-dev,
+        # Nachfahren von Fall 3 am 08.10.2026: sonst unterscheiden sich
+        # alle Monatsberichte von den gebundenen um genau diese Zeile).
+        assert '\n\n<p class="hinweis">Alle Zahlen' not in html, konvention
 
 
 def test_ein_leerer_abschluss_in_der_reihe_ist_keine_naht():
