@@ -73,9 +73,10 @@ from rechner_pipeline.models import kernabnahme as ka
 
 COMMAND = "kernstand_belegen"
 GATE = "A-K2.kernaenderung"
-#: 1.1.0 (2026-10-09, ADR-028 Nachtrag): Ein Vergleichsstand, dem ein Teil des
-#: Gegenstands am heutigen Pfad fehlt, wird verweigert.
-GATE_VERSION = "1.1.0"
+#: 2.0.0 (2026-10-09, ADR-028 Nachtrag): Ein Vergleichsstand, dem ein Teil des
+#: Gegenstands am heutigen Pfad fehlt, wird verweigert. Major (ADR-012): Ein
+#: solcher Lauf schrieb vorher einen Beleg.
+GATE_VERSION = "2.0.0"
 
 #: Schema des Aenderungsbelegs. 4 (2026-10-01, ADR-025): der Gegenstand
 #: ohne die Tarifplaene (sie gehoeren zum Tarifwerk, A-T1). 3 (2026-10-01):

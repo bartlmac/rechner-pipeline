@@ -34,6 +34,8 @@ startet keinen Gate-Lauf.
 | P-K1 (Version `1.0.0`) | `gates.generation_golden` | den parametrierten Kern gegen die Erwartungswerte der Lieferung |
 | P9 (Version `5.0.0`) | `gates.gate_entscheid` | die Snapshots der menschlichen Gates |
 | P-B1 (Version `4.0.0`) | `gates.bestand_validate` | den geführten Bestand |
+| A-K2-Vorlage (Version `2.0.0`) | `gates.kernstand_belegen` | die Änderung des Kernstands (Rechenkern, Referenzwerte, Grundsatzdokumentation) gegenüber dem zuletzt abgenommenen Stand; legt Beleg und lesbare Sicht als Vorlage für A-K2 vor |
+| A-T1-Vorlage (Version `2.0.0`) | `gates.tarifwerk_belegen` | die Änderung des Tarifwerks (Tarifpläne und Parametrierung der eigenen Generationen) gegenüber dem zuletzt abgenommenen Stand; legt Beleg und lesbare Sicht als Vorlage für A-T1 vor |
 | A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
 | A-M4-Vorlage (Version `10.0.0`) | `gates.abnahmebericht` | die Migrationssuite und die Pflichtbelege des Migrationscontrollings; rendert die Entscheidungsvorlage für A-M4 |
 
@@ -117,6 +119,19 @@ Versionen:
 - `8.0.0`: Im Bestands-Scope trägt die Suite in Fassung 2 je Vertrag den `fuehrungswert`: Deckungskapital, Rückkaufswert und Korrekturschicht, die der Monatsabschluss am Zugangs- und am Folgestichtag führt, als Systemwert auf dem Bestand der Suite (`models.fuehrungswert`). Eine Suite ohne ihn war vorher ein gültiger Beleg (Entscheid des Maintainers 2026-10-01).
 - `9.0.0`: Die Führungsprobe trägt Fassung 5, Tarifwerk und Quellverfahren aus der Spez statt aus Schaltern; ihr Aufruf nennt keine Tarifschalter mehr. Ein Beleg der Fassung 4 war gültig und ist mit seinem Aufruf nicht mehr nachrechenbar (ADR-024, Nachtrag).
 - `10.0.0`: Der Führungswert der Suite wird auf den gebundenen Bytes (Bestand, Nebentabellen, Config, Tarifwerk der Spez) über denselben Weg wie die Suite nachgerechnet und in der Vorlage ausgewiesen (Summary `fuehrungswert`, HTML je Vertrag). A-M4 bindet die Spez der Generation (Summary `tarifregeln`), und jeder Beleg der Bestandsstrecke (Übernahme, Schicht, aktuarieller Test, Suite, Führungsprobe) muss genau ihre Regeln nennen und sie gelesen haben. Ein verfälschter Führungswert oder ein Beleg mit anderer Regelangabe war vorher gültig (Prüfrunde G, ADR-024, vierter Nachtrag).
+
+### A-K2- und A-T1-Vorlage: Kernstand und Tarifwerk
+
+Beide Werkzeuge belegen die Änderung ihres Gegenstands zwischen dem zuletzt
+abgenommenen Stand (`--von`, ein Commit) und dem Arbeitsbaum: A-K2 den
+Kernstand (`models.kernabnahme`), A-T1 das Tarifwerk
+(`models.tarifwerkabnahme`). Auch ein unveränderter Gegenstand ist ein
+gültiger Beleg; er sagt dann genau das. Das Gate (`gate_entscheid`) rechnet
+den Beleg nach, statt ihm zu glauben.
+
+Versionen:
+
+- `2.0.0`: Ein Vergleichsstand, dem der Gegenstand an den heutigen Pfaden fehlt, wird verweigert. Vorher schrieb ein solcher Lauf einen Beleg: Gegen einen Stand vor dem Umzug nach `plv/` belegte A-T1 das Tarifwerk „vorher“ als leer und jeden Tarifplan und jede Generation als neu (ADR-028, Nachtrag).
 
 ## Die Versionsregel
 

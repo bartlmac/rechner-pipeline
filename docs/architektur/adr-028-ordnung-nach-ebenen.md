@@ -104,7 +104,7 @@ Zwei Folgen davon:
   `werkzeuge/welt/welt_aufstellen.sh`); vorher zeigte sie die Änderung gegenüber
   `e8fa2b4`, einem Stand der früheren Ordnung. A-T1 und A-K2 verweigern
   jeden Vergleichsstand, dem ihr Gegenstand an den heutigen Pfaden fehlt,
-  statt ein leeres „vorher“ zu belegen (beide Werkzeuge in Version 1.1.0).
+  statt ein leeres „vorher“ zu belegen (beide Werkzeuge in Version 2.0.0).
 * Die Commits, die Tarifwerk und Grundsatzdokumentation zwischen
   `fall3-vor` und dem Umzug noch am alten Ort geändert haben (6aa7c14,
   884ac7f, 081c4f9, 627de7d, b3ddf31), nennen die Belege beim Nachfahren

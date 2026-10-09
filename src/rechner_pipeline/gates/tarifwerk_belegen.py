@@ -64,10 +64,11 @@ from rechner_pipeline.models import tarifwerkabnahme as tw
 
 COMMAND = "tarifwerk_belegen"
 GATE = "A-T1.tarifwerk"
-#: 1.1.0 (2026-10-09, ADR-028 Nachtrag): Ein Vergleichsstand ohne Tarifplaene
+#: 2.0.0 (2026-10-09, ADR-028 Nachtrag): Ein Vergleichsstand ohne Tarifplaene
 #: oder Configs an den heutigen Pfaden wird verweigert, statt ein leeres
-#: Tarifwerk "vorher" zu belegen.
-GATE_VERSION = "1.1.0"
+#: Tarifwerk "vorher" zu belegen. Major (ADR-012): Ein solcher Lauf schrieb
+#: vorher einen Beleg.
+GATE_VERSION = "2.0.0"
 #: Schema des Aenderungsbelegs.
 TARIFWERK_AENDERUNG_SCHEMA_VERSION = 1
 ART = "tarifwerk"
