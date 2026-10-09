@@ -1040,7 +1040,7 @@ import drift as dr  # noqa: E402
 
 
 def _seitenrepo(tmp_path: Path) -> Path:
-    """Ein Mini-Repo, dessen Branch gh-pages eine Seite traegt."""
+    """Ein Mini-Repo wie plv-fiktion: Zweig main traegt die Seite."""
     import subprocess
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -1049,7 +1049,7 @@ def _seitenrepo(tmp_path: Path) -> Path:
         subprocess.run(["git", *args], cwd=repo, check=True,
                        capture_output=True)
 
-    git("init", "-q", "-b", "gh-pages")
+    git("init", "-q", "-b", "main")
     git("config", "user.email", "test@example.invalid")
     git("config", "user.name", "test")
     (repo / "index.md").write_text(

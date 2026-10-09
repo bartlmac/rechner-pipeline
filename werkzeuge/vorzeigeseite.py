@@ -1989,10 +1989,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     print("  - Ist der Simulationshinweis oben noch zutreffend?")
     print("  - Traegt die Seite etwas, das die Vorfuehrung verrät?")
     print()
-    print("Veroeffentlichen (der Mensch, bewusst — siehe werkzeuge/README.md):")
-    print(f"  git worktree add /tmp/gh-pages gh-pages")
-    print(f"  cp -r {ziel}/. /tmp/gh-pages/")
-    print(f"  cd /tmp/gh-pages && git add -A && git commit && git push")
+    print("Veroeffentlicht wird der ganze Auftritt, nie die Fallseite allein: als Commit")
+    print("im Repository bartlmac/plv-fiktion (werkzeuge/README.md, Abschnitt 'Je Lauf').")
     return 3 if offene else 0
 
 

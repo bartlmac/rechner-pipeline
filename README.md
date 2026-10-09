@@ -17,7 +17,7 @@ Lebensversicherung (PLV) übernimmt den Bestand der Baldrian Leben. Im
 Repository liegen keine echten Kunden- oder Vertragsdaten.
 
 **Für Fachleute und Interessierte** erklärt die
-[Vorzeigeseite](https://bartlmac.github.io/rechner-pipeline/), wie eine
+[Vorzeigeseite](https://bartlmac.github.io/plv-fiktion/), wie eine
 Migration abläuft, was der Rechenkern rechnet und wie die PLV ihre Tarife
 dokumentiert. **Dieses Repository ist für Entwickler:** Code, Tests und die
 Routinen, mit denen sich jeder Stand nachbauen lässt.

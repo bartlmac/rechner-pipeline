@@ -1358,7 +1358,7 @@ def _tarifplan_uebersicht(ziel: Path, importiert: List[tuple]) -> None:
 #: verlinken"). Muster wie bei fnmatch; die Menge zu aendern ist ein Eintrag
 #: hier. Ein Verweis darauf, aus einem gespiegelten Dokument oder einer
 #: Quellseite, zeigt auf GitHub (:data:`GITHUB_ARCHITEKTUR`); er traegt ab dem
-#: Push, der main vor gh-pages schiebt.
+#: Push, der main vor der Seite schiebt.
 NUR_AUF_GITHUB: Tuple[str, ...] = ("adr-*.md",)
 
 #: Architekturdokumente, die die Seite weder spiegelt noch verlinkt (Entscheid

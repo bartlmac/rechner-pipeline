@@ -303,10 +303,13 @@ es nicht ist, wäre die schlechteste Variante.
 
 **Die Artefakte eines Laufs gehören nicht ins Repo.** ADR-002: „Das
 Repo ist das System, nicht der Datenraum“; `faelle/` ist gitignoriert
-und echte Fälle liegen außerhalb. Deshalb kann auch keine
-GitHub-Action die Seite bauen: sie sieht die Artefakte nicht. Der Weg
-ist: lokal bauen, Ergebnis auf einen eigenen Branch schieben, Pages
-liest diesen Branch.
+und echte Fälle liegen außerhalb. Deshalb baut keine GitHub-Action die
+Seite aus diesem Repository: Sie sähe die Artefakte nicht. Der Weg ist:
+lokal bauen und den gebauten Baum als Commit in das eigene Repository der
+Seite legen, `bartlmac/plv-fiktion`. Dort baut GitHub Pages ihn über
+GitHub Actions mit demselben Renderer, den die Prüfungen hier messen
+(`actions/jekyll-build-pages`). Die Seite liegt unter
+https://bartlmac.github.io/plv-fiktion/.
 
 ### Bereinigung der veröffentlichten Belege
 
@@ -397,59 +400,44 @@ nicht; es trägt Hostpfade, und die Wache hält den Bau an.
 
 ### Einmalig einzurichten (Mensch)
 
-1. Leeren Branch anlegen und schieben:
+Im Repository `bartlmac/plv-fiktion`: Pages mit der Quelle **GitHub
+Actions**. Den Workflow bringt der Bau mit
+(`plv/seite/.github/workflows/seite.yml`, im gebauten Baum unter
+`.github/`); er baut bei jedem Push auf `main` und veröffentlicht. Jekyll
+lässt `.github/` beim Bauen aus. Lokal genügt ein Klon neben diesem
+Repository:
 
-   ```
-   git switch --orphan gh-pages
-   git commit --allow-empty -m "Vorzeigeseite"
-   git push -u origin gh-pages
-   git switch <arbeitsbranch>
-   ```
+```
+git clone git@github.com:bartlmac/plv-fiktion.git ../plv-fiktion
+```
 
-   Der Arbeitsbranch wird am Ende beim Namen genannt, nicht als
-   `git switch -`: Nach einem Orphan-Wechsel gibt es kein „vorher“,
-   auf das `-` zeigen könnte, und die Kette bricht ab.
+Die Basis der Seite steht in `plv/seite/_config.yml` (`baseurl:
+"/plv-fiktion"`). So ergeben der lokale Bau mit dem Renderer von Pages und
+die Seite im Netz dieselben Pfade.
 
-   `--orphan` leert das Arbeitsverzeichnis; der Wechsel zurück füllt
-   es wieder. Gitignorierte Verzeichnisse (`faelle/`, `runs/`,
-   `docs-local/`, `simulation/`) bleiben unangetastet. Ein
-   uncommitteter Stand blockiert den Wechsel; vorher committen.
-
-2. Pages einschalten. **Meist schon geschehen:** GitHub schaltet Pages
-   für einen Branch, der wörtlich `gh-pages` heißt, beim ersten Push
-   von selbst ein (`build_type: legacy`). Dann fehlt in *Settings →
-   Pages* die Source-Auswahl und es steht nur noch der Domain-Knopf da;
-   das ist der eingerichtete Zustand, kein Fehler. Nachsehen:
-
-   ```
-   gh api repos/<owner>/<repo>/pages --jq '{status, source, html_url}'
-   ```
-
-   Fehlt Pages, dort *Source* auf **Deploy from a branch** setzen,
-   Branch `gh-pages`, Ordner `/ (root)`. Kein Actions-Workflow nötig.
-
-Bewusst kein Auslöser bei jedem Push: Veröffentlichen ist nach außen
-gerichtet und praktisch nicht zurückzunehmen (Indexierung, Caches).
-Es bleibt eine menschliche Handlung.
+Ein Push in dieses Repository veröffentlicht nichts. Veröffentlichen ist
+nach außen gerichtet und praktisch nicht zurückzunehmen (Indexierung,
+Caches); es bleibt eine menschliche Handlung, der Push nach `plv-fiktion`.
 
 ### Je Lauf
 
-Die Seite in ein gitignoriertes Verzeichnis bauen, von dort schieben.
-Der neue Stand ersetzt den alten vollständig: Erst den Inhalt des
-Pages-Worktrees leeren, dann kopieren. Wer nur drüberkopiert, lässt
-verwaiste Artefakte der vorigen Version öffentlich liegen, und ein
-Artefakt, auf das keine Seite mehr zeigt, ist trotzdem abrufbar.
+Die Seite in ein gitignoriertes Verzeichnis bauen und den Baum als einen
+Commit nach `plv-fiktion` legen. Der neue Stand ersetzt den alten
+vollständig: Erst den Inhalt des Klons leeren, dann kopieren. Wer nur
+drüberkopiert, lässt verwaiste Artefakte der vorigen Version öffentlich
+liegen, und ein Artefakt, auf das keine Seite mehr zeigt, ist trotzdem
+abrufbar.
 
 ```
 python werkzeuge/auftritt.py --fall faelle/<fall> --name <kurzname> \
     --abzug <abzug-1>.csv --abzug <abzug-2>.csv \
     --stands-paket runs/stands-paket \
     --anker faelle/<fall>/abgeleitet/anker/anker.jsonl [--verlauf verlauf.md]
-git worktree add /tmp/gh-pages gh-pages
-git -C /tmp/gh-pages rm -rq .
-cp -r runs/seite/. /tmp/gh-pages/
-cd /tmp/gh-pages && git add -A && git commit -m "Lauf <datum>" && git push
-cd - && git worktree remove /tmp/gh-pages
+git -C ../plv-fiktion rm -rq .
+cp -r runs/seite/. ../plv-fiktion/
+git -C ../plv-fiktion add -A
+git -C ../plv-fiktion commit -m "Seite vom <datum>, gebaut aus <commit>"
+git -C ../plv-fiktion push
 ```
 
 **Keine `index.html` in den Ausgabeordner legen.** Jekyll baut die
@@ -626,10 +614,11 @@ Zwischen zwei Veröffentlichungen driftet der Live-Stand vom Repo weg.
 Ob es so ist, beurteilt ein Werkzeug; es veröffentlicht nichts:
 
 ```
-python werkzeuge/drift.py --seite runs/seite [--ref gh-pages]
+python werkzeuge/drift.py --seite runs/seite [--repo ../plv-fiktion] [--ref main]
 ```
 
-Vergleicht den frisch gebauten Entwurf mit dem `gh-pages`-Branch.
+Vergleicht den frisch gebauten Entwurf mit dem Stand im Repository der
+Seite.
 Volatile Stempel (Veröffentlichungsdatum, Systemstand der
 Fall-Seiten, Bau-Commit der Landkarte) zählen nicht als Drift;
 sonst schlüge der Test immer, und ein Alarm, der immer schlägt,

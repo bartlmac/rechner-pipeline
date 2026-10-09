@@ -4,7 +4,7 @@ Dieses Dokument richtet ein, zeigt einen ersten Lauf und nennt die Regeln für
 die Arbeit am Code. Was das System tut, steht im [README](README.md), die
 Begriffe erklärt das [Glossar](docs/architektur/glossar.md). Wie eine
 Migration fachlich abläuft, zeigt die
-[Vorzeigeseite](https://bartlmac.github.io/rechner-pipeline/).
+[Vorzeigeseite](https://bartlmac.github.io/plv-fiktion/).
 
 ## 1. Einrichten
 

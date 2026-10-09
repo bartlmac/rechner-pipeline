@@ -4,6 +4,11 @@
 # Kein fremdes Theme: Die Gestaltung gehoert zum Auftritt und liegt in
 # assets/stil.css und _layouts/default.html — sonst kaempft das eigene
 # Stylesheet gegen die Vorgaben eines Themes.
+# Die Seite liegt unter https://bartlmac.github.io/plv-fiktion/ (Repository
+# bartlmac/plv-fiktion, Pages ueber GitHub Actions). Ausdruecklich gesetzt,
+# damit der lokale Bau mit dem Renderer von Pages dieselben Pfade ergibt.
+url: "https://bartlmac.github.io"
+baseurl: "/plv-fiktion"
 title: Pfefferminzia Lebensversicherung AG
 description: >-
   Fiktives Unternehmen — Vorfuehrung einer agentischen

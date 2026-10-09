@@ -3,7 +3,8 @@
 Die Seite wird je Lauf aus Repo und Fall-Artefakten gebaut; zwischen
 zwei Veroeffentlichungen driftet der Live-Stand vom Repo weg. Dieses
 Werkzeug URTEILT darueber — mehr nicht: Es vergleicht einen frisch
-gebauten Entwurf mit dem Stand des ``gh-pages``-Branches und endet bei
+gebauten Entwurf mit dem Stand im Repository der Seite (``bartlmac/plv-fiktion``,
+Zweig ``main``, als Klon neben diesem Repository) und endet bei
 Abweichung mit Befund. Veroeffentlicht wird weiterhin ausschliesslich
 von Hand (Runbook, Abschnitt "Je Lauf"): Ein Skript, das selbst
 publizierte, waere ein Automat mit Push-Recht — genau das nicht.
@@ -17,7 +18,7 @@ abgeschaltet.
 
 Aufruf (nach dem Bau des Entwurfs, siehe Runbook)::
 
-    python werkzeuge/drift.py --seite runs/seite [--ref gh-pages]
+    python werkzeuge/drift.py --seite runs/seite [--repo ../plv-fiktion] [--ref main]
 
 Exit 0: kein Drift. Exit 1: Drift, die Abweichungen sind gelistet.
 Exit 2: Bedienfehler (kein Entwurf, Ref nicht vorhanden).
@@ -85,10 +86,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "urteilt nur, veroeffentlicht nichts.")
     p.add_argument("--seite", required=True,
                    help="frisch gebauter Entwurf (Push-Baum, runs/seite)")
-    p.add_argument("--ref", default="gh-pages",
+    p.add_argument("--ref", default="main",
                    help="Git-Ref des veroeffentlichten Stands "
-                        "(Vorgabe: gh-pages; z. B. origin/gh-pages)")
-    p.add_argument("--repo", default=".", help="Repo mit dem Pages-Branch")
+                        "(Vorgabe: main; z. B. origin/main)")
+    p.add_argument("--repo", default="../plv-fiktion",
+                   help="Klon des Repositorys der Seite (Vorgabe: ../plv-fiktion)")
     args = p.parse_args(argv)
 
     seite = Path(args.seite).resolve()
