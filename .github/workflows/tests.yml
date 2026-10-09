@@ -1,10 +1,11 @@
-# Durchsetzung statt Freiwilligkeit (Systempruefung Befund 35): die
-# Suite laeuft auf jedem Push und Pull Request. Das versionierte, anonymisierte
-# P-K1-/A-M4-Fixture wird davor in einer sichtbaren Pflicht-E2E-Stufe gefahren;
-# sein Fehlen oder Hashdrift ist ein Fehler, kein Skip. `faelle/` bleibt als
-# lokaler Arbeitsbereich gitignoriert und ist keine CI-Vorbedingung. Die volle
-# Suite laeuft weiterhin mit `-rs`, damit jeder kuenftige Skip sichtbar bleibt.
-# Sie laeuft parallel wie lokal (ADR-019): `-n auto` nimmt so viele Arbeiter,
+# Durchsetzung statt Freiwilligkeit (Systempruefung Befund 35): die Suite
+# laeuft auf jedem Push auf einen Zweig und jedem Pull Request. Das
+# versionierte, anonymisierte P-K1-/A-M4-Fixture wird davor in einer
+# sichtbaren Pflicht-E2E-Stufe gefahren; sein Fehlen oder Hashdrift ist ein
+# Fehler, kein Skip. `faelle/` bleibt als lokaler Arbeitsbereich
+# gitignoriert und ist keine CI-Vorbedingung. Die volle Suite laeuft
+# weiterhin mit `-rs`, damit jeder kuenftige Skip sichtbar bleibt. Sie
+# laeuft parallel wie lokal (ADR-019): `-n auto` nimmt so viele Arbeiter,
 # wie der Runner Kerne hat; `--dist loadfile` haelt die modulgebundenen
 # Fixtures bei einem Arbeiter.
 #
@@ -19,6 +20,11 @@
 name: tests
 on:
   push:
+    # Nur Zweige, keine Tags: Ein Tag zeigt auf einen geschichtlichen Stand,
+    # der zu seiner Zeit geprueft wurde. fall3-vor-ebenen (82eea92) ist ein nur
+    # fuers Nachfahren abgeleiteter Stand und nie lauffaehig gedacht (ADR-028);
+    # sein Tag-Push loeste am 2026-10-09 einen roten Lauf aus.
+    branches: ["**"]
   pull_request:
 # Ein Push auf einen Zweig mit offenem PR loeste zwei Laeufe desselben
 # Commits aus (push und pull_request), die sich die Runner teilten und
