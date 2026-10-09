@@ -76,6 +76,28 @@ def kernstand_pfade() -> Tuple[str, ...]:
     return tuple(pfad for pfad, _, _ in KERNSTAND)
 
 
+#: Welche Dateien unter den Verzeichnissen des Gegenstands zaehlen
+#: (Entscheid des Maintainers 2026-10-09): im Kern-Paket Code und
+#: Rechnungsgrundlagen, bei den Referenzwerten die JSON-Dateien. Vorher
+#: zaehlte jede Datei auf der Platte, auch eine, die git nicht sieht (eine
+#: ``.DS_Store``, eine Sicherungskopie des Editors), und machte den Kernstand
+#: still "anders". Kommt eine neue Dateiart in den Gegenstand, haelt
+#: ``tests/test_gegenstand_dateiarten.py`` an, statt sie still auszulassen.
+KERN_ENDUNGEN: Tuple[str, ...] = (".py", ".xml")
+REFERENZWERTE_ENDUNGEN: Tuple[str, ...] = (".json",)
+
+
+def gehoert_zum_kernstand(pfad: str) -> bool:
+    """Ob eine Datei (Pfad relativ zur Repo-Wurzel) zum Kernstand zaehlt."""
+    if "__pycache__" in pfad.split("/"):
+        return False
+    for wurzel, endungen in ((KERN_PAKET, KERN_ENDUNGEN),
+                             (KERN_REFERENZWERTE, REFERENZWERTE_ENDUNGEN)):
+        if pfad.startswith(wurzel + "/"):
+            return pfad.endswith(endungen)
+    return pfad in kernstand_pfade()
+
+
 def kernmodul(pfad: str) -> Optional[str]:
     """Das Modul der Sicht, zu dem ein Repo-Pfad gehoert (None = keins).
 

@@ -90,7 +90,8 @@ die es jetzt gibt. Snapshots nach Schema 8, die ihn führen, bleiben lesbar
 
 ### 4. Das Tarifwerk der PLV (`models.tarifwerkabnahme`)
 
-Zum Tarifwerk (`TARIFWERK`) gehören `plv/tarifplaene/*` und je eigener
+Zum Tarifwerk (`TARIFWERK`) gehören die Tarifpläne `plv/tarifplaene/*.md`
+(seit 2026-10-09 nur die Markdown-Dateien) und je eigener
 Generation (Knoten `<familie>/plv_<...>`) jeder Config unter
 `plv/configs/*.toml` alle Felder des `[[generation]]`-Blocks außer
 `NICHT_TARIFWERK` (Neuzugang, Trend, Verteilungen, Korrelationen,

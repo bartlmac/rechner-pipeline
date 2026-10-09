@@ -67,7 +67,9 @@ GATE = "A-T1.tarifwerk"
 #: 2.0.0 (2026-10-09, ADR-028 Nachtrag): Ein Vergleichsstand ohne Tarifplaene
 #: oder Configs an den heutigen Pfaden wird verweigert, statt ein leeres
 #: Tarifwerk "vorher" zu belegen. Major (ADR-012): Ein solcher Lauf schrieb
-#: vorher einen Beleg.
+#: vorher einen Beleg. Im selben Sprung zaehlen nur die Tarifplaene selbst
+#: (``models.tarifwerkabnahme.TARIFPLAN_ENDUNG``); eine PDF oder ``.DS_Store``
+#: daneben machte das Tarifwerk vorher still "anders".
 GATE_VERSION = "2.0.0"
 #: Schema des Aenderungsbelegs.
 TARIFWERK_AENDERUNG_SCHEMA_VERSION = 1
@@ -76,11 +78,11 @@ PFADE = (tw.TARIFPLAENE, tw.CONFIG_VERZEICHNIS)
 
 
 def _arbeitsbaum(repo_root: Path) -> Tuple[List[Tuple[str, bytes]], List[Tuple[str, bytes]]]:
-    """Tarifplaene und PLV-Configs im Arbeitsbaum (auch nicht verfolgte)."""
-    plaene = sorted(
-        (d.relative_to(repo_root).as_posix(), d.read_bytes())
-        for d in (repo_root / tw.TARIFPLAENE).rglob("*")
-        if d.is_file() and "__pycache__" not in d.parts)
+    """Tarifplaene und PLV-Configs im Arbeitsbaum (auch nicht verfolgte,
+    aber nur Dateien des Gegenstands)."""
+    dateien = {d.relative_to(repo_root).as_posix(): d
+               for d in (repo_root / tw.TARIFPLAENE).rglob("*") if d.is_file()}
+    plaene = [(name, dateien[name].read_bytes()) for name in tw.tarifplan_pfade(dateien)]
     configs = sorted(
         (c.relative_to(repo_root).as_posix(), c.read_bytes())
         for c in (repo_root / tw.CONFIG_VERZEICHNIS).glob(tw.CONFIG_MUSTER) if c.is_file())

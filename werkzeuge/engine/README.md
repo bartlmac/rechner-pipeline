@@ -8,13 +8,17 @@ nicht eingecheckt.
 | Datei | Zweck |
 |---|---|
 | `Dockerfile` | das Image, auf dem gepinnten Quarto-Image aufgebaut |
-| `render.sh` | rendert die genannten Markdown-Dateien, ohne Angabe alle Tarifpläne |
+| `render.sh` | rendert die genannten Markdown-Dateien |
 
 ```
-werkzeuge/engine/render.sh plv/mathematik/grundsatzdokumentation.md
-IMAGE=local werkzeuge/engine/render.sh        # Image vorher lokal bauen
+werkzeuge/engine/render.sh werkzeuge/quellsystem/avb.md
+IMAGE=local werkzeuge/engine/render.sh werkzeuge/quellsystem/avb.md   # Image vorher lokal bauen
 ```
 
-Genutzt wird die Engine für die Tarifpläne und die Grundsatzdokumentation und
-von `werkzeuge/quellsystem/dokumente.py`, das die Dokumente der Lieferungen erzeugt. Das
-Image baut `.github/workflows/docs-image.yml`, sobald sich hier etwas ändert.
+Genutzt wird die Engine von `werkzeuge/quellsystem/dokumente.py`, das die
+Dokumente der Lieferungen erzeugt. Für die PLV erzeugt sie keine PDFs
+(Entscheid des Maintainers vom 2026-10-09): Grundsatzdokumentation und
+Tarifpläne gelten in ihrer Markdown-Fassung, und eine Datei neben ihnen
+gehört nicht zum abgenommenen Gegenstand. Für eine Datei unter `plv/` hält
+`render.sh` an. Das Image baut `.github/workflows/docs-image.yml`, sobald sich
+hier etwas ändert.

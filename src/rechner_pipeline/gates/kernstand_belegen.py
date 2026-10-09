@@ -75,7 +75,10 @@ COMMAND = "kernstand_belegen"
 GATE = "A-K2.kernaenderung"
 #: 2.0.0 (2026-10-09, ADR-028 Nachtrag): Ein Vergleichsstand, dem ein Teil des
 #: Gegenstands am heutigen Pfad fehlt, wird verweigert. Major (ADR-012): Ein
-#: solcher Lauf schrieb vorher einen Beleg.
+#: solcher Lauf schrieb vorher einen Beleg. Im selben Sprung zaehlt der
+#: Kernstand nur noch die Dateien des Gegenstands
+#: (``models.kernabnahme.gehoert_zum_kernstand``); eine fremde Datei daneben
+#: machte ihn vorher still "anders".
 GATE_VERSION = "2.0.0"
 
 #: Schema des Aenderungsbelegs. 4 (2026-10-01, ADR-025): der Gegenstand
@@ -95,10 +98,6 @@ class KernstandFehler(RuntimeError):
     """Der Kernstand ist nicht bestimmbar — mit dem Grund."""
 
 
-def _ohne_cache(teile: Tuple[str, ...]) -> bool:
-    return "__pycache__" not in teile
-
-
 def _sammelhash(eintraege: List[Tuple[str, bytes]]) -> str:
     """Name UND Inhalt je Datei, sortiert — ein Umbenennen ist eine Aenderung."""
     sammel = hashlib.sha256()
@@ -109,15 +108,16 @@ def _sammelhash(eintraege: List[Tuple[str, bytes]]) -> str:
 
 
 def kern_modul_hash(repo_root: Path) -> Optional[str]:
-    """Sammelhash des Rechenkern-Pakets im Arbeitsbaum (alle Dateien ausser
-    ``__pycache__`` — auch die Rechnungsgrundlagen ``tafeln.xml``)."""
+    """Sammelhash des Rechenkern-Pakets im Arbeitsbaum: Code und
+    Rechnungsgrundlagen ``tafeln.xml`` (``models.kernabnahme.KERN_ENDUNGEN``),
+    keine andere Datei daneben."""
     verzeichnis = repo_root / ka.KERN_PAKET
     if not verzeichnis.is_dir():
         return None
     return _sammelhash([
         (d.relative_to(verzeichnis).as_posix(), d.read_bytes())
         for d in verzeichnis.rglob("*")
-        if d.is_file() and _ohne_cache(d.relative_to(verzeichnis).parts)
+        if d.is_file() and ka.gehoert_zum_kernstand(d.relative_to(repo_root).as_posix())
     ])
 
 
@@ -133,8 +133,8 @@ def kernstand_hash(repo_root: Path) -> Optional[str]:
     """Sammelhash ueber die GANZE Pfadmenge des Kernstands
     (:data:`models.kernabnahme.KERNSTAND`: Code, Referenzwerte,
     Grundsatzdokumentation) — Name relativ zur Repo-Wurzel und
-    Inhalt je Datei, ohne ``__pycache__``. Der Code-Stand, gegen den ein
-    Verweis "keine Aenderung" gehalten wird."""
+    Inhalt je Datei des Gegenstands (``models.kernabnahme.gehoert_zum_kernstand``).
+    Der Code-Stand, gegen den ein Verweis "keine Aenderung" gehalten wird."""
     eintraege: List[Tuple[str, bytes]] = []
     for pfad in ka.kernstand_pfade():
         ort = repo_root / pfad
@@ -144,7 +144,7 @@ def kernstand_hash(repo_root: Path) -> Optional[str]:
             eintraege.extend(
                 (d.relative_to(repo_root).as_posix(), d.read_bytes())
                 for d in ort.rglob("*")
-                if d.is_file() and _ohne_cache(d.relative_to(ort).parts))
+                if d.is_file() and ka.gehoert_zum_kernstand(d.relative_to(repo_root).as_posix()))
     return _sammelhash(eintraege) if eintraege else None
 
 
@@ -163,7 +163,7 @@ def _kern_alt(repo_root: Path, commit: str) -> Tuple[str, Optional[str]]:
     eintraege: List[Tuple[str, bytes]] = []
     for pfad in dateien:
         relativ = pfad[len(ka.KERN_PAKET) + 1:]
-        if not _ohne_cache(tuple(relativ.split("/"))):
+        if not ka.gehoert_zum_kernstand(pfad):
             continue
         inhalt = git_inhalt(repo_root, commit, pfad)
         if inhalt is None:
@@ -245,7 +245,9 @@ def _baue(repo_root: Path, angabe: str, von: str, begruendung: str) -> Dict[str,
         for name in beruehrt:
             modul(name)["commits"].append(kurz)  # type: ignore[index]
     for status, pfad in offen:
-        eintrag = modul(pfad)
+        # Nur Dateien des Gegenstands, wie im Fingerabdruck: Eine fremde,
+        # nicht verfolgte Datei im Kern ist keine Aenderung des Kernstands.
+        eintrag = modul(pfad) if ka.gehoert_zum_kernstand(pfad) else None
         if eintrag is not None:
             eintrag["nicht_committet"].append({"status": status, "pfad": pfad})
     geordnet = [module[n] for n in sorted(module, key=_modulordnung)]

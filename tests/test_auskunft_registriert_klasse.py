@@ -1413,10 +1413,12 @@ def test_die_version_des_abnahmeberichts_nennt_den_grund():
     # der Tabelle: 7.0.0 (Pruefrunde 2026-10-01), 8.0.0 (Fuehrungswert,
     # 2026-10-01), 9.0.0 (Tarifregeln aus der Spez, ADR-024 Nachtrag) und
     # 10.0.0 (Pruefrunde G: Fuehrungswert nachgerechnet, Belege an der Spez)
-    # erweitern denselben Abschnitt; der Grund fuer 6.0.0 steht weiter darin.
+    # und 10.1.0 (Ort des Berichts, relative Verweise) erweitern denselben
+    # Abschnitt; der Grund fuer 6.0.0 steht weiter darin.
     abschnitt = gate_dokument.split("\n### A-M4-Vorlage", 1)[1].split("\n## ", 1)[0]
     versionen = {z.split("`")[1]: z for z in abschnitt.splitlines() if z.startswith("- `")}
-    assert abnahmebericht.GATE_VERSION == "10.0.0"
+    assert abnahmebericht.GATE_VERSION == "10.1.0"
+    assert "bericht_ort" in versionen["10.1.0"]
     assert "nachgerechnet" in versionen["10.0.0"]
     assert "Spez" in versionen["9.0.0"]
     assert "red_anteile_datei" in versionen["6.0.0"]

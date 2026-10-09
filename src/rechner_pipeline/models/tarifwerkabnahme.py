@@ -59,6 +59,12 @@ SICHT_RELATIV = "abgeleitet/tarifwerk/aenderung.md"
 
 #: Die Tarifplaene (je Datei ein Teil).
 TARIFPLAENE = "plv/tarifplaene"
+#: Ein Tarifplan ist eine Markdown-Datei (Entscheid des Maintainers
+#: 2026-10-09). Vorher zaehlte jede Datei unter TARIFPLAENE, auch eine, die
+#: git nicht sieht (eine PDF der Doku-Engine, eine ``.DS_Store``), und machte
+#: das Tarifwerk still "anders". Kommt eine neue Dateiart dazu, haelt
+#: ``tests/test_gegenstand_dateiarten.py`` an.
+TARIFPLAN_ENDUNG = ".md"
 #: Die Configs der PLV (je eigene Generation ein Teil).
 CONFIG_VERZEICHNIS = "plv/configs"
 CONFIG_MUSTER = "*.toml"
@@ -202,12 +208,13 @@ def konfig_pfade(namen: Iterable[str]) -> List[str]:
 
 
 def tarifplan_pfade(namen: Iterable[str]) -> List[str]:
-    return sorted(p for p in namen if p.startswith(TARIFPLAENE + "/"))
+    return sorted(p for p in namen
+                  if p.startswith(TARIFPLAENE + "/") and p.endswith(TARIFPLAN_ENDUNG))
 
 
 def teil_von(pfad: str) -> Optional[str]:
     """Der Teil des Gegenstands, zu dem ein Repo-Pfad gehoert (None = keiner)."""
-    if pfad.startswith(TARIFPLAENE + "/"):
+    if pfad in tarifplan_pfade([pfad]):
         return pfad
     if pfad in konfig_pfade([pfad]):
         return pfad

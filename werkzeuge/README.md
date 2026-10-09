@@ -7,7 +7,7 @@ Modell und Betrieb der Simulation, die Ebene Simulation nach
 |---|---|
 | [welt/](welt/README.md) | Routinen, die Betriebsseite der Simulation: eine Welt aufstellen, einen Fall darin führen oder nachfahren, den Bestand in die Ablage bringen |
 | [quellsystem/](quellsystem/README.md) | das Quellsystem der Baldrian; aus ihm entstehen die Lieferungen |
-| [engine/](engine/README.md) | die Doku-Engine: setzt Tarifpläne, Grundsatzdokumentation und Lieferdokumente als PDF |
+| [engine/](engine/README.md) | die Doku-Engine: setzt die Dokumente der Lieferungen als PDF (für die PLV keine) |
 | hier im Ordner | die Werkzeuge, mit denen die Webseite gebaut wird, und Hilfen zum Beobachten eines Laufs |
 
 Das Modell, Verteilungen und das Erzeugen von Geschäftsvorfällen und

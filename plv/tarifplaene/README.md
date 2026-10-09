@@ -28,9 +28,3 @@ Generation ändert. Ein Test hält den Block gegen den Generator; je
 Generation hält der Kern einen Charakterisierungs-Referenzwert
 (`tests/fixtures/kern_referenzwerte/referenz_plv_*.json`), damit eine
 Parametrierung nicht still driftet.
-
-Die PDFs sind Sekundärartefakte, gerendert über die gepinnte
-Doku-Engine (`werkzeuge/engine/render.sh`, ohne Argument alle Tarifpläne;
-die Grundsatzdokumentation rendert `werkzeuge/engine/render.sh
-plv/mathematik/grundsatzdokumentation.md`); maßgeblich sind die
-Markdown-Fassungen.

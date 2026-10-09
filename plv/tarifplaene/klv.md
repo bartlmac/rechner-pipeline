@@ -383,9 +383,9 @@ $$
 
 solange $\text{RKW}^{ges} > 0$ ist (sonst um die ganze Summe
 $(1-f)\sum_i \max(0,\, {}_aV^{MRV}_i)$). Beim Abzug je Baustein klemmt auch der
-Storno-Rückkaufswert je Baustein, ein negativer Baustein trägt nichts bei, und
-der Abstand ist $(1-f)\sum_i \min\bigl(\text{StoAb}_i,\, \max(0,\,
-{}_aV^{MRV}_i)\bigr)$. Verteilt wird der umgewandelte Teil auf die Schichten
+Storno-Rückkaufswert je Baustein, ein negativer Baustein trägt nichts bei, und der
+Abstand ist $(1-f)\sum_i \min\bigl(\text{StoAb}_i,\, \max(0,\, {}_aV^{MRV}_i)\bigr)$.
+Verteilt wird der umgewandelte Teil auf die Schichten
 nach dem auf null begrenzten Baustein-Rückkaufswert: beim Abzug je Baustein
 wandelt jeder Baustein seinen **eigenen** $\text{RKW}_i$ um, beim
 vertragsweiten Abzug (der keinen Baustein-$\text{RKW}$ kennt) der Vertrags-RKW
@@ -530,11 +530,11 @@ bezogen auf seine herabgesetzte Summe. Die Teilkündigung dieses Tarifs
 lässt die Erhöhungsscheiben unverändert; der fortgeführte Vertrag ist
 die Grundversicherung mit $f \cdot S$ plus diese Scheiben, unter dem
 vollständigen Tarifwerk der Generation, und sein Beitrag rechnet
-komponentenweise: $f \cdot \text{BJB}_{\text{Grund}} + \sum_i
-\text{BJB}_i$, die Stückkosten bleiben je Baustein fix und werden nicht
+komponentenweise: $f \cdot \text{BJB}_{\text{Grund}} + \sum_i \text{BJB}_i$,
+die Stückkosten bleiben je Baustein fix und werden nicht
 mit der Summe skaliert. Das gilt gleichermaßen für die PLV-Verfahren:
-jeder Baustein zahlt den Beitrag seiner fortgeführten Summe $f \cdot
-S_i$ zuzüglich seiner Stückkosten. *Präzisierung vom 2026-09-24.*
+jeder Baustein zahlt den Beitrag seiner fortgeführten Summe $f \cdot S_i$
+zuzüglich seiner Stückkosten. *Präzisierung vom 2026-09-24.*
 
 Bei der Herabsetzung mit Abzug einer solchen Generation ist der
 umgewandelte Teil $(1-f)\,\text{RKW}$ mit dem Rückkaufswert nach dem

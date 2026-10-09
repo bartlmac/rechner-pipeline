@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # Doku-Engine-Wrapper: rendert Markdown-Dokumente des Repos nach PDF (Typst).
 #
-#   werkzeuge/engine/render.sh [datei.md ...]
+#   werkzeuge/engine/render.sh datei.md [datei.md ...]
 #
-# Ohne Argumente werden alle Tarifplaene gerendert; mit Argument jede
-# Markdown-Datei des Repos. Ausgaben landen neben den Quellen (gitignored).
+# Rendert die genannten Markdown-Dateien des Repos; Ausgaben landen neben den
+# Quellen (gitignored). Fuer die PLV gibt es keine PDFs (Entscheid des
+# Maintainers 2026-10-09): Grundsatzdokumentation und Tarifplaene gelten in
+# ihrer Markdown-Fassung, und eine Datei neben ihnen gehoert nicht zum
+# abgenommenen Gegenstand. Ohne Datei oder mit einer Datei unter plv/ haelt
+# das Skript an.
 # Nutzt das ghcr-Image der Engine; Fallback: lokaler Build aus
 # werkzeuge/engine/Dockerfile (IMAGE=local).
 set -euo pipefail
@@ -19,8 +23,16 @@ fi
 
 dateien=("$@")
 if [[ ${#dateien[@]} -eq 0 ]]; then
-  mapfile -t dateien < <(cd "$REPO_ROOT" && ls plv/tarifplaene/*.md)
+  echo "Aufruf: werkzeuge/engine/render.sh datei.md [datei.md ...]" >&2
+  exit 2
 fi
+for datei in "${dateien[@]}"; do
+  case "$datei" in
+    plv/*|./plv/*)
+      echo "HALT: $datei liegt unter plv/; fuer die PLV gibt es keine PDFs, massgeblich ist die Markdown-Fassung" >&2
+      exit 2 ;;
+  esac
+done
 
 for datei in "${dateien[@]}"; do
   echo "render: $datei" >&2

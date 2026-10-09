@@ -84,6 +84,7 @@ import datetime as _dt
 import html
 import json
 import math
+import posixpath
 import sys
 from hashlib import sha256
 from pathlib import Path
@@ -193,7 +194,13 @@ GATE = "A-M4.migrationscontrolling"
 #: (:data:`TARIFREGEL_BELEGE`) muss genau ihre Regeln nennen und sie gelesen
 #: haben. Eine Suite mit einem nicht nachrechenbaren Fuehrungswert oder ein
 #: Beleg mit anderer oder fehlender Regelangabe war vorher gueltig.
-GATE_VERSION = "10.0.0"
+#: 10.1.0 (2026-10-09): Die Erzeugung kann den Ort des Berichts im Fall nennen
+#: (``bericht_ort``); dann verweist der Bericht auf die Bestandsberichte
+#: relativ zu sich selbst, wie ein Browser den Verweis aufloest. Vorher zeigten
+#: die Verweise fallrelativ ins Leere. Optional (ADR-012, Minor): Ein Beleg
+#: ohne das Feld bleibt gueltig und wird wie bisher gerendert, damit ein
+#: gezeichneter Bericht bytegleich reproduzierbar bleibt.
+GATE_VERSION = "10.1.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -745,6 +752,7 @@ def baue_bericht(
     bestandsbericht_vor: Optional[str] = None,
     bestandsbericht_nach: Optional[str] = None,
     fall: Optional[Path] = None,
+    bericht_ort: Optional[str] = None,
 ) -> str:
     """Nur aus einem intern konsistenten Suite-Vertrag HTML bauen.
 
@@ -988,16 +996,29 @@ def baue_bericht(
         teile.append("<h2>Bestandsberichte (visueller Vergleich)</h2><ul>")
         if bestandsbericht_vor:
             teile.append(f"<li>VOR der Migration: <a href="
-                         f"'{_e(bestandsbericht_vor)}'>"
+                         f"'{_e(_verweis(bestandsbericht_vor, bericht_ort))}'>"
                          f"{_e(bestandsbericht_vor)}</a></li>")
         if bestandsbericht_nach:
             teile.append(f"<li>NACH der Migration: <a href="
-                         f"'{_e(bestandsbericht_nach)}'>"
+                         f"'{_e(_verweis(bestandsbericht_nach, bericht_ort))}'>"
                          f"{_e(bestandsbericht_nach)}</a></li>")
         teile.append("</ul>")
 
     teile.append("</body></html>")
     return "\n".join(teile) + "\n"
+
+
+def _verweis(ziel: str, bericht_ort: Optional[str]) -> str:
+    """Wohin ein Verweis des Berichts zeigt.
+
+    Mit ``bericht_ort`` (Ort des Berichts relativ zur Fallwurzel, seit
+    10.1.0) relativ zum Bericht selbst, so wie ein Browser ihn aufloest.
+    Ohne ihn wie bis 10.0.0 der fallrelative Pfad: Ein frueher gezeichneter
+    Bericht muss bytegleich reproduzierbar bleiben (:func:`_bericht_fehler`).
+    """
+    if bericht_ort is None:
+        return ziel
+    return posixpath.relpath(ziel, posixpath.dirname(bericht_ort) or ".")
 
 
 def schreibe_bericht(pfad: Path, **kwargs: Any) -> Path:
@@ -1017,6 +1038,8 @@ _BERICHT_ERZEUGUNG_FELDER = {
     "bestandsbericht_vor",
     "bestandsbericht_nach",
 }
+#: Optionales Feld seit 10.1.0: der Ort des Berichts relativ zur Fallwurzel.
+_BERICHT_ORT = "bericht_ort"
 
 
 def _bericht_erzeugung(
@@ -1028,6 +1051,7 @@ def _bericht_erzeugung(
     transformation_ergebnis: Optional[Dict[str, Any]],
     bestandsbericht_vor: Optional[str],
     bestandsbericht_nach: Optional[str],
+    bericht_ort: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Kanonische, JSON-faehige Eingaben des deterministischen Renderers.
 
@@ -1040,7 +1064,7 @@ def _bericht_erzeugung(
     Laufs: 17 fehlende Default-Felder). Beide Seiten des Vergleichs
     kommen jetzt aus demselben Serialisierungspfad — der Datei.
     """
-    return {
+    erzeugung = {
         "titel": titel,
         "stichtag_1": stichtag_1,
         "stichtag_2": stichtag_2,
@@ -1049,6 +1073,9 @@ def _bericht_erzeugung(
         "bestandsbericht_vor": bestandsbericht_vor,
         "bestandsbericht_nach": bestandsbericht_nach,
     }
+    if bericht_ort is not None:
+        erzeugung[_BERICHT_ORT] = bericht_ort
+    return erzeugung
 
 
 def _bericht_fehler(
@@ -1066,12 +1093,24 @@ def _bericht_fehler(
     Beleg-Hash gelesen hat (Review T23-01) — verglichen wird dann gegen
     genau diese Bytes, nicht gegen eine zweite Lesung.
     """
-    if not isinstance(erzeugung, dict) or set(erzeugung) != _BERICHT_ERZEUGUNG_FELDER:
+    if not isinstance(erzeugung, dict) or set(erzeugung) not in (
+            _BERICHT_ERZEUGUNG_FELDER, _BERICHT_ERZEUGUNG_FELDER | {_BERICHT_ORT}):
         return [
             "Abnahmebericht-Erzeugung muss exakt die kanonischen "
-            f"Renderer-Felder {sorted(_BERICHT_ERZEUGUNG_FELDER)} enthalten"
+            f"Renderer-Felder {sorted(_BERICHT_ERZEUGUNG_FELDER)} enthalten, "
+            f"dazu hoechstens {_BERICHT_ORT!r}"
         ]
     fehler: List[str] = []
+    bericht_ort = erzeugung.get(_BERICHT_ORT)
+    if _BERICHT_ORT in erzeugung:
+        try:
+            tatsaechlich = bericht_pfad.resolve().relative_to(fall.resolve()).as_posix()
+        except ValueError:
+            tatsaechlich = None
+        if bericht_ort != tatsaechlich:
+            fehler.append(
+                f"Abnahmebericht-Erzeugung.{_BERICHT_ORT} nennt {bericht_ort!r}, der "
+                f"Bericht liegt aber unter {tatsaechlich!r} im Fall")
     for feld in ("titel", "stichtag_1", "stichtag_2"):
         if not isinstance(erzeugung.get(feld), str) or not erzeugung[feld]:
             fehler.append(f"Abnahmebericht-Erzeugung.{feld} muss nichtleer sein")
@@ -1129,6 +1168,7 @@ def _bericht_fehler(
             bestandsbericht_vor=erzeugung["bestandsbericht_vor"],
             bestandsbericht_nach=erzeugung["bestandsbericht_nach"],
             fall=fall,
+            bericht_ort=bericht_ort,
         )
         # Bytes lesen, nicht Text: read_text uebersetzt CRLF/CR still nach LF
         # und laesst damit eine umkodierte Fassung als "bytegenau" durchgehen.
@@ -2892,6 +2932,14 @@ def main(argv: Optional[List[str]] = None):
         renderer_artefakte["bestandsbericht_nach"]["pfad"]
         if bestands_scope else args.bestandsbericht_nach
     )
+    # Seit 10.1.0: Liegt der Bericht im Fall, verweist er relativ zu sich
+    # selbst auf die (fallrelativ gebundenen) Bestandsberichte.
+    bericht_ort: Optional[str] = None
+    if bestands_scope and fall is not None:
+        try:
+            bericht_ort = bericht_pfad.resolve().relative_to(fall.resolve()).as_posix()
+        except ValueError:
+            bericht_ort = None
     bericht_erzeugung = _bericht_erzeugung(
         titel=args.titel,
         stichtag_1=args.stichtag_1,
@@ -2900,6 +2948,7 @@ def main(argv: Optional[List[str]] = None):
         transformation_ergebnis=transformation_ergebnis,
         bestandsbericht_vor=bestandsbericht_vor,
         bestandsbericht_nach=bestandsbericht_nach,
+        bericht_ort=bericht_ort,
     )
 
     # Der Bericht wird auf BEIDEN Pfaden geschrieben: gerade der rote
@@ -2912,6 +2961,7 @@ def main(argv: Optional[List[str]] = None):
         bestandsbericht_vor=bestandsbericht_vor,
         bestandsbericht_nach=bestandsbericht_nach,
         fall=fall,
+        bericht_ort=bericht_ort,
     )
     output_hashes = hash_files([bericht_pfad], base=fall if bestands_scope else repo_root)
 
