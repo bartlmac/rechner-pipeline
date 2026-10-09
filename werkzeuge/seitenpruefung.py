@@ -85,7 +85,10 @@ def verweise(vorschau: Path) -> Tuple[List[str], str]:
     einfachen Anfuehrungszeichen; bis 08.10.2026 nur doppelte, und zwei tote
     Verweise im Bericht der Migrationsabnahme blieben ungesehen. Ein Verweis
     in einem Beleg ist ein Hinweis, kein Befund: Belege des Falls und das
-    Stands-Paket erscheinen Byte fuer Byte, wie sie gezeichnet wurden."""
+    Stands-Paket erscheinen Byte fuer Byte, wie sie gezeichnet wurden. Eine
+    Weiterleitung, die das Manifest der Bereinigung nennt, ist eine Seite des
+    Auftritts, kein Beleg: Zeigt sie ins Leere, ist das ein Befund. Das Ziel
+    eines ``meta refresh`` zaehlt wie ein Verweis."""
     wurzel = Path(os.path.normpath(vorschau.absolute()))
     ids: Dict[Path, Set[str]] = {}
 
@@ -99,14 +102,22 @@ def verweise(vorschau: Path) -> Tuple[List[str], str]:
 
     seiten = sorted(Path(d) / f for d, _, fs in os.walk(wurzel, followlinks=True)
                     for f in fs if f.endswith(".html"))
+    weiter: Set[str] = set()
+    for d, _, fs in os.walk(wurzel, followlinks=True):
+        if Path(d).name == "artefakte" and "bereinigung.json" in fs:
+            m = json.loads((Path(d) / "bereinigung.json").read_text(encoding="utf-8"))
+            weiter |= {(Path(d).parent / e["datei"]).relative_to(wurzel).as_posix()
+                       for e in m.get("weiterleitungen") or []}
     befunde: List[str] = []
     hinweise: List[str] = []
     gesamt, extern = 0, collections.Counter()
     for seite in seiten:
         rel = seite.relative_to(wurzel).as_posix()
-        beleg = "artefakte" in rel.split("/") or rel.startswith("plv/")
-        for a, b in re.findall(r"""\b(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)')""",
-                               seite.read_text(encoding="utf-8", errors="replace")):
+        beleg = ("artefakte" in rel.split("/") or rel.startswith("plv/")) and rel not in weiter
+        text = seite.read_text(encoding="utf-8", errors="replace")
+        for a, b in (re.findall(r"""\b(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)')""", text)
+                     + re.findall(r"""http-equiv\s*=\s*["']refresh["'][^>]*?\bcontent\s*=\s*"""
+                                  r"""(?:"[^"]*?url=([^"]*)"|'[^']*?url=([^']*)')""", text, re.I)):
             ziel = html.unescape(a or b).strip()
             if not ziel or ziel.startswith(("mailto:", "javascript:", "data:")):
                 continue
@@ -146,14 +157,14 @@ def verweise(vorschau: Path) -> Tuple[List[str], str]:
 _KOPF_MIT_LISTE = re.compile(r"^#{1,6}[ \t].*\{:[^}]*\}[ \t]*$")
 #: Ein raw-Block (zaehlt nicht) oder ein Liquid-Anfang ausserhalb davon.
 _LIQUID = re.compile(r"\{%-?\s*raw\s*-?%\}.*?\{%-?\s*endraw\s*-?%\}|\{\{|\{%", re.S)
-#: Was beim Suchen nach ``$...$`` nicht zaehlt (Codeblock, Codespan, Skript,
-#: Formel in ``$$...$$``) und die Formel in ``$...$`` selbst (``formel``).
+#: Was beim Zaehlen der ``$`` nicht zaehlt (Codeblock, Codespan, Skript,
+#: Formel in ``$$...$$``) und jedes uebrige ``$`` (``formel``).
 _FORMEL = re.compile(
     r"^(?P<zaun>```|~~~)[^\n]*\n.*?^(?P=zaun)[ \t]*$"
     r"|(?P<striche>`+)(?:(?!\n[ \t]*\n).)+?(?<!`)(?P=striche)(?!`)"
     r"|<script\b.*?</script>"
     r"|\$\$.+?\$\$"
-    r"|(?P<formel>\$[^$\n]+?\$)",
+    r"|(?P<formel>\$)",
     re.S | re.M | re.I)
 
 
@@ -170,8 +181,10 @@ def pages(seite: Path) -> Tuple[List[str], str]:
       Ueberschriften bis 308e959).
     * Liquid ausserhalb von raw. ``{{`` und ``{%`` wertet Liquid aus, ein
       unvollstaendiges ``{{`` bricht den ganzen Build ab (KLV-Tarifplan).
-    * Eine Formel in ``$...$``. Fuer kramdown ist das Text, Escapes,
-      Hervorhebung und Typografie laufen darueber (35 von 489 Formeln).
+    * Ein ``$`` ausserhalb von Code, Skript und ``$$...$$``. Fuer kramdown
+      ist ``$...$`` Text, Escapes, Hervorhebung und Typografie laufen darueber
+      (35 von 489 Formeln); gezaehlt wird jedes einzelne ``$``, auch eine
+      Formel ueber einen Zeilenumbruch (drei im KLV-Tarifplan bis 09.10.2026).
     * Eine Seite, die nicht mit einer Ueberschrift beginnt. Pages nimmt den
       Seitentitel nur aus einer Ueberschrift (Ebene 1 bis 3) am Anfang
       (jekyll-titles-from-headings); sonst traegt der Browser nur den Namen
@@ -207,8 +220,9 @@ def pages(seite: Path) -> Tuple[List[str], str]:
                                f"ausserhalb von raw — Liquid wertet es aus oder bricht ab")
         for m in _FORMEL.finditer(text):
             if m.group("formel"):
-                befunde.append(f"{rel}:{text.count(chr(10), 0, m.start()) + 1}: "
-                               f"{m.group('formel')[:60]} — kramdown liest $...$ als Text")
+                nr = text.count(chr(10), 0, m.start()) + 1
+                befunde.append(f"{rel}:{nr}: $ ausserhalb von Code und $$...$$ "
+                               f"({text.splitlines()[nr - 1].strip()[:50]!r}) — kramdown liest es als Text")
     return befunde, f"{len(dateien)} Markdown-Dateien, {len(befunde)} Befunde"
 
 

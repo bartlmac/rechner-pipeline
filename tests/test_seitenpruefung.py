@@ -81,6 +81,28 @@ def test_verweise_liest_einfache_anfuehrungszeichen_und_belege_sind_ein_hinweis(
     assert "HINWEIS migrationen/f/artefakte/bericht.html: abgeleitet/x.html — kein Ziel" in zusammen
 
 
+def test_eine_weiterleitung_ist_eine_seite_des_auftritts_kein_beleg(tmp_path: Path):
+    """Der Bericht der Migrationsabnahme verweist vom Fallordner aus; dort, wohin
+    der Browser den Verweis aufloest, liegt eine Weiterleitung, die das Manifest
+    nennt. Dann zeigt kein Verweis eines Belegs ins Leere. Zeigt die
+    Weiterleitung selbst ins Leere, ist das ein Befund, kein Hinweis; das Ziel
+    eines meta refresh zaehlt wie ein Verweis."""
+    v = tmp_path / "vorschau"
+    a = v / "migrationen" / "f" / "artefakte"
+    _schreibe(a / "abgeleitet" / "berichte" / "bericht.html", "<a href='abgeleitet/berichte/x.html'>x</a>")
+    _schreibe(a / "abgeleitet" / "berichte" / "x.html", "<p>x</p>")
+    weiter = a / "abgeleitet" / "berichte" / "abgeleitet" / "berichte" / "x.html"
+    _schreibe(weiter, '<meta http-equiv="refresh" content="0; url=../../x.html"><a href="../../x.html">w</a>')
+    _schreibe(a / "bereinigung.json", json.dumps({"weiterleitungen": [
+        {"datei": "artefakte/abgeleitet/berichte/abgeleitet/berichte/x.html", "ziel": "../../x.html"}]}))
+    befunde, zusammen = sp.verweise(v)
+    assert befunde == [] and "in Belegen ohne Ziel: 0" in zusammen, (befunde, zusammen)
+    _schreibe(weiter, '<meta http-equiv="refresh" content="0; url=../../weg.html">')
+    befunde, zusammen = sp.verweise(v)
+    assert befunde == ["migrationen/f/artefakte/abgeleitet/berichte/abgeleitet/berichte/x.html: "
+                       "../../weg.html — kein Ziel"], befunde
+
+
 def test_pages_findet_was_pages_anders_liest_als_die_vorschau(tmp_path: Path):
     """Gemessen mit dem Renderer von Pages am 08.10.2026: kramdown zeigt
     ``{: #x }`` am Ende einer Ueberschrift als Text, Liquid bricht an einem
@@ -101,7 +123,22 @@ def test_pages_findet_was_pages_anders_liest_als_die_vorschau(tmp_path: Path):
     assert [b.split(" — ")[0] for b in befunde] == [
         "unter/a.md:1: ## Über uns {: #ueber-uns }", "unter/a.md:2: ### Weiter {:.klasse}",
         "unter/a.md:6: {{ ausserhalb von raw", "unter/a.md:9: {% ausserhalb von raw",
-        "unter/a.md:4: $x_1$"], befunde
+        "unter/a.md:4: $ ausserhalb von Code und $$...$$ ('Formel $x_1$')",
+        "unter/a.md:4: $ ausserhalb von Code und $$...$$ ('Formel $x_1$')"], befunde
+
+
+def test_pages_zaehlt_jedes_dollar_auch_ueber_einen_zeilenumbruch(tmp_path: Path):
+    """Drei Formeln im KLV-Tarifplan liefen ueber einen Zeilenumbruch und gingen
+    am Import vorbei (bis 09.10.2026); eine Pruefung, die nur $...$ in einer
+    Zeile suchte, sah sie nicht. Gezaehlt wird jedes $ ausserhalb von Code,
+    Skript und $$...$$, auch einer $$-Formel ueber Zeilen."""
+    seite = tmp_path / "seite"
+    _schreibe(seite / "a.md", "# A\n\n$$a\n= b$$ und `$x$`\n\n```\n$y\n```\n")
+    assert sp.pages(seite)[0] == []
+    _schreibe(seite / "b.md", "# B\n\nDie Summe $f \\cdot\nS_i$ zuzueglich.\n")
+    befunde, zusammen = sp.pages(seite)
+    assert [b.split(" (")[0] for b in befunde] == [
+        "b.md:3: $ ausserhalb von Code und $$...$$", "b.md:4: $ ausserhalb von Code und $$...$$"], befunde
 
 
 def test_pages_verlangt_einen_titel_und_kein_markdown_in_belegen(tmp_path: Path):

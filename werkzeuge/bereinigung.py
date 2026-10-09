@@ -50,7 +50,9 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import json
+import os
 import re
 import sys
 import zlib
@@ -80,6 +82,22 @@ TEXT_ENDUNGEN = (".json", ".jsonl", ".md", ".txt", ".csv", ".html", ".yml", ".ya
 _NAME = rb"[A-Za-z0-9_.\-]"
 
 MANIFEST = "bereinigung.json"
+
+
+def weiterleitung(ziel: str) -> bytes:
+    """Die Seite des Auftritts, die auf ``ziel`` (relativ zu ihr) weiterleitet.
+
+    Ein Beleg des Falls verweist mitunter vom Fallordner aus, der Browser loest
+    den Verweis aber vom Ordner des Belegs aus auf (der Bericht der
+    Migrationsabnahme von Fall 3 auf die beiden Bestandsberichte daneben). Der
+    Beleg bleibt Byte fuer Byte, wie er gezeichnet wurde; dort, wohin sein
+    Verweis zeigt, legt der Auftritt diese Seite ab (vorzeigeseite). Ihre Bytes
+    ergeben sich allein aus dem Ziel, darum prueft :func:`pruefe` sie nach."""
+    z = html.escape(ziel, quote=True)
+    return ('<!DOCTYPE html>\n<html lang="de"><head><meta charset="utf-8">'
+            f'<meta http-equiv="refresh" content="0; url={z}"><link rel="canonical" href="{z}">'
+            '<title>Weiterleitung</title></head>\n'
+            f'<body><p><a href="{z}">Weiter zum Bericht</a></p></body></html>\n').encode("utf-8")
 
 
 def regeln(fall: Path) -> List[Tuple[str, str, "re.Pattern[bytes]"]]:
@@ -164,11 +182,12 @@ def bindung(knoten: Dict[str, Any]) -> List[str]:
 
 
 def manifest(bereinigt: List[Dict[str, Any]], zurueckgehalten: List[Dict[str, Any]],
-             regelsatz: List[Tuple[str, str, "re.Pattern[bytes]"]]) -> bytes:
+             regelsatz: List[Tuple[str, str, "re.Pattern[bytes]"]],
+             weiterleitungen: List[Dict[str, str]] = ()) -> bytes:
     """Das Bereinigungsmanifest — ohne Zeitstempel, sortiert, damit derselbe
     Fall dieselben Bytes ergibt (drift.py vergleicht sie)."""
     return (json.dumps({
-        "schema_version": 2,
+        "schema_version": 3,
         "zweck": ("Hostpfade der Belege sind in der veröffentlichten Fassung durch "
                   "benannte Platzhalter ersetzt. Je Datei: die Prüfsumme des Originals im "
                   "Fall, die Entscheide, die dieses Original über seine Prüfsumme binden "
@@ -176,10 +195,14 @@ def manifest(bereinigt: List[Dict[str, Any]], zurueckgehalten: List[Dict[str, An
                   "Ersetzungen je Regel. Alle übrigen Belege unter artefakte/ sind bytegleich "
                   "mit ihren Originalen im Fall; die Ansichten der Lieferung "
                   "(artefakte/lieferung/) sind Ansichten — eine CSV als Vorschau ihrer "
-                  "ersten Zeilen, alles Übrige bytegleich."),
+                  "ersten Zeilen, alles Übrige bytegleich. Weiterleitungen sind Seiten "
+                  "des Auftritts, keine Belege: Verweist ein Beleg vom Fallordner aus, "
+                  "liegt dort, wohin der Browser den Verweis auflöst, eine Weiterleitung "
+                  "auf die Datei, die gemeint ist."),
         "regeln": [{"platzhalter": p, "steht_fuer": b} for p, b, _ in regelsatz],
         "bereinigt": sorted(bereinigt, key=lambda e: e["datei"]),
         "zurueckgehalten": sorted(zurueckgehalten, key=lambda e: e["original"]),
+        "weiterleitungen": sorted(weiterleitungen, key=lambda e: e["datei"]),
     }, ensure_ascii=False, indent=1, sort_keys=True) + "\n").encode("utf-8")
 
 
@@ -290,6 +313,15 @@ def pruefe(seite: Path, fall: Path) -> List[str]:
                           f"{e.get('ersetzungen')})")
         if not veroeffentlicht.is_file() or sha(veroeffentlicht) != e["sha256_veroeffentlicht"]:
             fehler.append(f"{e['datei']}: veroeffentlichte Datei weicht vom Manifest ab")
+    weiter = {e["datei"]: e for e in m.get("weiterleitungen") or []}
+    for datei, e in sorted(weiter.items()):
+        ziel = Path(os.path.normpath((seite / datei).parent / e["ziel"]))
+        if not (seite / datei).is_file() or (seite / datei).read_bytes() != weiterleitung(e["ziel"]):
+            fehler.append(f"{datei}: Weiterleitung weicht von ihrer Erzeugung ab")
+        if artefakte not in ziel.parents or not ziel.is_file():
+            fehler.append(f"{datei}: Weiterleitung zeigt ins Leere ({e['ziel']})")
+        if (fall / datei[len("artefakte/"):]).exists():
+            fehler.append(f"{datei}: Weiterleitung verdeckt eine Datei des Falls")
     zurueck = {e["sha256"]: e["original"] for e in m.get("zurueckgehalten") or []}
     for e in m.get("zurueckgehalten") or []:
         if sha(fall / e["original"]) != e["sha256"]:
@@ -299,7 +331,7 @@ def pruefe(seite: Path, fall: Path) -> List[str]:
         if sha(pfad) in zurueck:
             fehler.append(f"{rel}: traegt die Bytes der zurueckgehaltenen Datei "
                           f"{zurueck[sha(pfad)]}")
-        if rel in bereinigte or rel == f"artefakte/{MANIFEST}":
+        if rel in bereinigte or rel in weiter or rel == f"artefakte/{MANIFEST}":
             continue
         quelle, vorschau = _gegenstueck(fall, rel[len("artefakte/"):])
         if quelle is None or not quelle.is_file():

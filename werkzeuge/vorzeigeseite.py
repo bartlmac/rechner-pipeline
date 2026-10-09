@@ -68,9 +68,12 @@ import csv
 import datetime as dt
 import html
 import json
+import os
+import re
 import shutil
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -448,10 +451,44 @@ def _kopiere(fall: Path, ziel: Path, modell: Optional[Dict[str, Any]] = None
         unterziel.write_bytes(veroeffentlicht)
         kopiert.append(f"artefakte/{name}")
     (ziel / "artefakte").mkdir(parents=True, exist_ok=True)
+    bericht["weiterleitungen"] = _weiterleitungen(ziel / "artefakte")
     (ziel / "artefakte" / bereinigung.MANIFEST).write_bytes(
-        bereinigung.manifest(bericht["bereinigt"], bericht["zurueckgehalten"], regelsatz))
+        bereinigung.manifest(bericht["bereinigt"], bericht["zurueckgehalten"], regelsatz,
+                             bericht["weiterleitungen"]))
     kopiert.append(f"artefakte/{bereinigung.MANIFEST}")
     return kopiert, bericht
+
+
+def _weiterleitungen(artefakte: Path) -> List[Dict[str, str]]:
+    """Weiterleitungen fuer Verweise eines Belegs, die vom Fallordner aus
+    geschrieben sind.
+
+    Der Browser loest einen relativen Verweis vom Ordner des Belegs aus auf;
+    der Bericht der Migrationsabnahme von Fall 3 schreibt seine Verweise auf
+    die Bestandsberichte daneben aber vom Fallordner aus, sie liefen ins
+    Leere. Der Beleg bleibt Byte fuer Byte. Wo ein Verweis ins Leere ginge,
+    das Ziel vom Fallordner aus aber auf der Seite liegt, liegt danach eine
+    Weiterleitung (:func:`bereinigung.weiterleitung`); das Manifest nennt sie,
+    damit die Pruefungen sie vom Beleg unterscheiden."""
+    aus: List[Dict[str, str]] = []
+    for beleg in sorted(artefakte.rglob("*.html")):
+        text = beleg.read_text(encoding="utf-8", errors="replace")
+        for a, b in re.findall(r"""\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')""", text):
+            pfad = urllib.parse.unquote(html.unescape(a or b).strip().split("#")[0].split("?")[0])
+            if not pfad or pfad.startswith("/") or re.match(r"^[a-z][a-z0-9+.-]*:", pfad, re.I):
+                continue
+            dort = Path(os.path.normpath(beleg.parent / pfad))
+            gemeint = Path(os.path.normpath(artefakte / pfad))
+            if (dort.exists() or not gemeint.is_file()
+                    or artefakte not in dort.parents or artefakte not in gemeint.parents):
+                continue
+            ziel = Path(os.path.relpath(gemeint, dort.parent)).as_posix()
+            dort.parent.mkdir(parents=True, exist_ok=True)
+            dort.write_bytes(bereinigung.weiterleitung(ziel))
+            aus.append({"datei": "artefakte/" + dort.relative_to(artefakte).as_posix(),
+                        "ziel": ziel,
+                        "verweis_aus": "artefakte/" + beleg.relative_to(artefakte).as_posix()})
+    return aus
 
 
 GEVO_TITEL = {"ERH": "Erhöhung", "PEX": "Beitragsfreist.",

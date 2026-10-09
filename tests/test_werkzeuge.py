@@ -2613,6 +2613,51 @@ def test_ein_dokument_ohne_vorspann_beginnt_mit_seiner_ueberschrift(tmp_path):
     assert us._titel_und_rumpf("Kein Titel\n# Spaeter\n") == ("", "Kein Titel\n# Spaeter\n")
 
 
+def test_ein_verweis_vom_fallordner_aus_bekommt_eine_weiterleitung(tmp_path, monkeypatch):
+    """Der Bericht der Migrationsabnahme von Fall 3 verweist vom Fallordner aus
+    (href='abgeleitet/berichte/bestandsbericht-vor.html'); der Browser loest vom
+    Ordner des Berichts aus auf und laeuft ins Leere. Der Beleg bleibt bytegleich,
+    dort, wohin der Verweis zeigt, liegt eine Weiterleitung auf die Datei
+    daneben, und das Manifest nennt sie. Ein Verweis, der traegt, oder einer ohne
+    Ziel auch vom Fallordner aus, bekommt keine. bereinigung.pruefe kennt die
+    Weiterleitung als Seite des Auftritts und rechnet ihre Bytes nach."""
+    import bereinigung
+    import falldaten
+    fall, seite = tmp_path / "fall", tmp_path / "seite" / "migrationen" / "f"
+    bericht = ("<a href='abgeleitet/berichte/vor.html'>vor</a> <a href=\"vor.html\">da</a> "
+               "<a href='abgeleitet/berichte/fehlt.html'>weg</a> <a href='https://example.org/'>e</a>")
+    for wurzel in (fall, seite / "artefakte"):
+        (wurzel / "abgeleitet" / "berichte").mkdir(parents=True)
+        (wurzel / "abgeleitet" / "berichte" / "abnahme.html").write_text(bericht, encoding="utf-8")
+        (wurzel / "abgeleitet" / "berichte" / "vor.html").write_text("<p>vor</p>", encoding="utf-8")
+    weiter = vz._weiterleitungen(seite / "artefakte")
+    assert weiter == [{"datei": "artefakte/abgeleitet/berichte/abgeleitet/berichte/vor.html",
+                       "ziel": "../../vor.html",
+                       "verweis_aus": "artefakte/abgeleitet/berichte/abnahme.html"}]
+    datei = seite / weiter[0]["datei"]
+    assert datei.read_bytes() == bereinigung.weiterleitung("../../vor.html")
+    assert b'url=../../vor.html' in datei.read_bytes()
+    assert (seite / "artefakte" / "abgeleitet" / "berichte" / "abnahme.html").read_text(encoding="utf-8") == bericht
+    assert not (seite / "artefakte" / "abgeleitet" / "berichte" / "abgeleitet" / "berichte" / "fehlt.html").exists()
+
+    monkeypatch.setattr(falldaten, "belegkette", lambda f: {"dateien": {}})
+    (seite / "artefakte" / bereinigung.MANIFEST).write_bytes(bereinigung.manifest([], [], [], weiter))
+    assert bereinigung.pruefe(seite, fall) == []
+    datei.write_bytes(bereinigung.weiterleitung("../../anders.html"))
+    assert bereinigung.pruefe(seite, fall) == [
+        "artefakte/abgeleitet/berichte/abgeleitet/berichte/vor.html: Weiterleitung weicht von ihrer Erzeugung ab"]
+    leer = [dict(weiter[0], ziel="../../weg.html")]
+    datei.write_bytes(bereinigung.weiterleitung("../../weg.html"))
+    (seite / "artefakte" / bereinigung.MANIFEST).write_bytes(bereinigung.manifest([], [], [], leer))
+    assert bereinigung.pruefe(seite, fall) == [
+        "artefakte/abgeleitet/berichte/abgeleitet/berichte/vor.html: Weiterleitung zeigt ins Leere (../../weg.html)"]
+    datei.write_bytes(bereinigung.weiterleitung("../../vor.html"))
+    (seite / "artefakte" / bereinigung.MANIFEST).write_bytes(bereinigung.manifest([], [], []))
+    assert bereinigung.pruefe(seite, fall) == [
+        "artefakte/abgeleitet/berichte/abgeleitet/berichte/vor.html: liegt auf der Seite, "
+        "hat aber kein Gegenstueck im Fall"]
+
+
 def test_jede_kastenart_hat_ihre_farbe_und_keine_ist_weiss():
     """Die Karte unterscheidet drei Kastenarten an der Farbe, und Weiss
     heisst in ihr: Mensch zeichnet (die weissen Marken). Bis 04.10.2026
