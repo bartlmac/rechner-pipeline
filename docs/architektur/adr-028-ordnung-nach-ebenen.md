@@ -97,6 +97,20 @@ Deshalb:
 * Der Originalstand bleibt unter dem Tag `fall3-vor`. Der Originalfall vom
   2026-10-02 ist in der alten Ordnung geführt; die Seite zeigt seine Belege.
 
+Zwei Folgen davon:
+
+* Die Erstabnahme einer Welt vergleicht ohne Angabe mit dem Stand ihres
+  Codebaums selbst und nimmt ihn ab, wie er ist (`VON` in
+  `werkzeuge/welt/welt_aufstellen.sh`); vorher zeigte sie die Änderung gegenüber
+  `e8fa2b4`, einem Stand der früheren Ordnung. A-T1 und A-K2 verweigern
+  jeden Vergleichsstand, dem ihr Gegenstand an den heutigen Pfaden fehlt,
+  statt ein leeres „vorher“ zu belegen (beide Werkzeuge in Version 1.1.0).
+* Die Commits, die Tarifwerk und Grundsatzdokumentation zwischen
+  `fall3-vor` und dem Umzug noch am alten Ort geändert haben (6aa7c14,
+  884ac7f, 081c4f9, 627de7d, b3ddf31), nennen die Belege beim Nachfahren
+  nicht unter „Commits des Zweigs“; die Zeilenzahlen gegen den Stand vor
+  dem Fall stimmen.
+
 Verworfen: der Abnahme die früheren Orte beizubringen (ein älterer Commit
 wird am damaligen Ort gelesen, ein Umzug heißt „verschoben“). Das trug,
 ließ aber alte Pfade in Abnahme und Routinen weiterleben.

@@ -23,7 +23,8 @@ der Erstabnahmen (ADR-025) und dem Zugang in die Ablage (ADR-022), die es
 bei Lauf 2 noch nicht gab.
 
 Der Stand vor Fall 3 und der Stand danach tragen die Tags `fall3-vor` und
-`fall3-nach`. `main` trägt den Stand danach.
+`fall3-nach`. `main` trägt den Stand danach. Nachgefahren wird von
+`fall3-vor-ebenen`: dem Stand vor Fall 3 in der Ordnung nach ADR-028.
 
 Ein Fall der Vorführung, der live in einer Welt geführt wird, heißt
 `baldrian-klv-tg2015` (Falldatei `migrationen/baldrian/fall-baldrian-klv-tg2015.conf`).

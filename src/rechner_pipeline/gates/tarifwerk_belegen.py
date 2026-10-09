@@ -64,7 +64,10 @@ from rechner_pipeline.models import tarifwerkabnahme as tw
 
 COMMAND = "tarifwerk_belegen"
 GATE = "A-T1.tarifwerk"
-GATE_VERSION = "1.0.0"
+#: 1.1.0 (2026-10-09, ADR-028 Nachtrag): Ein Vergleichsstand ohne Tarifplaene
+#: oder Configs an den heutigen Pfaden wird verweigert, statt ein leeres
+#: Tarifwerk "vorher" zu belegen.
+GATE_VERSION = "1.1.0"
 #: Schema des Aenderungsbelegs.
 TARIFWERK_AENDERUNG_SCHEMA_VERSION = 1
 ART = "tarifwerk"
@@ -107,6 +110,11 @@ def _inhalt_im_commit(repo_root: Path, commit: str) -> Dict[str, Any]:
     configs = git_dateien(repo_root, commit, tw.CONFIG_VERZEICHNIS)
     if plaene is None or configs is None:
         raise tw.TarifwerkFehler(f"die Dateien des Tarifwerks in {commit[:12]} sind nicht lesbar")
+    if not tw.tarifplan_pfade(plaene) or not tw.konfig_pfade(configs):
+        raise tw.TarifwerkFehler(
+            f"im Stand {commit[:12]} liegen keine Tarifplaene unter {tw.TARIFPLAENE}/ oder keine "
+            f"Configs unter {tw.CONFIG_VERZEICHNIS}/: ein Stand in frueherer Ordnung ist kein "
+            "Vergleichsstand (ADR-028); --von auf einen Stand der heutigen Ordnung setzen")
     return tw.tarifwerk_inhalt(lies(tw.tarifplan_pfade(plaene)), lies(tw.konfig_pfade(configs)))
 
 

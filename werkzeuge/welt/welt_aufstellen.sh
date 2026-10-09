@@ -27,7 +27,8 @@
 #   BIS          letzter Tag der Ablage (Vorgabe 2025-12-31, der Tag vor dem
 #                Zugangsstichtag der Baldrian-Lieferung)
 #   VON          zuletzt abgenommener Kern- und Tarifwerksstand, gegen den die
-#                Erstabnahme ihre Aenderung zeigt (Vorgabe e8fa2b4)
+#                Erstabnahme ihre Aenderung zeigt (ohne Angabe: der Stand des
+#                Codebaums selbst; die Erstabnahme nimmt ihn ab, wie er ist)
 #   MANDATGEBER  wer das Mandat der simulierten Rollen erteilt
 #   ENTSCHEIDER  wer in den Snapshots als Entscheider steht
 # Immer:
@@ -113,7 +114,7 @@ EOF
 WELT="$WELT"
 LINIE="$WELT/linie"
 BIS="${BIS:-2025-12-31}"
-VON="${VON:-e8fa2b4}"
+VON="${VON:-$(git -C "$BAUM" rev-parse HEAD)}"
 ENTSCHEIDER="$entscheider"
 ORDNUNG="$K/zeichnungsordnung.json"
 MANDAT="$WELT/mandate/mandat.txt"

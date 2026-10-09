@@ -233,7 +233,7 @@ unverändert bleiben). Tarifwerte und Zellen kommen aus dem Übernahme-Vorlauf
 des Falls (`abgeleitet/bestand/generation-zellen.toml`, aus der Spez), nicht
 abgetippt; die Strukturfelder (Nummernkreis 14, Gültigkeit 2015-01-01 bis
 2017-01-01, Endalter 90, inerte Verteilungen ohne Neuzugang) stammen aus dem
-Block vor dem Rückbau (`git show cfaef32^:plv/configs/bestand_gesamt.toml`) und sind
+Block vor dem Rückbau (`git show cfaef32^:configs/bestand_gesamt.toml`) und sind
 für eine übernommene Generation ohne Neuzugang ohne Wirkung auf den
 Vertragswert. Unterschied zum alten Block: nur die Schreibweise `0.0` statt `0`
 bei den Haus-Stornoabzügen (aus der Spez), im Tarifplan neu erzeugt.

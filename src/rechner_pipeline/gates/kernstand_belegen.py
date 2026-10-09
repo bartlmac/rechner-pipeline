@@ -73,7 +73,9 @@ from rechner_pipeline.models import kernabnahme as ka
 
 COMMAND = "kernstand_belegen"
 GATE = "A-K2.kernaenderung"
-GATE_VERSION = "1.0.0"
+#: 1.1.0 (2026-10-09, ADR-028 Nachtrag): Ein Vergleichsstand, dem ein Teil des
+#: Gegenstands am heutigen Pfad fehlt, wird verweigert.
+GATE_VERSION = "1.1.0"
 
 #: Schema des Aenderungsbelegs. 4 (2026-10-01, ADR-025): der Gegenstand
 #: ohne die Tarifplaene (sie gehoeren zum Tarifwerk, A-T1). 3 (2026-10-01):
@@ -195,6 +197,11 @@ def _baue(repo_root: Path, angabe: str, von: str, begruendung: str) -> Dict[str,
     if stand.get("commit") == "unbekannt":
         raise KernstandFehler("der Git-Stand des Arbeitsbaums ist nicht lesbar")
     pfade = ka.kernstand_pfade()
+    fehlend = [p for p in pfade if not git_dateien(repo_root, von, p)]
+    if fehlend:
+        raise KernstandFehler(
+            f"im Stand {von[:12]} fehlt {', '.join(fehlend)}: ein Stand in frueherer Ordnung "
+            "ist kein Vergleichsstand (ADR-028); --von auf einen Stand der heutigen Ordnung setzen")
     basis = git_merge_base(repo_root, von, "HEAD")
     diffstat = git_diffstat(repo_root, von, pfade)
     commits = git_commits(repo_root, von, pfade)

@@ -1150,8 +1150,8 @@ def _kennzahlen(text: str, modell: Dict[str, Any], seite: str,
             f"{seite}: unbekannter Platzhalter {rest.group(0)!r}.")
     return ergebnis
 
-#: Fachdokumente, die der Auftritt beim Bau importiert: (Quelle unter
-#: docs/, Ziel im Auftritt, Rueckverweis-Beschriftung, Rueckverweis-
+#: Fachdokumente, die der Auftritt beim Bau importiert: (Quelle relativ
+#: zu docs/, Ziel im Auftritt, Rueckverweis-Beschriftung, Rueckverweis-
 #: Ziel). Eine Quelle, eine Heimat (``docs/``) — der Auftritt kopiert
 #: beim Bau, statt eine zweite Fassung zu pflegen. Die Aktuariats-
 #: Dokumente spiegeln den Pfad unter docs/, damit ihre relativen
@@ -1171,8 +1171,8 @@ FACHDOKUMENTE = (
     # Aktuariats-Dokumente umgeschrieben (fuenftes Tupel-Element).
     ("simulation/README.md",
      "hinter-den-kulissen/simulation/index.md", "Hinter den Kulissen", "../",
-     (("](../mathematik/", "](../../aktuariat/mathematik/"),
-      ("](../tarifplaene/", "](../../aktuariat/tarifplaene/"))),
+     (("](../../plv/mathematik/", "](../../aktuariat/mathematik/"),
+      ("](../../plv/tarifplaene/", "](../../aktuariat/tarifplaene/"))),
     ("simulation/tagesbetrieb.md",
      "hinter-den-kulissen/simulation/tagesbetrieb.md", "Hinter den Kulissen", "../"),
     ("simulation/bestandserzeugung.md",
@@ -1180,7 +1180,7 @@ FACHDOKUMENTE = (
      (("](README.md)", "](./)"),)),
     ("simulation/erfahrungsannahmen.md",
      "hinter-den-kulissen/simulation/erfahrungsannahmen.md", "Hinter den Kulissen", "../",
-     (("](../mathematik/", "](../../aktuariat/mathematik/"),)),
+     (("](../../plv/mathematik/", "](../../aktuariat/mathematik/"),)),
 )
 
 #: MathJax fuer Fachdokumente mit TeX-Formeln. kramdown reicht die Formeln
