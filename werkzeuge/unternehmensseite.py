@@ -28,13 +28,15 @@ Aufruf (nach dem Bau der Fall-Seiten in denselben Baum)::
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import html
+import os
 import re
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import darstellung
 import grafik
@@ -1318,6 +1320,7 @@ def fachdokumente(docs: Path, ziel: Path,
         zielpfad.parent.mkdir(parents=True, exist_ok=True)
         for alt, neu in ersetzungen:
             rumpf = rumpf.replace(alt, neu)
+        rumpf = _verweise_nach_aussen(rumpf, _im_ordner(quelle.parent, docs / "architektur"))
         zielpfad.write_text(
             _vorspann(rel, titel, "$" in rumpf,
                       zurueck=(zurueck_titel, zurueck_ziel)) + _fuer_pages(rumpf)
@@ -1350,15 +1353,81 @@ def _tarifplan_uebersicht(ziel: Path, importiert: List[tuple]) -> None:
     pfad.write_text("\n".join(z) + "\n" + fusszeile("../../") + "\n", encoding="utf-8")
 
 
+#: Architekturdokumente, die der Auftritt nicht spiegelt, sondern auf GitHub
+#: verlinkt (Entscheid des Maintainers 09.10.2026 zu den ADRs: "Nur auf GitHub
+#: verlinken"). Muster wie bei fnmatch; die Menge zu aendern ist ein Eintrag
+#: hier. Ein Verweis darauf, aus einem gespiegelten Dokument oder einer
+#: Quellseite, zeigt auf GitHub (:data:`GITHUB_ARCHITEKTUR`); er traegt ab dem
+#: Push, der main vor gh-pages schiebt.
+NUR_AUF_GITHUB: Tuple[str, ...] = ("adr-*.md",)
+
+#: Architekturdokumente, die die Seite weder spiegelt noch verlinkt (Entscheid
+#: 09.10.2026 zur Migrations-Pipeline v0.1: "von der Seite (komplett)
+#: nehmen"). Ein Verweis darauf wird zu Text; steht er in einer Tabellenzeile,
+#: faellt die Zeile.
+NICHT_AUF_DER_SEITE: Tuple[str, ...] = ("migrations-pipeline-v01.md",)
+
+GITHUB_ARCHITEKTUR = "https://github.com/bartlmac/rechner-pipeline/blob/main/docs/architektur/"
+
+#: Ein Markdown-Verweis: Text, Ziel ohne Sprungziel, Sprungziel.
+_VERWEIS = re.compile(r"\[([^\]\n]+)\]\(([^)\s#]+)(#[^)\s]*)?\)")
+
+
+def _nicht_gespiegelt(name: str) -> Optional[str]:
+    """``"weg"``, ``"github"`` oder None fuer ein Dokument unter docs/architektur."""
+    if any(fnmatch.fnmatch(name, m) for m in NICHT_AUF_DER_SEITE):
+        return "weg"
+    if any(fnmatch.fnmatch(name, m) for m in NUR_AUF_GITHUB):
+        return "github"
+    return None
+
+
+def _verweise_nach_aussen(text: str, dokument: Callable[[str], Optional[str]]) -> str:
+    """Verweise auf nicht gespiegelte Architekturdokumente umschreiben.
+
+    ``dokument`` bildet ein Verweisziel auf den Namen eines Dokuments unter
+    docs/architektur ab, oder auf None. Ein Verweis auf ein Dokument aus
+    :data:`NUR_AUF_GITHUB` zeigt danach auf GitHub, einer auf eines aus
+    :data:`NICHT_AUF_DER_SEITE` wird zu Text, und eine Tabellenzeile mit ihm
+    faellt. Jeder andere Verweis bleibt, wie er ist."""
+    zeilen = []
+    for zeile in text.split("\n"):
+        weg = []
+
+        def ersetze(m) -> str:
+            name = dokument(m.group(2))
+            art = _nicht_gespiegelt(name) if name else None
+            if art == "github":
+                return f"[{m.group(1)}]({GITHUB_ARCHITEKTUR}{name}{m.group(3) or ''})"
+            if art == "weg":
+                weg.append(name)
+                return m.group(1)
+            return m.group(0)
+
+        neu = _VERWEIS.sub(ersetze, zeile)
+        if not (weg and zeile.lstrip().startswith("|")):
+            zeilen.append(neu)
+    return "\n".join(zeilen)
+
+
+def _im_ordner(ordner: Path, architektur: Path) -> Callable[[str], Optional[str]]:
+    """Fuer :func:`_verweise_nach_aussen`: Ein Verweis aus einem Dokument in
+    ``ordner`` meint das Dokument unter ``architektur``, auf das er fuehrt."""
+    def dokument(ziel: str) -> Optional[str]:
+        pfad = Path(os.path.normpath(ordner / ziel))
+        return pfad.name if pfad.parent == architektur and pfad.suffix == ".md" else None
+    return dokument
+
+
 def architektur(docs: Path, ziel: Path) -> int:
     """``docs/architektur`` unter ``hinter-den-kulissen/architektur/`` einspielen.
 
-    Vollstaendig — ADRs, Prinzipien, Migrations-Pipeline —, damit die
-    Querverweise der Dokumente untereinander gelten. ``README.md`` wird
-    zur Uebersicht ``index.md``. Nur ``landkarte.md`` bleibt draussen:
-    Die Landkarte wird beim Bau FRISCH aus dem Code erzeugt
-    (``landkarten``); eine eingecheckte Fassung zu kopieren waere
-    genau die Drift, die der Import vermeiden soll.
+    Gespiegelt wird jedes Dokument ausser denen in :data:`NUR_AUF_GITHUB` und
+    :data:`NICHT_AUF_DER_SEITE`; Verweise auf sie schreibt
+    :func:`_verweise_nach_aussen` um. ``README.md`` wird zur Uebersicht
+    ``index.md``. ``landkarte.md`` bleibt draussen: Die Landkarte wird beim
+    Bau FRISCH aus dem Code erzeugt (``landkarten``); eine eingecheckte
+    Fassung zu kopieren waere genau die Drift, die der Import vermeiden soll.
     """
     verzeichnis = docs / "architektur"
     if not verzeichnis.is_dir():
@@ -1366,7 +1435,7 @@ def architektur(docs: Path, ziel: Path) -> int:
             f"Architektur-Dokumente fehlen: {verzeichnis}")
     anzahl = 0
     for quelle in sorted(verzeichnis.glob("*.md")):
-        if quelle.name == "landkarte.md":
+        if quelle.name == "landkarte.md" or _nicht_gespiegelt(quelle.name):
             continue
         _pruefe_regie(quelle)
         titel, rumpf = _titel_und_rumpf(
@@ -1374,6 +1443,7 @@ def architektur(docs: Path, ziel: Path) -> int:
         # Verweise auf die eingecheckte Landkarte zeigen im Auftritt auf
         # die beim Bau frisch erzeugte Fassung.
         rumpf = rumpf.replace("](landkarte.md)", "](landkarte.html)")
+        rumpf = _verweise_nach_aussen(rumpf, _im_ordner(verzeichnis, verzeichnis))
         name = "index.md" if quelle.name == "README.md" else quelle.name
         rel = Path("hinter-den-kulissen") / "architektur" / name
         zielpfad = ziel / rel
@@ -1512,6 +1582,20 @@ def techstack(repo: Path, ziel: Path) -> None:
     pfad.write_text("\n".join(z) + "\n" + fusszeile("../") + "\n", encoding="utf-8")
 
 
+def _gespiegelt_im_auftritt(ziel: Path, ordner: Path) -> Callable[[str], Optional[str]]:
+    """Fuer :func:`_verweise_nach_aussen`: Ein Verweis einer Quellseite in
+    ``ordner`` auf ``hinter-den-kulissen/architektur/x.html`` (oder auf den
+    Ordner selbst, die Uebersicht) meint das Dokument ``x.md`` (``README.md``)."""
+    architektur = Path(os.path.normpath(ziel / "hinter-den-kulissen" / "architektur"))
+
+    def dokument(verweis: str) -> Optional[str]:
+        pfad = Path(os.path.normpath(ordner / verweis))
+        if pfad == architektur or pfad == architektur / "index.html":
+            return "README.md"
+        return pfad.stem + ".md" if pfad.parent == architektur and pfad.suffix == ".html" else None
+    return dokument
+
+
 def baue(quellen: Path, ziel: Path, modell: Dict[str, Any]) -> List[str]:
     """Die Quellseiten in den Push-Baum spiegeln, mit drei Zwaengen:
     Regie-Sperre, Banderole, aufgeloeste Kennzahlen."""
@@ -1535,6 +1619,7 @@ def baue(quellen: Path, ziel: Path, modell: Dict[str, Any]) -> List[str]:
             text = _kennzahlen(
                 datei.read_text(encoding="utf-8"), modell, str(rel), ziel)
             wurzel = "../" * (len(rel.parts) - 1)
+            text = _verweise_nach_aussen(text, _gespiegelt_im_auftritt(ziel, ziel / rel.parent))
             text = _mit_reiter(text, wurzel, rel.parts[0] if len(rel.parts) > 1 else "")
             text = _mit_fusszeile(text, wurzel)
             if BANDEROLE not in text:

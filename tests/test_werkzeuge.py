@@ -2578,7 +2578,11 @@ def test_die_architekturdokumentation_steht_hinter_den_kulissen(tmp_path):
     Unternehmens — Quelle oder Erzeuger — verlinkt auf sie."""
     repo = Path(__file__).resolve().parent.parent
     ziel = tmp_path / "seite"
-    assert us.architektur(repo / "docs", ziel) > 10
+    anzahl = us.architektur(repo / "docs", ziel)
+    gespiegelt = sorted(p.name for p in (ziel / "hinter-den-kulissen" / "architektur").glob("*.md"))
+    # Die ADRs nur auf GitHub, die Migrations-Pipeline v0.1 gar nicht (09.10.2026).
+    assert anzahl == len(gespiegelt) >= 5, gespiegelt
+    assert not [n for n in gespiegelt if n.startswith(("adr-", "migrations-pipeline"))], gespiegelt
     assert not (ziel / "it").exists()
     index = (ziel / "hinter-den-kulissen" / "architektur" / "index.md").read_text(encoding="utf-8")
     assert "Hinter den Kulissen" in index.split("\n## ", 1)[0]
@@ -2599,14 +2603,14 @@ def test_ein_dokument_ohne_vorspann_beginnt_mit_seiner_ueberschrift(tmp_path):
     Abschnittsueberschrift im Text."""
     docs = tmp_path / "docs"
     (docs / "architektur").mkdir(parents=True)
-    (docs / "architektur" / "adr-999-probe.md").write_text("\n# ADR-999: Probe\n\nText.\n", encoding="utf-8")
+    (docs / "architektur" / "probe-dokument.md").write_text("\n# Probe: ein Dokument\n\nText.\n", encoding="utf-8")
     (docs / "architektur" / "README.md").write_text("# Architektur\n\n## Abschnitt\n", encoding="utf-8")
     ziel = tmp_path / "seite"
     assert us.architektur(docs, ziel) == 2
-    seite = (ziel / "hinter-den-kulissen" / "architektur" / "adr-999-probe.md").read_text(encoding="utf-8")
+    seite = (ziel / "hinter-den-kulissen" / "architektur" / "probe-dokument.md").read_text(encoding="utf-8")
     zeilen = seite.splitlines()
-    assert zeilen[0] == "# ADR-999: Probe" and zeilen[2].startswith('<nav class="kopf">'), zeilen[:3]
-    assert seite.count("ADR-999: Probe") == 1
+    assert zeilen[0] == "# Probe: ein Dokument" and zeilen[2].startswith('<nav class="kopf">'), zeilen[:3]
+    assert seite.count("Probe: ein Dokument") == 1
     index = (ziel / "hinter-den-kulissen" / "architektur" / "index.md").read_text(encoding="utf-8")
     assert index.splitlines()[0] == "# Architektur" and "## Abschnitt" in index
     assert us._titel_und_rumpf("---\ntitle: \"T\"\n---\n# 1 Inhalt\n") == ("T", "# 1 Inhalt\n")
@@ -2656,6 +2660,61 @@ def test_ein_verweis_vom_fallordner_aus_bekommt_eine_weiterleitung(tmp_path, mon
     assert bereinigung.pruefe(seite, fall) == [
         "artefakte/abgeleitet/berichte/abgeleitet/berichte/vor.html: liegt auf der Seite, "
         "hat aber kein Gegenstueck im Fall"]
+
+
+def test_adrs_nur_auf_github_und_die_migrations_pipeline_gar_nicht(tmp_path, monkeypatch):
+    """Entscheid des Maintainers 09.10.2026: Die ADRs werden nicht gespiegelt,
+    nur auf GitHub verlinkt; die Migrations-Pipeline v0.1 kommt von der Seite,
+    als Seite und als Verweis. Ein Verweis aus einem gespiegelten Dokument,
+    einem Fachdokument der Simulation oder einer Quellseite zeigt dann auf
+    GitHub oder wird zu Text; eine Zeile der Uebersichtstabelle, die nur auf
+    das entfernte Dokument zeigt, faellt. Die Menge ist ueber die zwei Listen
+    umschaltbar."""
+    docs = tmp_path / "docs"
+    (docs / "architektur").mkdir(parents=True)
+    (docs / "simulation").mkdir()
+    (docs / "architektur" / "README.md").write_text(
+        "# Architektur\n\n| Dokument | Inhalt |\n|---|---|\n"
+        "| [Glossar](glossar.md) | Begriffe |\n| [Pipeline v0.1](migrations-pipeline-v01.md) | alt |\n"
+        "| [001](adr-001-probe.md) | erster Entscheid |\n", encoding="utf-8")
+    (docs / "architektur" / "glossar.md").write_text(
+        "# Glossar\n\nSiehe [ADR-001](adr-001-probe.md#folgen) und\n"
+        "([Pipeline v0.1](migrations-pipeline-v01.md), Abschnitt 8).\n", encoding="utf-8")
+    (docs / "architektur" / "adr-001-probe.md").write_text("# ADR-001\n", encoding="utf-8")
+    (docs / "architektur" / "migrations-pipeline-v01.md").write_text("# Pipeline\n", encoding="utf-8")
+    (docs / "simulation" / "s.md").write_text("# S\n\nNach [ADR-001](../architektur/adr-001-probe.md).\n",
+                                             encoding="utf-8")
+    ziel = tmp_path / "seite"
+    assert us.architektur(docs, ziel) == 2
+    a = ziel / "hinter-den-kulissen" / "architektur"
+    assert sorted(p.name for p in a.glob("*.md")) == ["glossar.md", "index.md"]
+    index = (a / "index.md").read_text(encoding="utf-8")
+    assert f"| [001]({us.GITHUB_ARCHITEKTUR}adr-001-probe.md) | erster Entscheid |" in index
+    assert "Pipeline v0.1" not in index and "| [Glossar](glossar.md) | Begriffe |" in index
+    glossar = (a / "glossar.md").read_text(encoding="utf-8")
+    assert f"[ADR-001]({us.GITHUB_ARCHITEKTUR}adr-001-probe.md#folgen)" in glossar
+    assert "(Pipeline v0.1, Abschnitt 8)" in glossar
+    us.fachdokumente(docs, ziel, dokumente=(("simulation/s.md", "hinter-den-kulissen/simulation/s.md",
+                                             "Hinter den Kulissen", "../"),))
+    s = (ziel / "hinter-den-kulissen" / "simulation" / "s.md").read_text(encoding="utf-8")
+    assert f"[ADR-001]({us.GITHUB_ARCHITEKTUR}adr-001-probe.md)" in s
+
+    # Umgeschaltet: auch Glossar und Uebersicht nur auf GitHub.
+    monkeypatch.setattr(us, "NUR_AUF_GITHUB", ("adr-*.md", "glossar.md", "README.md"))
+    assert us.architektur(docs, tmp_path / "seite2") == 0
+    quelle = "[Architektur](architektur/) und [Glossar](architektur/glossar.html), [Karte](architektur/landkarte.html)"
+    umgeschrieben = us._verweise_nach_aussen(
+        quelle, us._gespiegelt_im_auftritt(ziel, ziel / "hinter-den-kulissen"))
+    assert umgeschrieben == (f"[Architektur]({us.GITHUB_ARCHITEKTUR}README.md) und "
+                             f"[Glossar]({us.GITHUB_ARCHITEKTUR}glossar.md), [Karte](architektur/landkarte.html)")
+    # Der Bau wendet das auf die Quellseiten an.
+    quellen = _quellseiten(tmp_path / "q")
+    (quellen / "hinter-den-kulissen").mkdir()
+    (quellen / "hinter-den-kulissen" / "index.md").write_text(
+        "# Hinter den Kulissen\n\n* [Glossar](architektur/glossar.html)\n", encoding="utf-8")
+    us.baue(quellen, tmp_path / "seite3", {})
+    gebaut = (tmp_path / "seite3" / "hinter-den-kulissen" / "index.md").read_text(encoding="utf-8")
+    assert f"[Glossar]({us.GITHUB_ARCHITEKTUR}glossar.md)" in gebaut
 
 
 def test_jede_kastenart_hat_ihre_farbe_und_keine_ist_weiss():

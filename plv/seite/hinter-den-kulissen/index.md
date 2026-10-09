@@ -38,6 +38,3 @@ Seine Architektur, wie das Repository sie dokumentiert:
 * [Prinzipien](architektur/prinzipien.html) — was für jede Änderung gilt.
 * [Landkarte](architektur/landkarte.html) — die Schichtung des Codes,
   erzeugt aus dem Code selbst.
-* [Migrations-Pipeline](architektur/migrations-pipeline-v01.html) — die
-  Stufen einer Übernahme, die Ontologie als Schnittstelle, die Gates je
-  Stufe.
