@@ -104,6 +104,26 @@ def test_pages_findet_was_pages_anders_liest_als_die_vorschau(tmp_path: Path):
         "unter/a.md:4: $x_1$"], befunde
 
 
+def test_pages_verlangt_einen_titel_und_kein_markdown_in_belegen(tmp_path: Path):
+    """Gemessen mit dem Renderer von Pages: Ohne Ueberschrift am Anfang hat eine
+    Seite keinen Titel (jekyll-titles-from-headings, 38 Seiten bis 08.10.2026),
+    und eine .md unter artefakte/ oder plv/ wird zur Seite, ihr Original
+    verschwindet (remove_originals, 09.10.2026)."""
+    seite = tmp_path / "seite"
+    _schreibe(seite / "a.md", "# Titel\n\n<nav class=\"kopf\"></nav>\n")
+    _schreibe(seite / "b.md", "\n### Dritte Ebene genuegt\n")
+    _schreibe(seite / "c.md", "---\nlayout: default\ntitle: Aus dem Vorspann\n---\nText\n")
+    _schreibe(seite / "migrationen" / "f" / "artefakte" / "x.txt", "Lieferung als Text\n")
+    assert sp.pages(seite)[0] == []
+    _schreibe(seite / "d.md", '<nav class="kopf"></nav>\n\n# Titel danach\n')
+    _schreibe(seite / "e.md", "#### Vierte Ebene\n")
+    _schreibe(seite / "migrationen" / "f" / "artefakte" / "notiz.md", "# Notiz\n")
+    _schreibe(seite / "plv" / "probe.md", "# Probe\n")
+    befunde, _ = sp.pages(seite)
+    assert [b.split(" — ")[0].split(":")[0] for b in befunde] == [
+        "d.md", "e.md", "migrationen/f/artefakte/notiz.md", "plv/probe.md"], befunde
+
+
 def test_ein_sprung_auf_eine_fehlende_ueberschrift_bleibt_ein_befund(tmp_path: Path):
     """Gegenprobe zu den ids, die die Vorschau den Ueberschriften gibt (wie
     Pages): Sprungziele auf vorhandene Ueberschriften tragen, auch mit Umlaut,

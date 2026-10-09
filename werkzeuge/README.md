@@ -501,7 +501,7 @@ python werkzeuge/seitenpruefung.py alle --seite runs/<bau>/seite \
 | Prüfung | Befund |
 |---|---|
 | `verweise` | ein relativer Verweis ohne Ziel, ein Sprungziel ohne id, ein absoluter Pfad; in einem Beleg (`artefakte/`, `plv/`) nur ein Hinweis, weil Belege unverändert erscheinen |
-| `pages` | was Pages (Liquid, dann kramdown) anders liest als die Vorschau: eine Überschrift, die auf eine Attributliste `{: ...}` endet (eine eigene id heißt `{#x}`); `{{` oder `{%` außerhalb von raw; eine Formel in `$...$` (kramdown kennt nur `$$...$$`) |
+| `pages` | was Pages (Liquid, dann kramdown) anders liest als die Vorschau: eine Überschrift, die auf eine Attributliste `{: ...}` endet (eine eigene id heißt `{#x}`); `{{` oder `{%` außerhalb von raw; eine Formel in `$...$` (kramdown kennt nur `$$...$$`); eine Seite, die nicht mit einer Überschrift beginnt (dann hat sie keinen Titel); eine .md unter `artefakte/` oder `plv/` (Pages entfernte das Original) |
 | `paket` | eine Datei unter `plv/`, die von `stand.json` abweicht oder dort fehlt; ein nicht veröffentlichter Eintrag außer Parquet; ein Bericht unter `berichte/` ohne bytegleiche Datei im Paket |
 | `pruefsummen` | eine angezeigte Kennung ohne Quelle (Datei des Falls, Manifest, Snapshot, Lieferregister, Paket, Anker, Protokoll, Commit) |
 | `breite` | eine Hauptseite, die auf dem Telefon (390 px) breiter ist als der Bildschirm; die übrigen Seiten stehen als Hinweis da (Ansicht am Schreibtisch hat Vorrang, Entscheid 04.10.2026) |

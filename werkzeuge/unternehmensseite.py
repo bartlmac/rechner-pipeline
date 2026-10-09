@@ -1235,8 +1235,18 @@ def _titel_und_rumpf(text: str) -> tuple:
     Der Titel des Vorspanns wird zur Ueberschrift der importierten
     Seite; der Rest des Vorspanns (Druckformat u. ae.) betrifft nur die
     Dokument-Erzeugung und faellt weg.
+
+    Ohne Vorspann ist die erste Ueberschrift der Titel, wenn das Dokument mit
+    ihr beginnt. Sie steht dann vor der Navigation wie auf jeder Seite des
+    Auftritts (:func:`_mit_reiter`), und nur so findet Pages einen
+    Seitentitel: jekyll-titles-from-headings nimmt ihn aus einer Ueberschrift
+    am Anfang der Seite. Bis 08.10.2026 trugen 35 Architekturdokumente und
+    zwei Simulationsseiten im Browser nur den Namen des Unternehmens.
     """
     if not text.startswith("---\n"):
+        erste = re.match(r"\s*# (.+)\n", text)
+        if erste:
+            return erste.group(1).strip(), text[erste.end():]
         return "", text
     kopf, _, rumpf = text[4:].partition("\n---\n")
     zeilen = kopf.splitlines()
@@ -1324,8 +1334,8 @@ def _tarifplan_uebersicht(ziel: Path, importiert: List[tuple]) -> None:
               if name.startswith("aktuariat/tarifplaene/")]
     if not plaene:
         return
-    z = [reiter("../../", "aktuariat"),
-         "", "[← Aktuariat](../)", "", "# Tarifpläne", "",
+    z = ["# Tarifpläne", "", reiter("../../", "aktuariat"),
+         "", "[← Aktuariat](../)", "",
          "Die Bewertung jedes Vertrags folgt einem dokumentierten",
          "Tarifplan. Die geführten Tarifgenerationen:", ""]
     for pfad, titel in plaene:

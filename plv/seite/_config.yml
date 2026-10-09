@@ -20,3 +20,10 @@ defaults:
       path: ""
     values:
       layout: "default"
+
+# Die Markdown-Quellen nicht zusaetzlich als Datei veroeffentlichen
+# (jekyll-optional-front-matter, auf Pages Standard). Das entfernt jede .md,
+# die zur Seite wird, auch unter artefakte/ oder plv/ (gemessen am 09.10.2026);
+# die Seitenpruefung (pages) laesst dort darum keine .md zu.
+optional_front_matter:
+  remove_originals: true

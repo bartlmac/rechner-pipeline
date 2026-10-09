@@ -172,6 +172,13 @@ def pages(seite: Path) -> Tuple[List[str], str]:
       unvollstaendiges ``{{`` bricht den ganzen Build ab (KLV-Tarifplan).
     * Eine Formel in ``$...$``. Fuer kramdown ist das Text, Escapes,
       Hervorhebung und Typografie laufen darueber (35 von 489 Formeln).
+    * Eine Seite, die nicht mit einer Ueberschrift beginnt. Pages nimmt den
+      Seitentitel nur aus einer Ueberschrift (Ebene 1 bis 3) am Anfang
+      (jekyll-titles-from-headings); sonst traegt der Browser nur den Namen
+      des Unternehmens (38 Seiten bis 08.10.2026).
+    * Eine .md unter ``artefakte/`` oder ``plv/``. Pages machte aus ihr eine
+      Seite und entfernte das Original (``remove_originals`` in _config.yml,
+      gemessen am 09.10.2026); ein Beleg muss Byte fuer Byte erscheinen.
 
     Fuer Ueberschriften und Formeln zaehlen Codebloecke nicht; Liquid liest
     auch sie."""
@@ -180,6 +187,13 @@ def pages(seite: Path) -> Tuple[List[str], str]:
     for md in dateien:
         rel = md.relative_to(seite).as_posix()
         text = md.read_text(encoding="utf-8")
+        if "artefakte" in rel.split("/") or rel.startswith("plv/"):
+            befunde.append(f"{rel}: Markdown in einem Beleg — Pages macht daraus eine Seite "
+                           f"und entfernt das Original")
+            continue
+        if not re.match(r"\s*(?:#{1,3}[ \t]+\S|---\n(?:.*\n)*?title:)", text):
+            befunde.append(f"{rel}:1: {text.lstrip()[:40]!r} — Pages gibt der Seite keinen Titel, "
+                           f"die erste Zeile ist keine Ueberschrift")
         im_code = False
         for nr, zeile in enumerate(text.splitlines(), 1):
             if zeile.lstrip().startswith(("```", "~~~")):

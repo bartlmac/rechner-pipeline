@@ -640,6 +640,7 @@ def test_fachdokumente_werden_mit_banderole_importiert(tmp_path: Path):
     uebersicht = (ziel / "aktuariat" / "tarifplaene" / "index.md").read_text(
         encoding="utf-8")
     assert "[Tarifplan Probe — umbrochen](probe.html)" in uebersicht
+    assert uebersicht.splitlines()[0] == "# Tarifpläne"   # Titel vor dem Reiter
 
     with pytest.raises(vz.VeroeffentlichungFehler):
         us.fachdokumente(
@@ -2587,6 +2588,29 @@ def test_die_architekturdokumentation_steht_hinter_den_kulissen(tmp_path):
             assert "architektur/" not in md.read_text(encoding="utf-8"), md
     erzeuger = Path(us.__file__).read_text(encoding="utf-8")
     assert "](architektur/" not in erzeuger and '"it/architektur' not in erzeuger
+
+
+def test_ein_dokument_ohne_vorspann_beginnt_mit_seiner_ueberschrift(tmp_path):
+    """Ohne YAML-Vorspann ist die erste Ueberschrift der Titel: Sie steht vor
+    der Navigation wie auf jeder Seite des Auftritts, und Pages nimmt den
+    Seitentitel nur aus einer Ueberschrift am Anfang. Bis 08.10.2026 begannen
+    die Architekturdokumente mit der Navigation und trugen im Browser nur den
+    Namen des Unternehmens. Ein Dokument mit Vorspann behaelt seine erste
+    Abschnittsueberschrift im Text."""
+    docs = tmp_path / "docs"
+    (docs / "architektur").mkdir(parents=True)
+    (docs / "architektur" / "adr-999-probe.md").write_text("\n# ADR-999: Probe\n\nText.\n", encoding="utf-8")
+    (docs / "architektur" / "README.md").write_text("# Architektur\n\n## Abschnitt\n", encoding="utf-8")
+    ziel = tmp_path / "seite"
+    assert us.architektur(docs, ziel) == 2
+    seite = (ziel / "hinter-den-kulissen" / "architektur" / "adr-999-probe.md").read_text(encoding="utf-8")
+    zeilen = seite.splitlines()
+    assert zeilen[0] == "# ADR-999: Probe" and zeilen[2].startswith('<nav class="kopf">'), zeilen[:3]
+    assert seite.count("ADR-999: Probe") == 1
+    index = (ziel / "hinter-den-kulissen" / "architektur" / "index.md").read_text(encoding="utf-8")
+    assert index.splitlines()[0] == "# Architektur" and "## Abschnitt" in index
+    assert us._titel_und_rumpf("---\ntitle: \"T\"\n---\n# 1 Inhalt\n") == ("T", "# 1 Inhalt\n")
+    assert us._titel_und_rumpf("Kein Titel\n# Spaeter\n") == ("", "Kein Titel\n# Spaeter\n")
 
 
 def test_jede_kastenart_hat_ihre_farbe_und_keine_ist_weiss():
