@@ -47,7 +47,7 @@ Was ``--bis`` NICHT ist (Systempruefung Befund F3, geprueft und widerlegt):
 Stichtag, zu dem der Bestand ausgewiesen wird. Vertragsbeginne NACH
 ``--bis`` sind deshalb kein Widerspruch, sondern der Normalfall — der
 Basis-Erzeuger besiedelt das volle Verkaufsfenster jeder Generation in
-EINEM Batch (``configs/bestand_klv.toml`` und ``configs/bestand_gesamt.toml``
+EINEM Batch (``plv/configs/bestand_klv.toml`` und ``plv/configs/bestand_gesamt.toml``
 tragen Beginne bis 2035-12, unabhaengig von ``--bis``), waehrend ``--bis``
 nur bestimmt, wie weit der GeVo-Strom projiziert wurde. P-B1 darf daraus
 also keine Invariante ``max(insurance_start) <= --bis`` machen: sie waere
@@ -71,7 +71,7 @@ Run via::
         [--historie lauf/historie.parquet] [--scheiben lauf/scheiben.parquet] \\
         [--ledger lauf/ledger.parquet --bis 2035-01-01] \\
         [--manifest lauf/laufmanifest.json] \\
-        [--config configs/bestand_klv.toml] [--diagnostics-dir diagnostics]
+        [--config plv/configs/bestand_klv.toml] [--diagnostics-dir diagnostics]
 
 Knoten: klv, bu
 """

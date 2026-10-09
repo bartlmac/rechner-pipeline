@@ -54,9 +54,9 @@ KERN_REFERENZWERTE = "tests/fixtures/kern_referenzwerte"
 #: * ``bestand/``, ``betrieb/``, ``gates/`` — sie benutzen den Kern, sie
 #:   sind es nicht; ihre Aenderungen nimmt die Suite und der Fall ab.
 #: * die uebrigen Tests — sie sind Mittel der Regression, nicht ihr
-#:   Gegenstand; ``docs/mathematik/README.md`` — ein Verzeichnis der
+#:   Gegenstand; ``plv/mathematik/README.md`` — ein Verzeichnis der
 #:   Dokumente, keine Beschreibung des Kerns.
-#: * ``docs/tarifplaene`` — seit ADR-025 Teil des TARIFWERKS
+#: * ``plv/tarifplaene`` — seit ADR-025 Teil des TARIFWERKS
 #:   (``models.tarifwerkabnahme``, A-T1, ``mensch/aktuariat``): Was die PLV
 #:   ihren Kunden verspricht, verantwortet das Aktuariat, nicht die
 #:   Rechenkern-Verantwortung; vorher zeichnete A-K2 die Tarifplaene mit.
@@ -67,7 +67,7 @@ KERNSTAND: Tuple[Tuple[str, str, str], ...] = (
     (KERN_REFERENZWERTE, "gesamt",
      "eingefrorene Referenzwerte: der Massstab, an dem eine Aenderung des "
      "Kerns sichtbar wird; wer sie verschiebt, verschiebt den Massstab"),
-    ("docs/mathematik/grundsatzdokumentation.md", "gesamt",
+    ("plv/mathematik/grundsatzdokumentation.md", "gesamt",
      "Grundsatzdokumentation: die normative Mathematik, der die "
      "Implementierung folgt"),
 )

@@ -3,7 +3,7 @@
 Architektur-Entscheidung (Maintainer, 2026-08-13): Tarifplan-Dokumente von zu
 migrierenden Bestaenden sind MIGRATIONSARTEFAKTE. Sie gehoeren nicht in
 die Zielkern-Dokumentation (dort leben neu verfasste Tarifplaene in der
-Mathematik des Kerns, ``docs/tarifplaene/``), sondern in ein
+Mathematik des Kerns, ``plv/tarifplaene/``), sondern in ein
 maschinenlesbares Staging: dieses Kommando extrahiert die Inhalte eines
 Dokuments strukturiert nach JSON — nicht fuer Menschen formatiert,
 sondern als Datenvorbereitung fuer die Migration (Vorverdichtung der
@@ -236,7 +236,7 @@ def _extrahiere_docx(docx_pfad: Path) -> Dict[str, Any]:
         "formeln": formeln,
         "hinweis": (
             "Migrationsartefakt-Staging: strukturierte Rohdaten fuer die "
-            "Migration, kein Zielkern-Tarifplan (siehe docs/tarifplaene/). "
+            "Migration, kein Zielkern-Tarifplan (siehe plv/tarifplaene/). "
             "Formel-Inhalte (OMML) stehen in 'formeln' UND unmarkiert im "
             "Absatz-/Zellentext (m:t-Runs); eine positionsgenaue "
             "Formel-Zuordnung ist bewusst nicht Teil dieser Stufe."
