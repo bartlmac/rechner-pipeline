@@ -28,7 +28,7 @@ from rechner_pipeline.bestand.fuehrung import schnitt_am
 from rechner_pipeline.models.bestand import STAMM_SPALTEN, validate_portfolio
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE = REPO_ROOT / "configs" / "bestand_klv.toml"
+EXAMPLE = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
 
 REF = dt.date(2010, 1, 1)
 

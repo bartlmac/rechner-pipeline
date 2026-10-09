@@ -264,7 +264,7 @@ in [docs/simulation/tagesbetrieb.md](../simulation/tagesbetrieb.md).
 ### Tarifwerk
 
 Was die PLV ihren Kunden verspricht und wie sie es parametriert: die
-Tarifpläne unter `docs/tarifplaene/` und die eigenen Generationen in den
+Tarifpläne unter `plv/tarifplaene/` und die eigenen Generationen in den
 Bestands-Configs. Abgenommen wird es am Gate `A-T1`, gebunden über
 Prüfsummen.
 

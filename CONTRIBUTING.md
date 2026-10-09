@@ -29,7 +29,7 @@ Requests gilt, was ADR-027 festgelegt hat:
   eigenständig veröffentlicht.
 - Infrastruktur einzelner Installationen gehört nicht ins Repository.
 - Kern und Tarifwerk sind abgenommene Gegenstände (`src/rechner_pipeline/kern`,
-  die Referenzwerte, die Grundsatzdokumentation, `docs/tarifplaene`, die
+  die Referenzwerte, die Grundsatzdokumentation, `plv/tarifplaene`, die
   Bestands-Configs). Eine Änderung daran ist eine Änderung des Zielsystems
   und nie Beifang eines anderen Pull Requests; `tests/test_pakete.py` wird
   sonst rot und nennt den Ausweg.

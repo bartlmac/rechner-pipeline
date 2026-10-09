@@ -14,7 +14,7 @@ Die Fachdokumentation hat zwei Stufen:
 
 1. **Grundsatzdokumentation** (hier): die normative Mathematik. Die
    Implementierung folgt ihr, nicht umgekehrt.
-2. **Tarifpläne** ([docs/tarifplaene/](../tarifplaene/README.md)): je
+2. **Tarifpläne** ([plv/tarifplaene/](../tarifplaene/README.md)): je
    Tarif die konkrete Belegung aller produktabhängigen Festlegungen. Für
    ein migriertes Produkt mit Korrekturschicht gehört dazu ein Abschnitt zur
    Ausgestaltung (Grundsatzdokumentation, Abschnitt 10 Nr. 9).

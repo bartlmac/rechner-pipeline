@@ -60,9 +60,10 @@ aus den P9-Snapshots gebaut ist, gilt: abox.json nicht löschen.
 - **`examples/` ist Demo-Material:** öffentliche Beispielquellen, aus
   denen sich ein Demo-Fall instanziieren lässt, plus Test-Fixtures.
   Kein Eingangskanal. *(Nachtrag 2026-08-19: `examples/` wurde
-  aufgelöst; Bestands-Konfigurationen nach `configs/`,
+  aufgelöst; Bestands-Konfigurationen nach `configs/` (seit ADR-028 `plv/configs/`),
   Extraktions-Fixtures nach `tests/fixtures/`, historische
-  Quelldokumente aus dem Repo entfernt. Neu ist `migrationen/baldrian/lieferungen/`:
+  Quelldokumente aus dem Repo entfernt. Neu ist `lieferungen/` (seit ADR-028
+  `migrationen/baldrian/lieferungen/`):
   versioniertes Frachtgut der Showcase-Migrationen, damit jeder Clone
   eine Migration selbst durchführen kann. Die Kein-Eingangskanal-Regel
   gilt unverändert: kein Code liest `migrationen/baldrian/lieferungen/` implizit, in einen

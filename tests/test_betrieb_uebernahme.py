@@ -37,7 +37,7 @@ from rechner_pipeline.models.bestand import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PLV = REPO_ROOT / "configs" / "bestand_gesamt.toml"
+PLV = REPO_ROOT / "plv" / "configs" / "bestand_gesamt.toml"
 STICHTAG = dt.date(2026, 1, 1)
 
 

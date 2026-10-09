@@ -28,8 +28,8 @@ import pytest
 from rechner_pipeline.kern.produkte import PRODUKTE
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TARIFPLAENE = REPO_ROOT / "docs" / "tarifplaene"
-ZENTRAL = REPO_ROOT / "docs" / "mathematik" / "grundsatzdokumentation.md"
+TARIFPLAENE = REPO_ROOT / "plv" / "tarifplaene"
+ZENTRAL = REPO_ROOT / "plv" / "mathematik" / "grundsatzdokumentation.md"
 
 #: Themen des gemeinsamen Rueckgrats. Sie stehen im zentralen Dokument;
 #: ein Tarifplan darf sie NENNEN und darauf verweisen, aber nicht
@@ -101,7 +101,7 @@ def test_jedes_registrierte_produkt_hat_einen_tarifplan():
     fehlend = sorted(set(PRODUKTE) - set(_tarifplaene()))
     assert not fehlend, (
         f"Produkte ohne Tarifplan: {fehlend} — je Produkt ein Dokument "
-        f"docs/tarifplaene/<kennung>.md"
+        f"plv/tarifplaene/<kennung>.md"
     )
 
 
@@ -251,11 +251,14 @@ def test_der_abschnittszahl_waechter_ist_nicht_vakuant():
 def test_alle_doku_links_zeigen_auf_existierende_dateien():
     """Ein Verweis auf ein geloeschtes Dokument faellt beim Lesen auf,
     nicht beim Pruefen — ausser hier. Geprueft werden alle relativen
-    Markdown-Links unter docs/ (der Umzug des Fachkonzepts in die
-    Grundsatzdokumentation hat gezeigt, wie leicht so ein Link stehen
-    bleibt)."""
+    Markdown-Links unter docs/ und der Fachdokumente der PLV unter plv/
+    (der Umzug des Fachkonzepts in die Grundsatzdokumentation hat gezeigt,
+    wie leicht so ein Link stehen bleibt; ADR-028 zog die Fachdokumente
+    aus docs/ heraus)."""
     tot: List[str] = []
-    for pfad in sorted((REPO_ROOT / "docs").rglob("*.md")):
+    wurzeln = (REPO_ROOT / "docs", REPO_ROOT / "plv" / "mathematik",
+               REPO_ROOT / "plv" / "tarifplaene", REPO_ROOT / "plv" / "configs")
+    for pfad in sorted(p for w in wurzeln for p in w.rglob("*.md")):
         text = pfad.read_text(encoding="utf-8")
         for ziel in re.findall(r"\]\(([^)#:]+?)(?:#[^)]*)?\)", text):
             if ziel.startswith(("http", "mailto:", "/")):

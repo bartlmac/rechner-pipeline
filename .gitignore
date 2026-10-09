@@ -45,6 +45,12 @@ werkzeuge/quellsystem/*.pdf
 docs/**/*.typ
 werkzeuge/quellsystem/*.typ
 docs/**/*_files/
+plv/mathematik/*.pdf
+plv/mathematik/*.typ
+plv/mathematik/*_files/
+plv/tarifplaene/*.pdf
+plv/tarifplaene/*.typ
+plv/tarifplaene/*_files/
 system/**/*.pdf
 system/**/*.typ
 system/**/*_files/

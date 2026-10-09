@@ -73,9 +73,9 @@ DATEN_BINDUNG: Dict[str, str] = {
     # Beispiel-Configs parametrieren den Bestand (und tragen die
     # Ontologie-Knoten ihrer Generationen) — eine Aenderung wirkt wie
     # eine Aenderung an der Config-Schicht:
-    "configs/bestand_klv.toml": "rechner_pipeline/bestand/config.py",
-    "configs/bestand_bu.toml": "rechner_pipeline/bestand/config.py",
-    "configs/bestand_gesamt.toml": "rechner_pipeline/bestand/config.py",
+    "plv/configs/bestand_klv.toml": "rechner_pipeline/bestand/config.py",
+    "plv/configs/bestand_bu.toml": "rechner_pipeline/bestand/config.py",
+    "plv/configs/bestand_gesamt.toml": "rechner_pipeline/bestand/config.py",
 }
 
 #: Doku-/Vertrags-Pfade, die an einen Knoten gebunden sind (test-tragend).
@@ -94,16 +94,16 @@ DOKU_BINDUNG: Dict[str, str] = {
 #: nicht stillschweigend ausserhalb der Testselektion mitbringt; der
 #: README des Ordners ist kein Produkt und faellt konservativ aus.
 DOKU_NAMENSBINDUNG: Dict[str, Tuple[str, ...]] = {
-    "docs/tarifplaene/": ("README",),
+    "plv/tarifplaene/": ("README",),
 }
 
 #: Aenderungen hier machen jede Selektion unsicher -> volle Suite.
-#: ``docs/mathematik/`` traegt die Mathematik, DER DIE UMSETZUNG FOLGT
+#: ``plv/mathematik/`` traegt die Mathematik, DER DIE UMSETZUNG FOLGT
 #: (Grundsatzdokumentation) — eine Aenderung daran ist nie auf einen
 #: Knoten begrenzt, auch wenn sie nur ein Produkt zu betreffen scheint.
 GLOBAL_KONSERVATIV = ("pyproject.toml", "tests/conftest.py",
                       "tests/__init__.py", ".github/",
-                      "docs/mathematik/")
+                      "plv/mathematik/")
 
 
 def verwandt(a: str, b: str) -> bool:

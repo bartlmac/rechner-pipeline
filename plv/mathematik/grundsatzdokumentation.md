@@ -8,7 +8,7 @@ format:
 
 > **Die Mathematik und Numerik, der die Umsetzung folgt.** Sie gilt für
 > **alle** Produkte des Zielrechenkerns; was ein einzelnes Produkt
-> ausmacht, steht in seinem Tarifplan (`docs/tarifplaene/`), und dort
+> ausmacht, steht in seinem Tarifplan (`plv/tarifplaene/`), und dort
 > auch nur dort. Der Migrationszugang samt Korrekturschicht steht in
 > Abschnitt 9.
 >
@@ -36,7 +36,7 @@ Die Abgrenzung nach oben und unten:
 | Dokument | Gegenstand |
 |---|---|
 | **Grundsatzdokumentation (dieses Dokument)** | Mathematik und Numerik, verbindlich für die Implementierung; produktübergreifend — einschließlich Migrationszugang und Korrekturschicht (Abschnitt 9) |
-| Tarifpläne (`docs/tarifplaene/*.md`) | die Ausgestaltung je Produkt: Zustandsraum des Tarifs, Leistungen, Rechnungsgrundlagen, Stellschrauben — bei migrierten Produkten zusätzlich die Parameter der Korrekturmathematik |
+| Tarifpläne (`plv/tarifplaene/*.md`) | die Ausgestaltung je Produkt: Zustandsraum des Tarifs, Leistungen, Rechnungsgrundlagen, Stellschrauben — bei migrierten Produkten zusätzlich die Parameter der Korrekturmathematik |
 
 # 2 Notation
 

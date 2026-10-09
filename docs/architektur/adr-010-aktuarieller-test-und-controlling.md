@@ -6,7 +6,7 @@ E4 des Migrationskonzepts), umgesetzt am selben Tag:
 erzwungener Reihenfolge vor `A-M4`, Belegrollen je Gate.
 
 Normative Referenz: **Grundsatzdokumentation**
-(`docs/mathematik/grundsatzdokumentation.md`), Abschnitt 9.15: die
+(`plv/mathematik/grundsatzdokumentation.md`), Abschnitt 9.15: die
 Trennung der beiden Prüfebenen und die Toleranzform. Dieses ADR
 instanziiert sie in unserer Gate-Architektur; es definiert nichts
 fachlich neu.

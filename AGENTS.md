@@ -48,21 +48,21 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   `src/rechner_pipeline` (`gates`, `ontologie`, `spez`, `quellen`, `qa`,
   `models`, `fall.py`), the agent roles under `.claude/` and `.agents/`,
   and `system/` (live-run tools, migration-concept template). The PLV
-  object: `kern`, `bestand`, `betrieb`, `configs/`, `docs/mathematik/`,
-  `docs/tarifplaene/` and `plv/` (runtime image, website sources). The
+  object: `kern`, `bestand`, `betrieb` and `plv/` (signed documents,
+  configs, runtime image, website sources). The
   Baldrian object, i.e. the migration: `migrationen/baldrian/`
   (deliveries, case file, reports). Simulation: `werkzeuge/` (world
   routines, source system, document engine, website tools) and the
   generator modules in `bestand` and `betrieb` that the layer map assigns
   to it. Runtime artefacts: `pakete/` only. `tests/`, `docs/` and
-  `dev-docs/` cut across. Configs and the signed documents stay at their
-  old paths until the acceptance logic can follow a move. Cut changes
+  `dev-docs/` cut across. A recorded case replays from a pre-case state
+  in the same layout (tag `fall3-vor-ebenen`, ADR-028). Cut changes
   along these lines: changes to several levels go into one pull request
   only if `main` would be unexplained with just one part; the website
   never travels with the rest.
 - **Accepted objects do not change silently.** The kernel state (the
   `kern` package, the frozen reference values, the
-  Grundsatzdokumentation) and the Tarifwerk (`docs/tarifplaene`, the
+  Grundsatzdokumentation) and the Tarifwerk (`plv/tarifplaene`, the
   portfolio configs) are signed (A-K2, A-T1). A recorded case replays
   only on a tree that carries them as recorded
   (`tests/test_pakete.py`). Touching one of them — even a docstring in
@@ -81,7 +81,7 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   overwritten — the provenance chain starts here), `abgeleitet/` holds
   everything regenerable, `entscheide/` holds append-only human
   decisions. The system is demonstrated on the fictitious insurer
-  Pfefferminzia LV (PLV); `configs/` holds its portfolio configurations
+  Pfefferminzia LV (PLV); `plv/configs/` holds its portfolio configurations
   (TOML, suite-loaded), `tests/fixtures/` holds synthetic source
   workbooks for extraction tests, and `migrationen/baldrian/lieferungen/`
   ships the showcase deliveries of fictitious ceding insurers (freight to
@@ -91,10 +91,10 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   only through explicit registration.
 - **Docs have one home each:** architecture and ADRs in
   `docs/architektur/`; the normative maths and numerics of the kernel in
-  `docs/mathematik/grundsatzdokumentation.md` — maintained here, with
+  `plv/mathematik/grundsatzdokumentation.md` — maintained here, with
   the kernel following it, including the migration entry and the
   correction layer in its section 9; Tarifplaene in
-  `docs/tarifplaene/` carry the per-product elaboration and never
+  `plv/tarifplaene/` carry the per-product elaboration and never
   repeat the shared backbone (guarded by
   `tests/test_tarifplan_struktur.py`); how the showcase portfolios are
   GENERATED — third-order experience assumptions, simulation tooling —

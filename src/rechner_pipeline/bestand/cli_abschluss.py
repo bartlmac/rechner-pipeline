@@ -15,7 +15,7 @@ Betriebsarten:
 Usage::
 
     python -m rechner_pipeline.bestand.cli_abschluss \\
-        --config configs/bestand_gesamt.toml --lauf runs/bestand \\
+        --config plv/configs/bestand_gesamt.toml --lauf runs/bestand \\
         --stichtag 2026-01-01 --bis 2026-01-01 \\
         [--out-dir runs/bestand/abschluesse] [--pruefen]
 

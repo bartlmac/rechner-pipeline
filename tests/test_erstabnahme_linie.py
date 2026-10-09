@@ -625,12 +625,12 @@ def test_die_t_box_sicht_zeigt_den_diff_gegen_das_zuletzt_abgenommene_vokabular(
 
 
 def test_der_tarifwerk_beleg_zeigt_je_generation_jedes_geaenderte_feld():
-    alt = {"tarifplaene": {"docs/tarifplaene/klv.md": "a"}, "generationen": {
+    alt = {"tarifplaene": {"plv/tarifplaene/klv.md": "a"}, "generationen": {
         "configs/x.toml": {"KLV-1": {"zins": 0.04, "tafel": "T"}}}}
-    neu = {"tarifplaene": {"docs/tarifplaene/klv.md": "b"}, "generationen": {
+    neu = {"tarifplaene": {"plv/tarifplaene/klv.md": "b"}, "generationen": {
         "configs/x.toml": {"KLV-1": {"zins": 0.03, "tafel": "T"}, "KLV-2": {"zins": 0.01}}}}
     diff = tw.unterschiede(alt, neu)
-    assert diff["tarifplaene"] == [{"pfad": "docs/tarifplaene/klv.md", "zustand": "geaendert"}]
+    assert diff["tarifplaene"] == [{"pfad": "plv/tarifplaene/klv.md", "zustand": "geaendert"}]
     assert diff["generationen"] == [
         {"config": "configs/x.toml", "generation": "KLV-1", "zustand": "geaendert",
          "felder": [{"feld": "zins", "vorher": 0.04, "nachher": 0.03}]},
@@ -639,8 +639,8 @@ def test_der_tarifwerk_beleg_zeigt_je_generation_jedes_geaenderte_feld():
 
 
 def test_die_grenze_des_tarifwerks_erfahrung_und_fremde_generationen_gehoeren_nicht_dazu():
-    text = (REPO / "configs" / "bestand_gesamt.toml").read_text(encoding="utf-8")
-    gens = tw.generationen_aus(text, "configs/bestand_gesamt.toml")
+    text = (REPO / "plv" / "configs" / "bestand_gesamt.toml").read_text(encoding="utf-8")
+    gens = tw.generationen_aus(text, "plv/configs/bestand_gesamt.toml")
     assert "TG2015" not in gens and "KLV-1994" in gens
     assert not set(tw.NICHT_TARIFWERK) & set(gens["KLV-1994"])
     assert {"zins", "tafel", "red_verfahren"} <= set(gens["KLV-1994"]) or \
@@ -654,8 +654,8 @@ def test_die_grenze_des_tarifwerks_erfahrung_und_fremde_generationen_gehoeren_ni
 def test_die_tarifplaene_gehoeren_nicht_mehr_zum_kernstand():
     from rechner_pipeline.models import kernabnahme as ka
 
-    assert "docs/tarifplaene" not in ka.kernstand_pfade()
-    assert tw.TARIFPLAENE == "docs/tarifplaene"
+    assert "plv/tarifplaene" not in ka.kernstand_pfade()
+    assert tw.TARIFPLAENE == "plv/tarifplaene"
 
 
 # --------------------------------------------------------------------------- #

@@ -158,7 +158,7 @@ phase_ablage() {
   lade_einstellungen || return
   [ ! -e "$D" ] || { echo "HALT: $D liegt schon — eine Ablage wird nie ueberschrieben"; return 1; }
   mkdir -p "$D/configs" \
-  && cp "$BAUM/configs/bestand_gesamt.toml" "$D/configs/bestand.toml" \
+  && cp "$BAUM/plv/configs/bestand_gesamt.toml" "$D/configs/bestand.toml" \
   && echo "Welt $WELT, Code $(git -C "$BAUM" rev-parse --short=12 HEAD), Ablage bis $BIS" | tee -a "$LOG" \
   && schritt "Ablage ohne uebernommenen Bestand bis $BIS fuehren" "$PY" -m rechner_pipeline.betrieb.tageslauf \
        --stand "$D" --heute "$BIS" --schluessel "$BETRIEB_KEY" --zeichnungsordnung "$ORDNUNG"

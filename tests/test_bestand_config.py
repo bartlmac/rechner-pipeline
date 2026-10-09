@@ -10,7 +10,7 @@ from pathlib import Path
 from rechner_pipeline.bestand.config import load_config
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE = REPO_ROOT / "configs" / "bestand_klv.toml"
+EXAMPLE = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
 
 
 def test_example_config_loads_and_validates():
@@ -277,7 +277,7 @@ def test_beispiel_configs_tragen_knoten_konsistent():
 
     gesehen = {}
     for datei in ("bestand_klv.toml", "bestand_bu.toml", "bestand_gesamt.toml"):
-        cfg = load_config(REPO_ROOT / "configs" / datei)
+        cfg = load_config(REPO_ROOT / "plv" / "configs" / datei)
         assert cfg.validate() == [], datei
         for g in cfg.generationen:
             assert g.knoten, f"{datei}: {g.name} ohne Knoten"
@@ -303,9 +303,9 @@ def test_tarifplan_dokumentiert_die_plv_generationen():
     als das, was der Bestand rechnet."""
     from rechner_pipeline.bestand.config import load_config
 
-    cfg = load_config(REPO_ROOT / "configs" / "bestand_gesamt.toml")
-    klv_md = (REPO_ROOT / "docs" / "tarifplaene" / "klv.md").read_text("utf-8")
-    bu_md = (REPO_ROOT / "docs" / "tarifplaene" / "bu.md").read_text("utf-8")
+    cfg = load_config(REPO_ROOT / "plv" / "configs" / "bestand_gesamt.toml")
+    klv_md = (REPO_ROOT / "plv" / "tarifplaene" / "klv.md").read_text("utf-8")
+    bu_md = (REPO_ROOT / "plv" / "tarifplaene" / "bu.md").read_text("utf-8")
     for g in cfg.generationen:
         doc = klv_md if g.produkt == "klv" else bu_md
         if g.zellen:
@@ -346,7 +346,7 @@ def test_tarifwerks_schalter_sind_eigenschaft_der_generation(tmp_path: Path):
 
     from rechner_pipeline.bestand.config import config_aus_text
 
-    gesamt = load_config(REPO_ROOT / "configs" / "bestand_gesamt.toml")
+    gesamt = load_config(REPO_ROOT / "plv" / "configs" / "bestand_gesamt.toml")
     assert gesamt.validate() == []
     je_name = {g.name: g.tarifwerk() for g in gesamt.generationen}
     assert je_name["TG2015"] == {
@@ -389,7 +389,7 @@ def test_uebernommene_generation_traegt_die_abgenommene_spez():
 
     from rechner_pipeline.models.bestand import GENERATION_FIELDS
 
-    cfg = load_config(REPO_ROOT / "configs" / "bestand_gesamt.toml")
+    cfg = load_config(REPO_ROOT / "plv" / "configs" / "bestand_gesamt.toml")
     gen = next(g for g in cfg.generationen if g.name == "TG2015")
     spez = json.loads((REPO_ROOT / "tests" / "fixtures" / "baldrian2_e2e"
                        / "klv-tg2015.spez.json").read_text(encoding="utf-8"))

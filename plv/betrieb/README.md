@@ -27,7 +27,7 @@ Klon auf dem Commit des Image-Tags, mit `.venv/bin/python` (siehe
 
 | Verzeichnis | Inhalt | Schutz |
 |---|---|---|
-| `configs/bestand.toml` | die Config der PLV — eine Kopie von `configs/bestand_gesamt.toml`; ihr SHA-256 steht in jedem Protokolleintrag. Eine Änderung im Repository berührt sie nicht; eine geänderte Kopie hält den Tageslauf an (Exit 2), bis die Ablage neu aufgesetzt ist (siehe „Config nachziehen“) | vom Menschen gepflegt, nur über das Neuaufsetzen |
+| `configs/bestand.toml` | die Config der PLV — eine Kopie von `plv/configs/bestand_gesamt.toml`; ihr SHA-256 steht in jedem Protokolleintrag. Eine Änderung im Repository berührt sie nicht; eine geänderte Kopie hält den Tageslauf an (Exit 2), bis die Ablage neu aufgesetzt ist (siehe „Config nachziehen“) | vom Menschen gepflegt, nur über das Neuaufsetzen |
 | `uebernahme/<fall>/` | je Migrationsfall ein Zugangsstand mit `eingang.json` (Fallname, Stichtag, Snapshot-Hash, SHA-256 je Datei), bei der Registrierung mit dem Betriebsschlüssel gezeichnet (Schema 3), daneben `zugangsabnahme.json` (die geprüfte Zugangsabnahme A-B2, ADR-022) | unantastbar wie ein Fall-Eingang; jede Datei wird beim Lesen gegen ihre Summe gehalten |
 | `stand/` | Symlink auf den geführten Stand (`stand-<manifest-kennung>/`; der Pfad `daten/stand/` führt durch den Symlink dorthin): die sechs Ausgaben der Fortschreibung, `laufmanifest.json`, ggf. `merkmale.parquet` und `verankerung.parquet` der Übernahmen. Der Stand ist die gebuchte Sicht: Ereignisse mit Buchungstag nach heute (Meldeverzug, Werktagsregel) stehen noch nicht darin und kommen an ihrem Buchungstag, damit Stand, Seite und Journal dasselbe sagen | wechselt nur durch einen grünen Lauf, in einem atomaren Schritt (Symlink-Tausch; es gibt keinen Moment ohne Stand); das alte Verzeichnis wird danach entfernt |
 | `lauf.lock` | Prozess-Sperre: zwei gleichzeitige Läufe auf derselben Ablage gibt es nicht, der zweite bricht sofort ab; ebenso der `seite`-Befehl (Rendern und Export) neben einem laufenden Tageslauf | — |
@@ -56,7 +56,7 @@ nicht entfernt; geschnitten wird nur ein Fragment, das nie eine Zeile war.
 mkdir -p ~/apps/plv/daten/configs
 cp plv/betrieb/compose.yml plv/betrieb/env.beispiel ~/apps/plv/
 mv ~/apps/plv/env.beispiel ~/apps/plv/.env      # und ausfüllen
-cp configs/bestand_gesamt.toml ~/apps/plv/daten/configs/bestand.toml
+cp plv/configs/bestand_gesamt.toml ~/apps/plv/daten/configs/bestand.toml
 ```
 
 **Betriebsschlüssel** (ADR-018, Nachtrag 2026-09-30). Jede Zeile des

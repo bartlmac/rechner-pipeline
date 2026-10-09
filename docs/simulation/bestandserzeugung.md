@@ -15,7 +15,7 @@ Den Bestand der PLV erzeugt und bewegt ein Kommando:
 
 ```
 python -m rechner_pipeline.bestand.cli_fortschreibung \
-    --config configs/bestand_gesamt.toml --neuzugang-ab 1994-07-01 \
+    --config plv/configs/bestand_gesamt.toml --neuzugang-ab 1994-07-01 \
     --bis 2046-01-01 --out-dir runs/bestand
 ```
 
@@ -103,7 +103,7 @@ die Jahrgänge schon vorab in den Basisbestand gelegt hätte.
 
 ```
 python -m rechner_pipeline.bestand.cli_fortschreibung \
-    --config configs/bestand_gesamt.toml --neuzugang-ab 1994-07-01 \
+    --config plv/configs/bestand_gesamt.toml --neuzugang-ab 1994-07-01 \
     --bis 2046-01-01 --out-dir runs/bestand
 
 python -m rechner_pipeline.bestand.cli_report \
@@ -111,7 +111,7 @@ python -m rechner_pipeline.bestand.cli_report \
     --historie runs/bestand/historie.parquet \
     --ledger runs/bestand/ledger.parquet \
     --scheiben runs/bestand/scheiben.parquet \
-    --config configs/bestand_gesamt.toml \
+    --config plv/configs/bestand_gesamt.toml \
     --bis 2046-01-01 --stichtag 2026-01-01 \
     --out runs/berichte/bestandsbericht.html
 ```

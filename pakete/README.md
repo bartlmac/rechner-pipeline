@@ -82,7 +82,7 @@ Paket auf dem neuen Stand nicht mehr nachfahrbar und wird neu festgehalten
 
 | Paket | Fall | Lieferung | Stand davor | Stand danach |
 |---|---|---|---|---|
-| `baldrian-klv-tg2015-fall3` | Übernahme des Bestands KLV TG2015 der Baldrian Leben zum 01.01.2026, festgehalten am 02.10.2026, am 08.10.2026 auf den redaktionell überarbeiteten Kern und das überarbeitete Tarifwerk nachgezogen: 834 Verträge, 112 Schritte | `migrationen/baldrian/lieferungen/baldrian-2` und die Nachlieferungen im Paket | Tag `fall3-vor` | Tag `fall3-nach` |
+| `baldrian-klv-tg2015-fall3` | Übernahme des Bestands KLV TG2015 der Baldrian Leben zum 01.01.2026, festgehalten am 02.10.2026, am 08.10.2026 auf den redaktionell überarbeiteten Kern und das überarbeitete Tarifwerk nachgezogen, am 09.10.2026 auf die Ordnung nach ADR-028: 834 Verträge, 112 Schritte | `migrationen/baldrian/lieferungen/baldrian-2` und die Nachlieferungen im Paket | Tag `fall3-vor-ebenen` (abgeleitet aus `fall3-vor`) | Tag `fall3-nach` |
 
 Welche Fälle es außerdem gab und in welchem Verhältnis sie stehen:
 [migrationen/baldrian/README.md](../migrationen/baldrian/README.md).

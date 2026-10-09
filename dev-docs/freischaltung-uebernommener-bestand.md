@@ -252,7 +252,7 @@ die dem Tarifplan KLV entsprechen. Damit ist die Ausgestaltung des
 Tarifplans (Grundsatzdokumentation 10 Nr. 9) erstmals maschinenlesbar
 und nicht nur Prosa im Fall.
 Fertig, wenn: `TarifGeneration` die drei Felder trägt und validiert,
-`configs/bestand_gesamt.toml` sie für TG2015 setzt, der Tarifplan KLV
+`plv/configs/bestand_gesamt.toml` sie für TG2015 setzt, der Tarifplan KLV
 (Abschnitte 6, 7, 13) sagt, dass übernommene Generationen hier
 abweichen dürfen, und ein Test die Vorgabewerte pinnt.
 

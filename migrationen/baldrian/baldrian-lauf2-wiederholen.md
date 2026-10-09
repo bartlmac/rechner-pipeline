@@ -122,10 +122,10 @@ erzeugt und ist deterministisch. Der Bestand vor der Übernahme (3130
 Verträge, Horizont 2046), ebenfalls auf 4b1abf04 (auf dem Hauptzweig
 verlangt die Fortschreibung seit ADR-020 einen Zugangsstrom):
 
-    python -m rechner_pipeline.bestand.cli_fortschreibung --config configs/bestand_gesamt.toml --bis 2046-01-01 --out-dir runs/bestand-vor
+    python -m rechner_pipeline.bestand.cli_fortschreibung --config plv/configs/bestand_gesamt.toml --bis 2046-01-01 --out-dir runs/bestand-vor
 
 Ergebnis: 3130 Verträge, `bestand.parquet` beginnt mit 740ecdde. Den
 KLV-Bestand zum Stichtag (2220 Verträge) baut das Skript im Schritt
 Fortschreibung selbst; einzeln:
 
-    python -m rechner_pipeline.bestand.cli_fortschreibung --config configs/bestand_klv.toml --bis 2026-01-01 --neuzugang-ab 2026-01-01 --out-dir runs/bestand-klv
+    python -m rechner_pipeline.bestand.cli_fortschreibung --config plv/configs/bestand_klv.toml --bis 2026-01-01 --neuzugang-ab 2026-01-01 --out-dir runs/bestand-klv

@@ -26,7 +26,7 @@ from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.models.bestand import validate_scheiben
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CONFIG = REPO_ROOT / "configs" / "bestand_klv.toml"
+CONFIG = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
 STICHTAG = _dt.date(2016, 1, 1)
 
 
@@ -225,7 +225,7 @@ def test_abschluss_ohne_scheiben_bei_erh_im_ledger_blockiert(
     assert (ledger["ereignis"] == "ERH").any(), "Vorbedingung: ERH im Ledger"
 
     exit_code = cli_abschluss.main([
-        "--config", "configs/bestand_klv.toml",
+        "--config", "plv/configs/bestand_klv.toml",
         "--lauf", str(unvollstaendig),
         "--stichtag", STICHTAG.isoformat(),
         "--bis", "2035-01-01",   # Horizont des Fixture-Laufs

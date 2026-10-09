@@ -1,7 +1,7 @@
 # Migrationskonzept
 
 Das Migrationskonzept wendet die Methode aus Abschnitt 9 der
-[Grundsatzdokumentation](../../docs/mathematik/grundsatzdokumentation.md) auf einen
+[Grundsatzdokumentation](../../plv/mathematik/grundsatzdokumentation.md) auf einen
 Bestand an. Es wird je Bestand und Quellsystem einmal ausgefüllt und von
 Projektleitung, Verantwortlichen des Quellsystems und Aktuariat
 freigegeben. Es beschreibt, wie ein konkreter Bestand übernommen und
@@ -45,7 +45,7 @@ Deshalb hat jede Art von Aussage genau einen Ort:
 
 | Aussage | Ort | Hier stattdessen |
 |---|---|---|
-| Mathematik der Methode, Invarianten, Toleranzphilosophie | [Grundsatzdokumentation](../../docs/mathematik/grundsatzdokumentation.md), Tarifpläne | Verweis auf Kapitelnummer |
+| Mathematik der Methode, Invarianten, Toleranzphilosophie | [Grundsatzdokumentation](../../plv/mathematik/grundsatzdokumentation.md), Tarifpläne | Verweis auf Kapitelnummer |
 | Warum das System so gebaut ist (Alternativen, Konsequenzen) | ADRs unter [docs/architektur/](../../docs/architektur/) | Verweis auf ADR-Nummer |
 | Kommandozeilen, Flags, Reihenfolge der Handgriffe | Agenten-Skills unter `.claude/skills/`, Einstieg in `ONBOARDING.md` | Verweis auf den Skill-Namen |
 | Was ein Modul rechnet und welche Fälle es hart ablehnt | Modul-Docstrings im Code | Verweis auf das Modul |

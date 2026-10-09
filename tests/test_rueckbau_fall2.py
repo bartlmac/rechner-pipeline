@@ -146,7 +146,7 @@ def test_nur_die_uebernommene_generation_fuehrt_die_drei_regeln():
     Generationen tragen den anderen Wert. Positivkontrolle: TG2015 ist da."""
     gesehen = 0
     mit_regeln = []
-    for pfad in sorted((REPO / "configs").glob("bestand_*.toml")):
+    for pfad in sorted((REPO / "plv" / "configs").glob("bestand_*.toml")):
         for generation in load_config(pfad).generationen:
             tarifwerk = generation.tarifwerk()
             gesehen += 1

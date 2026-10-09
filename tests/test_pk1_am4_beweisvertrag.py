@@ -200,7 +200,7 @@ def einpolicen_config(tmp_path: Path, *, uebernahme: Optional[Path] = None) -> P
     pfad = tmp_path / "einpolice.toml"
     if pfad.is_file():
         return pfad
-    text = (REPO_ROOT / "configs" / "bestand_klv.toml").read_text(encoding="utf-8")
+    text = (REPO_ROOT / "plv" / "configs" / "bestand_klv.toml").read_text(encoding="utf-8")
     if uebernahme is not None:
         abschnitt = (uebernahme / "generation-zellen.toml").read_text(encoding="utf-8")
         config_text = zellen_config(abschnitt, name=TARIF_GENERATION, knoten=O3_GENERATION)
@@ -1498,9 +1498,9 @@ def test_abnahmebericht_verwechselt_portfolio_rolle_nicht_mit_pb1_nebeneingang(
     fall = _bereite_bestandsfall(tmp_path)
     pb1_pfad = fall / "abgeleitet" / "diagnostics" / "bestand_validate.gate.json"
     pb1 = json.loads(pb1_pfad.read_text(encoding="utf-8"))
-    config_pfad = REPO_ROOT / "configs" / "bestand_klv.toml"
+    config_pfad = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
     config_hash = sha256(config_pfad.read_bytes()).hexdigest()
-    pb1["input_hashes"]["configs/bestand_klv.toml"] = config_hash
+    pb1["input_hashes"]["plv/configs/bestand_klv.toml"] = config_hash
     pb1_pfad.write_text(json.dumps(pb1, sort_keys=True), encoding="utf-8")
     suite_pfad = fall / "abgeleitet" / "suite.json"
     suite = json.loads(suite_pfad.read_text(encoding="utf-8"))
@@ -1544,7 +1544,7 @@ def test_abnahmebericht_blockiert_teilpruefung_des_pb1_portfolios(
     lauf = fall / "abgeleitet" / "bestand-nach"
     # Seit Review T23-04 liegt jede P-B1-Rolle im Fall — auch die Config.
     config = fall / "abgeleitet" / "bestand-config.toml"
-    config.write_bytes((REPO_ROOT / "configs" / "bestand_klv.toml").read_bytes())
+    config.write_bytes((REPO_ROOT / "plv" / "configs" / "bestand_klv.toml").read_bytes())
     assert cli_fortschreibung.main([
         "--config", str(config),
         "--neuzugang-ab", f"{EINPOLICE_VERKAUFSJAHR}-01-01",

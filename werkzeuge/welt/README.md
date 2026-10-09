@@ -192,7 +192,8 @@ nur ein Paket, das seinen Prüfsummen entspricht und keine Datei darüber
 hinaus trägt.
 
 Der festgehaltene Fall 3 liegt als Paket unter
-`pakete/baldrian-klv-tg2015-fall3/` (Stand vor dem Fall: `8c1bed3`). Es
+`pakete/baldrian-klv-tg2015-fall3/` (Stand vor dem Fall: `82eea92`, Tag
+`fall3-vor-ebenen`, abgeleitet aus `fall3-vor`). Es
 trägt die Auflösung des Falls: Es ist zum Nachfahren da, nicht als
 Lesestoff für einen Lauf, der denselben Fall live führt.
 

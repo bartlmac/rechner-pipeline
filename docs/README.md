@@ -10,7 +10,7 @@ Zum Einstieg: das [Glossar](architektur/glossar.md) und der
 | Ebene | Dokumente |
 |---|---|
 | System | [architektur/](architektur/README.md): Ablauf eines Falls, Prüf-Gates und ihre Versionen, Landkarte des Codes, die ADRs. Dazu [system/](../system/README.md) mit der [Vorlage des Migrationskonzepts](../system/migrationskonzept/README.md). |
-| Objekt PLV | [mathematik/](mathematik/README.md) (Grundsatzdokumentation) und [tarifplaene/](tarifplaene/README.md): die Fachdokumente der PLV, abgenommen; sie ziehen nach `plv/` um, sobald die Abnahme einen Ortswechsel verfolgen kann. Dazu [plv/](../plv/README.md) und die Parametrierung in [configs/](../configs/README.md). |
+| Objekt PLV | [plv/](../plv/README.md): die Fachdokumente der PLV, abgenommen ([Grundsatzdokumentation](../plv/mathematik/README.md), [Tarifpläne](../plv/tarifplaene/README.md)), die Parametrierung ([configs/](../plv/configs/README.md)), das Image der Laufzeit und der Auftritt |
 | Objekt Baldrian bzw. Migration | [migrationen/](../migrationen/README.md), darin [baldrian/](../migrationen/baldrian/README.md): die Fälle, ihre Berichte und wie man Lauf 2 wiederholt |
 | Simulation | [simulation/](simulation/README.md): wie Bestand und Tagesbetrieb der PLV entstehen. Die Werkzeuge liegen unter [werkzeuge/](../werkzeuge/README.md). |
 

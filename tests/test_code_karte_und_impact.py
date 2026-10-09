@@ -355,13 +355,13 @@ def test_impact_tarifplan_ist_test_tragend():
     test_bestand_config zeichengenau gegen die Config prueft — eine
     Aenderung dort darf nicht als reine Doku durchgehen und null Tests
     auswaehlen."""
-    ergebnis = berechne_impact(["docs/tarifplaene/bu.md"], *_repo_args())
+    ergebnis = berechne_impact(["plv/tarifplaene/bu.md"], *_repo_args())
     assert ergebnis["knoten"] == ["bu"]
     assert "test_bestand_config.py" in ergebnis["tests"]
     assert not any("kein Code-/Vertrags-Impact" in h
                    for h in ergebnis["hinweise"])
 
-    klv = berechne_impact(["docs/tarifplaene/klv.md"], *_repo_args())
+    klv = berechne_impact(["plv/tarifplaene/klv.md"], *_repo_args())
     assert klv["knoten"] == ["klv"]
     assert "test_bestand_config.py" in klv["tests"]
 
@@ -371,13 +371,13 @@ def test_impact_bindet_tarifplaene_ueber_den_dateinamen():
     Tarifplan nicht stillschweigend ausserhalb der Testselektion mit
     (Review-Befund — vorher waren klv.md und bu.md einzeln
     aufgezaehlt)."""
-    neu = berechne_impact(["docs/tarifplaene/rlv.md"], *_repo_args())
+    neu = berechne_impact(["plv/tarifplaene/rlv.md"], *_repo_args())
     assert neu["knoten"] == ["rlv"]
     assert not any("kein Code-/Vertrags-Impact" in h
                    for h in neu["hinweise"])
     # Der README des Ordners ist kein Produkt:
     readme = berechne_impact(
-        ["docs/tarifplaene/README.md"], *_repo_args())
+        ["plv/tarifplaene/README.md"], *_repo_args())
     assert readme["knoten"] == []
 
 
@@ -385,7 +385,7 @@ def test_impact_grundsatzdokumentation_ist_konservativ():
     """Die Mathematik, der die Umsetzung folgt, ist nie auf einen
     Knoten begrenzt."""
     ergebnis = berechne_impact(
-        ["docs/mathematik/grundsatzdokumentation.md"], *_repo_args())
+        ["plv/mathematik/grundsatzdokumentation.md"], *_repo_args())
     assert ergebnis["konservativ"]
 
 

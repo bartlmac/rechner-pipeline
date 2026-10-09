@@ -41,8 +41,8 @@ from rechner_pipeline.betrieb.neugeschaeft import (
 from rechner_pipeline.models.bestand import STAMM_SPALTEN, validate_portfolio
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PLV = REPO_ROOT / "configs" / "bestand_gesamt.toml"
-KLV = REPO_ROOT / "configs" / "bestand_klv.toml"
+PLV = REPO_ROOT / "plv" / "configs" / "bestand_gesamt.toml"
+KLV = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
 
 JAHR = 2027
 
@@ -205,7 +205,7 @@ def test_seed_haengt_am_namen_nicht_an_der_position(config):
     eine vorn eingefuegte Generation die Verkaufstage aller anderen.
     Review T22-09: Vorher entfernte dieser Test die police_id-Spalte vor
     dem Vergleich und fror ein, dass die NUMMERN an der Position hingen.
-    Mit explizitem Nummernkreis (configs/bestand_gesamt.toml) sind auch
+    Mit explizitem Nummernkreis (plv/configs/bestand_gesamt.toml) sind auch
     die Nummern und damit die Ereignishistorien positionsunabhaengig."""
     assert generationsseed("KLV-2025") != generationsseed("BU-2025")
     assert generationsseed("KLV-2025") == generationsseed("KLV-2025")

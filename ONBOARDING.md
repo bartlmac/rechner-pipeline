@@ -114,18 +114,14 @@ bisher nicht. Einzelheiten stehen in
 [werkzeuge/welt/README.md](werkzeuge/welt/README.md).
 
 `main` trägt den Stand nach Fall 3, der Rechenkern kennt den übernommenen
-Tarif also bereits. Den Stand vor dem Fall trägt der Tag `fall3-vor`. Die
-Skripte unter `werkzeuge/welt/` gibt es dort noch nicht, sie nehmen den
-Codebaum aber über die Variable `BAUM` entgegen. Wer den Fall live mit
-Agenten auf dem alten Stand führen will, legt einen zweiten Klon auf
-`fall3-vor` an und ruft die Skripte aus `main` mit `BAUM=<zweiter Klon>` auf
-(mit `PYTHON=<Interpreter>`, wenn der zweite Klon keine eigene `.venv`
-hat). Die Falldatei aus `main` nennt die Lieferung relativ zum Codebaum
-unter `migrationen/baldrian/lieferungen/`; der alte Stand trägt sie noch
-unter `lieferungen/`. Deshalb eine Kopie der Falldatei anlegen und darin
-`LIEFERUNG` auf den absoluten Pfad setzen, etwa
-`<zweiter Klon>/lieferungen/baldrian-2` (die Dateien sind dieselben). Eine
-eigene Anleitung dafür gibt es noch nicht.
+Tarif also bereits. Den Stand vor dem Fall trägt der Tag `fall3-vor-ebenen`:
+der Stand vor Fall 3 in der Ordnung nach ADR-028 (der Originalstand trägt den
+Tag `fall3-vor`). Die Skripte unter `werkzeuge/welt/` gibt es dort noch
+nicht, sie nehmen den Codebaum aber über die Variable `BAUM` entgegen. Wer
+den Fall live mit Agenten auf dem alten Stand führen will, legt einen
+zweiten Klon auf `fall3-vor-ebenen` an und ruft die Skripte aus `main` mit
+`BAUM=<zweiter Klon>` auf (mit `PYTHON=<Interpreter>`, wenn der zweite Klon
+keine eigene `.venv` hat). Eine eigene Anleitung dafür gibt es noch nicht.
 
 **Einen Fall anlegen.** Eine Datei kommt nur durch Registrieren in einen
 Fall:
@@ -179,7 +175,7 @@ sie gegen ihn.
 
 **Kern und Tarifwerk.** Fall 3 hat den Stand des Rechenkerns (Code,
 Referenzwerte, Grundsatzdokumentation) und des Tarifwerks (die Dateien unter
-`docs/tarifplaene/` und die eigenen Generationen der Bestands-Configs)
+`plv/tarifplaene/` und die eigenen Generationen der Bestands-Configs)
 abgenommen und über Prüfsummen gebunden. `tests/test_pakete.py` hält fest,
 dass der Baum diesen Stand trägt, sonst ließe sich Fall 3 aus `main` nicht
 mehr nachfahren. Eine Änderung daran ist eine Änderung des Zielsystems. Sie

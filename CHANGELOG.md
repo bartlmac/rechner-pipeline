@@ -82,11 +82,12 @@ Objekt PLV (`plv/`), Objekt Baldrian bzw. Migration (`migrationen/`),
 Simulation (`werkzeuge/`) und Laufzeit-Artefakte (`pakete/`). Was wohin
 gezogen ist, steht als Tabelle in ADR-028: `deploy/`, `lieferungen/`
 (bytegleich), `quellsystem/`, `vorzeige-seite/`, die vier Werkzeuge des
-Live-Laufs, die Falldatei der Vorführung und Teile von `docs/`. `configs/`,
-die Grundsatzdokumentation und die Tarifpläne folgen, sobald die Abnahme
-einen Ortswechsel verfolgen kann. Das README der Tarifpläne nennt den neuen
-Ort der Doku-Engine; das Paket des dritten Falls nimmt diesen Stand des
-Tarifwerks beim Nachfahren ab (A-T1).
+Live-Laufs, die Falldatei der Vorführung, `configs/` und Teile von
+`docs/`, darunter Grundsatzdokumentation und Tarifpläne. Kein Werkzeug
+kennt alte Pfade: Der Stand vor dem dritten Fall ist dafür in der neuen
+Ordnung neu festgehalten (Tag `fall3-vor-ebenen`, abgeleitet aus
+`fall3-vor`). Kernstand und Tarifwerk sind neu abgenommen, das Paket des
+dritten Falls ist neu festgehalten.
 
 ### Was es bewusst noch nicht kann
 

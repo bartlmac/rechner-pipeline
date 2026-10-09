@@ -250,7 +250,7 @@ produziert entweder Falsch-Alarme oder (gefährlicher) grüne Balken
 für eine Identität, die er nie geprüft hat. v0.1 nimmt deshalb die
 Parametrierung maschinell ab und weist die Formelidentität
 ausdrücklich dem Menschen zu: Abnahme gegen den Tarifplan
-(`docs/tarifplaene/`) im Gate A-Q1. Der vorhandene deterministische
+(`plv/tarifplaene/`) im Gate A-Q1. Der vorhandene deterministische
 Rück-Check (`quellen/formeln.py`, in Gate P-Q3) ist die einzige
 Ausnahme und beschreibt seinen Umfang selbst ehrlich: er prüft die
 IF-Staffeln des Rechners gegen die extrahierten Werte und meldet jede

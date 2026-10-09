@@ -9,7 +9,7 @@ date: 2026-08-26
 |---|---|
 | Dokumenttyp | Migrationskonzept (projektseitig, je Bestand/Quellsystem instanziiert) |
 | Status | Vorlage v0.2 — Kapitel 6 und 7 ausgearbeitet, übrige Kapitel Gerüst |
-| Normative Referenzen | **Grundsatzdokumentation** (`docs/mathematik/grundsatzdokumentation.md`) — Mathematik und Numerik des Zielrechenkerns, dort Abschnitt 9 für den Migrationszugang und die Korrekturschicht; Ausgestaltungen der betroffenen Tarifpläne ⟨Liste⟩ |
+| Normative Referenzen | **Grundsatzdokumentation** (`plv/mathematik/grundsatzdokumentation.md`) — Mathematik und Numerik des Zielrechenkerns, dort Abschnitt 9 für den Migrationszugang und die Korrekturschicht; Ausgestaltungen der betroffenen Tarifpläne ⟨Liste⟩ |
 | Bestand / Mandant | ⟨…⟩ |
 | Quellsystem | ⟨…⟩ |
 | Freigabe | ⟨Projektleitung⟩, ⟨Quellsystem-Verantwortliche⟩, ⟨Fachexperte Aktuariat⟩ |

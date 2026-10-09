@@ -14,10 +14,10 @@ die Vorbedingung von A-M4) und der Stand (``gates.stand_belegen``).
 
 **Der Gegenstand, EINMAL bestimmt** (:data:`TARIFWERK`):
 
-* ``docs/tarifplaene`` — die Tarifplaene: was die PLV ihren Kunden
+* ``plv/tarifplaene`` — die Tarifplaene: was die PLV ihren Kunden
   verspricht und wie (Ausgestaltung je Produkt). Je Datei ein Teil der Sicht.
 * die Parametrierung der EIGENEN Tarifgenerationen in den PLV-Configs
-  (``configs/*.toml``; eigen = Knoten ``<familie>/plv_<...>``): je
+  (``plv/configs/*.toml``; eigen = Knoten ``<familie>/plv_<...>``): je
   ``[[generation]]`` alle Felder AUSSER den Erfahrungs- und Betriebsfeldern
   (:data:`NICHT_TARIFWERK`), samt Tarifzellen und Tarifwerks-Schaltern —
   Rechnungszins, Tafeln, Kostensaetze, Rueckkaufs- und Herabsetzungsregeln,
@@ -58,9 +58,9 @@ AENDERUNG_RELATIV = "abgeleitet/tarifwerk/aenderung.json"
 SICHT_RELATIV = "abgeleitet/tarifwerk/aenderung.md"
 
 #: Die Tarifplaene (je Datei ein Teil).
-TARIFPLAENE = "docs/tarifplaene"
+TARIFPLAENE = "plv/tarifplaene"
 #: Die Configs der PLV (je eigene Generation ein Teil).
-CONFIG_VERZEICHNIS = "configs"
+CONFIG_VERZEICHNIS = "plv/configs"
 CONFIG_MUSTER = "*.toml"
 
 #: DER GEGENSTAND VON A-T1, als Pfadmenge mit Begruendung.
@@ -194,11 +194,11 @@ def unterschiede(alt: Dict[str, Any], neu: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def konfig_pfade(namen: Iterable[str]) -> List[str]:
-    """Die Config-Pfade der PLV aus einer Dateiliste (``configs/*.toml``,
+    """Die Config-Pfade der PLV aus einer Dateiliste (``plv/configs/*.toml``,
     nicht rekursiv)."""
     return sorted(p for p in namen
-                  if p.startswith(CONFIG_VERZEICHNIS + "/") and p.count("/") == 1
-                  and p.endswith(".toml"))
+                  if p.startswith(CONFIG_VERZEICHNIS + "/")
+                  and "/" not in p[len(CONFIG_VERZEICHNIS) + 1:] and p.endswith(".toml"))
 
 
 def tarifplan_pfade(namen: Iterable[str]) -> List[str]:

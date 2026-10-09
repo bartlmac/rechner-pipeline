@@ -46,7 +46,7 @@ for k in BETRIEB_KEY VORSTAND_KEY AKTUARIAT_KEY BETRIEB_MENSCH_KEY ORDNUNG MANDA
 done
 FALL="$BAUM/faelle/$FALLNAME"
 D="$WELT/daten"; LOG="$WELT/zugang.log"
-CONFIG="$BAUM/configs/bestand_gesamt.toml"      # die Config des Falls: mit der Generation des Zugangs
+CONFIG="$BAUM/plv/configs/bestand_gesamt.toml"  # die Config des Falls: mit der Generation des Zugangs
 PROBE="$WELT/zugangsprobe"                      # leeres Verzeichnis, nur configs/bestand.toml
 export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$BAUM/src"
 

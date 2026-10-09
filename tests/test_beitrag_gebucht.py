@@ -44,7 +44,7 @@ from rechner_pipeline.bestand.kennzahlen import bewegungskonto, ereignisse_je_ja
 from rechner_pipeline.bestand.ledger_bindung import pruefe_ledger_betraege
 from rechner_pipeline.models.bestand import BETRAG_ART_JE_EREIGNIS, validate_ledger
 
-KLV = "configs/bestand_klv.toml"
+KLV = "plv/configs/bestand_klv.toml"
 REF = dt.date(2010, 1, 1)
 BIS = dt.date(2030, 1, 1)
 

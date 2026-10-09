@@ -9,7 +9,7 @@ verschwindet.
 Hier arbeitet das **Entwicklerteam an diesem Repository** — Sprints,
 Backlog, Refactorings, CI, Skills. Das ist eine andere Welt als das
 Versicherungsunternehmen, das dieses System abbildet: Dessen
-Fachdokumentation (`docs/mathematik/`, `docs/tarifplaene/`,
+Fachdokumentation (`plv/mathematik/`, `plv/tarifplaene/`,
 `system/migrationskonzept/`) spricht die Sprache des Unternehmens und
 kennt weder Repos noch Sprints. Hier gilt das nicht — hier ist
 Werkzeugsprache die richtige Sprache.

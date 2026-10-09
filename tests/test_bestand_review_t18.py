@@ -39,7 +39,7 @@ from rechner_pipeline.models.bestand import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CONFIG = REPO_ROOT / "configs" / "bestand_klv.toml"
+CONFIG = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
 HORIZONT = _dt.date(2020, 1, 1)
 STICHTAG = _dt.date(2016, 1, 1)
 

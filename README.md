@@ -122,7 +122,7 @@ Skripte und das Quellsystem liegen bei ihrer Ebene unter `system/` und
 | Ebene | Was | Wo |
 |---|---|---|
 | **System** | das Migrationssystem: Quellen vorverdichten, Aussagen mit Herkunft führen, Tarife parametrieren, prüfen und Abnahmen vorbereiten; die gemeinsamen Datenverträge; die Rollen der Agenten; Werkzeuge für den Live-Lauf eines Falls | `src/rechner_pipeline/quellen`, `src/rechner_pipeline/ontologie`, `src/rechner_pipeline/spez`, `src/rechner_pipeline/qa`, `src/rechner_pipeline/gates`, `src/rechner_pipeline/models`, `src/rechner_pipeline/fall.py`, `.claude/`, `.agents/`, [`system/`](system/README.md) |
-| **Objekt PLV** | die übernehmende Gesellschaft: Rechenkern, Bestandsführung und Tagesbetrieb, ihre Parametrierung und Fachdokumente, das Image ihrer Laufzeit und ihr Auftritt | `src/rechner_pipeline/kern`, `src/rechner_pipeline/bestand`, `src/rechner_pipeline/betrieb`, `configs/`, `docs/mathematik/`, `docs/tarifplaene/`, [`plv/`](plv/README.md) |
+| **Objekt PLV** | die übernehmende Gesellschaft: Rechenkern, Bestandsführung und Tagesbetrieb, ihre Parametrierung und Fachdokumente (Grundsatzdokumentation, Tarifpläne), das Image ihrer Laufzeit und ihr Auftritt | `src/rechner_pipeline/kern`, `src/rechner_pipeline/bestand`, `src/rechner_pipeline/betrieb`, [`plv/`](plv/README.md) |
 | **Objekt Baldrian bzw. Migration** | die abgebende Gesellschaft: ihre Lieferungen, die Falldatei der Vorführung und die Berichte zu den Fällen | [`migrationen/`](migrationen/README.md) |
 | **Simulation** | ihr Modell (Verteilungen, das Erzeugen von Geschäftsvorfällen und Neugeschäft, in einzelnen Modulen von `bestand` und `betrieb`) und ihr Betrieb: das Quellsystem der Baldrian, eine Welt aufstellen, einen Fall nachfahren, die Seite bauen | [`werkzeuge/`](werkzeuge/README.md) |
 | **Laufzeit-Artefakte** | was beim Laufen entsteht; im Repository liegt davon nur der dritte Fall, eingefroren, damit er nachfahrbar ist | [`pakete/`](pakete/README.md) |
@@ -130,10 +130,6 @@ Skripte und das Quellsystem liegen bei ihrer Ebene unter `system/` und
 Quer zu den Ebenen liegen `tests/`, `docs/` (Entwicklerdoku), `dev-docs/`
 (geplante Vorhaben), `deploy/dev` und `.devcontainer/`
 (Entwicklungsumgebung) sowie `.github/` (CI).
-
-Grundsatzdokumentation, Tarifpläne und Configs gehören zur PLV, liegen aber
-noch an ihrem bisherigen Ort: Ihre Abnahme bindet den Pfad mit. Sie ziehen
-nach `plv/` um, sobald die Abnahme einen Ortswechsel verfolgen kann.
 
 Nicht im Repository liegen die laufenden Instanzen mit ihren Schlüsseln und
 Daten, die Arbeitsbereiche der Fälle und die Läufe (lokal, von Git
@@ -150,7 +146,7 @@ Seite und die Einrichtung einzelner Rechner.
 | Wie läuft ein Fall ab, und wer zeichnet welches Gate? | [docs/architektur/ablauf-eines-falls.md](docs/architektur/ablauf-eines-falls.md) |
 | Welche Architektur-Entscheidungen gelten? | [docs/architektur/](docs/architektur/README.md) |
 | Was prüft ein Gate, und warum trägt es eine Version? | [docs/architektur/gate-vertrag-und-versionen.md](docs/architektur/gate-vertrag-und-versionen.md) |
-| Welche Mathematik rechnet der Kern? Welche Tarife hat die PLV? | [docs/mathematik/](docs/mathematik/README.md), [docs/tarifplaene/](docs/tarifplaene/README.md) |
+| Welche Mathematik rechnet der Kern? Welche Tarife hat die PLV? | [plv/mathematik/](plv/mathematik/README.md), [plv/tarifplaene/](plv/tarifplaene/README.md) |
 | Wie entstehen Bestand und Tagesbetrieb der PLV? | [docs/simulation/](docs/simulation/README.md) |
 | Welche Fälle gibt es, und was lässt sich nachfahren? | [migrationen/baldrian/](migrationen/baldrian/README.md), [pakete/](pakete/README.md) |
 | Wie stelle ich eine Welt auf? Wie läuft die Laufzeit im Betrieb? | [werkzeuge/welt/](werkzeuge/welt/README.md), [plv/betrieb/](plv/betrieb/README.md) |

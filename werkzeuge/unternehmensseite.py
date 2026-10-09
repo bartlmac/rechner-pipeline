@@ -851,7 +851,7 @@ SKILL_STAND = {
     "aktuartest-durchfuehren": "348cf6b0023a",
     "author-rechner-toolbox-gate": "78f88225c1a9",
     "bereite-fachkonflikt-auf": "07237e41f06c",
-    "dokumentiere-system": "f275b3c8b9cf",
+    "dokumentiere-system": "dd8e77752879",
     "entwickle-im-zielsystem": "0c2ef08b8163",
     "extrahiere-quellfragment": "780c9692bfaf",
     "integriere-migrationsinkrement": "5cea17af20d4",
@@ -1157,11 +1157,11 @@ def _kennzahlen(text: str, modell: Dict[str, Any], seite: str,
 #: Dokumente spiegeln den Pfad unter docs/, damit ihre relativen
 #: Querverweise untereinander unveraendert gueltig bleiben.
 FACHDOKUMENTE = (
-    ("tarifplaene/klv.md",
+    ("../plv/tarifplaene/klv.md",
      "aktuariat/tarifplaene/klv.md", "Rechenkern und Tarifwerk", "../"),
-    ("tarifplaene/bu.md",
+    ("../plv/tarifplaene/bu.md",
      "aktuariat/tarifplaene/bu.md", "Rechenkern und Tarifwerk", "../"),
-    ("mathematik/grundsatzdokumentation.md",
+    ("../plv/mathematik/grundsatzdokumentation.md",
      "aktuariat/mathematik/grundsatzdokumentation.md", "Rechenkern und Tarifwerk", "../"),
     # Die Berichte zu einem Fall (migrationen/baldrian/berichte/) kommen je Fall dazu:
     # darstellung.FALLDOKUMENTE.

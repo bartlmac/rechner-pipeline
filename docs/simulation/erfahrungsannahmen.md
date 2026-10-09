@@ -9,7 +9,7 @@ format:
 > Wie das Simulationswerkzeug entscheidet, **wann** einem Vertrag etwas
 > zustößt. Das ist keine Bewertungsmathematik: Die Bewertung rechnet auf
 > Rechnungsgrundlagen erster Ordnung
-> ([Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md),
+> ([Grundsatzdokumentation](../../plv/mathematik/grundsatzdokumentation.md),
 > Abschnitt 5) und weiß von diesen Annahmen nichts.
 
 # 1 Warum es sie gibt

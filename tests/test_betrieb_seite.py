@@ -24,7 +24,7 @@ from rechner_pipeline.betrieb.tageslauf import EXIT_OK, Ablage, lies_protokoll, 
 from tests.test_betrieb_uebernahme import _mit_config  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PLV = REPO_ROOT / "configs" / "bestand_gesamt.toml"
+PLV = REPO_ROOT / "plv" / "configs" / "bestand_gesamt.toml"
 
 
 def _ablage(wurzel: Path) -> Ablage:

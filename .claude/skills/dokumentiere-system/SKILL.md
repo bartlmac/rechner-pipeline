@@ -3,7 +3,7 @@ name: dokumentiere-system
 description: >-
   Write and maintain this repository's documentation under its rules: generated beats
   handwritten (P7), each document type has ONE home (ADRs and architecture in
-  docs/architektur, Tarifplaene in docs/tarifplaene, team agent instructions in
+  docs/architektur, Tarifplaene in plv/tarifplaene, team agent instructions in
   AGENTS.md, private notes in docs-local), German plain text without emojis, ADR
   format for decisions. Trigger when documentation is to be created or updated:
   ADRs, architecture docs, README sections, Tarifplaene, docstrings, commit messages
@@ -30,8 +30,8 @@ zweimal teuer gewesen).
 |---|---|---|
 | Architektur-Entscheidungen | `docs/architektur/adr-NNN-*.md` | ADR-Format: Kontext, Entscheidung, Konsequenzen, verworfene Alternative(n); Status + Datum + Entscheider; Index in `docs/architektur/README.md` nachziehen |
 | Architektur-Beschreibung | `docs/architektur/*.md` | beschreibt IST und Absicht; "bewusst nicht"-Abschnitte sind Pflicht (Grenzen benennen, nie beschoenigen) |
-| Grundsatzmathematik (alle Produkte) | `docs/mathematik/grundsatzdokumentation.md` | normative Mathematik und Numerik ALLER Produkte, inkl. Migrationszugang und Korrekturschicht (Abschnitt 9) — was fuer mehr als ein Produkt gilt, gehoert dorthin, nicht in einen Tarifplan; substanzielle Aenderungen brauchen die Zustimmung des Aktuariats |
-| Tarifplaene (Zielkern) | `docs/tarifplaene/*.md` | AUSGESTALTUNG je Produkt; das gemeinsame Rueckgrat steht einmal in `docs/mathematik/grundsatzdokumentation.md` und wird nie wiederholt (Waechter: tests/test_tarifplan_struktur.py); einheitliche Gliederung ueber alle Produkte, Rendering ueber die Doku-Engine |
+| Grundsatzmathematik (alle Produkte) | `plv/mathematik/grundsatzdokumentation.md` | normative Mathematik und Numerik ALLER Produkte, inkl. Migrationszugang und Korrekturschicht (Abschnitt 9) — was fuer mehr als ein Produkt gilt, gehoert dorthin, nicht in einen Tarifplan; substanzielle Aenderungen brauchen die Zustimmung des Aktuariats |
+| Tarifplaene (Zielkern) | `plv/tarifplaene/*.md` | AUSGESTALTUNG je Produkt; das gemeinsame Rueckgrat steht einmal in `plv/mathematik/grundsatzdokumentation.md` und wird nie wiederholt (Waechter: tests/test_tarifplan_struktur.py); einheitliche Gliederung ueber alle Produkte, Rendering ueber die Doku-Engine |
 | Agenten-Anweisungen (Team) | `AGENTS.md` + `.claude/skills/` (+ `.agents/`-Spiegel) | CLI-neutral; AGENTS.md-Aenderungen im Team abstimmen; Skill-Paritaet ist test-tragend |
 | README | `README.md` | erzaehlt das System entlang der Architektur; Kommandobeispiele muessen LAUFEN (nachpruefen, nicht abschreiben) |
 | Simulation der Vorzeigebestaende | `docs/simulation/` | wie ein Bestand ENTSTEHT und sich entwickelt (Erfahrungsannahmen dritter Ordnung, Werkzeuge). Gehoert NIE in Grundsatzdokumentation oder Tarifplan: die beschreiben, wie BEWERTET wird — in einem echten Unternehmen treibt die Wirklichkeit den Bestand, kein Modell |

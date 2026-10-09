@@ -11,7 +11,7 @@ nicht eingecheckt.
 | `render.sh` | rendert die genannten Markdown-Dateien, ohne Angabe alle Tarifpläne |
 
 ```
-werkzeuge/engine/render.sh docs/mathematik/grundsatzdokumentation.md
+werkzeuge/engine/render.sh plv/mathematik/grundsatzdokumentation.md
 IMAGE=local werkzeuge/engine/render.sh        # Image vorher lokal bauen
 ```
 

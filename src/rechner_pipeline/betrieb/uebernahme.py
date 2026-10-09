@@ -1623,7 +1623,7 @@ def lies_uebernahme(
     if fremd:
         raise UebernahmeError(
             f"{verzeichnis}: Tarifgenerationen {fremd} nicht in der Config der "
-            "PLV — die uebernommene Generation gehoert in configs/ (ohne Neuzugang)"
+            "PLV — die uebernommene Generation gehoert in plv/configs/ (ohne Neuzugang)"
         )
     mit_zellen = {g.name for g in config.generationen if g.zellen}
     if (set(bestand["tarif_generation"]) & mit_zellen) and tabellen["merkmale"] is None:

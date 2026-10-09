@@ -45,7 +45,7 @@ nicht gebaut und nicht gefahren.
 | Stornoabzug je Baustein (`stoab_je_baustein = true`, Kern 3.3.0 und Folgen in Vorgangsfolge und Herabsetzung) | Abzug und Rückkaufswert je Baustein | verweigert |
 | Teilkündigung nur der Grundversicherung (`tku_umfang = grundversicherung`, Kern 3.17.0) | die Scheiben bleiben | verweigert |
 | sechs Tafeln aus dem Tarifrechner der Quelle (`DAV2008_T_NR_F/M/U70`, `DAV2008_T_R_F/M/U70`) | in `kern/tafeln.xml` | entfernt (762 Zeilen) |
-| Generation TG2015 in `configs/bestand_gesamt.toml` | 14 Generationen | 13 Generationen |
+| Generation TG2015 in `plv/configs/bestand_gesamt.toml` | 14 Generationen | 13 Generationen |
 
 Gemessen an der Config vor dem Rückbau führte NUR die Generation TG2015
 diese Regelwerte; die 13 eigenen Generationen tragen den jeweils anderen
@@ -226,14 +226,14 @@ Registrierung.
 
 ### Generation TG2015 in der Config; Liste der ausgesetzten Tests gelöscht (Fall 3, Übergabe 10)
 
-Die Generation TG2015 steht wieder in `configs/bestand_gesamt.toml`, am Platz
+Die Generation TG2015 steht wieder in `plv/configs/bestand_gesamt.toml`, am Platz
 vor dem Rückbau (nach dem BU-Abschnitt, vor dem Tagesbetrieb, damit die
 Reihenfolge der Generationen und mit ihr alle eingefrorenen Portfolio-Werte
 unverändert bleiben). Tarifwerte und Zellen kommen aus dem Übernahme-Vorlauf
 des Falls (`abgeleitet/bestand/generation-zellen.toml`, aus der Spez), nicht
 abgetippt; die Strukturfelder (Nummernkreis 14, Gültigkeit 2015-01-01 bis
 2017-01-01, Endalter 90, inerte Verteilungen ohne Neuzugang) stammen aus dem
-Block vor dem Rückbau (`git show cfaef32^:configs/bestand_gesamt.toml`) und sind
+Block vor dem Rückbau (`git show cfaef32^:plv/configs/bestand_gesamt.toml`) und sind
 für eine übernommene Generation ohne Neuzugang ohne Wirkung auf den
 Vertragswert. Unterschied zum alten Block: nur die Schreibweise `0.0` statt `0`
 bei den Haus-Stornoabzügen (aus der Spez), im Tarifplan neu erzeugt.

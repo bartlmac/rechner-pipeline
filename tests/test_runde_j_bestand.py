@@ -74,7 +74,7 @@ from rechner_pipeline.gates import bestand_validate
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src" / "rechner_pipeline"
-CONFIG = REPO_ROOT / "configs" / "bestand_klv.toml"
+CONFIG = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
 
 
 # --------------------------------------------------------------------------- #

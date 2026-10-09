@@ -200,7 +200,7 @@ Generation im Vertrieb ist BU-2025; ihre Rechnungsgrundlagen sind
 Vorgängergeneration), bis das Aktuariat der Vorzeige sie festlegt
 (Fachkonzept Tagesbetrieb, offene Fachentscheidung):
 
-<!-- erzeugt: python -m rechner_pipeline.bestand.tarifplan_tabellen --config configs/bestand_gesamt.toml --produkt bu -->
+<!-- erzeugt: python -m rechner_pipeline.bestand.tarifplan_tabellen --config plv/configs/bestand_gesamt.toml --produkt bu -->
 | Knoten | Name | gültig | Zins | Tafeln (aktiv/i/ri/ti) | Zuschlag | Vertrieb |
 |---|---|---|---|---|---|---|
 | `bu/plv_2000` | BU-2000 | 2000-01–2016-12 | 1.75% | DAV1997_TAA/DAV1997_I/DAV1997_RI/DAV1997_TI | 0.05 | Neugeschäft 29/Jahr |

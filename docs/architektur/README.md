@@ -3,8 +3,8 @@
 Wie das Migrationssystem gebaut ist und warum. Die Entscheidungen stehen als
 Architecture Decision Records (ADRs): je Entscheidung ein Dokument mit
 Kontext, Beschluss und Folgen. Die Fachdokumente der PLV, also Mathematik und
-Tarifpläne, liegen getrennt davon unter `docs/mathematik/` und
-`docs/tarifplaene/`.
+Tarifpläne, liegen getrennt davon unter `plv/mathematik/` und
+`plv/tarifplaene/`.
 
 ## Zum Einstieg
 

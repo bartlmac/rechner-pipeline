@@ -5,8 +5,8 @@ Bestand der Pfefferminzia und die Quellbestände der erfundenen abgebenden
 Unternehmen. Beide sind simuliert. Diese Dokumente beschreiben, wie.
 
 Das ist von der Fachdokumentation getrennt. Die
-[Grundsatzdokumentation](../mathematik/grundsatzdokumentation.md) und die
-[Tarifpläne](../tarifplaene/) beschreiben, wie ein Versicherer bewertet:
+[Grundsatzdokumentation](../../plv/mathematik/grundsatzdokumentation.md) und die
+[Tarifpläne](../../plv/tarifplaene/) beschreiben, wie ein Versicherer bewertet:
 Rechnungsgrundlagen erster Ordnung, prospektive Reserven,
 Migrationszugang. Wie ein Bestand über die Zeit entsteht und sich
 entwickelt, ist dagegen eine Eigenschaft des Simulationswerkzeugs; in einem

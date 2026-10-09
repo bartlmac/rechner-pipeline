@@ -25,7 +25,7 @@ from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.gates import abnahmebericht, bestand_validate
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CONFIG = REPO_ROOT / "configs" / "bestand_klv.toml"
+CONFIG = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
 HORIZONT = _dt.date(2020, 1, 1)
 
 

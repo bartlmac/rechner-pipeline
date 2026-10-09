@@ -1,6 +1,6 @@
 """Erzeugte Generationentabellen der Tarifplaene — P7: erzeugt, nicht abgetippt.
 
-Der Tarifplan eines Produkts (``docs/tarifplaene/<produkt>.md``, Paragraf
+Der Tarifplan eines Produkts (``plv/tarifplaene/<produkt>.md``, Paragraf
 13) beschreibt die Bestandsgenerationen der PLV. Bis zum Tagesbetrieb
 stand die Tabelle handgeschrieben da und wurde zeilenweise gegen die
 Config gehalten; mit den Generationen bis heute, den Uebernahmen in
@@ -23,10 +23,10 @@ Drei Tabellen je Produkt:
 Run via::
 
     python -m rechner_pipeline.bestand.tarifplan_tabellen \\
-        --config configs/bestand_gesamt.toml --produkt klv
+        --config plv/configs/bestand_gesamt.toml --produkt klv
 
 Der Block beginnt mit ``<!-- erzeugt: ... -->`` und endet mit
-``<!-- /erzeugt -->``; ``--einsetzen docs/tarifplaene/klv.md`` ersetzt
+``<!-- /erzeugt -->``; ``--einsetzen plv/tarifplaene/klv.md`` ersetzt
 den Block in der Datei.
 
 Knoten: klv, bu

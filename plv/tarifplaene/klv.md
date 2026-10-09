@@ -1010,7 +1010,7 @@ Rechnungsgrundlagen sind **vorläufig** (Höchstrechnungszins 2025 und die
 Kosten der Vorgängergeneration), bis das Aktuariat der Vorzeige sie
 festlegt (Fachkonzept Tagesbetrieb, offene Fachentscheidung):
 
-<!-- erzeugt: python -m rechner_pipeline.bestand.tarifplan_tabellen --config configs/bestand_gesamt.toml --produkt klv -->
+<!-- erzeugt: python -m rechner_pipeline.bestand.tarifplan_tabellen --config plv/configs/bestand_gesamt.toml --produkt klv -->
 | Knoten | Name | gültig | Zins | Tafel | $\alpha$ | $\beta_1$ | $\gamma_{1/2/3}$ | $\kappa$ | Vertrieb |
 |---|---|---|---|---|---|---|---|---|---|
 | `klv/plv_1994` | KLV-1994 | 1994-07–2000-06 | 4.00% | DAV1994_T | 0.025 | 0.025 | 0.0008/0.00125/0.0025 | 24 | Neugeschäft 100/Jahr |

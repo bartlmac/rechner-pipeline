@@ -38,7 +38,7 @@ from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.models.bestand import validate_portfolio
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CONFIG = REPO_ROOT / "configs" / "bestand_klv.toml"
+CONFIG = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
 STICHTAG = _dt.date(2016, 1, 1)
 HORIZONT = _dt.date(2020, 1, 1)
 

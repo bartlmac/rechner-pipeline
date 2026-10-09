@@ -340,7 +340,7 @@ def test_eine_bestehende_fall_config_bleibt_lesbar(tmp_path):
     (faelle/ ist gitignored), wird er zusaetzlich gelesen."""
     from rechner_pipeline.bestand.config import config_aus_text
 
-    vorlage = (REPO_ROOT / "configs" / "bestand_klv.toml").read_text("utf-8")
+    vorlage = (REPO_ROOT / "plv" / "configs" / "bestand_klv.toml").read_text("utf-8")
     wie_ein_fall = re.sub(r"^nummernkreis = .*\n", "", vorlage, flags=re.M)
     fall_config = config_aus_text(wie_ein_fall)
     assert fall_config.tagesbetrieb.betriebsbeginn is None

@@ -1,8 +1,9 @@
 # ADR-028: Ordnung des Repositorys nach Ebenen
 
-**Status:** angenommen am 2026-10-08 (Maintainer), am selben Tag umgesetzt
-bis auf die abgenommenen Gegenstände (siehe „Offen“). Löst die Tabelle der
-Gegenstände aus ADR-027 ab.
+**Status:** angenommen am 2026-10-08 (Maintainer), umgesetzt in zwei
+Schritten: am 2026-10-08 alles außer den abgenommenen Gegenständen, am
+2026-10-09 auch diese (Nachtrag unten). Löst die Tabelle der Gegenstände aus
+ADR-027 ab.
 
 ## Kontext
 
@@ -34,7 +35,7 @@ Reihenfolge der Tabellen ist keine Nummerierung.
 | Ebene | Was | Ordner |
 |---|---|---|
 | System | das Migrationssystem, die gemeinsamen Datenverträge, die Rollen der Agenten, die Werkzeuge für den Live-Lauf eines Falls und die Vorlage des Migrationskonzepts | `src/rechner_pipeline` (gates, ontologie, spez, quellen, qa, models, fall.py), `.claude/`, `.agents/`, `system/` |
-| Objekt PLV | die übernehmende Gesellschaft: Rechenkern, Bestandsführung, Tagesbetrieb, ihre Parametrierung und Fachdokumente, das Image ihrer Laufzeit und ihr Auftritt | `src/rechner_pipeline` (kern, bestand, betrieb), `configs/`, `docs/mathematik/`, `docs/tarifplaene/`, `plv/` |
+| Objekt PLV | die übernehmende Gesellschaft: Rechenkern, Bestandsführung, Tagesbetrieb, ihre Parametrierung und Fachdokumente, das Image ihrer Laufzeit und ihr Auftritt | `src/rechner_pipeline` (kern, bestand, betrieb), `plv/` |
 | Objekt Baldrian bzw. Migration | die abgebende Gesellschaft: ihre Lieferungen, die Falldatei der Vorführung, die Berichte zu den Fällen | `migrationen/baldrian/` |
 | Simulation | Modell und Betrieb der Simulation. Modell: Verteilungen, das Erzeugen von Geschäftsvorfällen und Neugeschäft (die Module, die die Schichtenkarte der Simulation zuordnet: `bestand/generator.py`, `stochastik.py`, `ereignisse.py`, `cli_fortschreibung.py`, `betrieb/neugeschaeft.py`), das Quellsystem der Baldrian. Betrieb: eine Welt aufstellen, einen Fall nachfahren, die Seite bauen. | `werkzeuge/`, die genannten Module in `src/rechner_pipeline` |
 | Laufzeit-Artefakte | was beim Laufen entsteht; im Repository nur, was das Nachfahren eines Falls braucht | `pakete/` |
@@ -58,39 +59,62 @@ Was umgezogen ist:
 | `deploy/welt/` | `werkzeuge/welt/` |
 | `quellsystem/` | `werkzeuge/quellsystem/` |
 | `docs/engine/` | `werkzeuge/engine/` |
+| `configs/` | `plv/configs/` (2026-10-09) |
+| `docs/mathematik/` | `plv/mathematik/` (2026-10-09) |
+| `docs/tarifplaene/` | `plv/tarifplaene/` (2026-10-09) |
 
 Die Werkzeuge der Seite bleiben unter `werkzeuge/`. Der Ordner der
 Simulation heißt `werkzeuge/` und nicht `simulation/`, weil dieser Name für
 einen lokalen, von Git ausgenommenen Ordner vergeben ist (`.gitignore`).
 
-## Ausnahme: die abgenommenen Gegenstände
+## Die abgenommenen Gegenstände ziehen mit (Nachtrag 2026-10-09)
 
-Grundsatzdokumentation (`docs/mathematik/`), Tarifpläne
-(`docs/tarifplaene/`) und `configs/` gehören zur PLV, ziehen aber noch
-nicht um. Ihre Abnahme bindet den Pfad: A-T1 liest das Tarifwerk des
-zuletzt abgenommenen Commits unter dem heutigen Pfad (die Pfade stehen in
-`models/tarifwerkabnahme.py`, gelesen in `gates/tarifwerk_belegen.py`), und
-der Kernstand hasht Name und Inhalt jeder Datei. Nach einem Umzug fände A-T1 im Stand vor dem dritten Fall
-weder Tarifpläne noch Configs, und das Nachfahren des Falls hielte an der
-Prüfung des Tarifwerks an.
+Grundsatzdokumentation, Tarifpläne und Configs sind abgenommen, und ihre
+Abnahme bindet den Pfad: A-T1 liest das Tarifwerk des zuletzt abgenommenen
+Commits unter dem heutigen Pfad, und der Kernstand hasht Name und Inhalt
+jeder Datei. Ein bloßer Umzug hätte einen falschen Beleg ergeben. Gemessen
+gegen den Stand vor dem dritten Fall hieß das Tarifwerk dort leer, und alle
+drei Tarifpläne und alle 24 Generationen hießen „neu“.
+
+Entschieden ist (Maintainer, 2026-10-09): Nach dem Deployment kennt kein
+Werkzeug alte Pfade, weder die Laufzeit ohne Migration noch eine Migration.
+Deshalb:
+
+* Die Abnahme bleibt, wie sie war; ihre Pfade zeigen auf `plv/`
+  (`models/tarifwerkabnahme.py`, `models/kernabnahme.py`).
+* Der Stand vor dem dritten Fall ist in der neuen Ordnung neu festgehalten:
+  Tag `fall3-vor-ebenen` (Commit `82eea92`), abgeleitet aus `fall3-vor`.
+  Was die Routinen in einem Codebaum lesen (Configs, Grundsatzdokumentation,
+  Tarifpläne, Lieferungen), liegt dort am neuen Ort, und die Pfade im Code
+  zeigen dorthin; Kern, Referenzwerte und Inhalte sind unverändert. Ein
+  Merge nimmt ihn in die Geschichte von `main` auf, ohne den Baum von `main`
+  zu ändern: So ist er Vorfahr des Stands, auf dem nachgefahren wird.
+* Das Paket des dritten Falls nennt ihn als Stand vor dem Fall. Kernstand
+  und Tarifwerk sind neu abgenommen, das Paket ist neu festgehalten. Im
+  Beleg von A-T1 heißen die Tarifpläne „geändert“ (die redaktionelle
+  Überarbeitung) und die 24 Generationen „unverändert“; ein Umzug kommt
+  darin nicht vor.
+* Der Originalstand bleibt unter dem Tag `fall3-vor`. Der Originalfall vom
+  2026-10-02 ist in der alten Ordnung geführt; die Seite zeigt seine Belege.
+
+Verworfen: der Abnahme die früheren Orte beizubringen (ein älterer Commit
+wird am damaligen Ort gelesen, ein Umzug heißt „verschoben“). Das trug,
+ließ aber alte Pfade in Abnahme und Routinen weiterleben.
 
 ## Folgen
 
-* Die Routinen tragen den Umzug ohne Änderung ihrer Logik. Sie finden ihre
-  eigenen Dateien über ihren Ort, und im Baum vor dem Fall lesen sie nur
-  Pfade, die nicht umziehen: `src/`, `configs/`, `tests/fixtures/`,
-  `docs/architektur/`, `docs/mathematik/` und `docs/tarifplaene/`. Eine
-  Ausnahme ist der Live-Lauf eines Falls auf dem Stand vor dem Fall: Die
-  Falldatei aus `main` nennt die Lieferung unter dem neuen Pfad, der alte
-  Baum trägt sie unter `lieferungen/`. Dafür nennt das ONBOARDING einen
-  absoluten Pfad.
+* Die Routinen finden ihre eigenen Dateien über ihren Ort; in einem
+  Codebaum lesen sie nur Pfade der neuen Ordnung. Für den Stand vor dem
+  dritten Fall gibt es dafür `fall3-vor-ebenen` (Nachtrag), auch für einen
+  Live-Lauf auf diesem Stand (ONBOARDING).
 * Die Lieferungen sind bytegleich umgezogen; `.gitattributes` schützt sie
   unter dem neuen Pfad vor jeder Umwandlung von Zeilenenden.
-* Das Paket des dritten Falls nennt die Lieferung unter dem neuen Pfad
-  (`fall.conf`). Das README der Tarifpläne nennt den neuen Ort der
-  Doku-Engine; das ändert das Tarifwerk, das Rezept hält den neuen
-  Fingerabdruck und zeichnet A-T1 beim Nachfahren über diesen Stand. Keines
-  der 16 erwarteten Ergebnisse des Falls nennt einen Pfad des Repositorys.
+* Das Paket des dritten Falls nennt Lieferung und Config unter den neuen
+  Pfaden (`fall.conf`, `rezept.sh`). Tarifwerk und Kernstand haben durch den
+  Umzug neue Fingerabdrücke; das Rezept hält sie und zeichnet A-K2 und A-T1
+  beim Nachfahren über diesen Stand; der Stand vor dem Fall ist
+  `fall3-vor-ebenen`. Keines der 16 erwarteten Ergebnisse des Falls nennt
+  einen Pfad des Repositorys.
 * README, `AGENTS.md`, `CONTRIBUTING.md` und die Einstiegsseiten der Ebenen
   (`system/`, `plv/`, `migrationen/`, `werkzeuge/`, `docs/`) folgen den
   Ebenen. Ein Test hält die Tabelle im README mit dem Baum zusammen
@@ -101,16 +125,11 @@ Prüfung des Tarifwerks an.
 
 ## Offen
 
-* Der Umzug der abgenommenen Gegenstände nach `plv/`. Dafür muss A-T1 das
-  Tarifwerk eines älteren Commits unter dem Pfad lesen, den es in jenem
-  Commit hatte, und ein bloßer Ortswechsel darf im Beleg nicht als
-  „entfallen“ und „neu“ erscheinen. Danach werden Kernstand und Tarifwerk
-  neu abgenommen, und das Paket des dritten Falls wird neu festgehalten.
 * Die Vorlage einer Instanz unter `plv/betrieb/` (Compose, Umgebung, Dienst
   und Timer) ist nach ADR-027 Infrastruktur und dort schon als offen
   benannt. Sie bleibt, bis entschieden ist, was die Routinen davon
   brauchen.
 * Skripte außerhalb des Repositorys, die alte Pfade aufrufen
-  (`deploy/welt/`, `deploy/plv/`), `quellsystem` aus dem Wurzelverzeichnis
+  (`deploy/welt/`, `deploy/plv/`, `configs/`), `quellsystem` aus dem Wurzelverzeichnis
   importieren oder nach `lieferungen/` schreiben, müssen nachgezogen
   werden.

@@ -7,15 +7,14 @@ Fall bringt einen übernommenen Bestand in ihre Ablage.
 | Was | Wo |
 |---|---|
 | Rechenkern, Bestandsführung und Tagesbetrieb | `src/rechner_pipeline/kern`, `src/rechner_pipeline/bestand`, `src/rechner_pipeline/betrieb` |
-| Parametrierung der Tarifgenerationen (abgenommen, Teil des Tarifwerks) | [configs/](../configs/README.md) |
-| Grundsatzdokumentation (abgenommen, Teil des Kernstands) | [docs/mathematik/](../docs/mathematik/README.md) |
-| Tarifpläne (abgenommen, Teil des Tarifwerks) | [docs/tarifplaene/](../docs/tarifplaene/README.md) |
+| Grundsatzdokumentation (abgenommen, Teil des Kernstands) | [mathematik/](mathematik/README.md) |
+| Tarifpläne (abgenommen, Teil des Tarifwerks) | [tarifplaene/](tarifplaene/README.md) |
+| Parametrierung der Tarifgenerationen (abgenommen, Teil des Tarifwerks) | [configs/](configs/README.md) |
 | Image, Compose und Dienst der Laufzeit | [betrieb/](betrieb/README.md) |
 | Quellen des Auftritts, der Vorzeigeseite | [seite/](seite/) |
 
-Configs, Grundsatzdokumentation und Tarifpläne liegen noch an ihrem
-bisherigen Ort, weil ihre Abnahme den Pfad bindet. Sie ziehen hierher um,
-sobald die Abnahme einen Ortswechsel verfolgen kann
+Kernstand und Tarifwerk ändern sich nur mit einer neuen Abnahme (A-K2,
+A-T1); auch ein Umzug ist eine Änderung
 ([ADR-028](../docs/architektur/adr-028-ordnung-nach-ebenen.md)).
 
 Wie Bestand und Tagesbetrieb der PLV entstehen, beschreibt

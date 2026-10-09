@@ -7,8 +7,8 @@ der Vorgabe 0; der Bestand, auf dem Fall 3 aufsetzt, enthielt keinen
 einzigen dieser Vorgaenge, obwohl eine Migration sie in jedem gewachsenen
 Bestand antrifft.
 
-Die Annahmen (``[annahmen]`` in ``configs/bestand_klv.toml`` und
-``configs/bestand_gesamt.toml``) sind Annahmen der Vorfuehrung, keine
+Die Annahmen (``[annahmen]`` in ``plv/configs/bestand_klv.toml`` und
+``plv/configs/bestand_gesamt.toml``) sind Annahmen der Vorfuehrung, keine
 Tarifgroessen:
 
 * ``herabsetzung = { a = 0.008 }`` — 0,8 Prozent je Jahr der
@@ -56,9 +56,9 @@ from rechner_pipeline.betrieb.neugeschaeft import neugeschaeft_zwischen
 from rechner_pipeline.models.bestand import leerer_stamm
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-GESAMT = REPO_ROOT / "configs" / "bestand_gesamt.toml"
-KLV = REPO_ROOT / "configs" / "bestand_klv.toml"
-BU = REPO_ROOT / "configs" / "bestand_bu.toml"
+GESAMT = REPO_ROOT / "plv" / "configs" / "bestand_gesamt.toml"
+KLV = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
+BU = REPO_ROOT / "plv" / "configs" / "bestand_bu.toml"
 #: Fester Horizont: die Messung des Auftrags (2026-10-01).
 HORIZONT = dt.date(2026, 10, 1)
 

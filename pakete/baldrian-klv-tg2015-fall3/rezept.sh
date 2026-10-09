@@ -7,6 +7,10 @@
 # nach Ebenen geordnet (ADR-028): Die Lieferung liegt unter
 # migrationen/baldrian/lieferungen/, das README der Tarifplaene nennt den
 # neuen Ort der Doku-Engine; die erwarteten Ergebnisse sind unveraendert.
+# Am 09.10.2026 sind auch Config, Grundsatzdokumentation und Tarifplaene nach
+# plv/ umgezogen (ADR-028, Nachtrag). Der Stand vor dem Fall ist in derselben
+# Ordnung festgehalten (STAND, Tag fall3-vor-ebenen, abgeleitet aus fall3-vor):
+# Das Nachfahren kennt nur die neue Ordnung.
 #
 # Das Rezept faehrt die ENDFASSUNG des Falls: je Artefakt das Kommando, das es
 # zuletzt erzeugt hat, in der Reihenfolge des Laufs. Messungen auf Kopien,
@@ -123,7 +127,7 @@ schritt "Tafeln der Generation: im Kern vorhanden und wertgleich" $PY -m rechner
     --fall $F --generation klv/tg2015 --dry-run
 schritt "Kernstand belegen (Vorlage A-K2)" $PY -m rechner_pipeline.gates.kernstand_belegen --fall $F --repo-root . \
     --von "$(abgenommen A-K2)" \
-    --begruendung "Kern 3.22.0 und Tafeln DAV2008 (Fall 3); Config-Block TG2015 und Testliste. Am 08.10.2026 redaktionell nachgezogen: Docstrings in kern/__init__.py und kern/zustandsmodell.py, die Grundsatzdokumentation (Zweitkern, Schreibweise, Zeichensetzung); keine fachliche Aenderung, Referenzwerte unbewegt"
+    --begruendung "Kern 3.22.0 und Tafeln DAV2008 (Fall 3); Config-Block TG2015 und Testliste. Am 08.10.2026 redaktionell nachgezogen: Docstrings in kern/__init__.py und kern/zustandsmodell.py, die Grundsatzdokumentation (Zweitkern, Schreibweise, Zeichensetzung); keine fachliche Aenderung, Referenzwerte unbewegt. Am 09.10.2026 ist die Grundsatzdokumentation nach plv/mathematik/ umgezogen, ebenso im Stand vor dem Fall (fall3-vor-ebenen, ADR-028)"
 # Das Urteil der A-K2 wird uebernommen, nicht neu gefaellt. Das traegt nur,
 # wenn der Gegenstand derselbe ist: der abgenommene Kern, der belegte Kern und
 # die Referenzwerte, je mit dem Fingerabdruck des festgehaltenen Falls.
@@ -136,7 +140,7 @@ schritt "Der belegte Kern ist der des festgehaltenen Falls" $PY -c 'import json,
 
 haltepunkt vor-A-K2
 
-zeichne A-K2 "Nachfahren ohne erneute Pruefung; uebernommen ist das Urteil der Zeichnung im festgehaltenen Fall 3 (02.10.2026): Kern 3.21.0 auf 3.22.0, drei zurueckgebaute Ausgestaltungen als Faehigkeiten ohne Voreinstellung (Beitragsformel je Erhoehungsbaustein, Stornoabzug je Baustein, Teilkuendigung nur der Grundversicherung), Wahl nur aus der Spez; sechs Tafeln DAV2008 ohne Konflikt; Referenzwerte unbewegt. Regression: benannte Ausnahme, nicht gefahren — die Zeichnung deckt nur die qualitative Pruefung. Dazu die redaktionelle Ueberarbeitung vom 08.10.2026 (Docstrings im Kern, Grundsatzdokumentation), keine fachliche Aenderung; neu abgenommen am 08.10.2026."
+zeichne A-K2 "Nachfahren ohne erneute Pruefung; uebernommen ist das Urteil der Zeichnung im festgehaltenen Fall 3 (02.10.2026): Kern 3.21.0 auf 3.22.0, drei zurueckgebaute Ausgestaltungen als Faehigkeiten ohne Voreinstellung (Beitragsformel je Erhoehungsbaustein, Stornoabzug je Baustein, Teilkuendigung nur der Grundversicherung), Wahl nur aus der Spez; sechs Tafeln DAV2008 ohne Konflikt; Referenzwerte unbewegt. Regression: benannte Ausnahme, nicht gefahren — die Zeichnung deckt nur die qualitative Pruefung. Dazu die redaktionelle Ueberarbeitung vom 08.10.2026 (Docstrings im Kern, Grundsatzdokumentation) und der Umzug der Grundsatzdokumentation nach plv/mathematik/ am 09.10.2026 (ADR-028), keine fachliche Aenderung; neu abgenommen am 09.10.2026."
 
 schritt "T-Box: keine Aenderung seit der Abnahme der Linie (Verweis A-O1)" $PY -m rechner_pipeline.gates.stand_belegen verweisen \
     --fall $F --repo-root . --gate A-O1 --linie $LINIE
@@ -164,7 +168,7 @@ erwarte abgeleitet/bestand/ledger.parquet
 erwarte abgeleitet/bestand/verankerung.parquet
 erwarte abgeleitet/bestand/generation-zellen.toml
 erwarte abgeleitet/bestand/uebernahme.json
-schritt "Bestand-Config in den Fall legen" install -D -m 0644 configs/bestand_gesamt.toml $A/bestand-config/bestand_gesamt.toml
+schritt "Bestand-Config in den Fall legen" install -D -m 0644 plv/configs/bestand_gesamt.toml $A/bestand-config/bestand_gesamt.toml
 schritt "Verankerung belegen (Schichten)" $PY -m rechner_pipeline.gates.verankerung_belegen --fall $F --repo-root . \
     --generation klv/tg2015 --zeilen $A/transformation/baldrian_bestandsabzug_2026-01-01.zeilen.json \
     --vorgeschichte baldrian_gevo_metadaten.csv --red-anteile-datei anteile-06.csv \
@@ -278,15 +282,15 @@ zeichne A-M3 "Nachfahren ohne erneute Pruefung; uebernommen ist das Urteil der Z
 
 schritt "Tarifwerk belegen (Vorlage A-T1)" $PY -m rechner_pipeline.gates.tarifwerk_belegen --fall $F --repo-root . \
     --von "$(abgenommen A-T1)" \
-    --begruendung "Der Tarifplan KLV (Abschnitt zur uebernommenen Generation TG2015, Tabelle der Tarifzellen) wurde bei der Rueckfuehrung der Generation TG2015 in die Bestand-Config neu erzeugt. Geaendert ist nur die Schreibweise der Stornoabzuege der beiden Haus-Zellen (Mindest- und Hoechstbetrag 0 zu 0.0, Wert gleich null); kein Wert, keine Rechnungsgrundlage der eigenen Generationen der PLV. Die uebernommene Generation TG2015 steht neu in der Bestand-Config als Generationsblock ohne Neuzugang; sie ist nicht Gegenstand der Tarifwerk-Abnahme (eigene Generationen), die Parametrierung der eigenen Generationen ist unveraendert. Am 08.10.2026 redaktionell ueberarbeitet: Tarifplaene KLV und BU (Zweitkern-Saetze, Pruefvermerke, Schreibweise, Zeichensetzung); keine Regel und kein Wert geaendert. Am selben Abend im README der Tarifplaene der Ort der Doku-Engine nachgezogen (werkzeuge/engine, ADR-028)."
+    --begruendung "Der Tarifplan KLV (Abschnitt zur uebernommenen Generation TG2015, Tabelle der Tarifzellen) wurde bei der Rueckfuehrung der Generation TG2015 in die Bestand-Config neu erzeugt. Geaendert ist nur die Schreibweise der Stornoabzuege der beiden Haus-Zellen (Mindest- und Hoechstbetrag 0 zu 0.0, Wert gleich null); kein Wert, keine Rechnungsgrundlage der eigenen Generationen der PLV. Die uebernommene Generation TG2015 steht neu in der Bestand-Config als Generationsblock ohne Neuzugang; sie ist nicht Gegenstand der Tarifwerk-Abnahme (eigene Generationen), die Parametrierung der eigenen Generationen ist unveraendert. Am 08.10.2026 redaktionell ueberarbeitet: Tarifplaene KLV und BU (Zweitkern-Saetze, Pruefvermerke, Schreibweise, Zeichensetzung); keine Regel und kein Wert geaendert. Am selben Abend im README der Tarifplaene der Ort der Doku-Engine nachgezogen (werkzeuge/engine, ADR-028). Am 09.10.2026 sind Tarifplaene und Configs nach plv/ umgezogen, ebenso im Stand vor dem Fall (fall3-vor-ebenen, ADR-028)."
 schritt "Das belegte Tarifwerk ist das des festgehaltenen Falls" $PY -c 'import json, sys; \
     d = json.load(open(sys.argv[1])); v, s = d["stand_vorher"], d["stand"]; \
     ist = [v["tarifwerk_sha256"], s["tarifwerk_sha256"], s["parametrierung_sha256"]]; \
     sys.exit(0 if ist == sys.argv[2:5] else "ein anderes Tarifwerk als im festgehaltenen Fall: %s" % ist)' \
-    $A/tarifwerk/aenderung.json 716d2ff1c167906452494f68a9daa9cb2f04b7ad33db8f8c8634fc515ee5d7e5 \
-    981a6ff332659405868af3494c20c0324c1ba0395eaf8173976447ba4d5ad322 \
-    1ddb772011782802bb72a6800a04effcd3da1791566bfc0e08e2789566ae038d
-zeichne A-T1 "Nachfahren ohne erneute Pruefung; uebernommen ist das Urteil der Zeichnung im festgehaltenen Fall 3 (02.10.2026): Im Tarifplan KLV ist nur die Schreibweise der Haus-Stornoabzuege geaendert (0 zu 0.0, Wert null); die Parametrierung der eigenen Generationen ist die abgenommene. Der neue Generationsblock TG2015 der Bestand-Config ist nicht Gegenstand von A-T1 (uebernommene Generation; im Fall abgenommen ueber P-K1, A-M1 und A-M4). Dazu die redaktionelle Ueberarbeitung der Tarifplaene vom 08.10.2026 und der Ort der Doku-Engine im README der Tarifplaene (ADR-028), keine Regel und kein Wert; neu abgenommen am 08.10.2026."
+    $A/tarifwerk/aenderung.json f80ed583df0972895b15200f7b29e5654584b32bb060f2d8a4c6c026a9d5fa67 \
+    8c759ddade09745b93d82bd06c9619ed9585458c5decff898fc0cb48aae5c184 \
+    bba3499761024da6e458a10a51bfe8d5cbfe277e46c259ea87c9a48eceeb86df
+zeichne A-T1 "Nachfahren ohne erneute Pruefung; uebernommen ist das Urteil der Zeichnung im festgehaltenen Fall 3 (02.10.2026): Im Tarifplan KLV ist nur die Schreibweise der Haus-Stornoabzuege geaendert (0 zu 0.0, Wert null); die Parametrierung der eigenen Generationen ist die abgenommene. Der neue Generationsblock TG2015 der Bestand-Config ist nicht Gegenstand von A-T1 (uebernommene Generation; im Fall abgenommen ueber P-K1, A-M1 und A-M4). Dazu die redaktionelle Ueberarbeitung der Tarifplaene vom 08.10.2026, der Ort der Doku-Engine im README der Tarifplaene und der Umzug von Tarifplaenen und Configs nach plv/ am 09.10.2026 (ADR-028), keine Regel und kein Wert; neu abgenommen am 09.10.2026."
 
 haltepunkt vor-A-M4
 

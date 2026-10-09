@@ -211,7 +211,7 @@ dieselbe Groesse verschieden, etwa mit anderer Bezugsgroesse oder
 anderem Index — wird deshalb nie eine Diskrepanz und kann von keinem
 Gate gefunden werden; P-K1 bleibt gruen, weil er den Rechner reproduziert.
 Die Identitaet der Formeln ist heute menschliche Abnahme gegen den
-Tarifplan (`docs/tarifplaene/`) im Gate A-Q1. Faellt dir beim Arbeiten
+Tarifplan (`plv/tarifplaene/`) im Gate A-Q1. Faellt dir beim Arbeiten
 eine Formelabweichung auf, gehoert sie ausdruecklich in die
 A-Q1-Vorlage (Ziffer der Meldung, Rechner-Lesart, Wirkung) — sie als
 "nicht extrahierbar" zu uebergehen waere ein stiller Verlust.

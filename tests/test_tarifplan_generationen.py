@@ -32,7 +32,7 @@ from rechner_pipeline.bestand.tarifplan_tabellen import (
 from rechner_pipeline.models.bestand import BU_GENERATION_FIELDS, GENERATION_FIELDS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CONFIG = "configs/bestand_gesamt.toml"
+CONFIG = "plv/configs/bestand_gesamt.toml"
 REFERENZWERTE = REPO_ROOT / "tests" / "fixtures" / "kern_referenzwerte"
 
 
@@ -46,14 +46,14 @@ def test_tarifplan_block_ist_der_erzeugte(config, produkt):
     """P7-Drift-Schutz: Weicht der Block in der Datei vom Generator ab, ist
     der Tarifplan veraltet — neu erzeugen mit
     ``python -m rechner_pipeline.bestand.tarifplan_tabellen --config
-    configs/bestand_gesamt.toml --produkt <produkt> --einsetzen
-    docs/tarifplaene/<produkt>.md``."""
-    doc = (REPO_ROOT / "docs" / "tarifplaene" / f"{produkt}.md").read_text("utf-8")
+    plv/configs/bestand_gesamt.toml --produkt <produkt> --einsetzen
+    plv/tarifplaene/<produkt>.md``."""
+    doc = (REPO_ROOT / "plv" / "tarifplaene" / f"{produkt}.md").read_text("utf-8")
     ist = block_in_datei(doc)
     assert ist is not None, "Tarifplan traegt keinen erzeugten Block"
     soll = erzeuge_block(config, produkt, CONFIG)
     assert ist == soll, (
-        f"docs/tarifplaene/{produkt}.md ist veraltet — Block neu erzeugen"
+        f"plv/tarifplaene/{produkt}.md ist veraltet — Block neu erzeugen"
     )
 
 

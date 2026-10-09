@@ -28,8 +28,8 @@ from rechner_pipeline.gates import bestand_validate
 from rechner_pipeline.models.bestand import validate_ledger
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-KLV_CONFIG = REPO_ROOT / "configs" / "bestand_klv.toml"
-BU_CONFIG = REPO_ROOT / "configs" / "bestand_bu.toml"
+KLV_CONFIG = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
+BU_CONFIG = REPO_ROOT / "plv" / "configs" / "bestand_bu.toml"
 sys.path.insert(0, str(REPO_ROOT / "werkzeuge"))
 import falldaten as fd  # noqa: E402
 import vorzeigeseite as vz  # noqa: E402

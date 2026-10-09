@@ -51,18 +51,20 @@ PRUEFSCHRITTE = {
 #: die Grundsatzdokumentation deckt nur dieser Wert.
 #: baldrian-klv-tg2015-fall3: gemessen am 2026-10-08 nach der redaktionellen
 #: Ueberarbeitung von Kern-Docstrings und Grundsatzdokumentation, mit der das
-#: Paket neu festgehalten wurde (vorher Stand 6aa7c14: 90705868...;
+#: Paket neu festgehalten wurde, und am 2026-10-09 nach dem Umzug der
+#: Grundsatzdokumentation nach plv/mathematik/ (ADR-028; vorher c4d5a35c...,
+#: davor Stand 6aa7c14: 90705868...;
 #: ``kernstand_belegen.kernstand_hash``).
 KERNSTAND_DES_FALLS = {
     "baldrian-klv-tg2015-fall3":
-        "c4d5a35cfb139af4ad1b9df1ddcbbcd48fa7289c9f56f5c22df310dc71f8f105",
+        "0b4b98df0c2093367370327c6b62c93f967e41d8d5cb0ed0cf0612583ca28718",
 }
 
 AUSWEG = (
     "Der Baum traegt einen anderen gezeichneten Gegenstand als der "
     "festgehaltene Fall. Kern (src/rechner_pipeline/kern, die Referenzwerte, "
-    "die Grundsatzdokumentation) und Tarifwerk (docs/tarifplaene, "
-    "configs/*.toml) sind abgenommen (A-K2, A-T1); wer sie aendert, aendert "
+    "die Grundsatzdokumentation) und Tarifwerk (plv/tarifplaene, "
+    "plv/configs/*.toml) sind abgenommen (A-K2, A-T1); wer sie aendert, aendert "
     "den Gegenstand einer Zeichnung, und das Paket ist auf diesem Stand nicht "
     "mehr nachfahrbar. Ausweg: die Aenderung zuruecknehmen — oder sie als "
     "Aenderung des Zielsystems fuehren: Abnahme in der Linie, das Paket auf "
@@ -187,8 +189,8 @@ def test_die_pruefung_sieht_jeden_veraenderten_gezeichneten_gegenstand(tmp_path)
     faelle = {
         "src/rechner_pipeline/kern/konventionen.py": {"kern", "kernstand"},
         "tests/fixtures/kern_referenzwerte": {"referenzwerte", "kernstand"},
-        "docs/mathematik/grundsatzdokumentation.md": {"kernstand"},
-        "docs/tarifplaene/klv.md": {"tarifwerk"},
+        "plv/mathematik/grundsatzdokumentation.md": {"kernstand"},
+        "plv/tarifplaene/klv.md": {"tarifwerk"},
     }
     for nummer, (pfad, erwartet) in enumerate(faelle.items()):
         baum = _gezeichnete_gegenstaende(tmp_path / str(nummer))

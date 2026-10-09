@@ -30,7 +30,7 @@ from rechner_pipeline.bestand.kennzahlen import bewegungskonto
 from rechner_pipeline.models.bestand import STAMM_SPALTEN
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE = REPO_ROOT / "configs" / "bestand_klv.toml"
+EXAMPLE = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
 
 
 @pytest.fixture(scope="module")

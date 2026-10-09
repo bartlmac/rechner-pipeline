@@ -42,7 +42,7 @@ def bestandsfall(tmp_path_factory) -> Path:
     fall = tmp_path_factory.mktemp("fall")
     (fall / "abgeleitet").mkdir()
     config = fall / "abgeleitet" / "bestand-config.toml"
-    shutil.copy(REPO_ROOT / "configs" / "bestand_klv.toml", config)
+    shutil.copy(REPO_ROOT / "plv" / "configs" / "bestand_klv.toml", config)
     assert cli_fortschreibung.main([
         "--config", str(config), "--neuzugang-ab", "1994-07-01", "--bis", HORIZONT,
         "--out-dir", str(fall / "lauf"),

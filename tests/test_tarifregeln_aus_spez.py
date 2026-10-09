@@ -835,11 +835,11 @@ def test_g22_der_tarifplan_nennt_jedes_merkmal_des_tarifwerks():
     from rechner_pipeline.bestand.config import config_aus_text
 
     assert tuple(tt.TARIFWERK_TEXTE) == tbox.TARIFWERK_MERKMALE
-    text = (REPO / "configs" / "bestand_gesamt.toml").read_text(encoding="utf-8")
+    text = (REPO / "plv" / "configs" / "bestand_gesamt.toml").read_text(encoding="utf-8")
     anders = text.replace('tku_umfang = "grundversicherung"', 'tku_umfang = "alle_bausteine"', 1)
     assert anders != text
-    b0 = tt.erzeuge_block(config_aus_text(text), "klv", "configs/bestand_gesamt.toml")
-    b1 = tt.erzeuge_block(config_aus_text(anders), "klv", "configs/bestand_gesamt.toml")
+    b0 = tt.erzeuge_block(config_aus_text(text), "klv", "plv/configs/bestand_gesamt.toml")
+    b1 = tt.erzeuge_block(config_aus_text(anders), "klv", "plv/configs/bestand_gesamt.toml")
     assert b0 != b1
     uebernommen = [g for g in config_aus_text(text).generationen
                    if g.zellen and g.produkt == "klv"]
@@ -858,7 +858,7 @@ def test_der_uebernahmebeleg_muss_das_ganze_tarifwerk_nennen():
     from rechner_pipeline.bestand.config import load_config
     from rechner_pipeline.betrieb.uebernahme import tarifwerk_fehler
 
-    config = load_config(REPO / "configs" / "bestand_gesamt.toml")
+    config = load_config(REPO / "plv" / "configs" / "bestand_gesamt.toml")
     g = next(g for g in config.generationen if g.zellen and g.produkt == "klv")
     voll = g.tarifwerk()
     assert tarifwerk_fehler(config, [g.name], {"tarifwerk": voll}) == []

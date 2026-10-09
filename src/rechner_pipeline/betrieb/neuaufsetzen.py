@@ -6,7 +6,7 @@ Fall korrigiert (Schritt 8); der Betriebsweg setzt die Laufzeit daraus neu
 auf::
 
     python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \\
-        --fall faelle/<fall> --stichtag 2026-01-01 [--config configs/bestand_gesamt.toml] \\
+        --fall faelle/<fall> --stichtag 2026-01-01 [--config plv/configs/bestand_gesamt.toml] \\
         --freigabe-schluessel <freigabeschluessel> \\
         --betriebsschluessel <betriebsschluessel> --zeichnungsordnung <ordnung> \\
         [--zugangsabnahme <sha256>] [--aufschalten]

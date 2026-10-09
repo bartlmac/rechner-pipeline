@@ -39,7 +39,7 @@ from rechner_pipeline.models.bestand import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CONFIG = REPO_ROOT / "configs" / "bestand_klv.toml"
+CONFIG = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
 STICHTAG = dt.date(2016, 1, 1)
 #: Fortschreibungs-Horizont des Fixture-Laufs. Der Abschluss
 #: braucht ihn, weil die Bewegungs-Identitaet nur fuer

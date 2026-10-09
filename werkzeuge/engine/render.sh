@@ -19,7 +19,7 @@ fi
 
 dateien=("$@")
 if [[ ${#dateien[@]} -eq 0 ]]; then
-  mapfile -t dateien < <(cd "$REPO_ROOT" && ls docs/tarifplaene/*.md)
+  mapfile -t dateien < <(cd "$REPO_ROOT" && ls plv/tarifplaene/*.md)
 fi
 
 for datei in "${dateien[@]}"; do

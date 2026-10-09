@@ -472,8 +472,8 @@ def stellvertreter(tmp_path, baum):
     """Ein Interpreter, der nichts rechnet und jeden Aufruf mitschreibt: Die
     Systemkommandos des Zugangs rechnen Minuten; was das Skript selbst
     entscheidet, ist, WOMIT es sie ruft."""
-    (baum / "configs").mkdir()
-    (baum / "configs" / "bestand_gesamt.toml").write_text("# Config des Falls\n")
+    (baum / "plv" / "configs").mkdir(parents=True)
+    (baum / "plv" / "configs" / "bestand_gesamt.toml").write_text("# Config des Falls\n")
     _git(baum, "add", "-A")
     _git(baum, "commit", "--quiet", "-m", "config")
     spur = tmp_path / "aufrufe.txt"
@@ -895,8 +895,8 @@ def test_der_anfangsbestand_gilt_als_gezeichnet_wenn_eine_annahme_genau_diesen_b
     if lage == "abgelehnt":
         _annahme(linie, "A-B3", "b", "2026-10-06T10:00:00+00:00", "x" * 40, entscheid="abgelehnt",
                  pflichtbelege={"anfangsbestand": [summe]})
-    (baum / "configs").mkdir()
-    (baum / "configs" / "bestand_gesamt.toml").write_text("# Config\n")
+    (baum / "plv" / "configs").mkdir(parents=True)
+    (baum / "plv" / "configs" / "bestand_gesamt.toml").write_text("# Config\n")
     _git(baum, "add", "-A")
     _git(baum, "commit", "--quiet", "-m", "config")
     rezept = ('schritt "Fall anlegen" mkdir -p faelle/probe/entscheide\n'
@@ -1114,12 +1114,12 @@ def system(tmp_path, baum):
     den Fortgang erkennen (Abschluesse, Linienbereich, Snapshots der Gates):
     Das Aufstellen einer Welt rechnet Minuten; was laufzeit_aufstellen.sh
     selbst entscheidet, ist, WELCHER Baum WAS rechnet."""
-    (baum / "configs").mkdir()
-    (baum / "configs" / "bestand_gesamt.toml").write_text("# Config vor dem Fall\n")
+    (baum / "plv" / "configs").mkdir(parents=True)
+    (baum / "plv" / "configs" / "bestand_gesamt.toml").write_text("# Config vor dem Fall\n")
     _git(baum, "add", "-A")
     _git(baum, "commit", "--quiet", "-m", "der Stand vor dem Fall")
     vor = subprocess.run(["git", "-C", str(baum), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
-    (baum / "configs" / "bestand_gesamt.toml").write_text("# Config nach dem Fall\n")
+    (baum / "plv" / "configs" / "bestand_gesamt.toml").write_text("# Config nach dem Fall\n")
     _git(baum, "commit", "--quiet", "-am", "der Fall hat das Zielsystem geaendert")
     spur = tmp_path / "aufrufe.txt"
     skript = tmp_path / "system.sh"
@@ -1150,7 +1150,7 @@ def _laufzeit(welt: Path, paket: Path, baum: Path, tmp_path: Path, skript: Path,
 
 
 REZEPT_LAUFZEIT = ('schritt "Fall anlegen" mkdir -p faelle/probe\n'
-                   "schritt \"eins\" bash -c 'cat configs/bestand_gesamt.toml >> faelle/probe/spur'\n"
+                   "schritt \"eins\" bash -c 'cat plv/configs/bestand_gesamt.toml >> faelle/probe/spur'\n"
                    'haltepunkt mitte\n'
                    "schritt \"zwei\" bash -c 'echo zwei >> faelle/probe/spur'\n")
 
@@ -1166,7 +1166,7 @@ def test_die_welt_entsteht_auf_dem_stand_vor_dem_fall_und_der_fall_laeuft_auf_de
     vorbaum = welt / "baum-vor"
     kopf = subprocess.run(["git", "-C", str(vorbaum), "rev-parse", "HEAD"], capture_output=True, text=True, check=True)
     assert kopf.stdout.strip() == vor
-    assert (vorbaum / "configs" / "bestand_gesamt.toml").read_text() == "# Config vor dem Fall\n"
+    assert (vorbaum / "plv" / "configs" / "bestand_gesamt.toml").read_text() == "# Config vor dem Fall\n"
     # ... die Welt ist AUF IHM aufgestellt: jedes Kommando des Aufstellens rechnet mit seinem Paket,
     aufrufe = spur.read_text().splitlines()
     assert len(aufrufe) > 8 and all(z.startswith(f"{vorbaum}/src | ") for z in aufrufe), aufrufe

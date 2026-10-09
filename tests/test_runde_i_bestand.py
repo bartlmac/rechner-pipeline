@@ -39,7 +39,7 @@ from rechner_pipeline.gates.bestand_uebernehmen import baue
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src" / "rechner_pipeline"
-CONFIG = REPO_ROOT / "configs" / "bestand_klv.toml"
+CONFIG = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
 
 #: Die Meldung der EINEN Stelle (kern.beitragsreduktion.pruefe_vorgangsjahr).
 PEX_TEXT = "Beitragsfreistellung nach dem Beitragsende"

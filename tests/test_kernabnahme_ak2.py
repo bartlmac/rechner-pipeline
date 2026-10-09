@@ -98,8 +98,8 @@ def kernrepo(tmp_path):
     _schreibe(kern / "rechenkern.py", "x = 1\n")
     _schreibe(kern / "tafeln.xml", "<tafeln/>\n")
     _schreibe(repo / ka.KERN_REFERENZWERTE / "referenz_a.json", "{}\n")
-    _schreibe(repo / "docs/mathematik/grundsatzdokumentation.md", "# Grundsatz\n")
-    _schreibe(repo / "docs/tarifplaene/klv.md", "# KLV\n")
+    _schreibe(repo / "plv/mathematik/grundsatzdokumentation.md", "# Grundsatz\n")
+    _schreibe(repo / "plv/tarifplaene/klv.md", "# KLV\n")
     _schreibe(repo / "README.md", "ausserhalb des Gegenstands\n")
     _git(repo.parent, "init", "-q", "-b", "main", str(repo))
     _git(repo, "add", "-A")
@@ -460,7 +460,7 @@ def test_der_beleg_zeigt_die_aenderungen_je_modul_mit_den_commits(kernrepo):
     assert set(module) == {
         f"{ka.KERN_PAKET}/__init__.py", f"{ka.KERN_PAKET}/rechenkern.py",
         f"{ka.KERN_PAKET}/tafeln.xml", ka.KERN_REFERENZWERTE,
-        "docs/mathematik/grundsatzdokumentation.md"}
+        "plv/mathematik/grundsatzdokumentation.md"}
     rk = module[f"{ka.KERN_PAKET}/rechenkern.py"]
     assert (rk["hinzu"], rk["weg"], len(rk["commits"])) == (1, 0, 1)
     assert module[f"{ka.KERN_PAKET}/tafeln.xml"]["commits"] == []
@@ -566,18 +566,18 @@ def test_ein_von_neben_dem_zweig_wird_nicht_belegt(tmp_path):
     shutil.copytree(SRC, repo / "src" / "rechner_pipeline",
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     _schreibe(repo / ka.KERN_REFERENZWERTE / "referenz_a.json", "{}\n")
-    _schreibe(repo / "docs/mathematik/grundsatzdokumentation.md", "# Grundsatz\n")
-    _schreibe(repo / "docs/tarifplaene/klv.md", "# KLV\n")
+    _schreibe(repo / "plv/mathematik/grundsatzdokumentation.md", "# Grundsatz\n")
+    _schreibe(repo / "plv/tarifplaene/klv.md", "# KLV\n")
     _git(repo.parent, "init", "-q", "-b", "main", str(repo))
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "feat: Ausgangsstand")
     _git(repo, "tag", "abgenommen")
     _git(repo, "checkout", "-q", "-b", "nebenzweig", "abgenommen")
-    _schreibe(repo / "docs/tarifplaene/klv.md", "# KLV neben\n")
+    _schreibe(repo / "plv/tarifplaene/klv.md", "# KLV neben\n")
     _git(repo, "commit", "-q", "-am", "docs: daneben")
     _git(repo, "tag", "daneben")
     _git(repo, "checkout", "-q", "main")
-    _schreibe(repo / "docs/mathematik/grundsatzdokumentation.md", "# Grundsatz, weiter\n")
+    _schreibe(repo / "plv/mathematik/grundsatzdokumentation.md", "# Grundsatz, weiter\n")
     _git(repo, "commit", "-q", "-am", "docs: weiter")
     fall = tmp_path / "fall"
     fall.mkdir()

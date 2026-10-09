@@ -142,7 +142,7 @@ prüft das bereits.
 
 ## 5 Generationen bis heute
 
-Die Config `configs/bestand_gesamt.toml` trägt die KLV-Generationen von
+Die Config `plv/configs/bestand_gesamt.toml` trägt die KLV-Generationen von
 KLV-1994 bis KLV-2025 (KLV-2025 gültig bis 2035) und die BU-Generationen
 BU-2000, BU-2017 und BU-2025. Für den Betrieb „bis heute“ kamen dazu:
 
@@ -151,7 +151,7 @@ BU-2000, BU-2017 und BU-2025. Für den Betrieb „bis heute“ kamen dazu:
   Generationenwechsel im laufenden Betrieb sichtbar ist. Die
   Rechnungsgrundlagen legt das Aktuariat der Vorzeige fest, nicht der
   Entwickler (offene Punkte: Abschnitt 10);
-- je Generation im Tarifplan (`docs/tarifplaene/klv.md`, `bu.md`) eine aus
+- je Generation im Tarifplan (`plv/tarifplaene/klv.md`, `bu.md`) eine aus
   der Config erzeugte Tabelle der Rechnungsgrundlagen (P7: erzeugt, nicht
   abgetippt) und ein Abschnitt, was sich von Generation zu Generation
   ändert;
@@ -605,7 +605,7 @@ Routine, die nichts Bestehendes löscht:
 
 ```
 python -m rechner_pipeline.betrieb.neuaufsetzen --stand ~/apps/plv/daten \
-    --fall faelle/<fall> --stichtag 2026-01-01 [--config configs/bestand_gesamt.toml] \
+    --fall faelle/<fall> --stichtag 2026-01-01 [--config plv/configs/bestand_gesamt.toml] \
     --freigabe-schluessel <schlüssel-vorstand> \
     --freigabe-schluessel <schlüssel-mensch-aktuariat> \
     --freigabe-schluessel <schlüssel-mensch-betrieb> \

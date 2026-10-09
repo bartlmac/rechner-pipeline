@@ -29,8 +29,8 @@ from rechner_pipeline.bestand.config import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PLV = REPO_ROOT / "configs" / "bestand_gesamt.toml"
-KLV = REPO_ROOT / "configs" / "bestand_klv.toml"
+PLV = REPO_ROOT / "plv" / "configs" / "bestand_gesamt.toml"
+KLV = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
 
 
 def _generation(name: str, von: str, bis: str, neuzugang_pro_jahr: int = 10,
