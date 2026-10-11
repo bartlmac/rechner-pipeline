@@ -132,6 +132,13 @@ figcaption {
   color: var(--matt); margin-bottom: .6rem;
 }
 svg { max-width: 100%; height: auto; display: block; }
+figure.film { margin-top: 1.2rem; margin-bottom: 2rem; }
+figure.film video { display: block; width: 100%; height: auto; background: var(--flaeche); }
+figure.film figcaption {
+  font-weight: 400; font-size: 1rem; text-transform: none; letter-spacing: 0;
+  color: inherit; margin: .7rem 0 0; max-width: 44rem;
+}
+figure.film .kleingedruckt { margin: .4rem 0 0; }
 
 /* --- Kacheln --- */
 

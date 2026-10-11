@@ -59,6 +59,14 @@ KENNZAHL = re.compile(r"\{\{(zahl|euro|datum|text|hash|svg|tabelle|html):([a-z0-
 #: byteweise gegen die Summen in stand.json gehalten.
 STAND_DIR = "plv"
 
+#: Der Film der Startseite, freigegeben vom Maintainer am 11.10.2026: Ort im
+#: Push-Baum und Pruefsumme. Die Bytes (15,7 MB) liegen nicht im Code-
+#: Repository; der Bau nimmt sie aus ``--film`` und haelt an, wenn die Datei
+#: fehlt oder andere Bytes traegt. Das Vorschaubild liegt bei den Quellseiten
+#: (plv/seite/film/).
+FILM = ("film/erklaerfilm.mp4",
+        "2a2ffd85a81f7b17df992fa72d2611ec9f202fadf52767a2ff91cf19c79169e4")
+
 GEVO_TITEL = {"ERH": "Erhöhung", "PEX": "Beitragsfreist.",
               "RED": "Absetzung", "STO": "Rückkauf",
               "TOD": "Todesfall", "ABL": "Ablauf",
@@ -450,6 +458,25 @@ def stand(modell: Dict[str, Any], ziel: Path) -> List[str]:
             kopie.write_bytes((aus / teile[-1]).read_bytes())
             uebernommen.append(rel)
     return uebernommen
+
+
+def film(quelle: Path, ziel: Path) -> str:
+    """Den freigegebenen Film (``FILM``) in den Push-Baum legen, byteweise
+    gegen seine Pruefsumme gehalten. Die Startseite zeigt ihn; fehlt er oder
+    ist es eine andere Fassung, wird nicht gebaut."""
+    import hashlib
+    rel, summe = FILM
+    if not quelle.is_file():
+        raise VeroeffentlichungFehler(
+            f"Film {quelle} fehlt. Die Startseite zeigt {rel}; ohne ihn wird nicht gebaut.")
+    ist = hashlib.sha256(quelle.read_bytes()).hexdigest()
+    if ist != summe:
+        raise VeroeffentlichungFehler(
+            f"Film {quelle}: {ist[:16]} statt {summe[:16]}. Eine andere Fassung "
+            "braucht eine eigene Freigabe (FILM).")
+    (ziel / rel).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(quelle, ziel / rel)
+    return rel
 
 
 def _fallbasis(ziel: Optional[Path]) -> str:
@@ -1654,6 +1681,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--out", required=True,
                    help="Push-Baum der Seite; die Fall-Seiten liegen dort "
                         "unter migrationen/<fall>/")
+    p.add_argument("--film", required=True,
+                   help="die freigegebene Filmdatei der Startseite; der Bau "
+                        "haelt sie gegen die Pruefsumme in FILM")
     args = p.parse_args(argv)
 
     quellen = Path(args.quellen).resolve()
@@ -1669,6 +1699,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         paket = stand(modell, ziel)
         kopiert = baue(quellen, ziel, modell)
+        filmdatei = film(Path(args.film), ziel)
         doku = fachdokumente(Path(args.docs).resolve(), ziel, FACHDOKUMENTE + tuple(
             (quelle, ziel_name, "Unsere Bestandsmigrationen", "./")
             for quelle, ziel_name, _ in darstellung.falldokumente(modell)))
@@ -1683,6 +1714,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     print(f"{ziel}: {len(kopiert)} Unternehmensseiten-Dateien, "
           f"{len(doku)} Fachdokumente, {adrs} Architektur-Dokumente, "
           "Landkarte, Pruefgates und Techstack erzeugt")
+    print(f"  Film uebernommen: {filmdatei} (Pruefsumme stimmt)")
     if paket:
         print(f"  Stands-Paket uebernommen: {len(paket)} Dateien unter {STAND_DIR}/ "
               f"(Stand {modell['betrieb'].get('stand')})")

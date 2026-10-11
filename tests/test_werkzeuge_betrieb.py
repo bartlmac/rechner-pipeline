@@ -154,7 +154,7 @@ def test_die_kette_reicht_das_paket_durch(tmp_path, monkeypatch):
 
     aufrufe = []
     monkeypatch.setattr(auftritt, "_schritt", lambda kommando, erlaubt=(0,): aufrufe.append(kommando) or 0)
-    auftritt.main(["--fall", "f", "--name", "n", "--stands-paket", str(tmp_path / "paket"),
+    auftritt.main(["--fall", "f", "--name", "n", "--film", "f.mp4", "--stands-paket", str(tmp_path / "paket"),
                    "--vorschau", ""])
     assert "--stands-paket" in aufrufe[0] and str(tmp_path / "paket") in aufrufe[0]
 

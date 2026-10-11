@@ -6,6 +6,12 @@ des klassischen Lehrbuch-Versicherers der deutschen Assekuranz. Die
 Seiten davor zeigen, wie eine agentische Bestandsmigration abläuft — an
 einem Unternehmen, das sich selbst für real hält.
 
+## Der Film
+
+[Der Erklärfilm zur Übernahme Baldrian](../#film) (1:46) steht auf der
+Startseite. Er zeigt den Lauf vom 2. Oktober 2026, zeitlich verdichtet,
+und legt am Ende offen, was erfunden ist.
+
 ## Was erfunden ist
 
 * Alle Gesellschaften, alle Verträge, alle Personen. Die Bestände sind

@@ -564,6 +564,39 @@ def test_mit_banderole_wird_der_baum_gespiegelt(tmp_path: Path):
     assert (ziel / "index.md").is_file()
 
 
+def test_der_film_kommt_nur_in_der_freigegebenen_fassung(tmp_path: Path, monkeypatch):
+    """Die Startseite zeigt den Film, den der Maintainer am 11.10.2026
+    freigegeben hat. Seine Bytes liegen nicht im Repository; der Bau nimmt
+    sie von aussen und haelt sie gegen die Pruefsumme in FILM. Eine fehlende
+    Datei oder eine andere Fassung bricht den Bau."""
+    import hashlib
+
+    fassung = b"freigegebene Bytes"
+    monkeypatch.setattr(us, "FILM", ("film/f.mp4", hashlib.sha256(fassung).hexdigest()))
+    quelle, ziel = tmp_path / "f.mp4", tmp_path / "seite"
+    with pytest.raises(us.VeroeffentlichungFehler, match="fehlt"):
+        us.film(quelle, ziel)
+    quelle.write_bytes(fassung + b".")
+    with pytest.raises(us.VeroeffentlichungFehler, match="eigene Freigabe"):
+        us.film(quelle, ziel)
+    assert not (ziel / "film" / "f.mp4").exists()
+    quelle.write_bytes(fassung)
+    assert us.film(quelle, ziel) == "film/f.mp4"
+    assert (ziel / "film" / "f.mp4").read_bytes() == fassung
+
+
+def test_die_startseite_zeigt_den_freigegebenen_film_mit_vorschaubild():
+    """Seite und Freigabe nennen dieselbe Datei, und das Vorschaubild liegt
+    bei den Quellseiten; sonst zeigte die Startseite einen leeren Spieler."""
+    import re
+
+    quellen = Path(__file__).resolve().parent.parent / "plv/seite"
+    start = (quellen / "index.md").read_text(encoding="utf-8")
+    assert re.findall(r'<source src="([^"]+)"', start) == [us.FILM[0]]
+    bilder = re.findall(r'poster="([^"]+)"', start)
+    assert len(bilder) == 1 and (quellen / bilder[0]).is_file(), bilder
+
+
 def test_kennzahlen_kommen_aus_dem_modell_oder_der_bau_bricht(
     tmp_path: Path,
 ):
@@ -691,7 +724,7 @@ def test_der_auftritt_reicht_den_fehler_der_kette_durch(tmp_path: Path):
     """Bricht ein Kettenglied, bricht die Kette — mit demselben Urteil.
     Ein Entwurf aus einer halb gelaufenen Kette saehe vollstaendig aus
     und waere es nicht."""
-    code = at.main(["--fall", str(tmp_path / "kein-fall"), "--name", "x",
+    code = at.main(["--fall", str(tmp_path / "kein-fall"), "--name", "x", "--film", "f.mp4",
                     "--out", str(tmp_path / "seite"), "--vorschau", ""])
     assert code == 2
     assert not (tmp_path / "seite").exists()
@@ -1020,7 +1053,7 @@ def test_der_auftritt_bewacht_den_ganzen_push_baum(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(at, "_schritt",
                         lambda kommando, erlaubt=(0,): aufrufe.append(kommando) or 0)
     aus = tmp_path / "seite"
-    argv = ["--fall", "f", "--name", "n", "--out", str(aus), "--vorschau", "vorschau"]
+    argv = ["--fall", "f", "--name", "n", "--film", "f.mp4", "--out", str(aus), "--vorschau", "vorschau"]
     assert at.main(argv) == 0
     assert [Path(k[1]).name for k in aufrufe] == [
         "falldaten.py", "vorzeigeseite.py", "unternehmensseite.py", "bereinigung.py", "vorschau.py"]

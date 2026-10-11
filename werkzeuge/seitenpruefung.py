@@ -6,7 +6,7 @@ Seiten-Sitzung und liefen, wenn jemand daran dachte. Entscheid des
 Maintainers (04.10.2026): Sie gehoeren nach ``werkzeuge/``, damit jede
 Veroeffentlichung sie faehrt.
 
-* ``verweise``: Jeder relative Verweis (href, src) der gerenderten Vorschau
+* ``verweise``: Jeder relative Verweis (href, src, poster) der gerenderten Vorschau
   trifft eine Datei, jedes Sprungziel ``#x`` eine id oder einen name in
   ihr. Ein absoluter Pfad ab ``/`` gilt als tot: Die Sichtung liefert unter
   einem Pfad-Praefix aus. Ein Verweis in einem Beleg (``artefakte/``,
@@ -115,7 +115,7 @@ def verweise(vorschau: Path) -> Tuple[List[str], str]:
         rel = seite.relative_to(wurzel).as_posix()
         beleg = ("artefakte" in rel.split("/") or rel.startswith("plv/")) and rel not in weiter
         text = seite.read_text(encoding="utf-8", errors="replace")
-        for a, b in (re.findall(r"""\b(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)')""", text)
+        for a, b in (re.findall(r"""\b(?:href|src|poster)\s*=\s*(?:"([^"]*)"|'([^']*)')""", text)
                      + re.findall(r"""http-equiv\s*=\s*["']refresh["'][^>]*?\bcontent\s*=\s*"""
                                   r"""(?:"[^"]*?url=([^"]*)"|'[^']*?url=([^']*)')""", text, re.I)):
             ziel = html.unescape(a or b).strip()

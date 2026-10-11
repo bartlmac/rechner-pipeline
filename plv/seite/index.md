@@ -1,5 +1,9 @@
 # Pfefferminzia Lebensversicherung AG
 
+<figure class="film" id="film"><video controls preload="none" poster="film/erklaerfilm.jpg" width="1920" height="1080"><source src="film/erklaerfilm.mp4" type="video/mp4"></video>
+<figcaption><b>Die Übernahme Baldrian in 1:46.</b> Agenten schlagen vor, Programme rechnen, Menschen entscheiden. Vom ersten Fallauftrag bis zur Zugangsabnahme: 3 h 38 min. <a href="migrationen/baldrian/">Die Übernahme Station für Station</a></figcaption>
+<p class="kleingedruckt">Alle Entscheide außer dem Auftrag hat eine KI-Session unter Mandat gezeichnet.</p></figure>
+
 ## Über uns {#ueber-uns}
 
 <ul class="gross">

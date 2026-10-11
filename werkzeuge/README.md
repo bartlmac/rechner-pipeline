@@ -78,6 +78,7 @@ python werkzeuge/auftritt.py --fall faelle/baldrian-klv-tg2015-fall3 \
     --abzug baldrian_bestandsabzug_2027-01-01.csv \
     --stands-paket runs/stands-paket \
     --anker faelle/baldrian-klv-tg2015-fall3/abgeleitet/anker/anker.jsonl \
+    --film <ablage>/erklaerfilm.mp4 \
     [--verlauf verlauf.md]
 ```
 
@@ -88,7 +89,11 @@ weiter unten. Der letzte Schritt, die Vorschau, braucht das Paket
 `--vorschau ''` lässt ihn aus.
 
 `--name` ist das URL-Segment unter `migrationen/`, so wie die
-Unternehmensseiten den Fall verlinken. Die Schritte der Kette bleiben
+Unternehmensseiten den Fall verlinken. `--film` nennt den Film der
+Startseite. Seine Bytes liegen nicht im Repository; der Bau hält sie gegen
+die Prüfsumme in `unternehmensseite.FILM` und hält an, wenn die Datei fehlt
+oder eine andere Fassung ist. Eine neue Fassung braucht eine neue Freigabe
+und eine neue Prüfsumme. Das Vorschaubild liegt unter `plv/seite/film/`. Die Schritte der Kette bleiben
 einzeln aufrufbar (`falldaten.py`, `vorzeigeseite.py
 --als-unterseite`, `unternehmensseite.py --daten`, `vorschau.py`).
 
@@ -431,7 +436,7 @@ abrufbar.
 ```
 python werkzeuge/auftritt.py --fall faelle/<fall> --name <kurzname> \
     --abzug <abzug-1>.csv --abzug <abzug-2>.csv \
-    --stands-paket runs/stands-paket \
+    --stands-paket runs/stands-paket --film <ablage>/erklaerfilm.mp4 \
     --anker faelle/<fall>/abgeleitet/anker/anker.jsonl [--verlauf verlauf.md]
 git -C ../plv-fiktion rm -rq .
 cp -r runs/seite/. ../plv-fiktion/

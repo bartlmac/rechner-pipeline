@@ -49,17 +49,18 @@ def test_verweise_findet_tote_ziele_fehlende_sprungziele_und_absolute_pfade(tmp_
     (v / "teil").symlink_to(tmp_path / "echt", target_is_directory=True)
     sauber = ('<a href="a.html">a</a> <a href="a.html#da">da</a> <img src="bild.svg"> '
               '<a href="unter/">u</a> <a href="https://example.org/x">e</a> <a href="#oben">o</a>'
-              '<span id="oben"></span>')
+              '<span id="oben"></span><video poster="bild.svg"></video>')
     _schreibe(v / "index.html", sauber)
     befunde, zusammen = sp.verweise(v)
     assert befunde == ["teil/s.html: nix.html — kein Ziel"], befunde
     assert "extern: {'example.org': 1}" in zusammen
 
     _schreibe(v / "index.html", sauber + '<a href="a.html#fehlt">f</a> <a href="b.html">b</a> '
-              '<a href="/abs.html">abs</a>')
+              '<a href="/abs.html">abs</a> <video poster="weg.jpg"></video>')
     befunde, _ = sp.verweise(v)
     assert sorted(befunde) == sorted([
         "index.html: /abs.html — absoluter Pfad",
+        "index.html: weg.jpg — kein Ziel",
         "index.html: a.html#fehlt — kein Sprungziel",
         "index.html: b.html — kein Ziel",
         "teil/s.html: nix.html — kein Ziel"])
@@ -268,12 +269,14 @@ def test_der_auftritt_faehrt_die_seitenpruefung_als_letzten_schritt(tmp_path: Pa
     monkeypatch.setattr(at, "_schritt",
                         lambda kommando, erlaubt=(0,): aufrufe.append(kommando) or 0)
     aus = tmp_path / "seite"
-    argv = ["--fall", "f", "--name", "n", "--out", str(aus), "--vorschau", "vorschau",
+    argv = ["--fall", "f", "--name", "n", "--film", "film.mp4", "--out", str(aus), "--vorschau", "vorschau",
             "--stands-paket", "paket", "--anker", "anker.jsonl"]
     assert at.main(argv) == 0
     assert [Path(k[1]).name for k in aufrufe] == [
         "falldaten.py", "vorzeigeseite.py", "unternehmensseite.py", "bereinigung.py",
         "vorschau.py", "seitenpruefung.py"]
+    seiten = aufrufe[2]
+    assert seiten[seiten.index("--film") + 1] == "film.mp4"
     letzter = aufrufe[-1]
     assert letzter[2] == "alle"
     assert dict(zip(letzter[3::2], letzter[4::2])) == {
@@ -289,5 +292,5 @@ def test_der_auftritt_faehrt_die_seitenpruefung_als_letzten_schritt(tmp_path: Pa
     aufrufe.clear()
     monkeypatch.setattr(at, "_schritt",
                         lambda kommando, erlaubt=(0,): aufrufe.append(kommando) or 0)
-    assert at.main(argv[:6]) == 0
+    assert at.main(argv[:8]) == 0
     assert "seitenpruefung.py" not in [Path(k[1]).name for k in aufrufe]

@@ -23,7 +23,7 @@ veroeffentlicht wird sie deshalb noch lange nicht.
 Aufruf::
 
     python werkzeuge/auftritt.py --fall faelle/<fall> --name <kurzname> \\
-        --abzug <abzug-1>.csv --abzug <abzug-2>.csv \\
+        --abzug <abzug-1>.csv --abzug <abzug-2>.csv --film <film>.mp4 \\
         [--verlauf verlauf.md] [--out runs/seite] \\
         [--vorschau runs/vorzeige-vorschau]
 """
@@ -69,6 +69,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="Ankerdatei des Stands-Pakets (betrieb.seite "
                         "--anker). Pflicht mit --stands-paket: Das Paket wird "
                         "gegen einen Bezug AUSSERHALB des Pakets geprueft")
+    p.add_argument("--film", required=True,
+                   help="die freigegebene Filmdatei der Startseite "
+                        "(unternehmensseite.FILM)")
     p.add_argument("--out", default="runs/seite",
                    help="Push-Baum des Entwurfs (Vorgabe: runs/seite)")
     p.add_argument("--vorschau", default="runs/vorzeige-vorschau",
@@ -106,7 +109,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if (zwischen := _schritt(
             [sys.executable, str(WERKZEUGE / "unternehmensseite.py"),
-             "--daten", str(daten), "--out", str(aus)])) != 0:
+             "--daten", str(daten), "--out", str(aus), "--film", args.film])) != 0:
         return zwischen
 
     # Die Wache liest jede Datei des Push-Baums — nicht nur die Belege des
