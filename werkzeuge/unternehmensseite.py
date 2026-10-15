@@ -558,16 +558,26 @@ def _bild_svg(name: str, modell: Dict[str, Any], breite: int) -> str:
 
 
 def _freigabe(modell: Dict[str, Any]) -> str:
-    """Wer den Stand nach aussen freigegeben hat: die geltende A-B1, mit
-    Datum, Rolle und dem Snapshot (:data:`AB1_DATEI`)."""
+    """Die geltende Auslieferung A-B1, wie die Snapshot-Datei sie angibt:
+    Entscheid, Datum, Rolle, und der Snapshot (:data:`AB1_DATEI`).
+
+    Geprueft sind Struktur, Pruefsumme und Bindung an den Ankersatz, nicht
+    die Signatur; die Seite sagt deshalb "Angaben der Snapshot-Datei"
+    (ADR-029, Entscheid d des Maintainers vom 15.10.2026). Nennt der Snapshot
+    die Schluesselklasse simulation, weist das Kleingedruckte die Zeichnung
+    als Simulation aus (ADR-029, Entscheidung)."""
     abnahme = (_betrieb(modell).get("verankerung") or {}).get("abnahme")
     if not abnahme:
         raise KeyError("betrieb.verankerung.abnahme: der Stand ist keine Auslieferung — "
                        "ohne A-B1 wird der Betriebsteil nicht veroeffentlicht")
     am = _datum_de(str(abnahme.get("entschieden_am") or "")[:10])
-    return (f"Freigegeben hat diesen Stand die Betriebsverantwortung am {am} "
-            f"(Auslieferung A-B1, Rolle {html.escape(str(abnahme.get('rolle') or '—'))}; "
-            f"[Abnahme]({Path(AB1_DATEI).name})).")
+    satz = (f"Angaben der Snapshot-Datei zur Auslieferung A-B1: Entscheid **angenommen** "
+            f"am {am}, Rolle {html.escape(str(abnahme.get('rolle') or '—'))} "
+            f"([Snapshot]({Path(AB1_DATEI).name})).")
+    if abnahme.get("schluesselklasse") == "simulation":
+        satz += ('\n\n<p class="kleingedruckt">Gezeichnet mit einem Simulationsschlüssel; '
+                 "die Signatur prüft diese Seite nicht.</p>")
+    return satz
 
 
 def freigabe(modell: Dict[str, Any], ziel: Path) -> str:

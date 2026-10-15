@@ -33,6 +33,7 @@ gekennzeichnete Beispielanbindung bleibt, steht in
 | `unternehmensseite.py` | die Seiten des fiktiven Unternehmens zusammenbauen |
 | `auftritt.py` | den ganzen Entwurf mit einem Kommando aus den Quellen bauen, Rahmen und Betriebsteil oder einen davon (`--teil`) |
 | `rahmen_pr.py` | den Rahmen der Seite als Commit auf einen Zweig `beitrag/...` im Klon von plv-fiktion legen, mit `CODESTAND` |
+| `betriebszweig.py` | im Workflow von plv-fiktion: was im Zweig `betrieb` liegen darf, und dass sich außerhalb von `betrieb/` nichts geändert hat |
 | `grafik.py` | Bausteinsatz der generierten Darstellungen (Inline-SVG/HTML, modellfrei) |
 | `darstellung.py` | Abbildung Modellpfad -> Baustein-Eingabe, an einer Stelle |
 | `drift.py` | den veröffentlichten Stand gegen den Entwurf halten |
@@ -459,11 +460,10 @@ nicht; es trägt Hostpfade, und die Wache hält den Bau an.
 ### Einmalig einzurichten (Mensch)
 
 Im Repository `bartlmac/plv-fiktion`: Pages mit der Quelle **GitHub
-Actions**. Den Workflow bringt der Bau mit
+Actions**. Den Workflow bringt der Rahmen mit
 (`plv/seite/.github/workflows/seite.yml`, im gebauten Baum unter
-`.github/`); er baut bei jedem Push auf `main` und veröffentlicht. Jekyll
-lässt `.github/` beim Bauen aus. Lokal genügt ein Klon neben diesem
-Repository:
+`.github/`). Jekyll lässt `.github/` beim Bauen aus. Lokal genügt ein Klon
+neben diesem Repository:
 
 ```
 git clone git@github.com:bartlmac/plv-fiktion.git ../plv-fiktion
@@ -473,9 +473,24 @@ Die Basis der Seite steht in `plv/seite/_config.yml` (`baseurl:
 "/plv-fiktion"`). So ergeben der lokale Bau mit dem Renderer von Pages und
 die Seite im Netz dieselben Pfade.
 
+Der Workflow läuft bei einem Push auf `main`, von Hand und nach Zeitplan
+(viermal in der Nacht nach dem Tageslauf, weil GitHub Zeitpläne verzögert
+oder auslässt); ein Push auf den Zweig `betrieb` startet ihn nicht. Er nimmt
+den Rahmen aus `main`, prüft den Zweig `betrieb` (`betriebszweig.py zweig`:
+nur `paket/` mit den öffentlichen Dateien, `anker.jsonl`, `A-B1.json`, kein
+`.github/`), holt den Code des Commits aus `CODESTAND` und baut damit den
+Betriebsteil (`auftritt.py --teil betrieb --oeffentliches-paket`, mit Wache
+und Seitenprüfung). Danach prüft `betriebszweig.py rahmen`, dass außerhalb
+von `betrieb/` jede Datei wie in `main` ist. Erst dann baut Jekyll
+(`jekyll-build-pages` v1.0.13), und nur ein Lauf aus `main` liefert aus.
+Scheitert ein Schritt, wird nicht ausgeliefert, und die Seite vom Vortag
+bleibt stehen. Jede Action ist auf einen Commit gepinnt.
+
 Ein Push in dieses Repository veröffentlicht nichts. Veröffentlichen ist
 nach außen gerichtet und praktisch nicht zurückzunehmen (Indexierung,
-Caches); es bleibt eine menschliche Handlung, der Push nach `plv-fiktion`.
+Caches); es bleibt eine menschliche Handlung: der Merge eines Pull Requests
+für den Rahmen und, für den Betriebsteil, die Routine des Tagesbetriebs,
+die der Maintainer eingerichtet hat.
 
 ### Je Lauf
 

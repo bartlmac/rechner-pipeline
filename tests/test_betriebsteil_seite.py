@@ -176,8 +176,10 @@ def test_der_betriebsteil_schreibt_nur_unter_betrieb(auslieferung, tmp_path, mon
     assert (betrieb / "plv" / "index.html").is_file()
     assert not list(betrieb.rglob("*.parquet"))
     seite = (betrieb / "index.md").read_text(encoding="utf-8")
-    assert "{{" not in seite and "Freigegeben hat diesen Stand die Betriebsverantwortung" in seite
-    assert "(A-B1.json)" in seite
+    assert "{{" not in seite and "Angaben der Snapshot-Datei zur Auslieferung A-B1" in seite
+    assert "([Snapshot](A-B1.json))" in seite and "Signatur geprüft" not in seite
+    klasse = json.loads(a["ab1"].read_text(encoding="utf-8"))["zeichnung"]["schluesselklasse"]
+    assert ("Gezeichnet mit einem Simulationsschlüssel" in seite) == (klasse == "simulation")
     for name in us.BILDER:
         for datei in (f"{name}.svg", f"{name}-handy.svg"):
             text = (betrieb / datei).read_text(encoding="utf-8")

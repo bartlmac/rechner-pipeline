@@ -207,7 +207,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if rc == 3:
         print()
-        print("Der Fall hat LUECKEN (siehe falldaten oben) — der Entwurf "
+        print("Das Modell hat LUECKEN (siehe falldaten oben) — der Entwurf "
               "traegt sie sichtbar. So nicht veroeffentlichen.",
               file=sys.stderr)
     return rc
