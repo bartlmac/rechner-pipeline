@@ -1,0 +1,13 @@
+# systemd --user: ein Lauf je Aufruf; den Zeitpunkt setzt betrieb-seite.timer.
+# Installieren: plv/betrieb/README.md, Abschnitt "Betriebsteil der Seite".
+# Laeuft nach dem Tageslauf, wenn beide anstehen (After=); haelt bei jedem
+# Fehler an und schiebt dann nichts (ADR-029).
+[Unit]
+Description=PLV Betriebsteil der Seite (ADR-029): Export, A-B1, Zweig betrieb
+Wants=network-online.target
+After=network-online.target tageslauf.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/apps/plv
+ExecStart=%h/apps/plv/betrieb_seite.sh %h/apps/plv/betrieb-seite.conf

@@ -21,6 +21,7 @@ Klon auf dem Commit des Image-Tags, mit `.venv/bin/python` (siehe
 | `compose.yml` | ein Dienst `tageslauf`, Volume `daten/`, kein Netz |
 | `env.beispiel` | Vorlage für `.env`: Image-Tag, Owner, Digest, Zeitzone, Verzeichnis des Betriebsschlüssels; keine Geheimnisse |
 | `tageslauf.service`, `tageslauf.timer` | systemd `--user`: täglich 23:00, `Persistent=true` |
+| `betrieb_seite.sh`, `betrieb-seite.beispiel.conf`, `betrieb-seite.service`, `betrieb-seite.timer` | der tägliche Betriebsteil der Seite (ADR-029): 23:30 prüfen, exportieren, A-B1 zeichnen, den Zweig `betrieb` von `plv-fiktion` schieben; eingeschaltet nur vom Maintainer |
 | `.github/workflows/plv-image.yml` | baut bei einem Push auf `main`, der `src/`, `requirements.txt`, `pyproject.toml` oder `plv/betrieb/` ändert, das Image `ghcr.io/<owner>/rechner-pipeline-plv` mit den Tags `latest` und den ersten zwölf Stellen des Commits |
 
 ## Ablage unter `~/apps/plv/daten`
@@ -619,10 +620,11 @@ loginctl enable-linger "$USER"     # der Timer läuft auch ohne Sitzung
   Tagesbetrieb schreibt nichts um.
 * **Sichtung:** `daten/seite/index.html` zeigt den Bestand heute, der
   Bestandsbericht des letzten Monatsabschlusses liegt unter
-  `daten/berichte/`. Die öffentliche Seite bleibt eine vom Menschen
-  veröffentlichte Momentaufnahme (`werkzeuge/README.md`): Ihre Quelle ist
-  das **Stands-Paket**, das der Mensch exportiert und dem Auftritt übergibt;
-  nichts wird automatisch veröffentlicht. Das Paket trägt seine Belege
+  `daten/berichte/`. Die Quelle der öffentlichen Seite ist das
+  **Stands-Paket** (`werkzeuge/README.md`). Ihren Rahmen veröffentlicht der
+  Mensch per Pull Request; den täglichen Betriebsteil schiebt die Routine
+  des Abschnitts „Betriebsteil der Seite“, sobald der Maintainer sie
+  einschaltet. Das Paket trägt seine Belege
   (Protokoll mit Kette, Manifest, Berichte, je mit SHA-256); der Auftritt
   prüft sie und veröffentlicht kein Paket, das sich selbst widerspricht.
 
@@ -656,3 +658,72 @@ Lokal, ohne Container (Entwicklerrechner), tut dasselbe:
 python -m rechner_pipeline.betrieb.tageslauf --stand <daten> [--heute 2026-09-05] \
     --schluessel <betriebsschluessel> --zeichnungsordnung <ordnung>
 ```
+
+## Betriebsteil der Seite (ADR-029)
+
+Jeden Abend um 23:30 bringt `betrieb_seite.sh` den geführten Tag in den
+Zweig `betrieb` von `plv-fiktion`; ein Workflow in `main` von
+`plv-fiktion` prüft ihn und rendert den Betriebsteil der Seite. Die
+Routine
+
+1. prüft, dass der Tageslauf den Tag übernommen hat (letzte
+   Protokollzeile: heute, übernommen, P-B1 grün), dass er mit dem Image der
+   Laufzeit lief, und dass dieses Image der Code-Stand ist, mit dem
+   `plv-fiktion` rendert (`CODESTAND` in `main`);
+2. exportiert das Stands-Paket im Image (Paketschema 6, als Auslieferung),
+   mit dem Anker im Fall-Datenraum;
+3. zeichnet A-B1 im Image mit dem Simulationsschlüssel von `mensch/betrieb`
+   und prüft danach, dass der Snapshot den Ankersatz bindet und diese Rolle
+   nennt;
+4. baut ohne Checkout einen Commit, der genau `paket/` (die öffentlichen
+   Dateien des Pakets, ohne `.parquet`, jede gegen ihre Prüfsumme in
+   `stand.json` gehalten), `anker.jsonl` und `A-B1.json` trägt, und schiebt
+   ihn mit dem Deploy-Key auf `betrieb`, ohne Force.
+
+Bei jedem Fehler hält sie an und schiebt nichts; die Seite bleibt dann auf
+dem letzten Tag. Ein zweiter Lauf am selben Tag nimmt Paket und A-B1, die
+schon liegen, und schiebt nur, was sich geändert hat. Export und A-B1
+laufen ohne Netz im Container; jeder Schlüssel kommt als einzelne Datei und
+nur lesend hinein. Für A-B1 liegt auch der Schlüssel des Vorstands im Ring,
+weil das Gate die Glieder der Linie prüft (ADR-029, Entscheid e). Mit
+`AUSLIEFERUNG=nein` exportiert die Routine nur eine Momentaufnahme und
+braucht keinen dieser Schlüssel.
+
+Was sie nicht tut: kein Image umstellen, kein `CODESTAND` nachziehen,
+nichts in `main` von `plv-fiktion` ändern. Wechselt das Image, hält sie an,
+bis ein Pull Request `CODESTAND` mitgezogen hat.
+
+| Aufruf | Wirkung |
+|---|---|
+| `betrieb_seite.sh <einstellungen>` | alle Schritte |
+| `betrieb_seite.sh <einstellungen> pruefen` | nur die Vorprüfung |
+| `betrieb_seite.sh <einstellungen> zweig` | nur Commit und Push, aus Paket, Anker und A-B1, die schon liegen |
+| `... --ohne-push` | alles außer dem Push; der Commit liegt im Klon unter `betrieb-routine` |
+
+**Einrichtung (Maintainer).** Voraussetzungen: Die Laufzeit läuft auf einem
+Image mit Paketschema 6; `main` von `plv-fiktion` trägt den Rahmen mit dem
+Betriebsteil, den Workflow und ein `CODESTAND` gleich der Revision dieses
+Images. Die Einstellungen nennen die festen Orte (Vorlage
+`betrieb-seite.beispiel.conf`): Fall-Datenraum, Ankerverzeichnis,
+Ordnungslinie, Zeichnungsordnung, Mandat, die zwei Schlüssel für A-B1, den
+Klon und den Deploy-Key. Die Routine läuft aus `~/apps/plv`, nie aus einem
+Arbeitsbaum des Repositorys. Der Klon hat keinen Arbeitsbaum und holt mit
+dem Deploy-Key:
+
+```
+GIT_SSH_COMMAND="ssh -F /dev/null -o IdentitiesOnly=yes -i <deploy-key>" git clone --bare git@github.com:bartlmac/plv-fiktion.git ~/apps/plv/plv-fiktion.git
+cp plv/betrieb/betrieb_seite.sh ~/apps/plv/
+cp plv/betrieb/betrieb-seite.beispiel.conf ~/apps/plv/betrieb-seite.conf
+cp plv/betrieb/betrieb-seite.service plv/betrieb/betrieb-seite.timer ~/.config/systemd/user/
+~/apps/plv/betrieb_seite.sh ~/apps/plv/betrieb-seite.conf pruefen
+~/apps/plv/betrieb_seite.sh ~/apps/plv/betrieb-seite.conf lauf --ohne-push
+systemctl --user daemon-reload
+systemctl --user enable --now betrieb-seite.timer
+```
+
+`betrieb-seite.conf` wird nach dem Kopieren ausgefüllt, vor der
+Prüfung. Auch mit `--ohne-push` zeichnet die Routine eine A-B1 und fügt
+einen Ankersatz an; ein Trockenlauf ohne Spuren im Original läuft mit
+eigenen Einstellungen auf Kopien von Fall-Datenraum, Ankerverzeichnis und
+Klon. Der letzte Befehl schaltet die Automatik ein; er gehört dem
+Maintainer (ADR-029).

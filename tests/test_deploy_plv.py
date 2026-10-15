@@ -35,6 +35,17 @@ def test_dockerfile_installiert_wie_die_ci_und_laeuft_unprivilegiert():
         assert verboten not in docker
 
 
+def test_der_baukontext_traegt_keinen_bytecode_in_irgendeiner_tiefe():
+    """Ein Muster in .dockerignore ohne ``**/`` trifft nur die Wurzel des
+    Kontexts. Gemessen 2026-10-15: Ein lokal gebautes Image trug 135 .pyc
+    aus dem Arbeitsbaum (das der CI keines, ihr Checkout ist frisch), und
+    gate_entscheid im Image verweigerte ``--repo-root``, weil der
+    ausgefuehrte Bytecode nicht zur gehashten Quelle passte."""
+    muster = {z.strip() for z in (REPO / ".dockerignore").read_text(encoding="utf-8").splitlines()
+              if z.strip() and not z.startswith("#")}
+    assert {"**/__pycache__", "**/*.pyc"} <= muster
+
+
 def test_compose_ohne_netz_mit_datenvolume():
     compose = _text("compose.yml")
     assert "network_mode: none" in compose

@@ -1,0 +1,14 @@
+# 23:30 Uhr: eine halbe Stunde nach dem Tageslauf (tageslauf.timer, 23:00),
+# der in unter einer Minute fertig ist (ADR-029). Persistent=true holt einen
+# verpassten Zeitpunkt beim naechsten Start nach; die Routine haelt an, wenn
+# der Tageslauf den Tag noch nicht gefuehrt hat.
+[Unit]
+Description=PLV Betriebsteil der Seite taeglich um 23:30
+
+[Timer]
+OnCalendar=*-*-* 23:30:00
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

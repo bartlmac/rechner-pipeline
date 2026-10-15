@@ -5,8 +5,12 @@
 .venv
 .pytest_cache
 .hypothesis
-__pycache__
-*.pyc
+# Bytecode in JEDER Tiefe: Ein Muster ohne **/ trifft nur die Wurzel des
+# Kontexts. Ein lokal gebautes Image trug sonst die .pyc des Arbeitsbaums,
+# und jedes Gate im Image verweigerte --repo-root (Probe 2026-10-15: der
+# ausgefuehrte Code ist nicht der gehashte).
+**/__pycache__
+**/*.pyc
 /faelle
 /runs
 /simulation
