@@ -1,11 +1,12 @@
 # ADR-029: Der tägliche Betriebsteil der Seite
 
-**Status:** in den Grundzügen entschieden am 2026-10-09 (Maintainer):
-eigenes Repository `plv-fiktion`, Weg (C), A-B1 nur im Betriebsteil, Takt
-23:30, A-B1 durch die Routine mit dem Simulationsschlüssel von
-`mensch/betrieb`. Fünf Einzelfragen sind offen; sie stehen als Vorlagen
-mit Empfehlung unter „Offene Entscheide“. Die fünfte (e) ergab sich erst
-bei der Umsetzung. Was umgesetzt ist, steht unter „Folgen“.
+**Status:** angenommen. Die Grundzüge entschied der Maintainer am
+2026-10-09: eigenes Repository `plv-fiktion`, Weg (C), A-B1 nur im
+Betriebsteil, Takt 23:30, A-B1 durch die Routine mit dem
+Simulationsschlüssel von `mensch/betrieb`. Die fünf Einzelfragen unter
+„Einzelentscheide“ entschied er am 2026-10-15, alle wie empfohlen; die
+fünfte (e) hatte sich erst bei der Umsetzung ergeben. Was umgesetzt ist,
+steht unter „Folgen“.
 
 ## Kontext
 
@@ -151,7 +152,10 @@ und Abschlüsse tragen; dafür bindet sie der Satz.
   die Signatur der A-B1 prüfen. Aber jeder, der einen Workflow in
   `plv-fiktion` laufen lässt, könnte dann selbst zeichnen.
 
-## Offene Entscheide (Vorlagen)
+## Einzelentscheide
+
+Je Frage die Wege, die Empfehlung und der Entscheid des Maintainers
+vom 2026-10-15.
 
 ### a) Workflow-Dateien in den Zweigen, die der Schlüssel schreibt
 
@@ -176,6 +180,11 @@ schreiben darf (bartl-infra, Probe auf einem Wegwerfzweig unter
 `beitrag/**`, Push durch den Maintainer). Wenn die Pfadsperre verfügbar ist, ist Weg 1 die bessere
 Wahl.
 
+**Entschieden (Maintainer, 2026-10-15): Weg 3.** Das Restrisiko ist
+benannt; der Workflow liefert nicht aus, wenn `betrieb` mehr als `paket/`,
+`anker.jsonl` und `A-B1.json` enthält. Die Probe macht der Maintainer mit
+bartl-infra. Gibt es eine Pfadsperre für `.github/**`, wird sie genommen.
+
 ### b) Zweig `betrieb` wachsen lassen oder neu anlegen
 
 | Weg | Wirkung |
@@ -193,6 +202,9 @@ Das sind wenige Megabyte im Jahr.
 **Empfehlung: 1.** Die Ankerreihe ist nur anfügbar; der Zweig sollte es
 auch sein. Force-Push wäre die einzige Lockerung der Rulesets.
 
+**Entschieden (Maintainer, 2026-10-15): Weg 1**, ein Commit je Abend, kein
+Force-Push.
+
 ### c) A-B1-Snapshots bündeln
 
 Die Routine zeichnet jeden Abend eine A-B1. Jeder Snapshot liegt im
@@ -207,6 +219,8 @@ Gemessen: rund 9,7 KB je Snapshot, also rund 3,5 MB im Jahr.
 **Empfehlung: 1.** Ein Bündel spart nichts, solange die Einzeldateien
 bleiben müssen. Wiedervorlage, wenn das Verzeichnis beim Lesen spürbar
 langsam wird.
+
+**Entschieden (Maintainer, 2026-10-15): Weg 1**, nicht bündeln.
 
 ### d) Die Signatur der A-B1 im Workflow
 
@@ -223,6 +237,9 @@ Protokollzeile gegen den Betriebsschlüssel, das Gate prüft vor dem
 Zeichnen die Ordnungslinie und den Fallauftrag. Ein Verfahren mit
 öffentlichem Schlüssel wäre der saubere Weg zu einer prüfbaren Signatur
 auf der Seite (siehe e, Weg 3).
+
+**Entschieden (Maintainer, 2026-10-15): Weg 1.** Der Workflow prüft
+Struktur und Bindung; kein Schlüssel wird als Secret abgelegt.
 
 ### e) Der Schlüssel des Vorstands in der Routine
 
@@ -251,11 +268,26 @@ Seite weist die Zeichnung als Simulation aus. Weg 2 hält die Schlüssel
 aus dem Timer heraus, nimmt der Seite aber die tägliche Abnahme, die der
 Entscheid vom 2026-10-09 wollte.
 
+**Entschieden (Maintainer, 2026-10-15): Weg 1, später Weg 3.** Der
+Schlüssel des Vorstands kommt als einzelne Datei, nur lesend und nur in
+den Container des A-B1-Schritts, ohne Netz. Gezeichnet wird mit
+`mensch/betrieb`; danach prüft die Routine die Rolle im Snapshot.
+Signaturen mit öffentlichem Schlüssel für alle Abnahmen sind als spätere
+Ablösung vorgemerkt.
+
 ## Folgen
 
 * **Umgesetzt:** Paketschema 6 und Ankerschema 4 (Abschnitt
   „Entscheidung“, Fachkonzept Tagesbetrieb, Abschnitt 8.3). Ein Paket im
   Schema 5 nimmt der Konsument nicht mehr an; ein neuer Export heilt es.
+  Dazu die Routine mit ihren Units (`plv/betrieb/betrieb_seite.sh`,
+  `betrieb-seite.service`, `betrieb-seite.timer`, README dort), nicht
+  eingeschaltet.
+* **A-B1 im Image.** Das Image trägt kein git; der Snapshot nennt deshalb
+  `system.commit` und `system.branch` „unbekannt“. Den Code bindet
+  `system.quellcode_sha256`, und welches Image lief, sagt die
+  Protokollzeile des Tageslaufs (`image_revision`), die die Routine vorher
+  gegen das Image hält.
 * **Die Laufzeit braucht ein Image mit Schema 6.** Der Export läuft im
   Laufzeit-Image. Bis die Laufzeit auf ein Image aus einem `main` mit
   Schema 6 umgestellt ist, kann die Routine kein Paket für den neuen
