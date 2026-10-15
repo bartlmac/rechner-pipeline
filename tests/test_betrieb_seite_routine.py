@@ -83,13 +83,25 @@ def _routine(einstellungen: Path, *args: str, path: str | None = None):
                           capture_output=True, text=True, env=umgebung)
 
 
+#: Der Digest, den der Tageslauf im Image aus der .env bekommt (compose.yml,
+#: --image-digest); ohne ihn weist das Paket eine Luecke aus.
+DIGEST = "ghcr.io/x/rechner-pipeline-plv@sha256:" + "d" * 64
+
+
+def _wie_im_image(monkeypatch) -> None:
+    """Revision und Tag traegt das Image (Umgebung des Containers)."""
+    monkeypatch.setenv("PLV_IMAGE_REVISION", "a" * 40)
+    monkeypatch.setenv("PLV_IMAGE_TAG", "probe")
+
+
 @pytest.fixture()
-def welt(tmp_path_factory):
+def welt(tmp_path_factory, monkeypatch):
     """Ein echtes Paket (Auslieferung) aus einem gefuehrten Stand, der Anker,
     eine A-B1, die den Satz bindet, ein origin mit main und ein Klon."""
     wurzel = tmp_path_factory.mktemp("routine")
+    _wie_im_image(monkeypatch)
     ablage = _ablage(wurzel / "plv" / "daten")
-    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+    assert tageslauf(ablage, dt.date(2026, 2, 3), image_digest=DIGEST)[0] == EXIT_OK
     paket = st.stands_paket(ablage, wurzel / "ausgabe" / "paket",
                             anker_verzeichnis=wurzel / "anker", art=ak.ART_AUSLIEFERUNG)
     stand = json.loads((paket / "stand.json").read_text("utf-8"))
@@ -161,12 +173,33 @@ def test_ohne_a_b1_von_mensch_betrieb_wird_nicht_geschoben(welt):
     assert "betrieb" not in _git("--git-dir", str(origin), "branch", "--list", "betrieb")
 
 
-def test_eine_momentaufnahme_traegt_keine_a_b1(tmp_path_factory):
+def test_ein_paket_mit_luecke_wird_nicht_geschoben(tmp_path_factory, monkeypatch):
+    """Der Workflow liefert ein Paket, das eine Luecke ausweist, nicht aus
+    (vorzeige-url, Probe 15.10.: Image-Digest "nicht erfasst"). Die Routine
+    haelt deshalb vorher an und nennt die Luecke.
+
+    Mutationsprobe: die Pruefung der Luecken in pruefe_paket entfernen ->
+    rot."""
+    wurzel = tmp_path_factory.mktemp("luecke")
+    _wie_im_image(monkeypatch)
+    ablage = _ablage(wurzel / "plv" / "daten")
+    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK   # ohne Digest
+    st.stands_paket(ablage, wurzel / "ausgabe" / "paket", anker_verzeichnis=wurzel / "anker")
+    origin = _origin_mit_main(wurzel, "a" * 40)
+    _git("clone", "-q", "--bare", str(origin), str(wurzel / "klon.git"))
+    lauf = _routine(_einstellungen(wurzel, AUSLIEFERUNG="nein"), "zweig")
+    assert lauf.returncode != 0
+    assert "das Paket weist Luecken aus (Image-Digest des Laufs)" in lauf.stderr
+    assert "betrieb" not in _git("--git-dir", str(origin), "branch", "--list", "betrieb")
+
+
+def test_eine_momentaufnahme_traegt_keine_a_b1(tmp_path_factory, monkeypatch):
     """AUSLIEFERUNG=nein (Entscheid e, Weg 2): Paket und Anker, keine A-B1,
     und die Routine verlangt keinen der Schluessel fuer A-B1."""
     wurzel = tmp_path_factory.mktemp("moment")
+    _wie_im_image(monkeypatch)
     ablage = _ablage(wurzel / "plv" / "daten")
-    assert tageslauf(ablage, dt.date(2026, 2, 3))[0] == EXIT_OK
+    assert tageslauf(ablage, dt.date(2026, 2, 3), image_digest=DIGEST)[0] == EXIT_OK
     st.stands_paket(ablage, wurzel / "ausgabe" / "paket", anker_verzeichnis=wurzel / "anker")
     origin = _origin_mit_main(wurzel, "a" * 40)
     _git("clone", "-q", "--bare", str(origin), str(wurzel / "klon.git"))

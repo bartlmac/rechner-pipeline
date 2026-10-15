@@ -161,7 +161,16 @@ pruefe_paket() {
   [ "$P_STAND" = "$HEUTE" ] || halt "das Paket steht auf $P_STAND, nicht auf $HEUTE"
   [ "$P_ART" = "$art" ] || halt "das Paket ist als $P_ART exportiert, erwartet $art"
   [ -n "$P_SATZ" ] && [ "$P_SATZ" != None ] || halt "stand.json nennt keinen Ankersatz"
-  ok "Paket Schema 6, Stand $P_STAND, $P_ART, Ankersatz ${P_SATZ:0:16}"
+  # Ein Paket, das eine Luecke ausweist, liefert der Workflow nicht aus; es
+  # bekommt dann weder eine A-B1 noch einen Commit.
+  local luecken
+  luecken="$($PY -c '
+import json, sys
+s = json.load(open(sys.argv[1], encoding="utf-8"))
+print("; ".join(str(l.get("was")) for l in s.get("luecken") or []))
+' "$PAKET/stand.json")" || halt "$PAKET/stand.json nicht lesbar"
+  [ -z "$luecken" ] || halt "das Paket weist Luecken aus ($luecken); der Workflow liefert es nicht aus. Ein fehlender Image-Digest heisst: IMAGE_DIGEST in der .env der Laufzeit eintragen, den naechsten Tageslauf abwarten"
+  ok "Paket Schema 6, Stand $P_STAND, $P_ART, Ankersatz ${P_SATZ:0:16}, ohne Luecke"
 }
 
 # --- 3 A-B1 -------------------------------------------------------------------

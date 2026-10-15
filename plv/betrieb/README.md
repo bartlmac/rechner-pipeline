@@ -671,7 +671,9 @@ Routine
    Laufzeit lief, und dass dieses Image der Code-Stand ist, mit dem
    `plv-fiktion` rendert (`CODESTAND` in `main`);
 2. exportiert das Stands-Paket im Image (Paketschema 6, als Auslieferung),
-   mit dem Anker im Fall-Datenraum;
+   mit dem Anker im Fall-Datenraum, und hält an, wenn das Paket eine Lücke
+   ausweist (etwa einen fehlenden Image-Digest): Ein solches Paket liefert
+   der Workflow nicht aus;
 3. zeichnet A-B1 im Image mit dem Simulationsschlüssel von `mensch/betrieb`
    und prüft danach, dass der Snapshot den Ankersatz bindet und diese Rolle
    nennt;
