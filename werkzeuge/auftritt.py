@@ -60,6 +60,12 @@ from pathlib import Path
 from typing import List, Optional
 
 WERKZEUGE = Path(__file__).resolve().parent
+#: Der Codebaum, aus dem gebaut wird. Quellseiten, Fachdokumente und Repo
+#: gehen ausdruecklich von hier an die Schritte: Der Workflow von plv-fiktion
+#: ruft die Kette aus einem anderen Verzeichnis auf (der Code liegt dort
+#: unter code/), und eine Vorgabe relativ zum Arbeitsverzeichnis faende
+#: nichts oder etwas anderes.
+CODE = WERKZEUGE.parent
 
 
 def _schritt(kommando: List[str], erlaubt: tuple = (0,)) -> int:
@@ -138,7 +144,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         fallseite = [sys.executable, str(WERKZEUGE / "vorzeigeseite.py"),
                      "--fall", args.fall, "--daten", str(daten),
                      "--out", str(aus / "migrationen" / args.name),
-                     "--als-unterseite"]
+                     "--als-unterseite", "--repo", str(CODE)]
         if args.verlauf:
             fallseite += ["--verlauf", args.verlauf]
         # Auch die Fall-Seite meldet Luecken mit Exit 3 (T20-03): Sie steht,
@@ -152,7 +158,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         if (zwischen := _schritt(
                 [sys.executable, str(WERKZEUGE / "unternehmensseite.py"),
                  "--teil", "rahmen", "--daten", str(daten), "--out", str(aus),
-                 "--film", args.film])) != 0:
+                 "--film", args.film, "--quellen", str(CODE / "plv" / "seite"),
+                 "--docs", str(CODE / "docs"), "--repo", str(CODE)])) != 0:
             return zwischen
 
     if betrieb:
@@ -169,7 +176,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if (zwischen := _schritt(
                 [sys.executable, str(WERKZEUGE / "unternehmensseite.py"),
                  "--teil", "betrieb", "--daten", str(betriebsdaten),
-                 "--out", str(aus)])) != 0:
+                 "--out", str(aus), "--quellen", str(CODE / "plv" / "seite")])) != 0:
             return zwischen
 
     # Die Wache liest jede Datei des Push-Baums — nicht nur die Belege des
@@ -202,7 +209,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                  "--seite", str(aus), "--vorschau", args.vorschau, *fall,
                  "--paket", args.stands_paket, "--anker", args.anker,
                  *(("--ab1", args.ab1) if args.ab1 else ()),
-                 "--repo", str(WERKZEUGE.parent)])) != 0:
+                 "--repo", str(CODE)])) != 0:
             return zwischen
 
     if rc == 3:

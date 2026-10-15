@@ -310,6 +310,10 @@ def test_der_auftritt_faehrt_die_seitenpruefung_als_letzten_schritt(tmp_path: Pa
     assert "--stands-paket" not in fall, "der Rahmen kennt das Paket nicht"
     assert seiten[seiten.index("--teil") + 1] == "rahmen"
     assert seiten[seiten.index("--film") + 1] == "film.mp4"
+    for schalter, ziel in (("--quellen", ROOT / "plv" / "seite"), ("--docs", ROOT / "docs"),
+                           ("--repo", ROOT)):
+        assert seiten[seiten.index(schalter) + 1] == str(ziel), schalter
+    assert aufrufe[1][aufrufe[1].index("--repo") + 1] == str(ROOT)
     assert "--fall" not in betrieb and betrieb[betrieb.index("--ab1") + 1] == "A-B1.json"
     assert betriebsseiten[betriebsseiten.index("--teil") + 1] == "betrieb"
     assert betriebsseiten[betriebsseiten.index("--daten") + 1] == str(aus.parent / "betriebsdaten.json")
@@ -349,5 +353,11 @@ def test_der_betriebsteil_baut_ohne_fall_in_einen_baum_mit_rahmen(tmp_path: Path
         "falldaten.py", "unternehmensseite.py", "bereinigung.py", "vorschau.py",
         "seitenpruefung.py"]
     assert all("--fall" not in k and "--film" not in k for k in aufrufe)
+    # Der Workflow ruft die Kette aus einem anderen Verzeichnis auf (der Code
+    # liegt dort unter code/): Die Quellseiten kommen aus dem Codebaum der
+    # Kette, nicht relativ zum Arbeitsverzeichnis (gefunden in der Probe des
+    # Workflows am 15.10.2026).
+    seiten = aufrufe[1]
+    assert seiten[seiten.index("--quellen") + 1] == str(ROOT / "plv" / "seite")
     with pytest.raises(SystemExit):
         at.main(["--teil", "betrieb", "--out", str(aus)])   # ohne Paket
