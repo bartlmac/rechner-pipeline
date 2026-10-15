@@ -31,7 +31,7 @@ except ImportError:  # pragma: no cover - Werkstattausruestung, kein Systemteil
           ".venv/bin/playwright install chromium", file=sys.stderr)
     raise SystemExit(2)
 
-STANDARD = ["index.html", "geschaeftsentwicklung/index.html", "migrationen/index.html",
+STANDARD = ["index.html", "betrieb/index.html", "migrationen/index.html",
             "migrationen/ki.html", "aktuariat/index.html", "it/index.html",
             "migrationen/baldrian/index.html"]
 #: 1280 ist der Schreibtisch, 720 ein Tablet, 390 ein Telefon — und das

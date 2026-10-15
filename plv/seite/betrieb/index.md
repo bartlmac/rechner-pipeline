@@ -4,7 +4,7 @@ Eigene und übernommene Verträge laufen bei uns in einem Bestand. Zu
 jedem Monatsersten steht ein Abschluss, und zu jedem Abschluss ein
 Bericht. Stand {{datum:betrieb.stand}}.
 
-Wer sehen will, wie das täglich aussieht: [Bestand heute](../plv/)
+Wer sehen will, wie das täglich aussieht: [Bestand heute](plv/)
 ist die Betriebssicht unseres Bestandsführungssystems — Neugeschäft der
 Woche und die letzten Buchungen mit Wirkungstag und Buchungstag. Die
 Seite wird vom System selbst erzeugt und sieht deshalb anders aus als
@@ -59,16 +59,8 @@ seit {{datum:betrieb.gefuehrt_seit}}:
 
 {{tabelle:uebernahmen_im_stand}}
 
-Was die Übernahme Baldrian in den Büchern bedeutet — die gelieferten
-Größen der abgebenden Gesellschaft:
-
-| | |
-|---|---:|
-| Übernommenes Deckungskapital ({{datum:abnahmen.controlling.stichtag_1}}) | {{euro:bestand.abzuege.0.deckkap.summe}} € |
-| Laufender Jahresbeitrag | {{euro:bestand.abzuege.0.jbrutto.summe}} € |
-| Versicherungssumme der Lieferung | {{euro:bestand.abzuege.0.erlsumme.summe}} € |
-| Verträge | {{zahl:bestand.anzahl}} |
-
+Was eine Übernahme in die Bücher gebracht hat, die gelieferten Größen der
+abgebenden Gesellschaft, steht auf ihrer Seite beim Zugang in die Bücher.
 Wie eine Übernahme abläuft und woran sie sich messen lassen muss, steht
 unter [Bestandsmigrationen](../migrationen/).
 
@@ -79,3 +71,7 @@ Monatsberichte mit dem Bestand am Stichtag und den Geschäftsvorfällen des
 Monats, den sie schließen, dazu der Jahresbericht zum Jahresende.
 
 {{tabelle:abschluesse}}
+
+## Freigabe {#freigabe}
+
+{{html:freigabe}}

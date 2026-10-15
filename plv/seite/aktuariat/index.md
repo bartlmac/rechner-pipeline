@@ -37,8 +37,8 @@ Baldrian) und die Berufsunfähigkeitsversicherung.
 ## Was der Kern für den Bestand leistet {#im-bestand}
 
 Die Zahlen, die der Kern für den geführten Bestand rechnet, stehen unter
-[Bestandsführung](../geschaeftsentwicklung/): der Bestand am Stichtag und
-die [Monatsberichte](../geschaeftsentwicklung/#monatsberichte).
+[Bestandsführung](../betrieb/): der Bestand am Stichtag und
+die [Monatsberichte](../betrieb/#monatsberichte).
 
 Wie der Kern eine Übernahme nachrechnet und wer sie abnimmt, steht unter
 [Bestandsmigrationen](../migrationen/#abnahmen). Die Bestandsberichte zur

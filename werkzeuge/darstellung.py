@@ -257,17 +257,16 @@ def falldokumente(modell: Dict[str, Any]) -> Tuple[Tuple[str, str, str], ...]:
 #: Abnahmen, die eine Station NEBEN ihrem Gate traegt: der Stand, auf dem
 #: der Fall rechnet (A-K2 Rechenkern, A-T1 Tarifwerk, A-O1 Begriffsmodell;
 #: ADR-018 Nachtrag 01.10., ADR-025), beim Rechenkern; der Abbruch eines
-#: Falls (A-M5, ADR-026) beim Abschluss; die Auslieferung (A-B1) beim
-#: Zugang in die Buecher. A-B1 ist ein Gate der Linie, gezeichnet wird es
-#: aber im Fall (gate_entscheid --fall): Es gibt den Stand der Buecher, in
-#: die der Bestand eben gegangen ist, nach aussen frei (Entscheid des
-#: Maintainers, 03.10.2026).
+#: Falls (A-M5, ADR-026) beim Abschluss. Die Auslieferung (A-B1) stand bis
+#: zum Betriebsteil der Seite am Zugang in die Buecher; seit sie jeden Abend
+#: neu gezeichnet wird, steht sie nur im Betriebsteil (Entscheid des
+#: Maintainers 09.10.2026).
 STATION_WEITERE_GATES: Dict[int, Tuple[str, ...]] = {
-    7: ("A-K2", "A-T1", "A-O1"), 12: ("A-M5",), 13: ("A-B1",)}
+    7: ("A-K2", "A-T1", "A-O1"), 12: ("A-M5",)}
 
 #: Station je Gate — abgeleitet, nicht gepflegt. Ein Gate des Registers
-#: ohne Station ist ein Testbefund; das Gate der Linie A-B3 zeichnet
-#: ausserhalb jedes Falls und hat keine.
+#: ohne Station ist ein Testbefund; die Gates der Linie (A-B1, A-B3,
+#: ``falldaten.GATES_DER_LINIE``) haben keine.
 GATE_STATION: Dict[str, int] = {
     **{g: n for n, _, g in WEG_STATIONEN if g},
     **{g: n for n, gs in STATION_WEITERE_GATES.items() for g in gs},

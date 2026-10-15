@@ -52,12 +52,50 @@ BANDEROLE = "Fiktives Unternehmen"
 #: generiert statt gepflegt: Eine Zahl, die niemand abtippt, kann dem
 #: Fall nicht davonlaufen. Ein unaufloesbarer Platzhalter bricht den
 #: Bau ab; eine Seite, die "{{...}}" zeigt, waere schlimmer.
-KENNZAHL = re.compile(r"\{\{(zahl|euro|datum|text|hash|svg|tabelle|html):([a-z0-9_.]+)\}\}")
+KENNZAHL = re.compile(r"\{\{(zahl|euro|datum|text|hash|svg|tabelle|html|bild):([a-z0-9_.]+)\}\}")
+
+#: Der Betriebsteil im Push-Baum: alles, was sich mit dem gefuehrten Bestand
+#: jeden Abend aendert (Entscheid des Maintainers 09.10.2026, Weg C). Die
+#: Quellen liegen unter ``plv/seite/betrieb/``; gebaut wird er ohne Fall, aus
+#: Stands-Paket, Anker und A-B1 (``--teil betrieb``). Alles andere ist der
+#: Rahmen und aendert sich nur per Pull Request (``--teil rahmen``).
+BETRIEB_DIR = "betrieb"
 
 #: Verzeichnis des Stands-Pakets im Push-Baum (``betrieb.seite --paket``):
 #: die Tagesseite "Bestand heute" und die Berichte der Monatsabschluesse,
 #: byteweise gegen die Summen in stand.json gehalten.
-STAND_DIR = "plv"
+STAND_DIR = f"{BETRIEB_DIR}/plv"
+
+#: Die geltende Auslieferung im Push-Baum: der Snapshot der A-B1, der den
+#: Ankersatz des Pakets bindet, byteweise.
+AB1_DATEI = f"{BETRIEB_DIR}/A-B1.json"
+
+#: Die Grafiken des Betriebsteils, die der Rahmen als Bild einbindet
+#: (``{{bild:name}}``): Name, Beschriftung ueber dem Bild oder ``None``, und
+#: der Alternativtext. Der Rahmen kennt nur die Dateinamen; was darin steht,
+#: schreibt der Betriebsteil jeden Abend (``betrieb/<name>.svg`` und eine
+#: Fassung fuer das Telefon, ``betrieb/<name>-handy.svg``).
+BILDER = {
+    "bestand": (None, "Verträge in Kraft zum jüngsten Monatsabschluss und ihre "
+                      "Zusammensetzung nach Produkt"),
+    "zugang": ("Zugang · Verträge", "Zugang an Verträgen nach Quelle, laufendes Jahr "
+                                    "gegen denselben Zeitraum im Vorjahr"),
+    "leistungen": ("Leistungen · Vorfälle", "Leistungsfälle nach Art, laufendes Jahr "
+                                            "gegen denselben Zeitraum im Vorjahr"),
+}
+#: Bis zu dieser Breite zeigt die Seite die Fassung fuer das Telefon (wie die
+#: Regel ``.nur-handy`` in stil.css).
+BILD_HANDY = "(max-width: 30rem)"
+
+#: Die Uebernahmen, die der Betriebsteil mit Namen nennt und auf ihre Seite
+#: verlinkt: Kennung des Falls im Stands-Paket -> (URL-Segment unter
+#: ``migrationen/``, Anzeigename). Der Betriebsteil wird ohne Fall gebaut und
+#: kann den Namen nicht aus dem Fall lesen; der Rahmen haelt jeden Eintrag
+#: gegen den Fall, den er baut, und eine Uebernahme im Paket, die hier fehlt,
+#: haelt den Bau des Betriebsteils an.
+UEBERNAHMEN = {
+    "baldrian-klv-tg2015-fall3": ("baldrian", "Baldrian KLV TG2015"),
+}
 
 #: Der Film der Startseite, freigegeben vom Maintainer am 11.10.2026: Ort im
 #: Push-Baum und Pruefsumme. Die Bytes (15,7 MB) liegen nicht im Code-
@@ -340,14 +378,22 @@ def _generiert(art: str, name: str, modell: Dict[str, Any],
         b = _betrieb(modell)
         # Kennung und Pruefsumme der Abnahme gehoeren in den Nachweis des
         # Falls, nicht auf die Unternehmensseite: Der Leser sieht, welcher
-        # Bestand wann in die Buecher kam, nicht mit welchem Gate.
+        # Bestand wann in die Buecher kam, nicht mit welchem Gate. Den Namen
+        # und die Seite der Uebernahme nennt UEBERNAHMEN; der Betriebsteil
+        # kennt den Fall nicht.
         zeilen = ["| Übernahme | Zugang zum | Verträge |", "|---|---|---:|"]
-        eigener = str((modell.get("fall") or {}).get("name") or "")
         for u in b.get("uebernahmen") or []:
-            name = _fallname(modell) if eigener and u.get("fall") == eigener else u.get("fall")
-            zeilen.append(f"| {name} | {_datum_de(u.get('stichtag'))} "
-                          f"| {_zahl_de(u.get('vertraege'))} |")
+            if u.get("fall") not in UEBERNAHMEN:
+                raise KeyError(f"Übernahme {u.get('fall')!r} steht nicht in UEBERNAHMEN — "
+                               "ihren Namen und ihre Seite bringt der Rahmen mit")
+            segment, titel = UEBERNAHMEN[u["fall"]]
+            zeilen.append(f"| [{titel}]({wurzel}migrationen/{segment}/) "
+                          f"| {_datum_de(u.get('stichtag'))} | {_zahl_de(u.get('vertraege'))} |")
         return "\n".join(zeilen)
+    if art == "bild":
+        return _bild(name, wurzel)
+    if art == "html" and name == "freigabe":
+        return _freigabe(modell)
     if art == "html":
         return _html_baustein(name, modell, ziel, wurzel)
     if art == "tabelle" and name == "gevo_je_art":
@@ -423,6 +469,10 @@ def stand(modell: Dict[str, Any], ziel: Path) -> List[str]:
     aus.mkdir(parents=True)
     uebernommen: List[str] = []
     for name, summe in sorted(dateien.items()):
+        if Path(name).suffix == ".parquet" and not (quelle / name).exists():
+            # Das oeffentliche Paket (Zweig betrieb) traegt sie nicht; was es
+            # traegt, prueft falldaten (``--oeffentliches-paket``).
+            continue
         daten = (quelle / name).read_bytes()
         ist = hashlib.sha256(daten).hexdigest()
         if ist != summe:
@@ -450,14 +500,93 @@ def stand(modell: Dict[str, Any], ziel: Path) -> List[str]:
         for rel in sorted(set(re.findall(r'href="\.\./([^"#?]+)"',
                                          index.read_text(encoding="utf-8", errors="replace")))):
             teile = Path(rel).parts
-            if (".." in teile or teile[0] == STAND_DIR or teile[-1] not in dateien
+            if (".." in teile or teile[0] == aus.name or teile[-1] not in dateien
                     or Path(rel).suffix == ".parquet"):
                 continue
-            kopie = ziel / rel
+            kopie = aus.parent / rel
             kopie.parent.mkdir(parents=True, exist_ok=True)
             kopie.write_bytes((aus / teile[-1]).read_bytes())
-            uebernommen.append(rel)
+            uebernommen.append(f"{BETRIEB_DIR}/{rel}")
     return uebernommen
+
+
+def _bild(name: str, wurzel: str) -> str:
+    """Eine Grafik des Betriebsteils, eingebunden im Rahmen: als Bild, mit
+    einer eigenen Fassung fuer das Telefon (:data:`BILDER`)."""
+    if name not in BILDER:
+        raise KeyError(f"bild:{name} — keine Grafik des Betriebsteils (BILDER)")
+    titel, alt = BILDER[name]
+    pfad = f"{wurzel}{BETRIEB_DIR}/{name}"
+    bild = (f'<picture><source media="{BILD_HANDY}" srcset="{pfad}-handy.svg">'
+            f'<img class="grafik" src="{pfad}.svg" alt="{html.escape(alt)}"></picture>')
+    if titel:
+        return f'<figure class="reihe"><figcaption>{html.escape(titel)}</figcaption>{bild}</figure>'
+    return f'<figure class="bild">{bild}</figure>'
+
+
+def bilder(modell: Dict[str, Any], ziel: Path, quellen: Path) -> List[str]:
+    """Die Grafiken des Betriebsteils als eigene SVG-Dateien schreiben, je
+    breit und fuer das Telefon (:data:`BILDER`), in den Farben aus dem
+    Stylesheet der Quellen; Rueckgabe: ihre Pfade."""
+    stylesheet = quellen / "assets" / "stil.css"
+    farben = grafik.css_farben(stylesheet.read_text(encoding="utf-8")) if stylesheet.is_file() else {}
+    if not farben:
+        raise VeroeffentlichungFehler(f"{stylesheet}: keine Farben; die Grafiken saehen anders aus "
+                                      "als die Seite")
+    geschrieben: List[str] = []
+    for name in BILDER:
+        breit = grafik.BREITE_SPALTE if name == "bestand" else grafik.BREITE
+        for zusatz, breite in (("", breit), ("-handy", grafik.BREITE_HANDY)):
+            try:
+                svg = _bild_svg(name, modell, breite)
+            except (KeyError, ValueError) as exc:
+                raise VeroeffentlichungFehler(
+                    f"Grafik {name}: aus dem Modell nicht zu zeichnen ({exc}).") from exc
+            rel = f"{BETRIEB_DIR}/{name}{zusatz}.svg"
+            (ziel / rel).parent.mkdir(parents=True, exist_ok=True)
+            (ziel / rel).write_text(grafik.datei(svg, farben), encoding="utf-8")
+            geschrieben.append(rel)
+    return geschrieben
+
+
+def _bild_svg(name: str, modell: Dict[str, Any], breite: int) -> str:
+    if name == "bestand":
+        return _bestand_bild(modell, breite)
+    reihen = ZUGANGSQUELLEN if name == "zugang" else [(t, e, None) for t, e in LEISTUNGSARTEN]
+    einheit = "Verträge" if name == "zugang" else "Vorfälle"
+    return _bewegung_vergleich(modell, reihen, einheit, breite=breite)
+
+
+def _freigabe(modell: Dict[str, Any]) -> str:
+    """Wer den Stand nach aussen freigegeben hat: die geltende A-B1, mit
+    Datum, Rolle und dem Snapshot (:data:`AB1_DATEI`)."""
+    abnahme = (_betrieb(modell).get("verankerung") or {}).get("abnahme")
+    if not abnahme:
+        raise KeyError("betrieb.verankerung.abnahme: der Stand ist keine Auslieferung — "
+                       "ohne A-B1 wird der Betriebsteil nicht veroeffentlicht")
+    am = _datum_de(str(abnahme.get("entschieden_am") or "")[:10])
+    return (f"Freigegeben hat diesen Stand die Betriebsverantwortung am {am} "
+            f"(Auslieferung A-B1, Rolle {html.escape(str(abnahme.get('rolle') or '—'))}; "
+            f"[Abnahme]({Path(AB1_DATEI).name})).")
+
+
+def freigabe(modell: Dict[str, Any], ziel: Path) -> str:
+    """Den Snapshot der A-B1 in den Push-Baum legen: dieselben Bytes, die
+    falldaten gegen den Ankersatz gehalten hat, gegen ihre Pruefsumme."""
+    import hashlib
+    abnahme = (_betrieb(modell).get("verankerung") or {}).get("abnahme") or {}
+    quelle = Path(str(abnahme.get("datei") or ""))
+    if not abnahme or not quelle.is_file():
+        raise VeroeffentlichungFehler(
+            "Betriebsteil ohne A-B1: Veroeffentlicht wird nur eine Auslieferung, die "
+            "die Betriebsverantwortung abgenommen hat (falldaten --ab1).")
+    roh = quelle.read_bytes()
+    if hashlib.sha256(roh).hexdigest() != abnahme.get("datei_sha256"):
+        raise VeroeffentlichungFehler(
+            f"A-B1 {quelle}: andere Bytes als die, die gegen den Ankersatz gingen.")
+    (ziel / AB1_DATEI).parent.mkdir(parents=True, exist_ok=True)
+    (ziel / AB1_DATEI).write_bytes(roh)
+    return AB1_DATEI
 
 
 def film(quelle: Path, ziel: Path) -> str:
@@ -602,6 +731,29 @@ def _bestand_vergleich(modell: Dict[str, Any], kennzahlen=None) -> str:
     return "".join(z)
 
 
+def _bestand_bild(modell: Dict[str, Any], breite: int) -> str:
+    """Die Bestandsgrafik der Startseite als EINE Grafik (Datei des
+    Betriebsteils): dieselbe Kachel, derselbe Anteilsbalken und dieselbe
+    Notiz wie :func:`_bestand_vergleich` mit :data:`BESTAND_KENNZAHLEN`."""
+    k = _betrieb(modell).get("abschluss_kennzahlen") or {}
+    if not k.get("aktuell"):
+        raise KeyError("betrieb.abschluss_kennzahlen: kein Monatsabschluss im Stands-Paket")
+    jetzt, frueher = k["aktuell"], k.get("vorjahr")
+    feld, titel, stueck = BESTAND_KENNZAHLEN[0]
+    wert = (jetzt.get("gesamt") or {}).get(feld, 0)
+    vor = (frueher.get("gesamt") or {}).get(feld) if frueher else None
+    text, richtung = _delta(wert, vor, stueck)
+    unter = (text + f" ggü. {_datum_de(frueher['stichtag'])}") if text else None
+    produkte = sorted((jetzt.get("je_produkt") or {}).items(),
+                      key=lambda e: -int((e[1] or {}).get(feld, 0)))
+    paare = [(PRODUKT_TITEL.get(p, p.upper()), int(w.get(feld, 0))) for p, w in produkte]
+    return grafik.bestand_bild(
+        (titel, grafik.kurz(wert, stueck) + ("" if stueck else " €"), unter, richtung,
+         f"Stand {_datum_de(jetzt.get('stichtag'))}"),
+        "Zusammensetzung nach Produkt", paare, "Verträge",
+        "" if frueher else _ohne_vorjahr(modell, jetzt), breite)
+
+
 def _ohne_vorjahr(modell: Dict[str, Any], jetzt: Dict[str, Any]) -> str:
     """Warum die Kacheln keinen Vorjahreswert tragen — gemessen am Paket,
     gesagt in der Stimme des Hauses (veroeffentlichte Monatsabschluesse)."""
@@ -618,9 +770,11 @@ def _ohne_vorjahr(modell: Dict[str, Any], jetzt: Dict[str, Any]) -> str:
 
 
 def _bewegung_vergleich(modell: Dict[str, Any], reihen, einheit: str,
-                        titel: str = "") -> str:
+                        titel: str = "", breite: int = 0) -> str:
     """Eine Diagrammreihe der Geschaeftsentwicklung: je Quelle bzw. Art ein
-    Balkenpaar, laufendes Jahr gegen denselben Abschnitt des Vorjahres."""
+    Balkenpaar, laufendes Jahr gegen denselben Abschnitt des Vorjahres.
+    Mit ``breite`` nur die eine Grafik dieser Breite (die Datei des
+    Betriebsteils, :func:`bilder`)."""
     b = _betrieb(modell)
     ge = b.get("geschaeftsentwicklung") or {}
     zeitraeume, je = ge.get("zeitraeume") or {}, ge.get("je_zeitraum") or {}
@@ -641,6 +795,9 @@ def _bewegung_vergleich(modell: Dict[str, Any], reihen, einheit: str,
     # Labelspalte misst sich ueber BEIDE Kategorienlisten, nicht je Bild.
     label = grafik.labelbreite([n for n, _, _ in ZUGANGSQUELLEN],
                                [n for n, _ in LEISTUNGSARTEN])
+    if breite:
+        return grafik.gruppiert(kategorien, titel_zeitraum, einheit, kurz_zahl,
+                                breite=breite, label=label)
     bild = grafik.responsiv(
         grafik.gruppiert(kategorien, titel_zeitraum, einheit, kurz_zahl, label=label),
         grafik.gruppiert(kategorien, titel_zeitraum, einheit, kurz_zahl,
@@ -1019,6 +1176,11 @@ def _rollen(modell: Dict[str, Any]) -> str:
         if e:
             wer = (f"<b>{e.get('entscheid')}</b> am {_datum_de(e.get('entschieden_am'))} "
                    f"durch <code>{e.get('rolle')}</code>")
+        elif gate == "A-B1":
+            # Die Auslieferung zeichnet der Betrieb jeden Abend fuer den Stand
+            # der Buecher, nicht die Uebernahme (falldaten.GATES_DER_LINIE).
+            wer = ('jeden Abend für den Stand der Bücher, '
+                   '<a href="../betrieb/#freigabe">zuletzt freigegeben</a>')
         else:
             wer = '<span class="platzhalter">kein Gegenstand dieser Übernahme</span>'
         z.append(f"<tr><td><code>{gate}</code></td><td><b>{MENSCH_TITEL.get(rolle, rolle)}</b>"
@@ -1153,7 +1315,7 @@ def _kennzahlen(text: str, modell: Dict[str, Any], seite: str,
     def ersetze(treffer: re.Match) -> str:
         art, pfad = treffer.group(1), treffer.group(2)
         try:
-            if art in ("svg", "tabelle", "html"):
+            if art in ("svg", "tabelle", "html", "bild"):
                 return _generiert(art, pfad, modell, ziel, wurzel)
             wert = _aufloesen(modell, pfad)
             if art == "zahl":
@@ -1623,9 +1785,16 @@ def _gespiegelt_im_auftritt(ziel: Path, ordner: Path) -> Callable[[str], Optiona
     return dokument
 
 
-def baue(quellen: Path, ziel: Path, modell: Dict[str, Any]) -> List[str]:
+def baue(quellen: Path, ziel: Path, modell: Dict[str, Any],
+         teil: str = "rahmen") -> List[str]:
     """Die Quellseiten in den Push-Baum spiegeln, mit drei Zwaengen:
-    Regie-Sperre, Banderole, aufgeloeste Kennzahlen."""
+    Regie-Sperre, Banderole, aufgeloeste Kennzahlen.
+
+    ``teil``: der Rahmen (alle Quellen ausser ``betrieb/``) oder der
+    Betriebsteil (nur ``betrieb/``). Jeder Teil loest seine Kennzahlen aus
+    seinem eigenen Modell; ein Platzhalter des anderen Teils bricht ab."""
+    if teil not in ("rahmen", "betrieb"):
+        raise VeroeffentlichungFehler(f"unbekannter Teil {teil!r} (rahmen oder betrieb)")
     if not (quellen / "index.md").is_file():
         raise VeroeffentlichungFehler(
             f"Keine Unternehmensseiten unter {quellen} (index.md fehlt).")
@@ -1637,6 +1806,8 @@ def baue(quellen: Path, ziel: Path, modell: Dict[str, Any]) -> List[str]:
     kopiert: List[str] = []
     for datei in sorted(quellen.rglob("*")):
         if not datei.is_file():
+            continue
+        if (datei.relative_to(quellen).parts[0] == BETRIEB_DIR) != (teil == "betrieb"):
             continue
         _pruefe_regie(datei)
         zielpfad = ziel / datei.relative_to(quellen)
@@ -1681,10 +1852,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--out", required=True,
                    help="Push-Baum der Seite; die Fall-Seiten liegen dort "
                         "unter migrationen/<fall>/")
-    p.add_argument("--film", required=True,
-                   help="die freigegebene Filmdatei der Startseite; der Bau "
-                        "haelt sie gegen die Pruefsumme in FILM")
+    p.add_argument("--teil", required=True, choices=("rahmen", "betrieb"),
+                   help="rahmen: alle Seiten ausser betrieb/, aus dem Modell des "
+                        "Falls; betrieb: nur betrieb/, aus dem Modell des "
+                        "Betriebsteils (falldaten ohne --fall)")
+    p.add_argument("--film", default=None,
+                   help="die freigegebene Filmdatei der Startseite (Pflicht fuer "
+                        "den Rahmen); der Bau haelt sie gegen die Pruefsumme in FILM")
     args = p.parse_args(argv)
+    if args.teil == "rahmen" and not args.film:
+        p.error("der Rahmen braucht --film")
 
     quellen = Path(args.quellen).resolve()
     repo = Path(args.repo).resolve()
@@ -1696,9 +1873,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"Kein Falldaten-Modell: {args.daten} ({exc})",
               file=sys.stderr)
         return 2
+    if args.teil == "betrieb":
+        return _main_betrieb(quellen, ziel, modell)
     try:
-        paket = stand(modell, ziel)
-        kopiert = baue(quellen, ziel, modell)
+        if (modell.get("betrieb") or {}).get("vorhanden"):
+            raise VeroeffentlichungFehler(
+                "Das Modell des Rahmens traegt ein Stands-Paket. Der Rahmen zeigt den "
+                "gefuehrten Bestand nicht selbst; den baut --teil betrieb.")
+        kopiert = baue(quellen, ziel, modell, "rahmen")
+        _pruefe_uebernahme(modell, ziel)
         filmdatei = film(Path(args.film), ziel)
         doku = fachdokumente(Path(args.docs).resolve(), ziel, FACHDOKUMENTE + tuple(
             (quelle, ziel_name, "Unsere Bestandsmigrationen", "./")
@@ -1715,12 +1898,6 @@ def main(argv: Optional[List[str]] = None) -> int:
           f"{len(doku)} Fachdokumente, {adrs} Architektur-Dokumente, "
           "Landkarte, Pruefgates und Techstack erzeugt")
     print(f"  Film uebernommen: {filmdatei} (Pruefsumme stimmt)")
-    if paket:
-        print(f"  Stands-Paket uebernommen: {len(paket)} Dateien unter {STAND_DIR}/ "
-              f"(Stand {modell['betrieb'].get('stand')})")
-    else:
-        print("  KEIN Stands-Paket — die Unternehmensseiten zeigen keinen "
-              "gefuehrten Bestand (auftritt.py --stands-paket)")
     faelle = sorted(
         p.parent.name for p in (ziel / "migrationen").glob("*/index.md")
     ) if (ziel / "migrationen").is_dir() else []
@@ -1729,6 +1906,49 @@ def main(argv: Optional[List[str]] = None) -> int:
     else:
         print("  noch KEIN Migrationsbericht eingehaengt "
               "(vorzeigeseite.py --out <ziel>/migrationen/<fall>)")
+    return 0
+
+
+def _pruefe_uebernahme(modell: Dict[str, Any], ziel: Path) -> None:
+    """Der Rahmen haelt :data:`UEBERNAHMEN` gegen den Fall, den er baut: Name
+    und Seite, unter denen der Betriebsteil die Uebernahme nennt, muessen
+    die sein, die der Rahmen ihr gibt."""
+    kennung = str((modell.get("fall") or {}).get("name") or "")
+    basis = _fallbasis(ziel)
+    if not kennung or not basis:
+        return
+    ist = (basis.split("/")[1], _fallname(modell))
+    if UEBERNAHMEN.get(kennung) != ist:
+        raise VeroeffentlichungFehler(
+            f"UEBERNAHMEN[{kennung!r}] ist {UEBERNAHMEN.get(kennung)!r}, der Rahmen "
+            f"zeigt die Uebernahme als {ist!r}. Der Betriebsteil nennt sie mit diesem "
+            "Eintrag; er muss zum Fall passen.")
+
+
+def _main_betrieb(quellen: Path, ziel: Path, modell: Dict[str, Any]) -> int:
+    """Der Betriebsteil: ``betrieb/`` aus dem Modell des Betriebsteils —
+    Bestandsfuehrung, Stands-Paket, die Grafiken der Startseite und die
+    geltende A-B1. Ausserhalb von ``betrieb/`` schreibt er nichts."""
+    if modell.get("teil") != "betrieb":
+        print("ABBRUCH: kein Modell des Betriebsteils (falldaten.py ohne --fall, "
+              "mit --stands-paket, --anker, --ab1)", file=sys.stderr)
+        return 2
+    try:
+        if (ziel / BETRIEB_DIR).exists():
+            # Das Verzeichnis ist der Betriebsteil dieses Abends, nichts sonst.
+            shutil.rmtree(ziel / BETRIEB_DIR)
+        paket = stand(modell, ziel)
+        if not paket:
+            raise VeroeffentlichungFehler("Betriebsteil ohne Stands-Paket.")
+        kopiert = baue(quellen, ziel, modell, "betrieb")
+        grafiken = bilder(modell, ziel, quellen)
+        ab1 = freigabe(modell, ziel)
+    except VeroeffentlichungFehler as exc:
+        print(f"ABBRUCH: {exc}", file=sys.stderr)
+        return 1
+    print(f"{ziel / BETRIEB_DIR}: {len(kopiert)} Seiten, {len(grafiken)} Grafiken, "
+          f"Stands-Paket {len(paket)} Dateien (Stand {modell['betrieb'].get('stand')}), "
+          f"Freigabe {ab1}")
     return 0
 
 

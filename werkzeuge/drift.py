@@ -61,15 +61,24 @@ def _normalisiert(name: str, inhalt: bytes) -> bytes:
     return text.encode("utf-8")
 
 
+#: Was nur auf einer Seite liegen kann und darum kein Drift ist: Den
+#: Betriebsteil baut der Workflow jeden Abend zum Rahmen dazu, in ``main`` von
+#: plv-fiktion liegt er nie; ``CODESTAND`` schreibt erst das Kommando fuer den
+#: Pull Request des Rahmens (``rahmen_pr.py``), der Entwurf kennt ihn nicht.
+NICHT_IM_RAHMEN = ("betrieb", "CODESTAND")
+
+
 def _baum(wurzel: Path) -> Dict[str, bytes]:
     return {
         str(p.relative_to(wurzel)): _normalisiert(p.name, p.read_bytes())
-        for p in sorted(wurzel.rglob("*")) if p.is_file()
+        for p in sorted(wurzel.rglob("*"))
+        if p.is_file() and p.relative_to(wurzel).parts[0] not in NICHT_IM_RAHMEN
     }
 
 
 def vergleiche(entwurf: Path, veroeffentlicht: Path) -> Dict[str, List[str]]:
-    """Beide Baeume nach Normalisierung gegenueberstellen."""
+    """Beide Baeume nach Normalisierung gegenueberstellen — den Rahmen, ohne
+    :data:`NICHT_IM_RAHMEN`."""
     neu, alt = _baum(entwurf), _baum(veroeffentlicht)
     return {
         "nur_im_entwurf": sorted(set(neu) - set(alt)),

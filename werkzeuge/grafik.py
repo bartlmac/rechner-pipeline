@@ -64,6 +64,9 @@ BREITE = 900
 #: werden 6). Eine zweite, eigene Fassung ist der einzige Weg, der den
 #: Text in Groesse haelt; welche gezeigt wird, entscheidet das Stylesheet.
 BREITE_HANDY = 330
+#: Die Textspalte des Auftritts (stil.css: 62rem minus zweimal 2,2rem Rand):
+#: so breit ist eine Grafik, die wie ein Block der Seite aussehen soll.
+BREITE_SPALTE = 922
 #: Fuer Grafiken, die neben einer Kachel in einer schmalen Spalte stehen.
 #: Eine Grafik, die breiter ist als ihr Platz, wird herunterskaliert — und
 #: ihre Schrift mit ihr; dann hilft kein groesserer Schriftgrad.
@@ -198,6 +201,15 @@ def stat_tile(label: str, wert: str, delta: Optional[str] = None,
 def anteil(paare: Sequence[Tuple[str, int]], einheit: str = "",
            breite: int = BREITE_SCHMAL) -> str:
     """Ein schlanker Balken: Zusammensetzung einer Menge, direkt beschriftet."""
+    teile, hoehe = _anteil_teile(paare, einheit, breite)
+    return _svg(breite, hoehe, ", ".join(f"{t} {int(w)}" for t, w in paare if int(w) > 0),
+                teile)
+
+
+def _anteil_teile(paare: Sequence[Tuple[str, int]], einheit: str,
+                  breite: int) -> Tuple[List[str], int]:
+    """Die Marken des Anteilsbalkens und ihre Hoehe — fuer :func:`anteil` und
+    fuer die Bestandsgrafik, die ihn in eine Karte setzt."""
     paare = [(t, int(w)) for t, w in paare if int(w) > 0]
     gesamt = sum(w for _, w in paare) or 1
     # Der Balken waechst mit seiner Flaeche: ueber die volle Textbreite
@@ -222,7 +234,109 @@ def anteil(paare: Sequence[Tuple[str, int]], einheit: str = "",
                      f'fill="{SERIE[i % len(SERIE)]}"/>'
                      f'<text x="{x + 14:.0f}" y="{y}" fill="{MATT}">{_e(text)}</text>')
         x += platz
-    return _svg(breite, y + 6, ", ".join(f"{t} {w}" for t, w in paare), teile)
+    return teile, y + 6
+
+
+#: Farben der Bestandsgrafik, wie die Kachel der Seite sie traegt (stil.css:
+#: ``--primaer``, ``--flaeche``, ``.delta.auf``, ``.delta.ab``).
+PRIMAER = "var(--primaer, #1f4f57)"
+WEISS = "var(--flaeche, #ffffff)"
+STEIGT, FAELLT = "#1b7a4b", "#a8422a"
+#: Die Schrift des Auftritts (stil.css, body).
+SCHRIFT = "-apple-system, 'Segoe UI', system-ui, sans-serif"
+
+
+def css_farben(stylesheet: str) -> Dict[str, str]:
+    """Die Farbvariablen eines Stylesheets: ``--name: #wert;`` -> {name: wert}."""
+    import re
+
+    return dict(re.findall(r"--([a-z0-9-]+):\s*(#[0-9a-fA-F]{3,8})\s*;", stylesheet))
+
+
+def datei(svg: str, farben: Optional[Dict[str, str]] = None) -> str:
+    """Eine Grafik dieses Bausteinsatzes als eigene SVG-Datei.
+
+    Der Betriebsteil der Seite bindet die Grafiken der Startseite als Bild
+    ein (``<img>``): Der Rahmen aendert sich nur per Pull Request, die
+    Grafik jeden Abend. Ein Bild sieht aber weder das Stylesheet noch die
+    CSS-Variablen der Seite. Deshalb steht jede Farbe hier als Wert: der der
+    Seite aus ``farben`` (:func:`css_farben` ueber ihr Stylesheet), sonst der
+    Rueckfall, den die Variable traegt. Die Schrift steht als Attribut, und
+    die Datei nennt ihren Namensraum und ihre Groesse selbst. Eine Grafik,
+    die etwas anderes braucht, als sie mitbringt, bricht hier ab.
+    """
+    import re
+
+    farben = farben or {}
+    kopf = re.match(r'<svg role="img" aria-label="([^"]*)" viewBox="0 0 (\d+) (\d+(?:\.\d+)?)" '
+                    r'style="width:100%;max-width:\d+px;height:auto;font:(\d+)px [^"]*">', svg)
+    if not kopf or not svg.endswith("</svg>"):
+        raise ValueError("keine Grafik dieses Bausteinsatzes (grafik._svg)")
+    label, breite, hoehe, schrift = kopf.groups()
+    rumpf = re.sub(r"var\(--([a-z0-9-]+), (#[0-9a-fA-F]{3,8})\)",
+                   lambda m: farben.get(m.group(1), m.group(2)), svg[kopf.end():-len("</svg>")])
+    if "var(" in rumpf:
+        raise ValueError("eine Farbe ohne Rueckfall — als eigene Datei saehe sie niemand")
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            f'<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{label}" '
+            f'width="{breite}" height="{hoehe}" viewBox="0 0 {breite} {hoehe}" '
+            f'font-family="{SCHRIFT}" font-size="{schrift}">'
+            f"<title>{label}</title>{rumpf}</svg>\n")
+
+
+def bestand_bild(kachel: Tuple[str, str, Optional[str], str, str],
+                 anteil_titel: str, paare: Sequence[Tuple[str, int]], einheit: str,
+                 notiz: str = "", breite: int = BREITE_SPALTE) -> str:
+    """Die Bestandsgrafik der Startseite in EINER Grafik: die Kennzahl als
+    Kachel, daneben (schmal: darunter) die Zusammensetzung als Karte, darunter
+    eine Notiz in Textgroesse. Bis zum Betriebsteil standen Kachel und Karte
+    als HTML auf der Seite; als Bild aus ``betrieb/`` sieht die Startseite
+    gleich aus und aendert sich trotzdem nur mit dem Bestand.
+
+    ``kachel``: Beschriftung, Wert, Veraenderung (oder ``None``), Richtung
+    ("auf", "ab" oder ""), Fusszeile — wie :func:`stat_tile`."""
+    marke, wert, delta, richtung, fuss = kachel
+    schmal = breite < BREITE_SCHMAL
+    kachel_b = breite if schmal else 320
+    hoch = 138
+    teile = [f'<rect x="0" y="0" width="{kachel_b}" height="{hoch}" fill="{WEISS}"/>'
+             f'<rect x="0" y="0" width="{kachel_b}" height="4" fill="{PRIMAER}"/>'
+             f'<text x="18" y="34" font-size="11" font-weight="600" letter-spacing="0.9" '
+             f'fill="{MATT}">{_e(marke.upper())}</text>'
+             f'<text x="16" y="84" font-size="44" font-weight="700" letter-spacing="-0.9" '
+             f'fill="{TINTE}">{_e(wert)}</text>']
+    y = 108
+    if delta:
+        pfeil = {"auf": "▲", "ab": "▼"}.get(richtung, "")
+        farbe = {"auf": STEIGT, "ab": FAELLT}.get(richtung, MATT)
+        teile.append(f'<text x="18" y="{y}" font-size="13" fill="{farbe}">'
+                     f'{_e((pfeil + " " + delta).strip())}</text>')
+        y += 18
+    teile.append(f'<text x="18" y="{max(y + 6, 120)}" font-size="11" fill="{MATT}">{_e(fuss)}</text>')
+    # Die Karte der Zusammensetzung: Ueberschrift, Balken, Legende.
+    kx, ky = (0, hoch + 16) if schmal else (kachel_b + 16, 0)
+    kb = breite - kx
+    innen = kb - 36
+    balken, balken_hoehe = _anteil_teile(paare, einheit, innen)
+    # Ueberschrift und Balken stehen in der Karte senkrecht mittig, wie
+    # vorher im Raster der Seite.
+    inhalt = 24 + balken_hoehe
+    karte_hoch = hoch if not schmal else inhalt + 40
+    oben = (karte_hoch - inhalt) // 2
+    teile.append(f'<rect x="{kx}" y="{ky}" width="{kb}" height="{karte_hoch}" fill="{WEISS}"/>'
+                 f'<text x="{kx + 18}" y="{ky + oben + 10}" font-size="10.5" font-weight="700" '
+                 f'letter-spacing="0.95" fill="{MATT}">{_e(anteil_titel.upper())}</text>'
+                 f'<g transform="translate({kx + 18},{ky + oben + 24})">' + "".join(balken) + "</g>")
+    unten = max(hoch, ky + karte_hoch)
+    if notiz:
+        zeilen = _umbrechen(notiz, SCHRIFTGROESSE, breite if schmal else 700)
+        for i, zeile in enumerate(zeilen):
+            teile.append(f'<text x="0" y="{unten + 34 + i * 24}" fill="{TINTE}">{_e(zeile)}</text>')
+        unten += 34 + (len(zeilen) - 1) * 24 + 8
+    label = f"{marke}: {wert}" + (f" ({delta})" if delta else "") + f", {fuss}; " + \
+        f"{anteil_titel}: " + ", ".join(f"{t} {_zahl(w)}" for t, w in paare) + \
+        (f". {notiz}" if notiz else "")
+    return _svg(breite, unten, label, teile)
 
 
 def labelbreite(*gruppen: Sequence[str]) -> float:
