@@ -131,16 +131,18 @@ Für die Unternehmensseiten ist das Paket Pflicht: Startseite,
 Geschäftsentwicklung und Finanzen zeigen den geführten Bestand
 (`{{...:betrieb....}}`-Kennzahlen, Tabellen `buchungen_je_art`,
 `abschluesse`, `uebernahmen_im_stand`); ohne Paket bricht der Bau mit
-dem Hinweis auf den Aufruf ab. Die Dateien des Pakets (Paketschema 5:
+dem Hinweis auf den Aufruf ab. Die Dateien des Pakets (Paketschema 6:
 die Tagesseite „Bestand heute“ als `index.html` und die bezeugten
 Berichte des jüngsten Abschlusses in der Wurzel, die Monatsabschlüsse
 unter `abschluesse/`) übernimmt `unternehmensseite.py` byteweise nach
 `<out>/plv/`, jede gegen die SHA-256 in `stand.json` gehalten, nichts
 wird umgeschrieben; die Vorschau verlinkt das Verzeichnis ganz.
 Bestandskennzahlen der Abschlüsse und Geschäftsentwicklung je Zeitraum
-stehen nicht in `stand.json`: `falldaten.py` rechnet sie aus den
-Abschlussdateien und dem Tagesjournal des Pakets nach, nachdem es deren
-Hash geprüft hat. Den Abschluss zwölf Monate vor dem jüngsten trägt
+stehen seit Paketschema 6 auch in `stand.json`, und der Anker bindet
+`stand.json`. `falldaten.py` rechnet beide aus den Abschlussdateien und
+dem Tagesjournal des Pakets nach, nachdem es deren Hash geprüft hat, und
+weist das Paket ab, wenn etwas anderes herauskommt. Den Abschluss zwölf
+Monate vor dem jüngsten trägt
 das Paket nicht; der Vorjahresvergleich entfällt dann benannt.
 
 Einen Stand außerhalb der Laufzeitumgebung `~/apps/plv` liefert eine

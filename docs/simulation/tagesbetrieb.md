@@ -552,7 +552,7 @@ Wege, die sich nicht ausschließen:
   Laufzeitumgebung statt aus einem Fall; eine neue Quelle für
   `falldaten`, dieselbe Drift-Regel: erzeugt, nie abgetippt.
 
-Das Paket trägt seine **Belege** mit (seit Paketschema 3, heute Schema 5):
+Das Paket trägt seine **Belege** mit (seit Paketschema 3, heute Schema 6):
 `protokoll.jsonl` mit der Kette, `laufmanifest.json` des Stands und
 `tagesjournal.parquet`. Die ersten beiden kamen zuerst und belegten
 die protokollgespeisten Blöcke von `stand.json`; die journalgespeisten
@@ -574,6 +574,19 @@ vollständige Paket geht deshalb an den Menschen, der es exportiert; in
 den veröffentlichten Baum wandern Tagesseite, Berichte, Protokoll und
 Manifest; Letztere tragen keine Vertragsebene und sind genau das, woran
 die Seite ihre Kette zeigt.
+
+Seit Paketschema 6 trägt `stand.json` zwei Blöcke, die vorher nur der
+Konsument rechnete: die Geschäftsentwicklung je Zeitraum (aus dem
+Tagesjournal) und die Kennzahlen der Abschlüsse (aus den
+Abschlussdateien im Paket). Im veröffentlichten Baum fehlen Journal und
+Abschlussdateien, dort könnte niemand die Blöcke bilden. Damit sie dort
+nicht zu glauben sind, bindet der Ankersatz seit seinem Schema 4
+`stand.json` selbst (`stand_sha256`, gerechnet ohne den Block `anker`),
+und die Auslieferungsabnahme A-B1 bindet den Ankersatz. Wer die
+Parquet-Dateien hat, rechnet beide Blöcke mit denselben Funktionen nach
+(`betrieb.seite.geschaeftsentwicklung` und `abschluss_kennzahlen`) und
+weist ein Paket ab, dessen Blöcke davon abweichen. Begründung und
+Bedrohungsmodell: ADR-029.
 
 Die Veröffentlichung nach außen bleibt menschlich (werkzeuge/README.md);
 die Regie-Sperre gilt unverändert. Automatisch veröffentlicht wird

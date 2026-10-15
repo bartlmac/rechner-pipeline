@@ -260,3 +260,129 @@ def test_eine_momentaufnahme_braucht_keine_abnahme(paket_und_anker, tmp_path):
     modell = fd.betrieb(paket, anker, tmp_path / "fall")
     assert modell["verankerung"]["art"] == "momentaufnahme"
     assert "abnahme" not in modell["verankerung"]
+
+
+# --- Schema 6: der Anker bindet stand.json selbst (ADR-029) --------------
+#
+# Veroeffentlicht wird das Paket ohne Tagesjournal und Abschlussdateien
+# (sie tragen Policennummern). Wer dort liest, kann die journal- und
+# abschlussgespeisten Bloecke nicht nachrechnen; die A-B1 bindet nur den
+# Ankersatz. Also bindet der Satz stand.json (Ankerschema 4), und wer die
+# Dateien hat, rechnet trotzdem nach. Zwei Instrumente, je ein Test, der
+# nur am jeweiligen faellt.
+
+
+def _kopie_mit(paket: Path, ziel: Path, aendern) -> dict:
+    """Eine Kopie des Pakets, deren stand.json ``aendern`` umschreibt."""
+    import shutil
+
+    shutil.copytree(paket, ziel)
+    stand = json.loads((ziel / "stand.json").read_text("utf-8"))
+    aendern(stand)
+    (ziel / "stand.json").write_text(
+        json.dumps(stand, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
+    return stand
+
+
+def _zug_betrag_verdoppeln(stand: dict) -> None:
+    """Eine Zahl, die nur Tagesjournal und Geschaeftsentwicklung tragen —
+    keine Pruefung im Paket haelt sie gegen die Protokollzeile."""
+    jahr = stand["geschaeftsentwicklung"]["je_zeitraum"]["aktuelles_jahr"]
+    betraege = jahr["ZUG"]["betraege"]
+    art = sorted(betraege)[0]
+    betraege[art] = round(betraege[art] * 2 + 1, 2)
+
+
+def _neu_verankern(stand: dict, paket: Path, anker: Path, satz: dict) -> None:
+    """Den Satz an die Ankerdatei haengen und von stand.json nennen lassen."""
+    ak.haenge_an(anker.parent, satz)
+    stand["anker"]["sha256"] = ak.satz_hash(satz)
+    (paket / "stand.json").write_text(
+        json.dumps(stand, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
+
+
+def test_der_ankersatz_bindet_stand_json(paket_und_anker):
+    paket, anker = paket_und_anker
+    stand = json.loads((paket / "stand.json").read_text("utf-8"))
+    satz = [s for s in ak.lies_anker(anker) if ak.satz_hash(s) == stand["anker"]["sha256"]][-1]
+    # Das Literal ist Absicht: Der Satz ist ein Vertrag mit dem Workflow
+    # der Seite und mit A-B1 (ADR-029).
+    assert satz["schema_version"] == 4
+    assert satz["stand_sha256"] == ak.stand_hash(stand)
+
+
+def test_eine_geaenderte_zahl_in_stand_json_faellt_am_anker(paket_und_anker, tmp_path):
+    """Ohne Parquet sieht niemand die Zahl nach — der Anker sieht sie.
+
+    Positivkontrolle zuerst: Die Pruefungen IM Paket bestaetigen die
+    Aenderung, sonst faenge der Test etwas anderes. Mutationsprobe: die
+    Pruefung von ``stand_sha256`` in ``models.anker.pruefe`` entfernen ->
+    die Nachrechnung faengt die Zahl mit anderem Text, der Test wird rot."""
+    paket, anker = paket_und_anker
+    kopie = tmp_path / "zahl"
+    stand = _kopie_mit(paket, kopie, _zug_betrag_verdoppeln)
+    fd._pruefe_stands_paket(kopie, stand, stand.get("provenienz") or {})
+    with pytest.raises(fd.FalldatenFehler, match="stand.json ist nicht die, die der Anker bindet"):
+        fd.betrieb(kopie, anker)
+
+
+def test_eine_neu_verankerte_faelschung_faellt_an_der_nachrechnung(paket_und_anker, tmp_path):
+    """Wer auch den Anker fortschreibt, kommt am Anker vorbei — nicht an
+    den Parquet-Dateien, wo sie liegen. Der Konsument rechnet beide Bloecke
+    mit den Funktionen des Exports nach.
+
+    Mutationsprobe: den Vergleich der Bloecke in ``falldaten.betrieb``
+    entfernen -> das Paket geht durch, rot."""
+    paket, anker = paket_und_anker
+    kopie = tmp_path / "neu-verankert"
+    ankerkopie = tmp_path / "anker-kopie" / ak.ANKER_DATEI
+    ankerkopie.parent.mkdir()
+    ankerkopie.write_bytes(anker.read_bytes())
+    stand = _kopie_mit(paket, kopie, _zug_betrag_verdoppeln)
+    alt = [s for s in ak.lies_anker(anker) if ak.satz_hash(s) == stand["anker"]["sha256"]][-1]
+    _neu_verankern(stand, kopie, ankerkopie, {**alt, "stand_sha256": ak.stand_hash(stand)})
+    # Positivkontrolle: Der Anker selbst bestaetigt die Faelschung jetzt.
+    ak.pruefe(kopie, stand, kopie / "protokoll.jsonl", ak.lies_anker(ankerkopie))
+    with pytest.raises(fd.FalldatenFehler, match="'geschaeftsentwicklung' in stand.json steht so nicht"):
+        fd.betrieb(kopie, ankerkopie)
+
+
+def test_ein_paket_im_schema_6_verlangt_einen_satz_der_stand_json_bindet(paket_und_anker, tmp_path):
+    """Ein Satz im alten Schema traegt kein ``stand_sha256``; die Pruefung
+    entfiele still. stand.json bleibt hier UNVERAENDERT: Abgewiesen wird
+    die schwaechere Bindung, nicht eine Zahl.
+
+    Mutationsprobe: die Schema-Pruefung in ``models.anker.pruefe``
+    entfernen -> das Paket geht durch, rot."""
+    paket, anker = paket_und_anker
+    kopie = tmp_path / "altes-schema"
+    ankerkopie = tmp_path / "anker-alt" / ak.ANKER_DATEI
+    ankerkopie.parent.mkdir()
+    ankerkopie.write_bytes(anker.read_bytes())
+    stand = _kopie_mit(paket, kopie, lambda s: None)
+    alt = [s for s in ak.lies_anker(anker) if ak.satz_hash(s) == stand["anker"]["sha256"]][-1]
+    satz3 = {k: v for k, v in alt.items() if k != "stand_sha256"}
+    satz3["schema_version"] = 3
+    _neu_verankern(stand, kopie, ankerkopie, satz3)
+    with pytest.raises(fd.FalldatenFehler, match="nennt einen Ankersatz im Schema 3"):
+        fd.betrieb(kopie, ankerkopie)
+
+
+def test_stand_hash_ist_fuer_erzeuger_und_leser_derselbe():
+    """Der Erzeuger hasht ein Dict mit Python-Werten, der Leser eines aus
+    der Datei. Gleich muss es sein: unabhaengig von Schluesselfolge,
+    Einrueckung und vom Block ``anker``; verschieden bei jeder Zahl."""
+    erzeuger = {"stand": "2026-02-03", "schema_version": 6,
+                "bestand": {"in_force": 12, "je_produkt": {"klv": 8, "bu": 4}},
+                "betraege": [1.1, 2.25], "leer": None, "an": True}
+    datei = json.loads(json.dumps(erzeuger, ensure_ascii=False, indent=2, sort_keys=True))
+    datei["anker"] = {"sha256": "f" * 64}
+    assert ak.stand_hash(erzeuger) == ak.stand_hash(datei)
+    assert ak.stand_hash(dict(reversed(list(erzeuger.items())))) == ak.stand_hash(erzeuger)
+    anders = json.loads(json.dumps(erzeuger))
+    anders["bestand"]["je_produkt"]["bu"] = 5
+    assert ak.stand_hash(anders) != ak.stand_hash(erzeuger)
+    with pytest.raises(ValueError):
+        ak.stand_hash({**erzeuger, "betraege": [float("nan")]})

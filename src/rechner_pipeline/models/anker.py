@@ -62,7 +62,20 @@ ANKER_DATEI = "anker.jsonl"
 #: vollstaendige Dateiliste des Pakets (``dateien_sha256``) — jede
 #: mitgelieferte Datei haengt damit am externen Anker, nicht nur Manifest,
 #: Journal und die letzte Protokollzeile.
-ANKER_SCHEMA_VERSION = 3
+#: Schema 4 (ADR-029, taeglicher Betriebsteil der Seite): Der Satz bindet
+#: auch ``stand.json`` selbst (``stand_sha256``, :func:`stand_hash`). Bis
+#: Schema 3 hing stand.json nur mittelbar am Anker: Jede Zahl darin liess
+#: sich aus den gebundenen Dateien nachrechnen. Veroeffentlicht wird das
+#: Paket aber ohne Tagesjournal und Abschlussdateien (sie tragen
+#: Policennummern), und ohne sie rechnet niemand die journal- und
+#: abschlussgespeisten Bloecke nach. Ohne diese Bindung waeren sie dort zu
+#: glauben; die A-B1 bindet nur den Satz.
+ANKER_SCHEMA_VERSION = 4
+#: Ab diesem Paketschema verlangt der Konsument einen Satz, der stand.json
+#: bindet. Sonst genuegte ein Satz im alten Schema, und die Pruefung von
+#: ``stand_sha256`` entfiele still (dieselbe Figur wie ``dateien_sha256``,
+#: das erst ab Schema 3 geprueft wird).
+PAKET_SCHEMA_MIT_STANDBINDUNG = 6
 
 #: Ein gewoehnlicher Export: eine Momentaufnahme des Stands. Der
 #: Betriebsagent zeichnet sie — eine Aussage ueber Urheberschaft.
@@ -143,6 +156,23 @@ def dateien_hash(dateien: Dict[str, Any]) -> str:
         sort_keys=True, ensure_ascii=True).encode("ascii")).hexdigest()
 
 
+def stand_hash(stand_json: Dict[str, Any]) -> str:
+    """Der Hash von ``stand.json`` ohne den Block ``anker``, kanonisch.
+
+    Ohne ``anker``, weil stand.json den Hash des Satzes nennt, der diesen
+    Wert traegt; eine Bindung ueber sich selbst gibt es nicht. Gerechnet
+    wird ueber eine JSON-Hin-und-Rueckreise: Der Erzeuger haelt ein Dict mit
+    Python-Werten, der Konsument eines aus der Datei, und beide muessen
+    denselben Hash bilden. NaN und Unendlich gibt es in stand.json nicht;
+    sie wuerden hier zum Fehler, statt still als ungueltiges JSON zu reisen.
+    """
+    inhalt = {str(k): v for k, v in dict(stand_json).items() if k != "anker"}
+    gelesen = json.loads(json.dumps(inhalt, allow_nan=False))
+    return hashlib.sha256(json.dumps(
+        gelesen, sort_keys=True, ensure_ascii=True, separators=(",", ":"),
+        allow_nan=False).encode("ascii")).hexdigest()
+
+
 def _protokolltext(protokoll: Path) -> str:
     return Path(protokoll).read_text(encoding="utf-8")
 
@@ -164,11 +194,14 @@ def ankersatz(
     protokoll: Path, stand: str, manifest_sha256: str, journal_sha256: str,
     *, art: str = ART_MOMENTAUFNAHME, erstellt: Optional[str] = None,
     dateien: Optional[Dict[str, Any]] = None,
+    stand_inhalt: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Der Satz, der ein Paket bindet — ohne ihn irgendwo abzulegen.
 
     ``dateien``: die Dateiliste des Pakets (stand.json["dateien"]); der
     Satz bindet ihren Hash, damit auch Bericht und Seite am Anker haengen.
+    ``stand_inhalt``: stand.json, wie es geschrieben wird, ohne ``anker``;
+    der Satz bindet :func:`stand_hash` davon (Schema 4).
     """
     if art not in ARTEN:
         raise AnkerFehler(f"unbekannte Art {art!r} (bekannt: {list(ARTEN)})")
@@ -184,6 +217,8 @@ def ankersatz(
     }
     if dateien is not None:
         satz["dateien_sha256"] = dateien_hash(dateien)
+    if stand_inhalt is not None:
+        satz["stand_sha256"] = stand_hash(stand_inhalt)
     return satz
 
 
@@ -400,11 +435,27 @@ def pruefe(
             "sich geaendert hat"
         )
     pruefe_reihe(saetze, text, str(paket))
-    if int(satz.get("schema_version") or 0) >= 3:
+    satz_schema = int(satz.get("schema_version") or 0)
+    if satz_schema >= 3:
         soll = satz.get("dateien_sha256")
         if soll != dateien_hash(stand_json.get("dateien") or {}):
             raise AnkerFehler(
                 f"{paket}: die Dateiliste von stand.json ist nicht die, die der "
                 "Anker bindet — eine mitgelieferte Datei wurde nach dem Export "
                 "ersetzt")
+    if (int(stand_json.get("schema_version") or 0) >= PAKET_SCHEMA_MIT_STANDBINDUNG
+            and satz_schema < 4):
+        raise AnkerFehler(
+            f"{paket}: stand.json im Paketschema {stand_json.get('schema_version')} "
+            f"nennt einen Ankersatz im Schema {satz_schema}; ab Paketschema "
+            f"{PAKET_SCHEMA_MIT_STANDBINDUNG} bindet der Satz stand.json selbst "
+            "(Schema 4). Ein Satz ohne diese Bindung liesse jede Zahl, die ohne "
+            "Tagesjournal und Abschlussdateien niemand nachrechnet, ungebunden. "
+            "Ausweg: neu exportieren")
+    if satz_schema >= 4 and satz.get("stand_sha256") != stand_hash(stand_json):
+        raise AnkerFehler(
+            f"{paket}: stand.json ist nicht die, die der Anker bindet — eine "
+            "Angabe darin wurde nach dem Export geaendert (stand_sha256 "
+            f"{stand_hash(stand_json)[:16]}…, der Anker nennt "
+            f"{str(satz.get('stand_sha256'))[:16]}…)")
     return satz

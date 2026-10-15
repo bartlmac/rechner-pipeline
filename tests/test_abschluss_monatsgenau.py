@@ -515,6 +515,10 @@ def _quellen() -> Dict[str, str]:
 LESER = {
     "bestand/abschluss.py::pruefe_abschluss",
     "betrieb/seite.py::_ergaenze_kennzahlen",
+    # Paketschema 6 (ADR-029): die Kennzahlen der Abschluesse im Paket. Bis
+    # dahin rechnete sie nur der Konsument (werkzeuge/falldaten.py), der
+    # jetzt dieselbe Funktion ruft.
+    "betrieb/seite.py::abschluss_kennzahlen",
     "betrieb/tageslauf.py::_fremde_abschluesse",
     "betrieb/tageslauf.py::_pruefe_zahlen_der_zeile",
     "betrieb/tageslauf.py::_abschluss_kennt_eingang",
@@ -530,6 +534,8 @@ LESER = {
 ROH_ANDERES = {
     "bestand/abschluss.py::lies_abschluss": "der eine Leseweg selbst",
     "betrieb/seite.py::stand_modell_mit_bytes": "das Tagesjournal",
+    "betrieb/seite.py::_stands_paket_unter_sperre":
+        "das gepruefte Tagesjournal fuer die Geschaeftsentwicklung (Paketschema 6)",
     "betrieb/tageslauf.py::_pruefe_zahlen_der_zeile": "Stand-Tabellen und Tagesjournal",
     "betrieb/tageslauf.py::_tageslauf_mit_config": "Stand-, Eingangs- und Journaltabellen",
     "betrieb/zugangsprobe.py::vergleiche": "die Tagesjournale der Kopien",

@@ -80,10 +80,12 @@ def test_stands_paket_traegt_stempel_und_berichte(gefuehrt, tmp_path):
     # Die Zahl steht hier ABSICHTLICH als Literal: Der Paketvertrag ist ein
     # Vertrag mit einem Konsumenten ausserhalb dieses Repos (vorzeige-url).
     # Eine Aenderung soll hier auffallen und abgestimmt werden, nicht
-    # stillschweigend mitwandern. Schema 5 seit 2026-09-19: die juengsten
-    # Monatsabschluesse fahren mit (abgestimmt mit vorzeige-url); Schema 4
-    # brachte den Anker (T24-04 Teil 2), den der Konsument verlangt.
-    assert stand["schema_version"] == 5 and stand["stand"] == "2026-02-03"
+    # stillschweigend mitwandern. Schema 6 seit 2026-10-15: Geschaeftsent-
+    # wicklung und Abschlusskennzahlen stehen in stand.json, und der Anker
+    # bindet stand.json (ADR-029, abgestimmt mit vorzeige-url); Schema 5
+    # brachte die juengsten Monatsabschluesse, Schema 4 den Anker (T24-04
+    # Teil 2), den der Konsument verlangt.
+    assert stand["schema_version"] == 6 and stand["stand"] == "2026-02-03"
     # Der Anker liegt AUSSERHALB des Pakets — das ist der Punkt.
     assert stand["anker"]["stand"] == "2026-02-03"
     assert len(stand["anker"]["sha256"]) == 64
@@ -115,6 +117,42 @@ def test_stands_paket_traegt_stempel_und_berichte(gefuehrt, tmp_path):
                     "--anker", str(tmp_path / "anker2")]) == 0
     assert (tmp_path / "p2" / "stand.json").is_file()
     assert (tmp_path / "anker2" / "anker.jsonl").is_file()
+
+
+def test_die_kennzahlen_der_abschluesse_kommen_aus_dem_paket_nicht_aus_der_ablage(
+        gefuehrt, tmp_path, monkeypatch):
+    """Schema 6: Der Export rechnet ``abschluss_kennzahlen`` aus den
+    Abschlussdateien, die er ins Paket gelegt hat. Die Ablage traegt mehr
+    (nach einem Jahr den Vorjahresabschluss, den das Paket nicht mitnimmt);
+    aus ihr entstuende eine Zahl, die niemand nachrechnen kann. Und die
+    Geschaeftsentwicklung ist dieselbe Rechnung wie beim Konsumenten.
+
+    Mutationsprobe: ``ablage.abschluesse`` statt des Paketverzeichnisses
+    uebergeben -> rot (in der kleinen Testwelt gaebe es sonst keinen
+    Unterschied zu sehen, deshalb der Blick auf das Argument)."""
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
+
+    gelesen = []
+    echt = st.abschluss_kennzahlen
+
+    def beobachtet(verzeichnis, abschluesse):
+        gelesen.append(Path(verzeichnis))
+        return echt(verzeichnis, abschluesse)
+
+    monkeypatch.setattr(st, "abschluss_kennzahlen", beobachtet)
+    paket = st.stands_paket(gefuehrt, tmp_path / "paket", anker_verzeichnis=tmp_path / "anker")
+    assert len(gelesen) == 1
+    assert gelesen[0].name == st.PAKET_ABSCHLUESSE_DIR
+    assert gelesen[0].parent.name == ".paket.im-bau", gelesen
+    stand = json.loads((paket / "stand.json").read_text("utf-8"))
+    assert stand["abschluss_kennzahlen"] == echt(paket / st.PAKET_ABSCHLUESSE_DIR,
+                                                 stand["abschluesse"])
+    assert stand["abschluss_kennzahlen"]["aktuell"]["stichtag"] == "2026-02-01"
+    journal = read_portfolio(paket / st.PAKET_JOURNAL, expected_columns=TAGESJOURNAL_NAMES)
+    assert stand["geschaeftsentwicklung"] == st.geschaeftsentwicklung(
+        journal, dt.date(2026, 2, 3), dt.date(2026, 1, 1))
+    assert stand["geschaeftsentwicklung"]["je_zeitraum"]["aktuelles_jahr"]
 
 
 def test_luecken_werden_benannt():

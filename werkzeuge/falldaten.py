@@ -1760,148 +1760,6 @@ def _pruefe_anker(paket: Path, stand: Dict[str, Any],
     return verankerung
 
 
-def _zeitraeume(heute: _dt.date, gefuehrt_seit: _dt.date) -> Dict[str, Dict[str, Any]]:
-    """Die Sichten der Geschaeftsentwicklung, relativ zum Stand des Pakets.
-
-    Ein Zeitraum, der ganz vor dem Betriebsbeginn liegt, traegt
-    ``ausserhalb_betrieb`` — das Journal kann ihn nicht belegen; die Seite
-    zeigt dann einen benannten Platzhalter statt einer Null.
-    """
-    jahr, monat = heute.year, heute.month
-    try:
-        vorjahr_bis = heute.replace(year=jahr - 1)
-    except ValueError:  # 29. Februar
-        vorjahr_bis = heute.replace(year=jahr - 1, day=28)
-    aus = {
-        "letztes_jahr": (_dt.date(jahr - 1, 1, 1), _dt.date(jahr - 1, 12, 31)),
-        # Der VERGLEICHBARE Zeitraum: gleicher Jahresabschnitt im Vorjahr.
-        # Ein ganzes Vorjahr gegen ein angebrochenes Jahr zu stellen, waere
-        # eine Verzerrung, die wie ein Rueckgang aussieht.
-        "vorjahr_bis_heute": (_dt.date(jahr - 1, 1, 1), vorjahr_bis),
-        "aktuelles_jahr": (_dt.date(jahr, 1, 1), heute),
-        "aktueller_monat": (_dt.date(jahr, monat, 1), heute),
-    }
-    return {
-        k: {"von": von.isoformat(), "bis": bis.isoformat(),
-            "ausserhalb_betrieb": bis < gefuehrt_seit}
-        for k, (von, bis) in aus.items()
-    }
-
-
-def _geschaeftsentwicklung(journal: Any, heute: _dt.date,
-                           gefuehrt_seit: _dt.date) -> Dict[str, Any]:
-    """Buchungen je Zeitraum und Vorfallart: Anzahl, Herkunft, Betraege —
-    nachgerechnet aus dem Tagesjournal des Pakets.
-
-    Bis zum Nachzug vom 03.10.2026 schrieb der Erzeuger diesen Block nach
-    stand.json, und die Seite glaubte ihn, obwohl das Journal im selben
-    Paket lag (dieselbe Figur wie ``in_force`` vor T24-04). Jetzt rechnet
-    der Konsument aus den Bytes, deren Hash er geprueft hat; der Erzeuger
-    behauptet nichts mehr darueber.
-
-    Die Betraege sind die des Journals je Betragsart — was das Journal nicht
-    traegt (etwa einen Bruttojahresbeitrag), steht hier auch nicht.
-    """
-    import pandas as pd
-
-    zeitraeume = _zeitraeume(heute, gefuehrt_seit)
-    je_zeitraum: Dict[str, Dict[str, Any]] = {}
-    datum = (pd.to_datetime(journal["buchungsdatum"]) if len(journal)
-             else pd.Series(dtype="datetime64[ns]"))
-    for k, zr in zeitraeume.items():
-        if zr["ausserhalb_betrieb"]:
-            je_zeitraum[k] = {}
-            continue
-        maske = (datum >= pd.Timestamp(zr["von"])) & (datum <= pd.Timestamp(zr["bis"]))
-        teil = journal[maske.values] if len(journal) else journal
-        block: Dict[str, Any] = {}
-        for ereignis, gruppe in teil.groupby("ereignis"):
-            # GEZAEHLT werden Vorfaelle, nicht Journalzeilen: Ein Zugang bucht
-            # seit der Beitragsbuchung zwei Zeilen (Summe und Beitrag).
-            vorfaelle = gruppe.drop_duplicates(subset=["police_id", "ereignis", "status_date"])
-            block[str(ereignis)] = {
-                "anzahl": int(len(vorfaelle)),
-                "zeilen": int(len(gruppe)),
-                "je_herkunft": {str(h): int(n)
-                                for h, n in sorted(vorfaelle["herkunft"].value_counts().items())},
-                "betraege": {str(a): round(float(v), 2)
-                             for a, v in sorted(gruppe.groupby("betrag_art")["betrag"].sum().items())},
-                "betraege_je_herkunft": {
-                    str(h): {str(a): round(float(v), 2)
-                             for a, v in sorted(g2.groupby("betrag_art")["betrag"].sum().items())}
-                    for h, g2 in gruppe.groupby("herkunft")},
-            }
-        je_zeitraum[k] = block
-    return {"zeitraeume": zeitraeume, "je_zeitraum": je_zeitraum,
-            "gelesen_aus": ["tagesjournal.parquet (Stands-Paket)"]}
-
-
-def _abschluss_kennzahlen(abschluesse_dir: Path,
-                          abschluesse: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Bestandskennzahlen aus den Monatsabschluessen, die das Paket TRAEGT.
-
-    Der juengste Abschluss und der zwoelf Monate davor — der aeltere nur,
-    wenn seine Datei im Paket liegt. Das Paket traegt zwoelf Monate
-    (``PAKET_ABSCHLUESSE_ANZAHL``); der Abschluss zwoelf Monate vor dem
-    juengsten ist damit der dreizehnte und fehlt. Er wird dann weggelassen
-    und nicht aus einer anderen Quelle ersetzt — der Erzeuger hatte ihn
-    frueher aus der Ablage gelesen, und die Seite glaubte die Zahl.
-
-    Je Abschluss steht die Konvention des Deckungskapitals dabei; ein
-    Vergleich ueber zwei Konventionen ist keine Veraenderung des Bestands.
-    Gelesen wird jede Datei ueber ``bestand.abschluss.lies_abschluss``, die
-    EINE Stelle, die die Konvention sagt (``models.bestand.
-    abschluss_konvention``): die Spalte ``bewertungskonvention``, bei ihrem
-    Fehlen die Jahreszeile (geschrieben vor der Umstellung), ``None`` fuer
-    einen leeren Abschluss. Vorher las die Seite eine Spalte
-    ``dk_konvention``, die kein Abschluss traegt, und nannte so jeden
-    Abschluss "jahreszeile" — Vorjahr und Stand verglichen sich gleich
-    falsch, ein Wechsel blieb unsichtbar.
-    """
-    from rechner_pipeline.bestand.abschluss import lies_abschluss
-    from rechner_pipeline.models.bestand import AbschlussKonventionFehler
-
-    liegen = {str(a.get("stichtag")): a for a in abschluesse
-              if a.get("datei") and (abschluesse_dir / str(a["datei"])).is_file()}
-    if not liegen:
-        return {}
-    juengster = max(liegen)
-    j = _dt.date.fromisoformat(juengster)
-    try:
-        vorjahr = j.replace(year=j.year - 1).isoformat()
-    except ValueError:
-        vorjahr = j.replace(year=j.year - 1, day=28).isoformat()
-    aus: Dict[str, Any] = {}
-    for rolle, stichtag in (("aktuell", juengster), ("vorjahr", vorjahr)):
-        if stichtag not in liegen:
-            continue
-        datei = str(liegen[stichtag]["datei"])
-        try:
-            df, konvention = lies_abschluss(abschluesse_dir / datei)
-        except AbschlussKonventionFehler as exc:
-            raise FalldatenFehler(f"{datei}: {exc}") from exc
-        je_produkt = {
-            str(produkt): {
-                "vertraege": int(len(teil)),
-                "jahresbeitrag": round(float(teil["jahresbeitrag"].sum()), 2),
-                "deckungskapital": round(float(teil["deckungskapital"].sum()), 2),
-            }
-            for produkt, teil in df.groupby("produkt")
-        }
-        aus[rolle] = {
-            "stichtag": stichtag,
-            "datei": f"abschluesse/{datei}",
-            "dk_konvention": konvention.name,
-            "je_produkt": dict(sorted(je_produkt.items())),
-            "gesamt": {
-                "vertraege": int(len(df)),
-                "jahresbeitrag": round(float(df["jahresbeitrag"].sum()), 2),
-                "deckungskapital": round(float(df["deckungskapital"].sum()), 2),
-            },
-        }
-    return aus
-
-
 # --------------------------------------------------------------------------- #
 # Die Belegkette: welche Datei des Falls zu welcher Station gehoert
 # --------------------------------------------------------------------------- #
@@ -2415,17 +2273,21 @@ def betrieb(paket: Optional[Path],
         return {"vorhanden": False}
     paket = Path(paket)
     stand = _json(paket / "stand.json")
-    # Schema 5: das Paket traegt Tagesjournal (seit 3), Anker (seit 4) und
-    # die juengsten Monatsabschluesse. Ein aelteres Paket belegt jeweils
+    # Schema 6: das Paket traegt Tagesjournal (seit 3), Anker (seit 4), die
+    # juengsten Monatsabschluesse (seit 5) und die zwei abgeleiteten Bloecke,
+    # an den Anker gebunden (seit 6). Ein aelteres Paket belegt jeweils
     # einen Teil seiner eigenen Zahlen nicht und wird deshalb nicht
     # veroeffentlicht — wie schon die Erstfassung ohne Belegdateien.
-    if not isinstance(stand, dict) or stand.get("schema_version") != 5:
+    from rechner_pipeline.betrieb import seite as _seite
+
+    if not isinstance(stand, dict) or stand.get("schema_version") != _seite.PAKET_SCHEMA_VERSION:
         raise FalldatenFehler(
-            f"{paket}: kein Stands-Paket (stand.json mit schema_version 5 fehlt; "
-            "ein aelteres Paket nennt keinen Anker oder keine Abschluesse und "
-            "belegt damit einen Teil seiner Zahlen nicht — die Protokollkette "
-            "schuetzt ihre letzte Zeile nicht, und genau aus ihr leitet "
-            "stand.json ab) — ein neuer Export heilt es: "
+            f"{paket}: kein Stands-Paket (stand.json mit schema_version "
+            f"{_seite.PAKET_SCHEMA_VERSION} fehlt; "
+            "ein aelteres Paket nennt keinen Anker, keine Abschluesse oder bindet "
+            "stand.json nicht und belegt damit einen Teil seiner Zahlen nicht — "
+            "die Protokollkette schuetzt ihre letzte Zeile nicht, und genau aus "
+            "ihr leitet stand.json ab) — ein neuer Export heilt es: "
             "python -m rechner_pipeline.betrieb.seite --stand <daten> "
             "--paket <ziel> --anker <verzeichnis>"
         )
@@ -2444,20 +2306,33 @@ def betrieb(paket: Optional[Path],
             protokoll_roh = _pruefe_stands_paket(eingefroren, stand, prov)
             verankerung = _pruefe_anker(eingefroren, stand, anker_datei, fall, protokoll_roh,
                                         ort=paket)
-            # Nachgerechnet, nicht uebernommen: Geschaeftsentwicklung und
+            # Nachgerechnet, nicht geglaubt: Geschaeftsentwicklung und
             # Bestandskennzahlen aus den Bytes, die eben gegen ihren Hash
-            # gingen. stand.json behauptet darueber nichts.
+            # gingen, mit DENSELBEN Funktionen wie der Export (Schema 6).
+            # stand.json traegt beide Bloecke fuer den, der die Parquet-
+            # Dateien nicht hat; hier liegen sie, also muss es gleich sein.
             from rechner_pipeline.bestand.parquet_io import read_portfolio
-            from rechner_pipeline.betrieb.seite import PAKET_ABSCHLUESSE_DIR, PAKET_JOURNAL
             from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
 
-            journal = read_portfolio(eingefroren / PAKET_JOURNAL,
+            journal = read_portfolio(eingefroren / _seite.PAKET_JOURNAL,
                                      expected_columns=TAGESJOURNAL_NAMES)
-            entwicklung = _geschaeftsentwicklung(
-                journal, _dt.date.fromisoformat(str(stand.get("stand"))),
-                _dt.date.fromisoformat(str(stand.get("gefuehrt_seit"))))
-            kennzahlen = _abschluss_kennzahlen(
-                eingefroren / PAKET_ABSCHLUESSE_DIR, list(stand.get("abschluesse") or []))
+            try:
+                entwicklung = _seite.geschaeftsentwicklung(
+                    journal, _dt.date.fromisoformat(str(stand.get("stand"))),
+                    _dt.date.fromisoformat(str(stand.get("gefuehrt_seit"))))
+                kennzahlen = _seite.abschluss_kennzahlen(
+                    eingefroren / _seite.PAKET_ABSCHLUESSE_DIR,
+                    list(stand.get("abschluesse") or []))
+            except _seite.SeiteError as exc:
+                raise FalldatenFehler(f"{paket}: {exc}") from exc
+            for name, gerechnet in (("geschaeftsentwicklung", entwicklung),
+                                    ("abschluss_kennzahlen", kennzahlen)):
+                if stand.get(name) != gerechnet:
+                    raise FalldatenFehler(
+                        f"{paket}: der Block {name!r} in stand.json steht so nicht "
+                        "in den Belegdateien des Pakets — nachgerechnet aus "
+                        "Tagesjournal und Abschluessen ergibt sich etwas anderes. "
+                        "Veroeffentlicht wird nur, was folgt")
         except FalldatenFehler as exc:
             raise FalldatenFehler(str(exc).replace(str(eingefroren), str(paket))) from exc
     return {

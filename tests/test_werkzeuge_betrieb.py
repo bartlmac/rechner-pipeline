@@ -42,10 +42,11 @@ def _erfunden(tmp_path: Path, pb1: str = "gruen") -> Path:
     paket = tmp_path / "erfunden"
     paket.mkdir()
     stand = {
-        # Schema der GELTENDEN Fassung (4 seit T24-04 Teil 2): Das Paket
-        # soll an den Belegen scheitern, nicht schon an der Versionszahl —
-        # sonst prueft der Test den Schema-Pin statt die Belegpflicht.
-        "schema_version": 5, "stand": "2026-09-05", "gefuehrt_seit": "2026-01-01",
+        # Schema der GELTENDEN Fassung: Das Paket soll an den Belegen
+        # scheitern, nicht schon an der Versionszahl — sonst prueft der Test
+        # den Schema-Pin statt die Belegpflicht.
+        "schema_version": st.PAKET_SCHEMA_VERSION, "stand": "2026-09-05",
+        "gefuehrt_seit": "2026-01-01",
         "bestand": {"in_force": 2556, "je_produkt": {"klv": 1893, "bu": 663},
                     "uebernommen_in_force": 818, "policiert_beginn_folgt": 2},
         "neugeschaeft": {"seit_betriebsbeginn": 99, "woche": {}, "woche_summe": 0},
@@ -304,19 +305,20 @@ def test_das_paket_traegt_monatsberichte_und_den_jahresbericht_bezeugt(paket: Pa
         paket / "jahresbericht_2025.html").read_text(encoding="utf-8")
 
 
-def test_geschaeftsentwicklung_und_kennzahlen_rechnet_der_konsument_aus_dem_paket(paket):
+def test_geschaeftsentwicklung_und_kennzahlen_stehen_im_paket_und_der_konsument_rechnet_nach(paket):
     """Die Geschaeftsentwicklung je Zeitraum und die Bestandskennzahlen der
-    Abschluesse stehen NICHT in stand.json; die Darstellung rechnet sie aus
-    dem Tagesjournal und den Abschluss-Dateien des Pakets nach, deren Hash
-    sie vorher geprueft hat (Nachzug 03.10.2026: auf dem Ast der Vorzeige
-    stand beides als geglaubte Zahl in stand.json).
+    Abschluesse stehen seit Schema 6 in stand.json: Veroeffentlicht wird
+    das Paket ohne Tagesjournal und Abschlussdateien, und ohne sie gaebe es
+    die Bloecke dort nicht (ADR-029). Wer die Dateien hat, rechnet sie mit
+    DENSELBEN Funktionen nach; die Darstellung zeigt nur, was gleich ist.
 
     Mutationsprobe: Der Monat ist eine echte Teilmenge des Jahres; die
     Zeilen summieren sich zu den Buchungen des Journals; ein Zeitraum vor
     dem Betriebsbeginn ist ein benannter Platzhalter, keine Null."""
     stand = json.loads((paket / "stand.json").read_text("utf-8"))
-    assert "geschaeftsentwicklung" not in stand and "abschluss_kennzahlen" not in stand
     b = _mit_anker(paket)
+    assert stand["geschaeftsentwicklung"] == b["geschaeftsentwicklung"]
+    assert stand["abschluss_kennzahlen"] == b["abschluss_kennzahlen"]
     ge = b["geschaeftsentwicklung"]
     zr = ge["zeitraeume"]
     assert zr["letztes_jahr"] == {"von": "2025-01-01", "bis": "2025-12-31", "ausserhalb_betrieb": True}
@@ -352,7 +354,7 @@ def test_ein_leeres_journal_ergibt_leere_zeitraeume():
     from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
 
     leer = pd.DataFrame({n: pd.Series(dtype="object") for n in TAGESJOURNAL_NAMES})
-    assert fd._geschaeftsentwicklung(leer, dt.date(2026, 2, 3), dt.date(2026, 1, 1))["je_zeitraum"] == {
+    assert st.geschaeftsentwicklung(leer, dt.date(2026, 2, 3), dt.date(2026, 1, 1))["je_zeitraum"] == {
         "letztes_jahr": {}, "vorjahr_bis_heute": {}, "aktuelles_jahr": {}, "aktueller_monat": {}}
 
 
@@ -443,7 +445,7 @@ def test_eine_naht_der_bewertungskonvention_aus_den_abschlussdateien_meldet_die_
         d.mkdir()
         vorjahr.to_parquet(d / "abschluss_2025-10-01.parquet")
         jetzt.to_parquet(d / "abschluss_2026-10-01.parquet")
-        return fd._abschluss_kennzahlen(d, [
+        return st.abschluss_kennzahlen(d, [
             {"stichtag": "2025-10-01", "datei": "abschluss_2025-10-01.parquet"},
             {"stichtag": "2026-10-01", "datei": "abschluss_2026-10-01.parquet"}])
 
