@@ -586,7 +586,7 @@ und die Auslieferungsabnahme A-B1 bindet den Ankersatz. Wer die
 Parquet-Dateien hat, rechnet beide Blöcke mit denselben Funktionen nach
 (`betrieb.seite.geschaeftsentwicklung` und `abschluss_kennzahlen`) und
 weist ein Paket ab, dessen Blöcke davon abweichen. Begründung und
-Bedrohungsmodell: ADR-029.
+Bedrohungsmodell: [ADR-029](../architektur/adr-029-taeglicher-betriebsteil-der-seite.md).
 
 Die Veröffentlichung nach außen bleibt menschlich (werkzeuge/README.md);
 die Regie-Sperre gilt unverändert. Automatisch veröffentlicht wird

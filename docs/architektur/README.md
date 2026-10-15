@@ -74,6 +74,7 @@ Stelle arbeitet, die sie regeln.
 | [020](adr-020-ein-erzeuger-bestand-aus-dem-zugangsstrom.md) | Der Bestand entsteht aus dem Strom der Zugänge, nicht aus einem gezogenen Anfangsbestand | gilt |
 | [022](adr-022-zugangsabnahme-a-b2.md) | Der Betrieb nimmt den Zugang eines übernommenen Bestands mit einer Probe ab | gilt |
 | [023](adr-023-herabsetzung-und-teilkuendigung.md) | Herabsetzung und Teilkündigung sind getrennte Geschäftsvorfälle | gilt |
+| [029](adr-029-taeglicher-betriebsteil-der-seite.md) | Die Seite zeigt jeden Abend den geführten Tag: Der Server schiebt Daten, GitHub prüft und rendert sie | in den Grundzügen entschieden, fünf Einzelfragen offen |
 
 **Repository und Entwicklung**
 
