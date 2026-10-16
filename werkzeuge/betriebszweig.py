@@ -12,7 +12,8 @@ Zwei Pruefungen dieses Moduls laufen dort, beide halten den Bau an:
   ``_``, ``.`` und ``-``: Er geht als Verweis in die Seite (Entscheid des
   Maintainers 16.10.2026). Geprueft werden die Dateien, nicht die Liste in
   ``stand.json``; die nennt auch die Abschluesse unter ``abschluesse/``, die
-  nicht im Zweig liegen. Kein Verzeichnis ``.github`` an keiner Stelle: Ein Push
+  nicht im Zweig liegen. Jede HTML-Datei des Pakets ist ohne Skript und
+  laedt nichts von aussen (``html_befunde``). Kein Verzeichnis ``.github`` an keiner Stelle: Ein Push
   auf ``betrieb`` startet die Workflows, die im Stand von ``betrieb`` liegen.
   Der Workflow in ``main`` kann das nicht verhindern, aber er liefert dann
   nicht aus, und der Lauf steht sichtbar rot da (ADR-029, Variante
@@ -31,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import json
 import re
 import sys
@@ -45,6 +47,22 @@ PAKET_ENDUNGEN = (".html", ".json", ".jsonl")
 #: Die Zeichen eines Dateinamens im Paket; ``unternehmensseite`` haelt jeden
 #: Namen, der in einen Verweis geht, noch einmal dagegen.
 DATEINAME = re.compile(r"[a-z0-9_.-]+")
+
+# Was in keiner HTML-Datei des Pakets stehen darf (Entscheid des Maintainers
+# 16.10.2026, Auftrag A-009). Gelesen wird der Text, kein geparstes Dokument:
+# Ein Parser, der an einer Stelle anders liest als der Browser, saehe ein
+# anderes Dokument, etwa einen Kommentar, der fuer ihn weiterlaeuft, oder
+# ein Stylesheet, das fuer den Browser schon zu Ende ist. Jedes Muster trifft
+# deshalb lieber zu viel als zu wenig.
+_ELEMENT = re.compile(r"<(script|iframe|frame|frameset|object|embed|applet|form|base)(?![a-z0-9-])")
+_EREIGNIS = re.compile(r"(?<=[\s/\"'])(on[a-z]+)\s*=")
+_REFRESH = re.compile(r"http-equiv\s*=\s*[\"']?\s*refresh")
+_ADRESSE = re.compile(r"(?<=[\s/\"':])(src|srcset|href|poster|data|background|action|formaction"
+                      r"|ping|to|from|by|values)\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s>]*))")
+_CSS_URL = re.compile(r"url\(\s*[\"']?([^\"')]*)")
+#: Eine Adresse mit Schema oder ab ``//``; Steuerzeichen und Leerzeichen davor
+#: uebergeht der Browser.
+_VON_AUSSEN = re.compile(r"[\x00-\x20]*(?:[a-z][a-z0-9+.-]*:|[/\\]{2})")
 #: Der Betriebsteil im gebauten Baum (unternehmensseite.BETRIEB_DIR).
 BETRIEB_DIR = "betrieb"
 
@@ -86,7 +104,55 @@ def zweig(wurzel: Path) -> List[str]:
             befunde.append(f"{rel}: steht nicht in stand.json")
         elif not teile[1].endswith(PAKET_ENDUNGEN):
             befunde.append(f"{rel}: keine oeffentliche Datei des Pakets")
+        else:
+            befunde += [f"{rel}: {b}" for b in _paket_datei(wurzel / rel)]
     return befunde
+
+
+def html_befunde(text: str) -> List[str]:
+    """Was eine HTML-Datei des Pakets nicht enthalten darf.
+
+    Skript: ein Element ``script``, ein Attribut ``on…=``, ``javascript:``.
+    Elemente, die ein fremdes Dokument einbetten, etwas absenden oder die
+    Adresse der Seite umstellen: iframe, frame, frameset, object, embed,
+    applet, form, base; dazu meta refresh. Und jede Quelle von aussen: eine
+    Adresse mit Schema oder ab ``//`` in einem Attribut, das eine Adresse
+    traegt, oder in ``url(…)``. Auch ``data:`` zaehlt, denn eine solche Adresse
+    kann ein Stylesheet tragen, das selbst von aussen laedt; ebenso ein
+    Verweis ``<a href>`` nach aussen, weil ihn vom ``<link href>`` nur ein
+    Parser unterscheiden koennte. ``@import``, ``image-set(`` und der Backslash
+    sind Wege, in CSS eine Adresse ohne ``url(`` oder verkleidet zu laden.
+
+    Zeichenreferenzen werden vorher aufgeloest und Tab und Zeilenumbruch
+    entfernt, wie der Browser es in Attributen tut; Elemente und Attributnamen
+    werden im Text selbst gesucht, denn aus einer Zeichenreferenz wird nie ein
+    Tag."""
+    roh = text.lower()
+    flach = re.sub(r"[\t\n\r]", "", html.unescape(text)).lower()
+    befunde = [f"<{m.group(1)}>" for m in _ELEMENT.finditer(roh)]
+    befunde += [f"Attribut {m.group(1)}" for m in _EREIGNIS.finditer(roh)]
+    if "javascript:" in flach:
+        befunde.append("javascript:")
+    if _REFRESH.search(flach):
+        befunde.append("meta refresh")
+    for m in _ADRESSE.finditer(flach):
+        wert = next(g for g in m.groups()[1:] if g is not None)
+        befunde += [f"{m.group(1)}={a} (von aussen)" for a in re.split(r"[\s,;]+", wert)
+                    if _VON_AUSSEN.match(a)]
+    befunde += [f"url({m.group(1).strip()}) (von aussen)" for m in _CSS_URL.finditer(flach)
+                if _VON_AUSSEN.match(m.group(1).strip())]
+    befunde += [wort for wort in ("@import", "image-set(", "\\") if wort in flach]
+    return sorted(set(befunde))
+
+
+def _paket_datei(pfad: Path) -> List[str]:
+    """Befunde zum Inhalt einer Datei des Pakets."""
+    if pfad.suffix != ".html":
+        return []
+    try:
+        return html_befunde(pfad.read_bytes().decode("utf-8"))
+    except UnicodeDecodeError:
+        return ["nicht in UTF-8"]
 
 
 def _sha(pfad: Path) -> str:
@@ -114,6 +180,14 @@ def rahmen(rahmen_baum: Path, seite: Path) -> List[str]:
     return befunde
 
 
+def _zeile(befund: str) -> str:
+    """Ein Befund als EINE Zeile im Protokoll des Workflows. Er traegt Namen
+    und Werte aus dem Zweig; ein Steuerzeichen darin wird sichtbar
+    (``\\x0a``), statt eine Zeile zu beginnen, die der Runner als Befehl
+    (``::…``) laese."""
+    return re.sub(r"[\x00-\x1f\x7f]", lambda m: f"\\x{ord(m.group()):02x}", befund)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(prog="python werkzeuge/betriebszweig.py",
                                 description=__doc__.splitlines()[0])
@@ -129,7 +203,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     else:
         befunde, titel = rahmen(Path(args.rahmen), Path(args.seite)), "Rahmen"
     for b in befunde:
-        print(f"  BEFUND {b}")
+        print(f"  BEFUND {_zeile(b)}")
     print(f"{titel}: " + ("mit Befund, nicht ausgeliefert" if befunde else "ohne Befund"))
     return 1 if befunde else 0
 

@@ -487,8 +487,10 @@ Der Workflow läuft bei einem Push auf `main`, von Hand und nach Zeitplan
 oder auslässt); ein Push auf den Zweig `betrieb` startet ihn nicht. Er nimmt
 den Rahmen aus `main`, prüft den Zweig `betrieb` (`betriebszweig.py zweig`:
 nur `paket/` mit den öffentlichen Dateien, ihre Namen nur aus a-z, 0-9,
-`_`, `.` und `-`, dazu `anker.jsonl` und `A-B1.json`, kein `.github/`),
-holt den Code des Commits aus `CODESTAND` und baut damit den Betriebsteil
+`_`, `.` und `-`, dazu `anker.jsonl` und `A-B1.json`, kein `.github/`; jede
+HTML-Datei des Pakets ohne Skript, ohne eingebettetes oder absendendes
+Element, ohne meta refresh und ohne eine Adresse von außen, auch nicht als
+Verweis), holt den Code des Commits aus `CODESTAND` und baut damit den Betriebsteil
 (`auftritt.py --teil betrieb --oeffentliches-paket`, mit Wache
 und Seitenprüfung). Danach prüft `betriebszweig.py rahmen`, dass außerhalb
 von `betrieb/` jede Datei wie in `main` ist. Erst dann baut Jekyll

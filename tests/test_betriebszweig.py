@@ -92,6 +92,90 @@ def test_ein_dateiname_im_paket_hat_nur_a_z_0_9_und_unterstrich_punkt_strich(tmp
     assert bz.main(["zweig", str(zweig)]) == 1
 
 
+#: Ein Bericht, wie der Tagesbetrieb ihn schreibt: Grafik als SVG mit Verweisen
+#: auf sich selbst, ein Verweis auf einen anderen Bericht, Namensraeume mit
+#: http-Adressen, Stylesheet, eine Adresse im Text. Nichts davon ist ein Befund.
+BERICHT = """<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><title>Bestandsbericht</title>
+<style>table { border-collapse: collapse } td.zahl { text-align: right }</style></head>
+<body><h1>Bestandsbericht</h1><p>Quelle der Daten: https://example.org, Stand online.</p>
+<p><a href="../berichte/bestandsbericht_2026-01-01.html">Vormonat</a></p>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1">
+<metadata><rdf:RDF><cc:Work><dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+</cc:Work></rdf:RDF></metadata><defs><style type="text/css">*{stroke-linejoin: round}</style>
+<path id="m1" d="M 0 0 L 1 1"/><clipPath id="p1"><rect x="0" y="0" width="1" height="1"/></clipPath></defs>
+<g clip-path="url(#p1)"><use xlink:href="#m1" x="1" y="2" style="fill: #2f5d62"/></g></svg>
+FUSS</body></html>
+"""
+
+
+@pytest.mark.parametrize("schnipsel, befund", [
+    ("<script>alert(1)</script>", "<script>"),
+    ("<SCRIPT SRC=x.js></SCRIPT>", "<script>"),
+    ("<img src=x.png onerror=alert(1)>", "Attribut onerror"),
+    ('<img src="x.png"onerror="alert(1)">', "Attribut onerror"),
+    ("<svg onload=alert(1)></svg>", "Attribut onload"),
+    ('<a href="javascript:alert(1)">x</a>', "javascript:"),
+    ('<a href="java&#115;cript&colon;alert(1)">x</a>', "javascript:"),
+    ('<a href="java\tscript:alert(1)">x</a>', "javascript:"),
+    ("<iframe src=x.html></iframe>", "<iframe>"),
+    ("<object data=x></object>", "<object>"),
+    ("<embed src=x>", "<embed>"),
+    ("<form action=x><button>x</button></form>", "<form>"),
+    ("<base href=../>", "<base>"),
+    ('<meta http-equiv="Refresh" content="0; url=../">', "meta refresh"),
+    ('<img src="https://example.org/x.png">', "src=https://example.org/x.png (von aussen)"),
+    ('<img src="//example.org/x.png">', "src=//example.org/x.png (von aussen)"),
+    ('<img src="&#104;ttps://example.org/x.png">', "src=https://example.org/x.png (von aussen)"),
+    ('<img src="\x01https://example.org/x.png">', "src=\x01https://example.org/x.png (von aussen)"),
+    ('<img srcset="a.png 1x, https://example.org/b.png 2x">', "srcset=https://example.org/b.png (von aussen)"),
+    ('<img src="data:image/png;base64,AAAA">', "src=data:image/png (von aussen)"),
+    ('<link rel="stylesheet" href="https://example.org/s.css">', "href=https://example.org/s.css (von aussen)"),
+    ('<svg><use xlink:href="https://example.org/s.svg#a"/></svg>', "href=https://example.org/s.svg#a (von aussen)"),
+    ('<a href="https://example.org/">nach aussen</a>', "href=https://example.org/ (von aussen)"),
+    ('<svg><animate attributeName="href" to="https://example.org/x"/></svg>', "to=https://example.org/x (von aussen)"),
+    ('<div style="background: url(https://example.org/x.png)">x</div>', "url(https://example.org/x.png) (von aussen)"),
+    ("<style>@import 'zusatz.css';</style>", "@import"),
+    ("<p style=\"background: image-set('x.png' 1x)\">x</p>", "image-set("),
+    ("<style>p { background: \\75 rl(x.png) }</style>", "\\"),
+    # Ein Parser, der anders liest als der Browser: Der Kommentar endet fuer den
+    # Browser bei --!>, im SVG ist <style> kein reiner Text.
+    ("<!-- --!><img src=x onerror=alert(1)> -->", "Attribut onerror"),
+    ('<svg><style><img src="https://example.org/x"></style></svg>', "src=https://example.org/x (von aussen)"),
+])
+def test_ein_html_des_pakets_ist_ohne_skript_und_laedt_nichts_von_aussen(tmp_path, schnipsel, befund):
+    """Die HTML-Dateien des Pakets gehen byteweise auf die Seite; was darin
+    steht, schreibt ein Server, nicht dieser Code (Entscheid des Maintainers
+    16.10.2026, Weg 1: der Workflow prueft, statt neu zu rendern).
+    Positivkontrolle: ein Bericht, wie der Tagesbetrieb ihn schreibt, ist ohne
+    Befund. Mit einem Schnipsel darin haelt der Zweig an."""
+    zweig = _zweig(tmp_path / "zweig")
+    bericht = zweig / "paket" / "index.html"
+    bericht.write_text(BERICHT.replace("FUSS", ""), encoding="utf-8")
+    assert bz.zweig(zweig) == []
+    bericht.write_text(BERICHT.replace("FUSS", schnipsel), encoding="utf-8")
+    assert f"paket/index.html: {befund}" in bz.zweig(zweig)
+    assert bz.main(["zweig", str(zweig)]) == 1
+
+
+def test_ein_html_des_pakets_ist_utf_8(tmp_path):
+    zweig = _zweig(tmp_path / "zweig")
+    (zweig / "paket" / "index.html").write_bytes("<p>Bestand zum 1. März</p>".encode("latin-1"))
+    assert bz.zweig(zweig) == ["paket/index.html: nicht in UTF-8"]
+
+
+def test_ein_befund_bleibt_eine_zeile_im_protokoll(tmp_path, capsys):
+    """Befunde tragen Namen und Werte aus dem Zweig. Ein Zeilenumbruch darin
+    beginnt keine Zeile im Protokoll des Workflows, die der Runner als Befehl
+    (``::…``) laese."""
+    zweig = _zweig(tmp_path / "zweig")
+    (zweig / "paket" / "x\n::error::y.html").write_text("x", encoding="utf-8")
+    assert bz.main(["zweig", str(zweig)]) == 1
+    zeilen = capsys.readouterr().out.splitlines()
+    assert not [z for z in zeilen if z.startswith("::")], zeilen
+    assert any("paket/x\\x0a::error::y.html" in z for z in zeilen), zeilen
+
+
 def test_ausserhalb_von_betrieb_gleicht_der_baum_dem_rahmen(tmp_path):
     """Nur betrieb/ darf der Bau des Abends schreiben. Eine geaenderte, eine
     neue und eine fehlende Datei des Rahmens sind je ein Befund; ein Ordner
