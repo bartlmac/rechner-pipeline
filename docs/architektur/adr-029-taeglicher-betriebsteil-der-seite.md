@@ -5,9 +5,12 @@
 Betriebsteil, Takt 23:30, A-B1 durch die Routine mit dem
 Simulationsschlüssel von `mensch/betrieb`. Die fünf Einzelfragen unter
 „Einzelentscheide“ entschied er am 2026-10-15, alle wie empfohlen; die
-fünfte (e) hatte sich erst bei der Umsetzung ergeben. Die sechste (f),
-unter welcher Ordnungslinie die Routine zeichnet, entschied er am
-2026-10-16. Was umgesetzt ist, steht unter „Folgen“.
+fünfte (e) hatte sich erst bei der Umsetzung ergeben. Am 2026-10-16
+entschied er die sechste (f), unter welcher Ordnungslinie die Routine
+zeichnet, und die siebte (g), was der Workflow am HTML des Pakets prüft.
+Frage g kam aus der Prüfung vor der Veröffentlichung; mit ihr ist die
+Aussage berichtigt, der Server liefere nur Daten. Was umgesetzt ist,
+steht unter „Folgen“.
 
 ## Kontext
 
@@ -41,7 +44,8 @@ Zwei Eigenschaften des bestehenden Aufbaus bestimmen die Lösung:
 ## Entscheidung
 
 Der Server schiebt Daten, GitHub prüft und rendert sie mit festgelegtem
-Code.
+Code. Ausgenommen sind die Tagesseite „Bestand heute“ (`index.html`) und
+die Berichte des Pakets: Sie kommen als HTML vom Server (Entscheid g).
 
 **Auf dem Server, 23:30.** Ein Timer `betrieb-seite.timer` startet eine
 Routine. Sie hält bei jedem Fehler an und schiebt dann nichts:
@@ -118,10 +122,18 @@ sagt das.
   Zweig zu schieben, wurde abgewiesen (GH013).
 * ausliefern: Die Umgebung `github-pages` liefert nur aus `main`. Der
   Workflow läuft nie bei Push auf `betrieb`.
-* Code oder HTML einschleusen: Der Server liefert nur Daten. Gerendert
-  wird mit dem Code aus `CODESTAND`, und der steht in `main`.
+* Code einschleusen: Gerendert wird mit dem Code aus `CODESTAND`, und der
+  steht in `main`.
 * Pull Requests anlegen oder genehmigen lassen: Actions dürfen das nicht,
   das Token der Actions ist standardmäßig nur lesend.
+
+**Berichtigt am 2026-10-16:** Hier stand bis dahin auch, der
+Schlüsselhalter könne kein HTML einschleusen, weil der Server nur Daten
+liefere. Das stimmt nicht. `werkzeuge/unternehmensseite.py` (`stand()`)
+übernimmt die Tagesseite `index.html` und die Berichte des Pakets
+byteweise auf die Seite und hält sie nur gegen ihre Prüfsumme in
+`stand.json`. Wer den Server beherrscht, schreibt das HTML und die
+Prüfsummen. Was der Workflow an diesem HTML prüft, regelt Entscheid g.
 
 **Was nur sichtbar ist, nicht verhindert:** Workflow-Dateien in den
 Zweigen, die der Schlüssel schreiben darf (Entscheid a).
@@ -129,15 +141,19 @@ Zweigen, die der Schlüssel schreiben darf (Entscheid a).
 **Was der Workflow prüft:** jede Datei unter `paket/` gegen ihre
 Prüfsumme in `stand.json`; den genannten Satz in `anker.jsonl`, die
 Bindung des Satzes an die Dateiliste und an `stand.json`; die A-B1 in
-Struktur, `snapshot_sha256` und Bindung an den Satz. Die Signaturen prüft
-er nicht (Entscheid d). Er rechnet die Blöcke nicht nach, die nur Journal
-und Abschlüsse tragen; dafür bindet sie der Satz.
+Struktur, `snapshot_sha256` und Bindung an den Satz; jede HTML-Datei des
+Pakets auf Skript und aktive Inhalte und jeden Dateinamen des Pakets
+(Entscheid g). Die Signaturen prüft er nicht (Entscheid d). Er rechnet die
+Blöcke nicht nach, die nur Journal und Abschlüsse tragen; dafür bindet sie
+der Satz.
 
 ## Verworfene Wege
 
 * **Fertiges HTML vom Server.** Ging ohne Änderung am Code. Der Workflow
   müsste aber den gerenderten Seiten glauben, und wer den Server
   beherrscht, könnte beliebiges HTML auf die Seite bringen, auch Skript.
+  Die Tagesseite und die Berichte des Pakets kommen trotzdem als HTML vom
+  Server; was der Workflow an ihnen prüft, steht unter Entscheid g.
 * **Dasselbe Repository wie der Code.** Der Schreibschlüssel läge im
   Repository des Codes. Entschieden am 2026-10-09: eigenes Repository.
 * **Ziehen über das Tailnet.** GitHub holt die Daten vom Server. Dafür
@@ -155,8 +171,8 @@ und Abschlüsse tragen; dafür bindet sie der Satz.
 
 ## Einzelentscheide
 
-Je Frage die Wege, die Empfehlung und der Entscheid des Maintainers
-vom 2026-10-15.
+Je Frage die Wege und der Entscheid des Maintainers, für a bis e mit
+Empfehlung. a bis e entschied er am 2026-10-15, f und g am 2026-10-16.
 
 ### a) Workflow-Dateien in den Zweigen, die der Schlüssel schreibt
 
@@ -298,6 +314,24 @@ gehört zur Laufzeit und beginnt mit einem eigenen ersten Glied
 unter der Linie, unter der der Fall gezeichnet ist. Den Ort tragen die
 Einstellungen der Routine (`LINIE`).
 
+### g) Das HTML des Pakets
+
+Die Tagesseite „Bestand heute“ (`index.html`) rendert der Export auf dem
+Server, die Berichte des Pakets stammen aus den Abschlüssen der Ablage.
+Der Workflow übernimmt beide byteweise (Berichtigung unter
+„Bedrohungsmodell“). Zwei Wege standen zur Wahl: Der Workflow prüft jede
+HTML-Datei des Pakets (Weg 1), oder er rendert „Bestand heute“ selbst
+neu, mit dem Code aus `CODESTAND` (Weg 2).
+
+**Entschieden (Maintainer, 2026-10-16): Weg 1.** Der Workflow prüft jede
+HTML-Datei des Pakets. Sie darf kein `script` enthalten, kein Attribut
+`on…=`, kein `javascript:`, keines der Elemente `iframe`, `object`,
+`embed`, `form` und `base`, kein `meta refresh` und keine externe Quelle.
+Jeder Dateiname muss ganz auf `^[a-z0-9_.-]+$` passen. Bei einem Befund
+liefert der Workflow nicht aus. Die Prüfung verhindert Skript auf der
+Seite, aber keinen falschen Text, so wenig wie falsche Zahlen. Weg 2 ist
+verworfen und bleibt eine spätere Verbesserung.
+
 ## Folgen
 
 * **Umgesetzt:** Paketschema 6 und Ankerschema 4 (Abschnitt
@@ -319,11 +353,10 @@ Einstellungen der Routine (`LINIE`).
   einen Pull Request in `plv-fiktion`, der `CODESTAND` mitzieht. Bis dahin
   hält die Routine an, und die Seite bleibt auf dem letzten Tag stehen.
 * **Feste Orte auf dem Server:** der Fall-Datenraum des Originalfalls mit
-  Anker und `entscheide/` (heute im Arbeitsbaum
-  `~/git/rechner-pipeline-fall3`), die Ordnungslinie des Falls
-  (Entscheid f), das Mandat der
-  simulierten Rolle, die Schlüssel (Entscheid e), ein Klon von
-  `plv-fiktion` für die Routine. Das richtet bartl-infra ein; das
+  Anker und `entscheide/` (heute in einem Arbeitsbaum des Maintainers),
+  die Ordnungslinie des Falls (Entscheid f), das Mandat der simulierten
+  Rolle, die Schlüssel (Entscheid e), ein Klon von `plv-fiktion` für die
+  Routine. Das richtet bartl-infra ein; das
   Repository nennt keine Pfade des Servers.
 * **Restrisiko aus a):** Eine Pfadsperre für `.github/**` gibt es für
   ein öffentliches Repository nicht. Eine Workflow-Datei, die der
@@ -332,4 +365,5 @@ Einstellungen der Routine (`LINIE`).
   in der Liste der Actions.
 * **Der neue Rahmen muss in `main` von `plv-fiktion` sein, bevor die
   Automatik läuft**, sonst rendert der Workflow in einen Rahmen, der
-  `betrieb/` nicht kennt.
+  `betrieb/` nicht kennt. Derselbe Stand muss die Prüfung des HTML aus
+  Entscheid g tragen.
