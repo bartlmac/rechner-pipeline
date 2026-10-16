@@ -239,6 +239,67 @@ def test_die_freigabe_nennt_die_zeichnung_immer_eine_simulation(auslieferung, kl
             "die Signatur prüft diese Seite nicht.</p>") in us._freigabe(modell)
 
 
+@pytest.mark.parametrize("verweis", [
+    "..//{tmp}/rahmen/x.html", "..//{tmp}/seite/x.html", "../../x.html", "../index.html",
+    "../berichte/../../x.html", "../plv/sub/x.html", "../berichte/sub/x.html"])
+def test_daten_des_pakets_bestimmen_keinen_schreibpfad_ausserhalb_von_betrieb(tmp_path, verweis):
+    """Der Schluesselhalter aendert den Rahmen nicht (ADR-029). "Bestand
+    heute" verweist auf seine Berichte mit ../berichte/<name>, und stand()
+    legt sie dorthin. Den Verweis schreibt aber der Server: Ein Verweis, der
+    absolut wird (..//), aus betrieb/ hinausfuehrt oder neben die
+    Bestandsfuehrung zielt, haelt den Bau an, und ausserhalb von betrieb/
+    aendert sich keine Datei (Befund B7 der Pruefung durch merge-session,
+    16.10.2026). Positivkontrolle: der echte Verweis, und Verweise ohne
+    Datei des Pakets oder auf das Paket selbst."""
+    paket, rahmen, seite = tmp_path / "paket", tmp_path / "rahmen", tmp_path / "seite"
+    for ordner in (paket, rahmen, seite):
+        ordner.mkdir()
+    (rahmen / "x.html").write_text("Rahmen", encoding="utf-8")
+    bericht = "bestandsbericht_2026-01-01.html"
+
+    def bauen(href: str):
+        (paket / "index.html").write_text(
+            f'<a href="../berichte/{bericht}">a</a><a href="../plv/x.html">b</a>'
+            f'<a href="../fremd.html">c</a><a href="{href}">d</a>', encoding="utf-8")
+        for name in ("x.html", bericht):
+            (paket / name).write_text(f"Paket {name}", encoding="utf-8")
+        dateien = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in paket.iterdir()}
+        return us.stand({"betrieb": {"vorhanden": True, "quelle": str(paket), "dateien": dateien}},
+                        seite)
+
+    def ausserhalb():
+        """Jede Datei ausserhalb des Pakets und ausserhalb von seite/betrieb/."""
+        return {p: p.read_bytes() for p in tmp_path.rglob("*")
+                if p.is_file() and paket not in p.parents and seite / "betrieb" not in p.parents}
+
+    assert f"{us.BERICHTE_DIR}/{bericht}" in bauen(f"../berichte/{bericht}")
+    assert (seite / us.BERICHTE_DIR / bericht).read_text(encoding="utf-8") == f"Paket {bericht}"
+    assert sorted(p.name for p in (seite / us.BERICHTE_DIR).iterdir()) == [bericht]
+    vorher = ausserhalb()
+    assert list(vorher) == [rahmen / "x.html"]
+    with pytest.raises(VeroeffentlichungFehler, match="ausserhalb von betrieb/berichte/"):
+        bauen(verweis.format(tmp=str(tmp_path).lstrip("/")))
+    assert ausserhalb() == vorher
+    assert not (seite / "betrieb" / "index.html").exists()
+
+
+def test_eine_kopie_folgt_keinem_symlink_aus_betrieb_hinaus(tmp_path):
+    """Dieselbe Invariante fuer den Ort selbst: Ist betrieb/berichte/ ein
+    Symlink, haelt der Bau an, statt durch ihn zu schreiben. Im Workflow
+    loescht der Bau betrieb/ vorher; die Pruefung haengt nicht davon ab."""
+    paket, rahmen, seite = tmp_path / "paket", tmp_path / "rahmen", tmp_path / "seite"
+    for ordner in (paket, rahmen, seite / "betrieb"):
+        ordner.mkdir(parents=True)
+    (seite / us.BERICHTE_DIR).symlink_to(rahmen, target_is_directory=True)
+    bericht = "bestandsbericht_2026-01-01.html"
+    (paket / "index.html").write_text(f'<a href="../berichte/{bericht}">a</a>', encoding="utf-8")
+    (paket / bericht).write_text("Paket", encoding="utf-8")
+    dateien = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in paket.iterdir()}
+    with pytest.raises(VeroeffentlichungFehler, match="ausserhalb von betrieb/berichte/"):
+        us.stand({"betrieb": {"vorhanden": True, "quelle": str(paket), "dateien": dateien}}, seite)
+    assert list(rahmen.iterdir()) == []
+
+
 @pytest.mark.parametrize("feld, gut, schlecht", [
     ("bericht", "bestandsbericht_2026-01-01.html", "bestandsbericht(1).html"),
     ("jahresbericht", "jahresbericht_2025.html", "Jahresbericht_2025.html")])

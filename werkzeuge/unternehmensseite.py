@@ -66,6 +66,10 @@ BETRIEB_DIR = "betrieb"
 #: die Tagesseite "Bestand heute" und die Berichte der Monatsabschluesse,
 #: byteweise gegen die Summen in stand.json gehalten.
 STAND_DIR = f"{BETRIEB_DIR}/plv"
+#: Die Kopien der Berichte, auf die "Bestand heute" mit ``../berichte/<name>``
+#: verweist; der einzige Ort ausserhalb von STAND_DIR, an den :func:`stand`
+#: Bytes des Pakets legt.
+BERICHTE_DIR = f"{BETRIEB_DIR}/berichte"
 
 #: Die geltende Auslieferung im Push-Baum: der Snapshot der A-B1, der den
 #: Ankersatz des Pakets bindet, byteweise.
@@ -503,18 +507,34 @@ def stand(modell: Dict[str, Any], ziel: Path) -> List[str]:
     # verlinkte Bericht des Pakets zusaetzlich dort — dieselben, eben
     # geprueften Bytes, nichts umgeschrieben (bis 04.10.2026 fuehrten die
     # Berichtslinks der Betriebssicht ins Leere; der Erzeuger ist gemeldet).
+    # Den Verweis schreibt der Server. Kopiert wird deshalb nur in genau
+    # diese Form, nach BERICHTE_DIR. Trifft ein Verweis in anderer Form eine
+    # Datei des Pakets (absolut, mit "..", "../index.html"), haelt der Bau an:
+    # Sonst bestimmten Daten des Pakets einen Schreibpfad, der aus
+    # BERICHTE_DIR hinausfuehrt, bis in den Rahmen (Befund der Pruefung durch
+    # die Zusammenfuehrung, 16.10.2026).
+    berichte = ziel / BERICHTE_DIR
+    # Der Ordner, in dem jede Kopie wirklich landen muss: aufgeloest wird nur
+    # die Wurzel, nicht ein Symlink an betrieb/ oder betrieb/berichte/.
+    ort = ziel.resolve() / BERICHTE_DIR
     index = aus / "index.html"
     if index.is_file():
         for rel in sorted(set(re.findall(r'href="\.\./([^"#?]+)"',
                                          index.read_text(encoding="utf-8", errors="replace")))):
             teile = Path(rel).parts
-            if (".." in teile or teile[0] == aus.name or teile[-1] not in dateien
-                    or Path(rel).suffix == ".parquet"):
-                continue
-            kopie = aus.parent / rel
+            if not teile or teile[-1] not in dateien or Path(rel).suffix == ".parquet":
+                continue  # keine Datei des Pakets, nichts zu kopieren
+            if teile == (aus.name, teile[-1]):
+                continue  # ein Verweis auf das Paket selbst
+            kopie = berichte / teile[-1]
+            if (teile != (Path(BERICHTE_DIR).name, teile[-1])
+                    or kopie.resolve().parent != ort):
+                raise VeroeffentlichungFehler(
+                    f"Stands-Paket: index.html verweist mit {'../' + rel!r} auf eine Datei des "
+                    f"Pakets ausserhalb von {BERICHTE_DIR}/ — nicht veroeffentlicht.")
             kopie.parent.mkdir(parents=True, exist_ok=True)
             kopie.write_bytes((aus / teile[-1]).read_bytes())
-            uebernommen.append(f"{BETRIEB_DIR}/{rel}")
+            uebernommen.append(f"{BERICHTE_DIR}/{teile[-1]}")
     return uebernommen
 
 
