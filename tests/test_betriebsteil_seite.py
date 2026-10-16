@@ -329,8 +329,11 @@ def test_eine_grafik_als_eigene_datei_bringt_alles_mit():
 
 #: Alte Adressen der Seite und ihr Ziel (Entscheide des Maintainers vom
 #: 16.10.2026): Mit dem Betriebsteil zogen die Bestandsfuehrung und
-#: "Bestand heute" unter ``betrieb/``.
-WEITERLEITUNGEN = {"geschaeftsentwicklung": "../betrieb/", "plv": "../betrieb/plv/"}
+#: "Bestand heute" unter ``betrieb/``. ``berichte/`` war nie eine Seite, und
+#: ``betrieb/berichte/`` hat keine; es leitet auf "Bestand heute", das die
+#: Berichte verlinkt.
+WEITERLEITUNGEN = {"geschaeftsentwicklung": "../betrieb/", "plv": "../betrieb/plv/",
+                   "berichte": "../betrieb/plv/"}
 
 
 def test_jede_html_datei_des_rahmens_ist_eine_weiterleitung():
