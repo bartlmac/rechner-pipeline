@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT / "werkzeuge"))
 
 import falldaten as fd  # noqa: E402
 import grafik  # noqa: E402
+import seitenpruefung as sp  # noqa: E402
 import unternehmensseite as us  # noqa: E402
 from vorzeigeseite import VeroeffentlichungFehler  # noqa: E402
 
@@ -324,3 +325,38 @@ def test_eine_grafik_als_eigene_datei_bringt_alles_mit():
         grafik.datei(svg.replace("var(--serie-1, #2a78d6)", "var(--serie-1)"))
     with pytest.raises(ValueError):
         grafik.datei("<svg></svg>")
+
+
+def test_die_alte_adresse_der_bestandsfuehrung_leitet_weiter(tmp_path):
+    """Die Bestandsfuehrung stand unter ``geschaeftsentwicklung/``; dort liegt
+    jetzt eine Weiterleitung auf ``betrieb/`` (Entscheid des Maintainers vom
+    16.10.2026). Sie gehoert zum Rahmen, ist eine Datei ohne Vorspann (Jekyll
+    gibt sie unveraendert aus) und traegt die Fusszeile jeder Seite. Ihr Ziel
+    prueft die Seitenpruefung wie jeden Verweis.
+
+    Mutationsprobe: das Ziel auf ../bestand/ setzen -> rot."""
+    weiter = QUELLEN / "geschaeftsentwicklung"
+    assert sorted(p.name for p in weiter.iterdir()) == ["index.html"]
+    text = (weiter / "index.html").read_text(encoding="utf-8")
+    assert text.startswith("<!DOCTYPE html>") and us.fusszeile("../") in text
+    quellen = tmp_path / "quellen"
+    (quellen / "geschaeftsentwicklung").mkdir(parents=True)
+    (quellen / "_config.yml").write_text("", encoding="utf-8")
+    (quellen / "index.md").write_text("Fiktives Unternehmen\n# A\n", encoding="utf-8")
+    shutil.copy2(weiter / "index.html", quellen / "geschaeftsentwicklung" / "index.html")
+    assert "geschaeftsentwicklung/index.html" in us.baue(quellen, tmp_path / "r", {}, "rahmen")
+    assert us.baue(quellen, tmp_path / "b", {}, "betrieb") == []
+    gebaut = tmp_path / "r" / "geschaeftsentwicklung" / "index.html"
+    assert gebaut.read_bytes() == (weiter / "index.html").read_bytes()
+    v = tmp_path / "vorschau"
+    for seite in ("betrieb/index.html", "hinter-den-kulissen/index.html"):
+        (v / seite).parent.mkdir(parents=True)
+        (v / seite).write_text("<p>x</p>", encoding="utf-8")
+    (v / "geschaeftsentwicklung").mkdir()
+    shutil.copy2(gebaut, v / "geschaeftsentwicklung" / "index.html")
+    befunde, _ = sp.verweise(v)
+    assert befunde == []
+    (v / "betrieb" / "index.html").unlink()
+    befunde, _ = sp.verweise(v)
+    # canonical, meta refresh und der Verweis im Text
+    assert befunde == ["geschaeftsentwicklung/index.html: ../betrieb/ — kein Ziel"] * 3
