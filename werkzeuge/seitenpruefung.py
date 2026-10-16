@@ -455,7 +455,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     q.add_argument("vorschau")
     q = teil.add_parser("pages", help="was Pages anders liest als die Vorschau")
     q.add_argument("seite")
-    q = teil.add_parser("paket", help="plv/ und berichte/ gegen stand.json")
+    q = teil.add_parser("paket", help="betrieb/plv/ und betrieb/berichte/ gegen stand.json")
     q.add_argument("seite")
     q.add_argument("paket")
     q = teil.add_parser("pruefsummen", help="jede angezeigte Kennung mit Quelle")

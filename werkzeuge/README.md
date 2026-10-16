@@ -111,11 +111,12 @@ Stands-Paket unter `betrieb/plv/` mit den Kopien seiner Berichte unter
 Auslieferung A-B1 als `betrieb/A-B1.json`. Alles andere ist der Rahmen; er
 ändert sich nur per Pull Request nach plv-fiktion.
 
-Unter `geschaeftsentwicklung/`, wo die Bestandsführung vorher stand, liegt
-im Rahmen eine Weiterleitung auf `betrieb/`
-(`plv/seite/geschaeftsentwicklung/index.html`). Sie hat keinen Vorspann,
-Jekyll gibt sie also unverändert aus. Ihr Ziel prüft `seitenpruefung.py
-verweise` wie jeden Verweis. Sprungziele der alten Adresse kommen nicht mit.
+Die alten Adressen leiten im Rahmen weiter: `geschaeftsentwicklung/`, wo
+die Bestandsführung vorher stand, auf `betrieb/`, und `plv/` („Bestand
+heute“) auf `betrieb/plv/` (`plv/seite/<ordner>/index.html`). Die Seiten
+haben keinen Vorspann, Jekyll gibt sie also unverändert aus. Ihr Ziel prüft
+`seitenpruefung.py verweise` wie jeden Verweis. Sprungziele und einzelne
+Dateien unter den alten Adressen kommen nicht mit.
 
 `auftritt.py --teil beide` (Vorgabe) baut beides und prüft die ganze Seite.
 `--teil rahmen` baut nur den Rahmen, ohne Stands-Paket, und lässt Vorschau

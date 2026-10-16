@@ -327,36 +327,51 @@ def test_eine_grafik_als_eigene_datei_bringt_alles_mit():
         grafik.datei("<svg></svg>")
 
 
-def test_die_alte_adresse_der_bestandsfuehrung_leitet_weiter(tmp_path):
-    """Die Bestandsfuehrung stand unter ``geschaeftsentwicklung/``; dort liegt
-    jetzt eine Weiterleitung auf ``betrieb/`` (Entscheid des Maintainers vom
-    16.10.2026). Sie gehoert zum Rahmen, ist eine Datei ohne Vorspann (Jekyll
-    gibt sie unveraendert aus) und traegt die Fusszeile jeder Seite. Ihr Ziel
-    prueft die Seitenpruefung wie jeden Verweis.
+#: Alte Adressen der Seite und ihr Ziel (Entscheide des Maintainers vom
+#: 16.10.2026): Mit dem Betriebsteil zogen die Bestandsfuehrung und
+#: "Bestand heute" unter ``betrieb/``.
+WEITERLEITUNGEN = {"geschaeftsentwicklung": "../betrieb/", "plv": "../betrieb/plv/"}
+
+
+def test_jede_html_datei_des_rahmens_ist_eine_weiterleitung():
+    """Ausser dem Layout liegen im Rahmen nur die Weiterleitungen als HTML;
+    eine neue ohne Eintrag in WEITERLEITUNGEN bliebe sonst ungeprueft."""
+    statisch = {p.relative_to(QUELLEN).as_posix() for p in QUELLEN.rglob("*.html")
+                if p.relative_to(QUELLEN).parts[0] != "_layouts"}
+    assert statisch == {f"{ordner}/index.html" for ordner in WEITERLEITUNGEN}
+
+
+@pytest.mark.parametrize("ordner", sorted(WEITERLEITUNGEN))
+def test_eine_alte_adresse_leitet_weiter(ordner, tmp_path):
+    """Die Weiterleitung gehoert zum Rahmen, ist eine Datei ohne Vorspann
+    (Jekyll gibt sie unveraendert aus) und traegt die Fusszeile jeder Seite.
+    Ihr Ziel prueft die Seitenpruefung wie jeden Verweis.
 
     Mutationsprobe: das Ziel auf ../bestand/ setzen -> rot."""
-    weiter = QUELLEN / "geschaeftsentwicklung"
+    ziel = WEITERLEITUNGEN[ordner]
+    weiter = QUELLEN / ordner
     assert sorted(p.name for p in weiter.iterdir()) == ["index.html"]
     text = (weiter / "index.html").read_text(encoding="utf-8")
     assert text.startswith("<!DOCTYPE html>") and us.fusszeile("../") in text
     quellen = tmp_path / "quellen"
-    (quellen / "geschaeftsentwicklung").mkdir(parents=True)
+    (quellen / ordner).mkdir(parents=True)
     (quellen / "_config.yml").write_text("", encoding="utf-8")
     (quellen / "index.md").write_text("Fiktives Unternehmen\n# A\n", encoding="utf-8")
-    shutil.copy2(weiter / "index.html", quellen / "geschaeftsentwicklung" / "index.html")
-    assert "geschaeftsentwicklung/index.html" in us.baue(quellen, tmp_path / "r", {}, "rahmen")
+    shutil.copy2(weiter / "index.html", quellen / ordner / "index.html")
+    assert f"{ordner}/index.html" in us.baue(quellen, tmp_path / "r", {}, "rahmen")
     assert us.baue(quellen, tmp_path / "b", {}, "betrieb") == []
-    gebaut = tmp_path / "r" / "geschaeftsentwicklung" / "index.html"
+    gebaut = tmp_path / "r" / ordner / "index.html"
     assert gebaut.read_bytes() == (weiter / "index.html").read_bytes()
     v = tmp_path / "vorschau"
-    for seite in ("betrieb/index.html", "hinter-den-kulissen/index.html"):
-        (v / seite).parent.mkdir(parents=True)
-        (v / seite).write_text("<p>x</p>", encoding="utf-8")
-    (v / "geschaeftsentwicklung").mkdir()
-    shutil.copy2(gebaut, v / "geschaeftsentwicklung" / "index.html")
+    zielseite = v / ordner / ziel / "index.html"
+    for seite in (zielseite, v / "hinter-den-kulissen" / "index.html"):
+        seite.parent.mkdir(parents=True, exist_ok=True)
+        seite.write_text("<p>x</p>", encoding="utf-8")
+    (v / ordner).mkdir(exist_ok=True)
+    shutil.copy2(gebaut, v / ordner / "index.html")
     befunde, _ = sp.verweise(v)
     assert befunde == []
-    (v / "betrieb" / "index.html").unlink()
+    zielseite.unlink()
     befunde, _ = sp.verweise(v)
     # canonical, meta refresh und der Verweis im Text
-    assert befunde == ["geschaeftsentwicklung/index.html: ../betrieb/ — kein Ziel"] * 3
+    assert befunde == [f"{ordner}/index.html: {ziel} — kein Ziel"] * 3
