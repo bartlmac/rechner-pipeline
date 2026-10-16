@@ -139,10 +139,14 @@ def html_befunde(text: str) -> List[str]:
     Parser unterscheiden koennte. ``@import``, ``image-set(`` und der Backslash
     sind Wege, in CSS eine Adresse ohne ``url(`` oder verkleidet zu laden.
 
-    Zeichenreferenzen werden vorher aufgeloest und Tab und Zeilenumbruch
-    entfernt, wie der Browser es in Attributen tut; Elemente und Attributnamen
-    werden im Text selbst gesucht, denn aus einer Zeichenreferenz wird nie ein
-    Tag."""
+    Elemente und Attribute werden im Rohtext gesucht und zerlegt, wie der
+    Browser es tut: Aus einer Zeichenreferenz wird nie ein Tag, ein Trenner
+    oder ein Anfuehrungszeichen, das einen Wert beendet. Erst im Wert eines
+    Attributs werden die Zeichenreferenzen aufgeloest und Tab und
+    Zeilenumbruch entfernt, wie der Browser es mit einer Adresse tut. Die
+    Suche nach Teilstuecken (javascript:, meta refresh, url(…), @import)
+    laeuft auf dem ganzen aufgeloesten Text; dort trifft sie hoechstens zu
+    viel."""
     roh = text.lower()
     flach = re.sub(r"[\t\n\r]", "", html.unescape(text)).lower()
     befunde = [f"<{m.group(1)}>" for m in _ELEMENT.finditer(roh)]
@@ -151,11 +155,15 @@ def html_befunde(text: str) -> List[str]:
         befunde.append("javascript:")
     if _REFRESH.search(flach):
         befunde.append("meta refresh")
-    for m in _ATTRIBUT.finditer(flach):
-        if not _traegt_adresse(m.group(1)):
+    for m in _ATTRIBUT.finditer(text):
+        name = m.group(1).lower()
+        if not _traegt_adresse(name):
             continue
-        wert = next(g for g in m.groups()[1:] if g is not None)
-        befunde += [f"{m.group(1)}={a} (von aussen)" for a in re.split(r"[\s,;]+", wert)
+        # Aufgeloest in der Schreibweise des Texts: &NewLine; ist eine
+        # Zeichenreferenz, &newline; nicht.
+        wert = re.sub(r"[\t\n\r]", "", html.unescape(
+            next(g for g in m.groups()[1:] if g is not None))).lower()
+        befunde += [f"{name}={a} (von aussen)" for a in re.split(r"[\s,;]+", wert)
                     if _VON_AUSSEN.match(a)]
     befunde += [f"url({m.group(1).strip()}) (von aussen)" for m in _CSS_URL.finditer(flach)
                 if _VON_AUSSEN.match(m.group(1).strip())]

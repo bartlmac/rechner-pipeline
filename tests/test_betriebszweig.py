@@ -128,6 +128,9 @@ FUSS</body></html>
     ('<img src="//example.org/x.png">', "src=//example.org/x.png (von aussen)"),
     ('<img src="&#104;ttps://example.org/x.png">', "src=https://example.org/x.png (von aussen)"),
     ('<img src="\x01https://example.org/x.png">', "src=\x01https://example.org/x.png (von aussen)"),
+    ('<img src="&NewLine;https://example.org/x.png">', "src=https://example.org/x.png (von aussen)"),
+    ('<img src="/&Tab;/example.org/x.png">', "src=//example.org/x.png (von aussen)"),
+    ('<img src="ht\ttps://example.org/x.png">', "src=https://example.org/x.png (von aussen)"),
     ('<img srcset="a.png 1x, https://example.org/b.png 2x">', "srcset=https://example.org/b.png (von aussen)"),
     ('<img src="data:image/png;base64,AAAA">', "src=data:image/png (von aussen)"),
     ('<link rel="stylesheet" href="https://example.org/s.css">', "href=https://example.org/s.css (von aussen)"),
@@ -159,6 +162,39 @@ def test_ein_html_des_pakets_ist_ohne_skript_und_laedt_nichts_von_aussen(tmp_pat
     bericht.write_text(BERICHT.replace("FUSS", schnipsel), encoding="utf-8")
     assert f"paket/index.html: {befund}" in bz.zweig(zweig)
     assert bz.main(["zweig", str(zweig)]) == 1
+
+
+#: Jedes Attribut, das eine Adresse traegt: die Endungen src, srcset und href
+#: an Beispielen, dazu jeder Einzelname aus betriebszweig.
+ADRESS_ATTRIBUTE = ("src", "srcset", "href", "xlink:href", "imagesrcset", "attributionsrc",
+                    *bz._ADRESS_ATTRIBUTE)
+#: Was im Browser zwei Attribute trennt; "" heisst: direkt nach einem Wert in
+#: Anfuehrungszeichen.
+TRENNER = (" ", "\t", "\n", "\r", "\f", "/", "")
+
+
+def test_jede_adresse_von_aussen_wird_gefunden_wie_der_browser_die_attribute_trennt():
+    """Der Browser zerlegt die Attribute im Rohtext. Zeichenreferenzen loest
+    er erst im Wert auf, Tab und Zeilenumbruch streicht er erst in der
+    Adresse (Befund B8 der Pruefung durch merge-session, 16.10.2026: Mit
+    <img\\nsrc=...> und einem &quot; im vorigen Wert lud Chromium von aussen,
+    und die Pruefung meldete nichts). Gekreuzt: jedes Adress-Attribut, klein
+    und gross geschrieben, nach jedem Trenner, mit und ohne ein &quot; im
+    vorigen Wert, das wie dasselbe Attribut aussieht, und zwei Adressen von
+    aussen. Positivkontrolle: dieselben Schnipsel mit einer Adresse im Paket
+    sind ohne Befund."""
+    abweichend = []
+    for name in ADRESS_ATTRIBUTE:
+        for schreibung in (name, name.upper()):
+            for trenner in TRENNER:
+                for vorher in ('<img a="1"', f'<img alt="&quot;{name}="'):
+                    for adresse, von_aussen in (("https://example.org/x", True),
+                                                ("//example.org/x", True), ("bericht.html", False)):
+                        schnipsel = f'{vorher}{trenner}{schreibung}="{adresse}">'
+                        befunde = bz.html_befunde(BERICHT.replace("FUSS", schnipsel))
+                        if befunde != ([f"{name}={adresse} (von aussen)"] if von_aussen else []):
+                            abweichend.append((schnipsel, befunde))
+    assert abweichend == [], f"{len(abweichend)} Abweichungen, zuerst {abweichend[:3]}"
 
 
 def test_ein_html_des_pakets_ist_utf_8(tmp_path):
