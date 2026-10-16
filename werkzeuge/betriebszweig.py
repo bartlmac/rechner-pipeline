@@ -13,7 +13,11 @@ Zwei Pruefungen dieses Moduls laufen dort, beide halten den Bau an:
   Maintainers 16.10.2026). Geprueft werden die Dateien, nicht die Liste in
   ``stand.json``; die nennt auch die Abschluesse unter ``abschluesse/``, die
   nicht im Zweig liegen. Jede HTML-Datei des Pakets ist ohne Skript und
-  laedt nichts von aussen (``html_befunde``). Kein Verzeichnis ``.github`` an keiner Stelle: Ein Push
+  laedt nichts von aussen (``html_befunde``). Keine Datei des Pakets beginnt
+  mit einem Vorspann (``---``): Pages gaebe sie sonst durch Jekyll, Liquid
+  liefe, und ``permalink`` legte sie an eine Adresse ausserhalb von
+  ``betrieb/``, die die Pruefung ``rahmen`` nicht sieht, weil sie vor Jekyll
+  laeuft. Ohne Vorspann kopiert Jekyll die Datei unveraendert. Kein Verzeichnis ``.github`` an keiner Stelle: Ein Push
   auf ``betrieb`` startet die Workflows, die im Stand von ``betrieb`` liegen.
   Der Workflow in ``main`` kann das nicht verhindern, aber er liefert dann
   nicht aus, und der Lauf steht sichtbar rot da (ADR-029, Variante
@@ -147,12 +151,16 @@ def html_befunde(text: str) -> List[str]:
 
 def _paket_datei(pfad: Path) -> List[str]:
     """Befunde zum Inhalt einer Datei des Pakets."""
+    roh = pfad.read_bytes()
+    befunde = []
+    if roh.removeprefix(b"\xef\xbb\xbf").startswith(b"---"):
+        befunde.append("beginnt mit einem Vorspann (---), Jekyll verarbeitete die Datei")
     if pfad.suffix != ".html":
-        return []
+        return befunde
     try:
-        return html_befunde(pfad.read_bytes().decode("utf-8"))
+        return befunde + html_befunde(roh.decode("utf-8"))
     except UnicodeDecodeError:
-        return ["nicht in UTF-8"]
+        return befunde + ["nicht in UTF-8"]
 
 
 def _sha(pfad: Path) -> str:

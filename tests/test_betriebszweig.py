@@ -176,6 +176,28 @@ def test_ein_befund_bleibt_eine_zeile_im_protokoll(tmp_path, capsys):
     assert any("paket/x\\x0a::error::y.html" in z for z in zeilen), zeilen
 
 
+@pytest.mark.parametrize("name, inhalt", [
+    ("index.html", "---\npermalink: /neu/\n---\n<p>x</p>\n"),
+    ("index.html", "﻿---\npermalink: /neu/\n---\n<p>x</p>\n"),
+    ("laufmanifest.json", "---\npermalink: /neu.json\n---\n{}\n"),
+    ("protokoll.jsonl", "---\n---\n{}\n"),
+])
+def test_keine_datei_des_pakets_hat_einen_vorspann(tmp_path, name, inhalt):
+    """Mit einem Vorspann gaebe Pages die Datei durch Jekyll: Liquid liefe, und
+    permalink legte sie an eine Adresse ausserhalb von betrieb/. Die Pruefung
+    rahmen saehe das nicht, sie laeuft vor Jekyll (gemessen mit
+    jekyll-build-pages v1.0.13 am 16.10.2026: /neu/ entstand). Positivkontrolle:
+    drei Striche im Inneren der Datei sind kein Vorspann."""
+    zweig = _zweig(tmp_path / "zweig")
+    datei = zweig / "paket" / name
+    datei.write_text("<p>Bestand</p>\n---\n" if name.endswith(".html") else "{}\n---\n",
+                     encoding="utf-8")
+    assert bz.zweig(zweig) == []
+    datei.write_text(inhalt, encoding="utf-8")
+    assert f"paket/{name}: beginnt mit einem Vorspann (---), Jekyll verarbeitete die Datei" \
+        in bz.zweig(zweig)
+
+
 def test_ausserhalb_von_betrieb_gleicht_der_baum_dem_rahmen(tmp_path):
     """Nur betrieb/ darf der Bau des Abends schreiben. Eine geaenderte, eine
     neue und eine fehlende Datei des Rahmens sind je ein Befund; ein Ordner
