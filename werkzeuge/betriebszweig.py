@@ -61,8 +61,13 @@ DATEINAME = re.compile(r"[a-z0-9_.-]+")
 _ELEMENT = re.compile(r"<(script|iframe|frame|frameset|object|embed|applet|form|base)(?![a-z0-9-])")
 _EREIGNIS = re.compile(r"(?<=[\s/\"'])(on[a-z]+)\s*=")
 _REFRESH = re.compile(r"http-equiv\s*=\s*[\"']?\s*refresh")
-_ADRESSE = re.compile(r"(?<=[\s/\"':])(src|srcset|href|poster|data|background|action|formaction"
-                      r"|ping|to|from|by|values)\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s>]*))")
+#: Jedes Attribut mit seinem Wert. Ob es eine Adresse traegt, entscheidet
+#: der ganze Name (:func:`_traegt_adresse`), nicht ein Stueck davon:
+#: ``imagesrcset`` traegt eine, auch wenn vor ``srcset`` kein Trennzeichen steht.
+_ATTRIBUT = re.compile(r"(?<=[\s/\"'])([^\s/>=\"']+)\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s>]*))")
+#: Attribute mit einer Adresse, deren Name nicht auf src, srcset oder href endet.
+_ADRESS_ATTRIBUTE = ("poster", "data", "background", "action", "formaction", "ping", "manifest",
+                     "to", "from", "by", "values")
 _CSS_URL = re.compile(r"url\(\s*[\"']?([^\"')]*)")
 #: Eine Adresse mit Schema oder ab ``//``; Steuerzeichen und Leerzeichen davor
 #: uebergeht der Browser.
@@ -113,6 +118,13 @@ def zweig(wurzel: Path) -> List[str]:
     return befunde
 
 
+def _traegt_adresse(name: str) -> bool:
+    """Ob ein Attribut eine Adresse traegt, die der Browser laedt oder
+    aufruft: jedes, dessen Name auf src, srcset oder href endet (so auch
+    imagesrcset, attributionsrc, xlink:href), und die in _ADRESS_ATTRIBUTE."""
+    return name.endswith(("src", "srcset", "href")) or name in _ADRESS_ATTRIBUTE
+
+
 def html_befunde(text: str) -> List[str]:
     """Was eine HTML-Datei des Pakets nicht enthalten darf.
 
@@ -139,7 +151,9 @@ def html_befunde(text: str) -> List[str]:
         befunde.append("javascript:")
     if _REFRESH.search(flach):
         befunde.append("meta refresh")
-    for m in _ADRESSE.finditer(flach):
+    for m in _ATTRIBUT.finditer(flach):
+        if not _traegt_adresse(m.group(1)):
+            continue
         wert = next(g for g in m.groups()[1:] if g is not None)
         befunde += [f"{m.group(1)}={a} (von aussen)" for a in re.split(r"[\s,;]+", wert)
                     if _VON_AUSSEN.match(a)]
