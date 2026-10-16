@@ -57,18 +57,23 @@ DATEINAME = re.compile(r"[a-z0-9_.-]+")
 # Ein Parser, der an einer Stelle anders liest als der Browser, saehe ein
 # anderes Dokument, etwa einen Kommentar, der fuer ihn weiterlaeuft, oder
 # ein Stylesheet, das fuer den Browser schon zu Ende ist. Jedes Muster trifft
-# deshalb lieber zu viel als zu wenig.
+# deshalb lieber zu viel als zu wenig. Und kein Muster verbraucht mehr als
+# seinen Anker: Den Wert liest es nur vorausschauend. Die Pruefung kennt keine
+# Tags; ein scheinbarer Wertanfang im Fliesstext oder in einem CSS-String
+# verschluckte sonst den naechsten echten Kandidaten.
 _ELEMENT = re.compile(r"<(script|iframe|frame|frameset|object|embed|applet|form|base)(?![a-z0-9-])")
 _EREIGNIS = re.compile(r"(?<=[\s/\"'])(on[a-z]+)\s*=")
 _REFRESH = re.compile(r"http-equiv\s*=\s*[\"']?\s*refresh")
 #: Jedes Attribut mit seinem Wert. Ob es eine Adresse traegt, entscheidet
 #: der ganze Name (:func:`_traegt_adresse`), nicht ein Stueck davon:
 #: ``imagesrcset`` traegt eine, auch wenn vor ``srcset`` kein Trennzeichen steht.
-_ATTRIBUT = re.compile(r"(?<=[\s/\"'])([^\s/>=\"']+)\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s>]*))")
+#: Jeder Name, der laedt, besteht aus Buchstaben, Doppelpunkt und Strich; ein
+#: Stueck Zeichenreferenz in einem Wert davor (``&quot;src``) ist keiner.
+_ATTRIBUT = re.compile(r"(?<=[\s/\"'])([A-Za-z:-]+)\s*=\s*(?=\"([^\"]*)\"|'([^']*)'|([^\s>]*))")
 #: Attribute mit einer Adresse, deren Name nicht auf src, srcset oder href endet.
 _ADRESS_ATTRIBUTE = ("poster", "data", "background", "action", "formaction", "ping", "manifest",
                      "to", "from", "by", "values")
-_CSS_URL = re.compile(r"url\(\s*[\"']?([^\"')]*)")
+_CSS_URL = re.compile(r"url\(\s*(?=[\"']?([^\"')]*))")
 #: Eine Adresse mit Schema oder ab ``//``; Steuerzeichen und Leerzeichen davor
 #: uebergeht der Browser.
 _VON_AUSSEN = re.compile(r"[\x00-\x20]*(?:[a-z][a-z0-9+.-]*:|[/\\]{2})")

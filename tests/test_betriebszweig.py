@@ -148,6 +148,16 @@ FUSS</body></html>
     # Browser bei --!>, im SVG ist <style> kein reiner Text.
     ("<!-- --!><img src=x onerror=alert(1)> -->", "Attribut onerror"),
     ('<svg><style><img src="https://example.org/x"></style></svg>', "src=https://example.org/x (von aussen)"),
+    # Ein Treffer verschluckt nicht den naechsten: ein scheinbarer Wertanfang im
+    # Fliesstext, in einem Titel, einem Kommentar oder einem CSS-String.
+    ('<p> a="</p><img src="https://example.org/text.png">', "src=https://example.org/text.png (von aussen)"),
+    ('<title> x="</title><img src="https://example.org/t.png">', "src=https://example.org/t.png (von aussen)"),
+    ('<!--> a="<img src="https://example.org/k.png">', "src=https://example.org/k.png (von aussen)"),
+    ('<!-- --!> a="<img src="https://example.org/k2.png">-->', "src=https://example.org/k2.png (von aussen)"),
+    ('<style>p::after{content:"url("} p{background:url(https://example.org/c.png)}</style>',
+     "url(https://example.org/c.png) (von aussen)"),
+    ("<p style='content:\"url(\";background:url(//example.org/c2.png)'>x</p>",
+     "url(//example.org/c2.png) (von aussen)"),
 ])
 def test_ein_html_des_pakets_ist_ohne_skript_und_laedt_nichts_von_aussen(tmp_path, schnipsel, befund):
     """Die HTML-Dateien des Pakets gehen byteweise auf die Seite; was darin
@@ -194,6 +204,36 @@ def test_jede_adresse_von_aussen_wird_gefunden_wie_der_browser_die_attribute_tre
                         befunde = bz.html_befunde(BERICHT.replace("FUSS", schnipsel))
                         if befunde != ([f"{name}={adresse} (von aussen)"] if von_aussen else []):
                             abweichend.append((schnipsel, befunde))
+    assert abweichend == [], f"{len(abweichend)} Abweichungen, zuerst {abweichend[:3]}"
+
+
+def test_kein_treffer_verschluckt_den_naechsten_kandidaten():
+    """Die Pruefung kennt keine Tags. Ein Muster, das seinen Wert verbraucht,
+    liesse sich deshalb von einem scheinbaren Wertanfang im Fliesstext oder in
+    einem CSS-String das echte Attribut bzw. das echte url( verschlucken
+    (Befund B9 der Pruefung durch merge-session, 16.10.2026; Chromium lud in
+    allen Faellen von aussen). Gekreuzt: vier solche Vorspanne vor jedem
+    Adress-Attribut nach jedem Trenner, und ein CSS-String "url(" vor einem
+    echten url(), im Stylesheet und im Attribut style. Positivkontrolle: mit
+    einer Adresse im Paket ohne Befund."""
+    abweichend = []
+    for vorspann in (' a="', '<p> a="</p>', '<!--> a="', '<!-- --!> a="'):
+        for name in ADRESS_ATTRIBUTE:
+            for trenner in TRENNER:
+                for adresse, von_aussen in (("https://example.org/x", True),
+                                            ("//example.org/x", True), ("bericht.html", False)):
+                    schnipsel = f'{vorspann}<img a="1"{trenner}{name}="{adresse}">'
+                    befunde = bz.html_befunde(BERICHT.replace("FUSS", schnipsel))
+                    if befunde != ([f"{name}={adresse} (von aussen)"] if von_aussen else []):
+                        abweichend.append((schnipsel, befunde))
+    for css in ('<style>p::after{{content:"url("}} p{{background:url({a})}}</style>',
+                "<p style='content:\"url(\";background:url({a})'>x</p>"):
+        for adresse, von_aussen in (("https://example.org/x", True), ("//example.org/x", True),
+                                    ("bild.png", False)):
+            schnipsel = css.format(a=adresse)
+            befunde = bz.html_befunde(BERICHT.replace("FUSS", schnipsel))
+            if befunde != ([f"url({adresse}) (von aussen)"] if von_aussen else []):
+                abweichend.append((schnipsel, befunde))
     assert abweichend == [], f"{len(abweichend)} Abweichungen, zuerst {abweichend[:3]}"
 
 
