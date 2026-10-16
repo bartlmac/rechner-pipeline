@@ -5,8 +5,9 @@
 Betriebsteil, Takt 23:30, A-B1 durch die Routine mit dem
 Simulationsschlüssel von `mensch/betrieb`. Die fünf Einzelfragen unter
 „Einzelentscheide“ entschied er am 2026-10-15, alle wie empfohlen; die
-fünfte (e) hatte sich erst bei der Umsetzung ergeben. Was umgesetzt ist,
-steht unter „Folgen“.
+fünfte (e) hatte sich erst bei der Umsetzung ergeben. Die sechste (f),
+unter welcher Ordnungslinie die Routine zeichnet, entschied er am
+2026-10-16. Was umgesetzt ist, steht unter „Folgen“.
 
 ## Kontext
 
@@ -162,7 +163,8 @@ vom 2026-10-15.
 Ein Push auf `betrieb` startet die Workflows, die im Stand von `betrieb`
 liegen, nicht die aus `main`. Legt der Schlüssel dort eine
 Workflow-Datei ab, läuft ihr Code in Actions: ohne Auslieferung, mit
-lesendem Token, aber mit Netz. Dasselbe gilt für `beitrag/**`: Die
+einem Token, das ohne eigene Angabe nur liest (siehe unten), aber mit
+Netz. Dasselbe gilt für `beitrag/**`: Die
 Rulesets lassen diese Zweige offen, damit der Maintainer Pull Requests
 schieben kann, und den Schlüssel unterscheiden sie nicht vom Maintainer.
 
@@ -184,6 +186,15 @@ Wahl.
 benannt; der Workflow liefert nicht aus, wenn `betrieb` mehr als `paket/`,
 `anker.jsonl` und `A-B1.json` enthält. Die Probe macht der Maintainer mit
 bartl-infra. Gibt es eine Pfadsperre für `.github/**`, wird sie genommen.
+
+**Gemessen nach dem Entscheid (bartl-infra, 2026-10-16):** Für ein
+öffentliches Repository gibt es die Pfadsperre nicht. Die API lehnt sie
+mit HTTP 422 ab: „Source public repos cannot have push rules“. Es bleibt
+bei Weg 3. Zum Restrisiko gehört außerdem: Eine eingeschleuste
+Workflow-Datei kann in einem eigenen Block `permissions` mehr Rechte für
+das Token verlangen, als es ohne Angabe hat, etwa `packages`. Dagegen
+stehen: `plv-fiktion` hält keine Secrets, die Umgebung `github-pages`
+liefert nur aus `main`, `main` und Tags sind gesperrt.
 
 ### b) Zweig `betrieb` wachsen lassen oder neu anlegen
 
@@ -275,6 +286,18 @@ den Container des A-B1-Schritts, ohne Netz. Gezeichnet wird mit
 Signaturen mit öffentlichem Schlüssel für alle Abnahmen sind als spätere
 Ablösung vorgemerkt.
 
+### f) Die Ordnungslinie, unter der die Routine zeichnet
+
+Gemessen am 2026-10-16: Auf dem Server liegen zwei Linien. Die eine
+gehört zum Fall: Alle vier A-B1 des Falls vom 2026-10-03 bis
+2026-10-08 pinnen ihr erstes Glied (`c8c71a6807e591bf…`). Die andere
+gehört zur Laufzeit und beginnt mit einem eigenen ersten Glied
+(`f2adc9341718b4bf…`).
+
+**Entschieden (Maintainer, 2026-10-16):** Die Routine zeichnet A-B1
+unter der Linie, unter der der Fall gezeichnet ist. Den Ort tragen die
+Einstellungen der Routine (`LINIE`).
+
 ## Folgen
 
 * **Umgesetzt:** Paketschema 6 und Ankerschema 4 (Abschnitt
@@ -297,10 +320,16 @@ Ablösung vorgemerkt.
   hält die Routine an, und die Seite bleibt auf dem letzten Tag stehen.
 * **Feste Orte auf dem Server:** der Fall-Datenraum des Originalfalls mit
   Anker und `entscheide/` (heute im Arbeitsbaum
-  `~/git/rechner-pipeline-fall3`), die Ordnungslinie, das Mandat der
+  `~/git/rechner-pipeline-fall3`), die Ordnungslinie des Falls
+  (Entscheid f), das Mandat der
   simulierten Rolle, die Schlüssel (Entscheid e), ein Klon von
   `plv-fiktion` für die Routine. Das richtet bartl-infra ein; das
   Repository nennt keine Pfade des Servers.
+* **Restrisiko aus a):** Eine Pfadsperre für `.github/**` gibt es für
+  ein öffentliches Repository nicht. Eine Workflow-Datei, die der
+  Schlüssel in `betrieb` oder `beitrag/**` ablegt, läuft deshalb, und sie
+  kann mehr Rechte für das Token verlangen. Sichtbar ist ein solcher Lauf
+  in der Liste der Actions.
 * **Der neue Rahmen muss in `main` von `plv-fiktion` sein, bevor die
   Automatik läuft**, sonst rendert der Workflow in einen Rahmen, der
   `betrieb/` nicht kennt.

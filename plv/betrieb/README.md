@@ -706,9 +706,10 @@ bis ein Pull Request `CODESTAND` mitgezogen hat.
 Image mit Paketschema 6; `main` von `plv-fiktion` trägt den Rahmen mit dem
 Betriebsteil, den Workflow und ein `CODESTAND` gleich der Revision dieses
 Images. Die Einstellungen nennen die festen Orte (Vorlage
-`betrieb-seite.beispiel.conf`): Fall-Datenraum, Ankerverzeichnis,
-Ordnungslinie, Zeichnungsordnung, Mandat, die zwei Schlüssel für A-B1, den
-Klon und den Deploy-Key. Die Routine läuft aus `~/apps/plv`, nie aus einem
+`betrieb-seite.beispiel.conf`): Fall-Datenraum, Ankerverzeichnis, die
+Ordnungslinie, unter der der Fall gezeichnet ist (ADR-029, Entscheid f),
+Zeichnungsordnung, Mandat, die zwei Schlüssel für A-B1, den Klon und den
+Deploy-Key. Die Routine läuft aus `~/apps/plv`, nie aus einem
 Arbeitsbaum des Repositorys. Der Klon hat keinen Arbeitsbaum und holt mit
 dem Deploy-Key:
 
