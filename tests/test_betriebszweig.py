@@ -72,6 +72,26 @@ def test_im_zweig_betrieb_liegt_nur_was_die_routine_ablegt(tmp_path, anlegen, be
     assert bz.main(["zweig", str(zweig)]) == 1
 
 
+@pytest.mark.parametrize("name", ["Bericht.html", "bericht(1).html", "bericht 1.html",
+                                  'bericht"1.html', "bericht<b>.html", "berichtä.html"])
+def test_ein_dateiname_im_paket_hat_nur_a_z_0_9_und_unterstrich_punkt_strich(tmp_path, name):
+    """Der Name geht als Verweis in die Seite (Entscheid des Maintainers
+    16.10.2026). Positivkontrolle: Ein Name aus allen erlaubten Zeichen geht
+    durch. Die Abschluesse, die stand.json mit Schraegstrich nennt, sind kein
+    Befund, denn geprueft werden die Dateien im Zweig. Ein fremdes Zeichen
+    ist ein Befund, auch wenn stand.json den Namen nennt."""
+    zweig = _zweig(tmp_path / "zweig")
+    stand = json.loads((zweig / "paket" / "stand.json").read_text(encoding="utf-8"))
+    for n in ("bestandsbericht_2026-01-01_teil-9.html", name):
+        stand["dateien"][n] = "f" * 64
+        (zweig / "paket" / "stand.json").write_text(json.dumps(stand), encoding="utf-8")
+        (zweig / "paket" / n).write_text("x", encoding="utf-8")
+        if n != name:
+            assert bz.zweig(zweig) == []
+    assert bz.zweig(zweig) == [f"paket/{name}: Dateiname mit anderen Zeichen als a-z, 0-9, _ . -"]
+    assert bz.main(["zweig", str(zweig)]) == 1
+
+
 def test_ausserhalb_von_betrieb_gleicht_der_baum_dem_rahmen(tmp_path):
     """Nur betrieb/ darf der Bau des Abends schreiben. Eine geaenderte, eine
     neue und eine fehlende Datei des Rahmens sind je ein Befund; ein Ordner

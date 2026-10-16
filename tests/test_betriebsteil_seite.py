@@ -225,6 +225,30 @@ def test_der_betriebsteil_braucht_eine_freigabe(auslieferung, tmp_path, capsys, 
                     "--out", str(tmp_path / "seite3")]) == 0, "Positivkontrolle"
 
 
+@pytest.mark.parametrize("feld, gut, schlecht", [
+    ("bericht", "bestandsbericht_2026-01-01.html", "bestandsbericht(1).html"),
+    ("jahresbericht", "jahresbericht_2025.html", "Jahresbericht_2025.html")])
+def test_ein_dateiname_geht_nur_mit_erlaubten_zeichen_in_einen_verweis(tmp_path, feld, gut, schlecht):
+    """Die zweite Stelle der Zeichenregel (Entscheid des Maintainers
+    16.10.2026): dort, wo der Name aus stand.json in den Verweis geht, fuer
+    Monats- und Jahresbericht. Positivkontrolle: Der erlaubte Name ergibt den
+    Verweis. Ein Name, zu dem keine Datei liegt, ergibt keinen Verweis. Liegt
+    die Datei mit fremdem Zeichen da, haelt der Bau an."""
+    plv = tmp_path / us.STAND_DIR
+    plv.mkdir(parents=True)
+    (plv / gut).write_text("x", encoding="utf-8")
+
+    def tabelle(name: str) -> str:
+        return us._generiert("tabelle", "abschluesse", {"betrieb": {"vorhanden": True, "abschluesse": [
+            {"stichtag": "2026-01-01", feld: name}]}}, tmp_path, "")
+
+    assert f"]({us.STAND_DIR}/{gut})" in tabelle(gut)
+    assert "](" not in tabelle(schlecht)
+    (plv / schlecht).write_text("x", encoding="utf-8")
+    with pytest.raises(VeroeffentlichungFehler, match="geht in keinen Verweis"):
+        tabelle(schlecht)
+
+
 def _platzhalter(teil: str):
     for datei in sorted(QUELLEN.rglob("*.md")):
         rel = datei.relative_to(QUELLEN)

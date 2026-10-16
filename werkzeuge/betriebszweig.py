@@ -8,7 +8,11 @@ Zwei Pruefungen dieses Moduls laufen dort, beide halten den Bau an:
 * ``zweig``: Im Zweig liegt genau, was die Routine ablegt, und nichts sonst:
   ``anker.jsonl``, ``A-B1.json`` und unter ``paket/`` die oeffentlichen
   Dateien des Stands-Pakets, flach, jede in ``stand.json`` genannt und keine
-  Parquet-Tabelle. Kein Verzeichnis ``.github`` an keiner Stelle: Ein Push
+  Parquet-Tabelle. Ein Dateiname unter ``paket/`` besteht nur aus a-z, 0-9,
+  ``_``, ``.`` und ``-``: Er geht als Verweis in die Seite (Entscheid des
+  Maintainers 16.10.2026). Geprueft werden die Dateien, nicht die Liste in
+  ``stand.json``; die nennt auch die Abschluesse unter ``abschluesse/``, die
+  nicht im Zweig liegen. Kein Verzeichnis ``.github`` an keiner Stelle: Ein Push
   auf ``betrieb`` startet die Workflows, die im Stand von ``betrieb`` liegen.
   Der Workflow in ``main`` kann das nicht verhindern, aber er liefert dann
   nicht aus, und der Lauf steht sichtbar rot da (ADR-029, Variante
@@ -28,6 +32,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -37,6 +42,9 @@ WURZEL = ("anker.jsonl", "A-B1.json")
 #: Das Paket im Zweig und die Endungen seiner oeffentlichen Dateien.
 PAKET = "paket"
 PAKET_ENDUNGEN = (".html", ".json", ".jsonl")
+#: Die Zeichen eines Dateinamens im Paket; ``unternehmensseite`` haelt jeden
+#: Namen, der in einen Verweis geht, noch einmal dagegen.
+DATEINAME = re.compile(r"[a-z0-9_.-]+")
 #: Der Betriebsteil im gebauten Baum (unternehmensseite.BETRIEB_DIR).
 BETRIEB_DIR = "betrieb"
 
@@ -72,6 +80,8 @@ def zweig(wurzel: Path) -> List[str]:
                 befunde.append(f"{rel}: nicht erlaubt")
         elif teile[0] != PAKET or len(teile) != 2:
             befunde.append(f"{rel}: nicht erlaubt (das Paket liegt flach unter {PAKET}/)")
+        elif not DATEINAME.fullmatch(teile[1]):
+            befunde.append(f"{rel}: Dateiname mit anderen Zeichen als a-z, 0-9, _ . -")
         elif teile[1] != "stand.json" and teile[1] not in genannt:
             befunde.append(f"{rel}: steht nicht in stand.json")
         elif not teile[1].endswith(PAKET_ENDUNGEN):

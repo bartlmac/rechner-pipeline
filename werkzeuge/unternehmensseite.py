@@ -38,6 +38,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import betriebszweig
 import darstellung
 import grafik
 import vorzeigeseite
@@ -425,9 +426,16 @@ def _stand_href(ziel: Optional[Path], datei: Optional[str]) -> str:
     if not datei or ziel is None:
         return ""
     # Paketschema 5: Die bezeugten Berichte liegen in der Wurzel des Pakets.
-    if (ziel / STAND_DIR / datei).is_file():
-        return f"{STAND_DIR}/{datei}"
-    return ""
+    if not (ziel / STAND_DIR / datei).is_file():
+        return ""
+    # Der Name geht unmaskiert in den Verweis. Im Workflow hat ihn
+    # betriebszweig.zweig schon geprueft; dieselbe Regel gilt hier fuer jeden
+    # Bau, auch aus einem Paket, das nicht ueber den Zweig kam.
+    if not betriebszweig.DATEINAME.fullmatch(datei):
+        raise VeroeffentlichungFehler(
+            f"Stands-Paket: Dateiname {datei!r} mit anderen Zeichen als a-z, 0-9, _ . - "
+            "geht in keinen Verweis.")
+    return f"{STAND_DIR}/{datei}"
 
 
 def stand(modell: Dict[str, Any], ziel: Path) -> List[str]:
