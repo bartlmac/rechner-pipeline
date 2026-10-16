@@ -291,7 +291,7 @@ def _generiert(art: str, name: str, modell: Dict[str, Any],
                                  for k, v in sorted(je.items())])
     if art == "tabelle" and name == "buchungen_je_art":
         zeilen = ["| Art | Geschäftsvorfälle |", "|---|---:|"]
-        zeilen += [f"| {titel} | {_zahl_de(wert)} |"
+        zeilen += [f"| {darstellung.maskiert(titel)} | {_zahl_de(wert)} |"
                    for titel, wert in _buchungs_eintraege(modell)]
         return "\n".join(zeilen)
     if art == "tabelle" and name == "bestand_kennzahlen":
@@ -580,7 +580,7 @@ def _freigabe(modell: Dict[str, Any]) -> str:
                        "ohne A-B1 wird der Betriebsteil nicht veroeffentlicht")
     am = _datum_de(str(abnahme.get("entschieden_am") or "")[:10])
     satz = (f"Angaben der Snapshot-Datei zur Auslieferung A-B1: Entscheid **angenommen** "
-            f"am {am}, Rolle {html.escape(str(abnahme.get('rolle') or '—'))} "
+            f"am {am}, Rolle {darstellung.maskiert(abnahme.get('rolle') or '—')} "
             f"([Snapshot]({Path(AB1_DATEI).name})).")
     if abnahme.get("schluesselklasse") == "simulation":
         satz += ('\n\n<p class="kleingedruckt">Gezeichnet mit einem Simulationsschlüssel; '
@@ -1343,8 +1343,9 @@ def _kennzahlen(text: str, modell: Dict[str, Any], seite: str,
             if art == "hash":
                 return str(wert)[:16]
             if art == "datum":
-                jahr, monat, tag = str(wert).split("-")
-                return f"{tag}.{monat}.{jahr}"
+                if not darstellung.ISO_DATUM.fullmatch(str(wert)):
+                    raise ValueError(f"kein Datum: {wert!r}")
+                return _datum_de(wert)
             return str(wert)
         except (KeyError, ValueError, TypeError, IndexError) as exc:
             raise VeroeffentlichungFehler(

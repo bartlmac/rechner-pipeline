@@ -15,9 +15,11 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import html
 import json
 import re
 import shutil
+import string
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -27,6 +29,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "werkzeuge"))
 
+import darstellung  # noqa: E402
 import falldaten as fd  # noqa: E402
 import grafik  # noqa: E402
 import seitenpruefung as sp  # noqa: E402
@@ -247,6 +250,71 @@ def test_ein_dateiname_geht_nur_mit_erlaubten_zeichen_in_einen_verweis(tmp_path,
     (plv / schlecht).write_text("x", encoding="utf-8")
     with pytest.raises(VeroeffentlichungFehler, match="geht in keinen Verweis"):
         tabelle(schlecht)
+
+
+def test_maskiert_laesst_kein_steuerzeichen_stehen_und_zeigt_denselben_text():
+    """Ein maskierter Text traegt ausser Buchstabe, Ziffer, Leerzeichen und
+    ``. , / -`` kein ASCII-Zeichen mehr, nur Zeichenreferenzen; der Browser
+    zeigt denselben Text. Ein ISO-Datum wird umgestellt, alles andere, auch
+    ein Datum mit Anhang, geht maskiert durch."""
+    text = "".join(map(chr, range(32, 127))) + "\n\täß—€"
+    m = darstellung.maskiert(text)
+    assert html.unescape(m) == text
+    assert set(re.sub(r"&#[0-9]+;", "", m)) <= set(string.ascii_letters + string.digits + " .,/-äß—€")
+    assert darstellung.datum("2026-10-01") == "01.10.2026"
+    for kein in ("2026-10-01<b>", "<b>2026-10-01", "2026-10-<b>", "2026-1-5"):
+        assert darstellung.datum(kein) == darstellung.maskiert(kein), kein
+
+
+#: Ein Wert, wie ihn ein fremder Server in den Snapshot schreiben koennte:
+#: Tag, Markdown-Verweis auf javascript:, Tabellentrenner, Liquid.
+FREMD = "<i>x</i>[y](javascript:z)|{{w}}"
+
+
+@pytest.mark.parametrize("stelle", [
+    "Stichtag eines Abschlusses", "Stichtag einer Übernahme", "Beginn eines Zeitraums",
+    "Art einer Buchung", "Rolle der A-B1", "Datum der A-B1"])
+def test_ein_text_aus_dem_snapshot_steht_maskiert_auf_der_seite(auslieferung, monkeypatch, stelle):
+    """Was der Server in stand.json und die A-B1 schreibt, ist kein Markup
+    (Entscheid des Maintainers 16.10.2026, B2). Je Stelle der
+    Bestandsfuehrung, an der ein Text aus dem Snapshot erscheint, ein fremder
+    Wert: Er erreicht die Seite, aber nur maskiert."""
+    a = auslieferung
+    monkeypatch.setitem(us.UEBERNAHMEN, "probe", ("probe", "Probe"))
+    for u in json.loads((a["paket"] / "stand.json").read_text("utf-8"))["uebernahmen"]:
+        monkeypatch.setitem(us.UEBERNAHMEN, u["fall"], ("probe", "Probe"))
+    modell = fd.sammle_betrieb(a["oeffentlich"], a["anker"], a["ab1"], True)
+    b = modell["betrieb"]
+    {"Stichtag eines Abschlusses": lambda: b["abschluesse"][-1].update(stichtag=FREMD),
+     "Stichtag einer Übernahme": lambda: b.update(uebernahmen=[
+         {"fall": "probe", "stichtag": FREMD, "vertraege": 1}]),
+     "Beginn eines Zeitraums": lambda: b["geschaeftsentwicklung"]["zeitraeume"]["aktuelles_jahr"]
+     .update(von=FREMD),
+     "Art einer Buchung": lambda: b["buchungen"]["je_ereignis"].update({FREMD: 5}),
+     "Rolle der A-B1": lambda: b["verankerung"]["abnahme"].update(rolle=FREMD),
+     "Datum der A-B1": lambda: b["verankerung"]["abnahme"].update(entschieden_am=FREMD),
+     }[stelle]()
+    text = (QUELLEN / "betrieb" / "index.md").read_text(encoding="utf-8")
+    seite = us._kennzahlen(text, modell, "betrieb/index.md")
+    assert darstellung.maskiert("<i>x") in seite, "der Wert erreicht die Seite nicht"
+    for roh in ("<i>", "</i>", "](javascript", "|{", "{{"):
+        assert roh not in seite, roh
+
+
+def test_ein_datum_als_platzhalter_haelt_an_wenn_kein_datum_kommt(auslieferung, monkeypatch):
+    """{{datum:…}} steht im Fliesstext der Bestandsfuehrung. Loest der
+    Platzhalter kein ISO-Datum auf, wird nicht gebaut, wie bisher; der Wert
+    geht durch darstellung.datum."""
+    a = auslieferung
+    for u in json.loads((a["paket"] / "stand.json").read_text("utf-8"))["uebernahmen"]:
+        monkeypatch.setitem(us.UEBERNAHMEN, u["fall"], ("probe", "Probe"))
+    modell = fd.sammle_betrieb(a["oeffentlich"], a["anker"], a["ab1"], True)
+    text = (QUELLEN / "betrieb" / "index.md").read_text(encoding="utf-8")
+    assert f"Stand {darstellung.datum(modell['betrieb']['stand'])}." in us._kennzahlen(
+        text, modell, "betrieb/index.md")
+    modell["betrieb"]["stand"] = "2026-02-<b>"
+    with pytest.raises(VeroeffentlichungFehler, match="kein Datum"):
+        us._kennzahlen(text, modell, "betrieb/index.md")
 
 
 def _platzhalter(teil: str):

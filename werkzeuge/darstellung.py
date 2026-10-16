@@ -13,6 +13,8 @@ was tatsaechlich kopiert wurde (Regie-Sperre, Positivliste).
 
 from __future__ import annotations
 
+import re
+import string
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import grafik
@@ -34,14 +36,35 @@ def _zahl(wert: Any, dez: int = 0) -> str:
     return grafik._zahl(wert, dez)
 
 
+#: Ein Datum, wie die Modelle es schreiben (``date.isoformat``).
+ISO_DATUM = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+#: Die ASCII-Zeichen, die :func:`maskiert` stehen laesst.
+_UNMASKIERT = frozenset(string.ascii_letters + string.digits + " .,/-")
+
+
+def maskiert(wert: Any) -> str:
+    """Ein Text aus fremder Quelle fuer eine Seite aus Markdown und HTML.
+
+    Jedes ASCII-Zeichen ausser Buchstabe, Ziffer, Leerzeichen und ``. , / -``
+    wird zur Zeichenreferenz (``<`` zu ``&#60;``). So bildet der Wert weder
+    Tag noch Verweis, Tabellenzelle, Zeilenumbruch, Liquid oder Formel; im
+    Browser steht er da wie vorher. Zeichen ausserhalb von ASCII bleiben:
+    Weder HTML noch Markdown noch Liquid kennen dort ein Steuerzeichen."""
+    return "".join(z if z in _UNMASKIERT or ord(z) > 127 else f"&#{ord(z)};"
+                   for z in str(wert))
+
+
 def datum(wert: Any) -> str:
     """ISO-Datum in der Schreibweise des Auftritts. Wohnt hier, weil
-    beide Erzeuger dieselben Stichtage schreiben."""
-    try:
-        jahr, monat, tag = str(wert).split("-")
-        return f"{tag}.{monat}.{jahr}"
-    except ValueError:
-        return str(wert)
+    beide Erzeuger dieselben Stichtage schreiben.
+
+    Was kein ISO-Datum ist, geht maskiert durch (:func:`maskiert`): Die
+    Stichtage des Betriebsteils kommen aus dem Snapshot, und den schreibt
+    ein Server, nicht dieser Code (Entscheid des Maintainers 16.10.2026)."""
+    text = str(wert)
+    if ISO_DATUM.fullmatch(text):
+        return f"{text[8:]}.{text[5:7]}.{text[:4]}"
+    return maskiert(text)
 
 
 def _mio(wert: Any) -> str:
