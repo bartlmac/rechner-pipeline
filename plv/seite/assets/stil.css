@@ -132,6 +132,13 @@ figcaption {
   color: var(--matt); margin-bottom: .6rem;
 }
 svg { max-width: 100%; height: auto; display: block; }
+/* Die Grafiken des Betriebsteils (betrieb/*.svg) als Bild: nie breiter als
+   ihre eigene Groesse, sonst waechst ihre Schrift mit (grafik.datei). */
+img.grafik { display: block; max-width: 100%; height: auto; }
+figure.bild { margin-top: 1.2rem; margin-bottom: 1.4rem; }
+/* Die Bestandsgrafik ist ein Block der Seite: Sie fuellt die Textspalte wie
+   vorher Kachel und Karte, auf dem Telefon dessen ganze Breite. */
+figure.bild img.grafik { width: 100%; }
 figure.film { margin-top: 1.2rem; margin-bottom: 2rem; }
 figure.film video { display: block; width: 100%; height: auto; background: var(--flaeche); }
 figure.film figcaption {

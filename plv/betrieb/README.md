@@ -649,7 +649,8 @@ loginctl enable-linger "$USER"     # der Timer läuft auch ohne Sitzung
       --zeichnungsordnung ~/apps/plv/schluessel/zeichnungsordnung.json
   python werkzeuge/auftritt.py --fall faelle/<fall> --name <kurzname> \
       --abzug ... --stands-paket runs/stands-paket \
-      --anker faelle/<fall>/abgeleitet/anker/anker.jsonl --film <ablage>/erklaerfilm.mp4
+      --anker faelle/<fall>/abgeleitet/anker/anker.jsonl --ab1 <A-B1>.json \
+      --film <ablage>/erklaerfilm.mp4
   ```
 
 Lokal, ohne Container (Entwicklerrechner), tut dasselbe:

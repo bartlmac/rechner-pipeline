@@ -19,8 +19,8 @@ den Bau ab). Was Prosa bleibt, ist benannt und begründet.
 
 | Stelle | Seite | Kennzahl-Quelle im Modell |
 |---|---|---|
-| Verträge in Kraft, Stand, Buchungen, Neugeschäft, aus Übernahmen (Block Geschäftsentwicklung) | index, geschaeftsentwicklung, finanzen | betrieb.* aus dem Stands-Paket (Pflicht; generierte SVGs buchungen_je_art, bestand_vergleich_tief; Tabellen buchungen_je_art, abschluesse, uebernahmen_im_stand). Seit 2026-09-19 trägt der Kennzahlkopf bestand_vergleich_tief die Bestandszahlen; die wiederholende Tabelle und das zweite Produktdiagramm sind von der Seite genommen (Erzeuger bestand_je_produkt bleibt im Modul) |
-| Geschäftsentwicklung: Neuzugang/Leistungen x drei Zeiträume, Anzahl + Betrag | index, geschaeftsentwicklung | betrieb.geschaeftsentwicklung (Stands-Paket, aus dem Tagesjournal; html:geschaeftsentwicklung) |
+| Verträge in Kraft, Stand, Buchungen, Neugeschäft, aus Übernahmen (Block Geschäftsentwicklung) | betrieb (Bestandsführung); die Startseite zeigt die Grafiken als Bild aus betrieb/ | betrieb.* aus dem Stands-Paket, nur im Betriebsteil (seit 15.10.2026) (Pflicht; generierte SVGs buchungen_je_art, bestand_vergleich_tief; Tabellen buchungen_je_art, abschluesse, uebernahmen_im_stand). Seit 2026-09-19 trägt der Kennzahlkopf bestand_vergleich_tief die Bestandszahlen; die wiederholende Tabelle und das zweite Produktdiagramm sind von der Seite genommen (Erzeuger bestand_je_produkt bleibt im Modul) |
+| Geschäftsentwicklung: Neuzugang/Leistungen x drei Zeiträume, Anzahl + Betrag | betrieb; index als Bild | betrieb.geschaeftsentwicklung (Stands-Paket, aus dem Tagesjournal; html:geschaeftsentwicklung) |
 | Fertiggestellte Migrationen: Block je Übernahme (Name, Stichtag, Verträge, Struktur, DK, Abnahme-KPIs, Verweise) | index, migrationen | fall.name + bestand.verteilungen (Name), abnahmen.controlling, bestand.*, abnahmen.aktuariell[*], parameter.diskrepanzen (html:migrationen_bloecke) |
 | Migrierte Verträge (Kennzahl Block Migration) | index | bestand.anzahl |
 | Zusammensetzung des Zugangs (Grafik POL/PEX) | index | bestand.verteilungen.status_code (generierte SVG) |
@@ -29,9 +29,9 @@ den Bau ab). Was Prosa bleibt, ist benannt und begründet.
 | Prüflücken des Controllings | index | abnahmen.controlling.pruefluecken |
 | Migrationsstichtag | index, migrationen | abnahmen.controlling.stichtag_1 |
 | Verträge in der Übersichts-Tabelle | migrationen | bestand.anzahl |
-| Übernommenes Deckungskapital | migrationen, finanzen | bestand.abzuege.0.deckkap.summe |
-| Laufender Jahresbeitrag | finanzen | bestand.abzuege.0.jbrutto.summe |
-| Versicherungssumme der Lieferung | finanzen | bestand.abzuege.0.erlsumme.summe |
+| Übernommenes Deckungskapital | migrationen, Fallseite Station 13 | bestand.abzuege.0.deckkap.summe |
+| Laufender Jahresbeitrag | Fallseite Station 13 | bestand.abzuege.0.jbrutto.summe |
+| Versicherungssumme der Lieferung | Fallseite Station 13 | bestand.abzuege.0.erlsumme.summe |
 | Geschäftsvorfall-Tabelle je Art | geschaeftsentwicklung | bestand.vorfaelle_im_zeitraum.je_art (generierte Tabelle) |
 | Kennzahlenband (Umfang / Prüftiefe / Verbindlichkeit) | index, Fallbericht | bestand.anzahl, abzuege[0].deckkap.summe, vorgeschichte.anzahl; abnahmen.controlling.verteilung.anzahl_werte, aktuariell[*].verteilung.anzahl_werte, pruefluecken; kette.entscheide[in_finaler_kette], A-M4.artefakte_gebunden, gates[*].versuch |
 | Toleranz-Leitgrafik (Schranke gegen größte Abweichung) | index, Fallbericht | abnahmen.aktuariell[*].{verteilung,grundtoleranz}, controlling.verteilung |

@@ -1565,7 +1565,6 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
             if k.startswith(("P-", "A-")):
                 laeufe[k] = g  # der juengste Lauf je Gate
         trafo = modell.get("transformation") or {}
-        betrieb = modell.get("betrieb") or {}
         gm = param.get("golden_master") or {}
         deckung = param.get("deckung") or {}
         aktuariell = {t.get("kennung"): t for t in abnahmen}
@@ -1663,8 +1662,21 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
                if e.get("gate") == "A-M4" and e.get("in_finaler_kette")]
         gebunden = (" " + _bindet_satz(am4[-1], entscheide)) if am4 else ""
         cv = ctrl.get("verteilung") or {}
-        ueb0 = (betrieb.get("uebernahmen") or [{}])[0]
-        bst = betrieb.get("bestand") or {}
+        # Der Zugang, wie der Fall ihn kennt: die gelieferten Vertraege zum
+        # Uebernahmestichtag. Wie sich der Bestand seither entwickelt, zeigt
+        # der Betriebsteil; die Seite des Falls kennt das Stands-Paket nicht
+        # und aendert sich nur mit dem Rahmen (Betriebsteil, 15.10.2026).
+        zugang_anzahl = (modell.get("bestand") or {}).get("anzahl")
+        zugang_stichtag = ctrl.get("stichtag_1")
+        abzug0 = ((modell.get("bestand") or {}).get("abzuege") or [{}])[0]
+        zugang_summen = [(titel, (abzug0.get(feld) or {}).get("summe"))
+                         for titel, feld in (("einem Deckungskapital", "deckkap"),
+                                             ("einem laufenden Jahresbeitrag", "jbrutto"),
+                                             ("einer Versicherungssumme", "erlsumme"))]
+        teile_summen = [f"{titel} von {_zahl(summe, 2)} €" for titel, summe in zugang_summen
+                        if summe is not None]
+        zugang_summen_text = (", ".join(teile_summen[:-1]) + " und " + teile_summen[-1]
+                              if len(teile_summen) > 1 else "".join(teile_summen))
 
         # --- Stand des Falls (ADR-018 Nachtrag 01.10., ADR-025): Was der
         # A-M4-Snapshot je Gegenstand SAGT — woertlich, nicht hergeleitet.
@@ -1786,18 +1798,12 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
                  if ctrl.get("anzahl") else "",
                  lauf_satz("A-M4"), entscheid_satz("A-M4") + gebunden],
             13: [entscheid_satz("A-B2"), probe_satz, zugang_satz,
-                 (f"Zum {dat(ueb0.get('stichtag'))} treten "
-                  f"{_zahl(ueb0.get('vertraege') or 0)} Verträge als Zugang in den "
-                  f"geführten Bestand ein; Stand {dat(betrieb.get('stand'))}: "
-                  f"{_zahl(bst.get('in_force') or 0)} Verträge in Kraft, davon "
-                  f"{_zahl(bst.get('uebernommen_in_force') or 0)} aus Übernahmen"
-                  + (" ([Bestandsführung](../../geschaeftsentwicklung/))."
-                     if unterseite else "."))
-                 if betrieb.get("vorhanden")
-                 else "*(Der geführte Bestand liegt dieser Seite nicht vor.)*",
-                 # Die Freigabe des Stands nach aussen, im Fall gezeichnet.
-                 entscheid_satz("A-B1", True) if any(e.get("gate") == "A-B1" for e in entscheide)
-                 else ""],
+                 (f"Zum {dat(zugang_stichtag)} treten {_zahl(zugang_anzahl)} Verträge"
+                  + (f" mit {zugang_summen_text}" if zugang_summen_text else "")
+                  + " als Zugang in den geführten Bestand ein"
+                  + ("; wie er sich seither entwickelt, zeigt die "
+                     "[Bestandsführung](../../betrieb/)." if unterseite else "."))
+                 if zugang_anzahl and zugang_stichtag else ""],
         }
 
         aus: List[str] = []

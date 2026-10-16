@@ -18,19 +18,19 @@
 ## Unser Bestand {#unser-bestand}
 
 Verträge in Kraft zum jüngsten Monatsabschluss. Beitrag und Deckungskapital in der
-[Vertiefung](geschaeftsentwicklung/#bestand-heute).
+[Vertiefung](betrieb/#bestand-heute).
 
-{{svg:bestand_vergleich}}
+{{bild:bestand}}
 
 ## Geschäftsentwicklung {#geschaeftsentwicklung}
 
 Laufendes Jahr gegen denselben Zeitraum im Vorjahr.
 
-{{svg:zugang_vergleich}}
+{{bild:zugang}}
 
-{{svg:leistungen_vergleich}}
+{{bild:leistungen}}
 
-[Vertiefung: Bestandsführung](geschaeftsentwicklung/)
+[Vertiefung: Bestandsführung](betrieb/)
 
 ## Bestandsmigrationen {#bestandsmigrationen}
 
@@ -62,7 +62,7 @@ Baldrian.</span></a>
 ## Unser Know-how {#know-how}
 
 <div class="kacheln gross">
-<a class="kachel" href="geschaeftsentwicklung/"><b>Laufende Bestandsführung</b>
+<a class="kachel" href="betrieb/"><b>Laufende Bestandsführung</b>
 <span>Eigene und übernommene Verträge laufen in einem Bestand. Zu jedem
 Monatsersten steht ein Abschluss.</span></a>
 <a class="kachel" href="aktuariat/"><b>Flexibler Rechenkern</b>

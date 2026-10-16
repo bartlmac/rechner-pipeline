@@ -243,21 +243,22 @@ def test_eine_auslieferung_ohne_abnahme_wird_nicht_veroeffentlicht(
                           schluessel=schluessel, zeichnungsordnung=ordnung)
     ankerdatei = tmp_path / "anker-aus" / ak.ANKER_DATEI
 
-    fall = tmp_path / "fall"
-    (fall / "entscheide").mkdir(parents=True)
-    with pytest.raises(fd.FalldatenFehler, match="A-B1"):
-        fd.betrieb(aus, ankerdatei, fall)
-
-    # Ohne Fall ist sie erst recht nicht auffindbar — und das sagt der Text.
-    with pytest.raises(fd.FalldatenFehler, match="ohne Fall"):
+    # Ohne Snapshot der A-B1 — und das sagt der Text.
+    with pytest.raises(fd.FalldatenFehler, match="ohne Abnahme"):
         fd.betrieb(aus, ankerdatei, None)
+    # Eine Datei, die keine A-B1 ist (hier: eine A-B2 ohne gueltigen Inhalt),
+    # oder eine A-B1, die einen anderen Ankersatz bindet, bindet nichts.
+    fremd = tmp_path / "A-B1.json"
+    fremd.write_text(json.dumps({"gate": "A-B2", "entscheid": "angenommen"}), encoding="utf-8")
+    with pytest.raises(fd.FalldatenFehler, match="Snapshot"):
+        fd.betrieb(aus, ankerdatei, fremd)
 
 
 def test_eine_momentaufnahme_braucht_keine_abnahme(paket_und_anker, tmp_path):
     """Positivkontrolle: Der gewoehnliche Export laeuft weiter durch —
     sonst waere die Regel ein Rundschlag."""
     paket, anker = paket_und_anker
-    modell = fd.betrieb(paket, anker, tmp_path / "fall")
+    modell = fd.betrieb(paket, anker, tmp_path / "keine-A-B1.json")
     assert modell["verankerung"]["art"] == "momentaufnahme"
     assert "abnahme" not in modell["verankerung"]
 

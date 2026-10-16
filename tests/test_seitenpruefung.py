@@ -69,13 +69,13 @@ def test_verweise_findet_tote_ziele_fehlende_sprungziele_und_absolute_pfade(tmp_
 def test_verweise_liest_einfache_anfuehrungszeichen_und_belege_sind_ein_hinweis(tmp_path: Path):
     """Bis 08.10.2026 las die Pruefung nur href="...": Zwei tote Verweise im
     Bericht der Migrationsabnahme (href='...') blieben ungesehen. Ein toter
-    Verweis in einem Beleg (artefakte/, plv/) ist ein Hinweis: Belege
+    Verweis in einem Beleg (artefakte/, betrieb/plv/) ist ein Hinweis: Belege
     erscheinen unveraendert; auf der eigenen Seite bleibt er ein Befund."""
     v = tmp_path / "vorschau"
     _schreibe(v / "a.html", "<h2 id='da'>A</h2>")
     _schreibe(v / "index.html", "<a href='a.html#da'>da</a> <a href='weg.html'>w</a>")
     _schreibe(v / "migrationen" / "f" / "artefakte" / "bericht.html", "<a href='abgeleitet/x.html'>x</a>")
-    _schreibe(v / "plv" / "index.html", '<a href="fehlt.html">f</a>')
+    _schreibe(v / "betrieb" / "plv" / "index.html", '<a href="fehlt.html">f</a>')
     befunde, zusammen = sp.verweise(v)
     assert befunde == ["index.html: weg.html — kein Ziel"], befunde
     assert "in Belegen ohne Ziel: 2" in zusammen
@@ -145,7 +145,7 @@ def test_pages_zaehlt_jedes_dollar_auch_ueber_einen_zeilenumbruch(tmp_path: Path
 def test_pages_verlangt_einen_titel_und_kein_markdown_in_belegen(tmp_path: Path):
     """Gemessen mit dem Renderer von Pages: Ohne Ueberschrift am Anfang hat eine
     Seite keinen Titel (jekyll-titles-from-headings, 38 Seiten bis 08.10.2026),
-    und eine .md unter artefakte/ oder plv/ wird zur Seite, ihr Original
+    und eine .md unter artefakte/ oder betrieb/plv/ wird zur Seite, ihr Original
     verschwindet (remove_originals, 09.10.2026)."""
     seite = tmp_path / "seite"
     _schreibe(seite / "a.md", "# Titel\n\n<nav class=\"kopf\"></nav>\n")
@@ -156,10 +156,10 @@ def test_pages_verlangt_einen_titel_und_kein_markdown_in_belegen(tmp_path: Path)
     _schreibe(seite / "d.md", '<nav class="kopf"></nav>\n\n# Titel danach\n')
     _schreibe(seite / "e.md", "#### Vierte Ebene\n")
     _schreibe(seite / "migrationen" / "f" / "artefakte" / "notiz.md", "# Notiz\n")
-    _schreibe(seite / "plv" / "probe.md", "# Probe\n")
+    _schreibe(seite / "betrieb" / "plv" / "probe.md", "# Probe\n")
     befunde, _ = sp.pages(seite)
     assert [b.split(" — ")[0].split(":")[0] for b in befunde] == [
-        "d.md", "e.md", "migrationen/f/artefakte/notiz.md", "plv/probe.md"], befunde
+        "betrieb/plv/probe.md", "d.md", "e.md", "migrationen/f/artefakte/notiz.md"], befunde
 
 
 def test_ein_sprung_auf_eine_fehlende_ueberschrift_bleibt_ein_befund(tmp_path: Path):
@@ -207,9 +207,9 @@ def _paket_und_seite(tmp_path: Path):
                "bestandsbericht_2026-10-01.html": _sha(b"B")}
     _schreibe(paket / "stand.json", json.dumps({"dateien": dateien}))
     seite = tmp_path / "seite"
-    _schreibe(seite / "plv" / "index.html", b"A")
-    _schreibe(seite / "plv" / "bestandsbericht_2026-10-01.html", b"B")
-    _schreibe(seite / "berichte" / "bestandsbericht_2026-10-01.html", b"B")
+    _schreibe(seite / "betrieb" / "plv" / "index.html", b"A")
+    _schreibe(seite / "betrieb" / "plv" / "bestandsbericht_2026-10-01.html", b"B")
+    _schreibe(seite / "betrieb" / "berichte" / "bestandsbericht_2026-10-01.html", b"B")
     return seite, paket
 
 
@@ -225,15 +225,16 @@ def test_paket_haelt_plv_und_berichte_gegen_stand_json(tmp_path: Path):
         wie(s)
         return sp.paket(s, p)[0]
 
-    assert mutiert("abweichend", lambda s: (s / "plv" / "index.html").write_bytes(b"X")) == [
-        "plv/index.html: weicht von stand.json ab"]
-    assert mutiert("fremd", lambda s: (s / "plv" / "fremd.txt").write_bytes(b"F")) == [
-        "plv/fremd.txt: ohne Eintrag in stand.json"]
-    assert mutiert("fehlt", lambda s: (s / "plv" / "index.html").unlink()) == [
-        "plv/index.html: in stand.json, aber nicht veroeffentlicht"]
-    assert mutiert("kopie", lambda s: (s / "berichte" / "bestandsbericht_2026-10-01.html")
+    plv = Path("betrieb") / "plv"
+    assert mutiert("abweichend", lambda s: (s / plv / "index.html").write_bytes(b"X")) == [
+        "betrieb/plv/index.html: weicht von stand.json ab"]
+    assert mutiert("fremd", lambda s: (s / plv / "fremd.txt").write_bytes(b"F")) == [
+        "betrieb/plv/fremd.txt: ohne Eintrag in stand.json"]
+    assert mutiert("fehlt", lambda s: (s / plv / "index.html").unlink()) == [
+        "betrieb/plv/index.html: in stand.json, aber nicht veroeffentlicht"]
+    assert mutiert("kopie", lambda s: (s / "betrieb" / "berichte" / "bestandsbericht_2026-10-01.html")
                    .write_bytes(b"Y")) == [
-        "berichte/bestandsbericht_2026-10-01.html: keine bytegleiche Datei des Pakets"]
+        "betrieb/berichte/bestandsbericht_2026-10-01.html: keine bytegleiche Datei des Pakets"]
 
 
 def test_pruefsummen_ordnet_jede_angezeigte_kennung_einer_quelle_zu(tmp_path: Path):
@@ -251,7 +252,7 @@ def test_pruefsummen_ordnet_jede_angezeigte_kennung_einer_quelle_zu(tmp_path: Pa
     _schreibe(daten, json.dumps({"belegkette": {"dateien": {}}}))
     _schreibe(seite / "index.md", "Manifest ab12cd34ef56, Police 12345678, Farbe "
               "<span style=\"color:#deadbe\">x</span>\n")
-    _schreibe(seite / "plv" / "index.html", "deadbeef99 im Beleg selbst")
+    _schreibe(seite / "betrieb" / "plv" / "index.html", "deadbeef99 im Beleg selbst")
     argumente = (seite, fall, "probe", paket, anker, daten, tmp_path)
     befunde, zusammen = sp.pruefsummen(*argumente)
     assert befunde == [] and "'Paket': 1" in zusammen
@@ -261,28 +262,67 @@ def test_pruefsummen_ordnet_jede_angezeigte_kennung_einer_quelle_zu(tmp_path: Pa
     assert befunde == ["index.md: deadbeef99 — ohne Quelle"]
 
 
+def test_ohne_fall_prueft_pruefsummen_nur_den_betriebsteil(tmp_path: Path):
+    """Im Workflow von plv-fiktion gibt es keinen Fall: Gelesen wird nur
+    betrieb/, mit Paket, Anker und A-B1 als Quellen. Eine Kennung im Rahmen
+    zaehlt dort nicht (den Rahmen prueft der Bau des Pull Requests); eine
+    Kennung im Betriebsteil ohne Quelle bleibt ein Befund, eine aus der A-B1
+    ist zugeordnet."""
+    seite, paket, anker = tmp_path / "seite", tmp_path / "paket", tmp_path / "anker.jsonl"
+    _schreibe(paket / "stand.json", json.dumps({"stand": "2026-10-08"}))
+    _schreibe(anker, json.dumps({"stand": "2026-10-08"}) + "\n")
+    ab1 = tmp_path / "A-B1.json"
+    _schreibe(ab1, json.dumps({"snapshot_sha256": "f1c48698" + "1" * 56}))
+    _schreibe(seite / "index.md", "Im Rahmen cafe0123beef, ohne Quelle\n")
+    _schreibe(seite / "betrieb" / "index.md", "Abnahme f1c48698\n")
+    argumente = (seite, None, None, paket, anker, None, tmp_path, ab1)
+    befunde, zusammen = sp.pruefsummen(*argumente)
+    assert befunde == [] and "Snapshot': 1" in zusammen, (befunde, zusammen)
+    _schreibe(seite / "betrieb" / "index.md", "Abnahme f1c48698 und cafe0123beef\n")
+    assert sp.pruefsummen(*argumente)[0] == ["betrieb/index.md: cafe0123beef — ohne Quelle"]
+    # Gegenprobe: mit Fall zaehlt auch der Rahmen.
+    fall = tmp_path / "fall"
+    (fall / "entscheide").mkdir(parents=True)
+    daten = tmp_path / "falldaten.json"
+    _schreibe(daten, json.dumps({"belegkette": {"dateien": {}}}))
+    befunde, _ = sp.pruefsummen(seite, fall, "probe", paket, anker, daten, tmp_path, ab1)
+    assert sorted(befunde) == ["betrieb/index.md: cafe0123beef — ohne Quelle",
+                               "index.md: cafe0123beef — ohne Quelle"]
+
+
 def test_der_auftritt_faehrt_die_seitenpruefung_als_letzten_schritt(tmp_path: Path, monkeypatch):
-    """Mit Stands-Paket, Anker und Vorschau prueft der Bau zuletzt die
-    gebaute Seite; ein Befund haelt die Kette an. Ohne Paket gibt es nichts
-    gegen stand.json zu halten, der Schritt entfaellt."""
+    """Die ganze Seite: erst der Rahmen aus dem Fall, dann der Betriebsteil
+    ohne Fall, dann Wache, Vorschau und zuletzt die Seitenpruefung; ein Befund
+    haelt die Kette an. Nur der Rahmen: ohne Vorschau und Pruefung, seine
+    Verweise in den Betriebsteil haetten kein Ziel."""
     aufrufe: list = []
     monkeypatch.setattr(at, "_schritt",
                         lambda kommando, erlaubt=(0,): aufrufe.append(kommando) or 0)
     aus = tmp_path / "seite"
-    argv = ["--fall", "f", "--name", "n", "--film", "film.mp4", "--out", str(aus), "--vorschau", "vorschau",
-            "--stands-paket", "paket", "--anker", "anker.jsonl"]
+    rahmen = ["--fall", "f", "--name", "n", "--film", "film.mp4", "--out", str(aus),
+              "--vorschau", "vorschau"]
+    argv = rahmen + ["--stands-paket", "paket", "--anker", "anker.jsonl", "--ab1", "A-B1.json"]
     assert at.main(argv) == 0
     assert [Path(k[1]).name for k in aufrufe] == [
-        "falldaten.py", "vorzeigeseite.py", "unternehmensseite.py", "bereinigung.py",
-        "vorschau.py", "seitenpruefung.py"]
-    seiten = aufrufe[2]
+        "falldaten.py", "vorzeigeseite.py", "unternehmensseite.py", "falldaten.py",
+        "unternehmensseite.py", "bereinigung.py", "vorschau.py", "seitenpruefung.py"]
+    fall, seiten, betrieb, betriebsseiten = aufrufe[0], aufrufe[2], aufrufe[3], aufrufe[4]
+    assert "--stands-paket" not in fall, "der Rahmen kennt das Paket nicht"
+    assert seiten[seiten.index("--teil") + 1] == "rahmen"
     assert seiten[seiten.index("--film") + 1] == "film.mp4"
+    for schalter, ziel in (("--quellen", ROOT / "plv" / "seite"), ("--docs", ROOT / "docs"),
+                           ("--repo", ROOT)):
+        assert seiten[seiten.index(schalter) + 1] == str(ziel), schalter
+    assert aufrufe[1][aufrufe[1].index("--repo") + 1] == str(ROOT)
+    assert "--fall" not in betrieb and betrieb[betrieb.index("--ab1") + 1] == "A-B1.json"
+    assert betriebsseiten[betriebsseiten.index("--teil") + 1] == "betrieb"
+    assert betriebsseiten[betriebsseiten.index("--daten") + 1] == str(aus.parent / "betriebsdaten.json")
     letzter = aufrufe[-1]
     assert letzter[2] == "alle"
     assert dict(zip(letzter[3::2], letzter[4::2])) == {
         "--seite": str(aus), "--vorschau": "vorschau", "--fall": "f", "--name": "n",
-        "--paket": "paket", "--anker": "anker.jsonl",
-        "--daten": str(aus.parent / "falldaten.json"), "--repo": str(ROOT)}
+        "--daten": str(aus.parent / "falldaten.json"), "--paket": "paket",
+        "--anker": "anker.jsonl", "--ab1": "A-B1.json", "--repo": str(ROOT)}
 
     aufrufe.clear()
     monkeypatch.setattr(at, "_schritt", lambda kommando, erlaubt=(0,): (
@@ -292,5 +332,32 @@ def test_der_auftritt_faehrt_die_seitenpruefung_als_letzten_schritt(tmp_path: Pa
     aufrufe.clear()
     monkeypatch.setattr(at, "_schritt",
                         lambda kommando, erlaubt=(0,): aufrufe.append(kommando) or 0)
-    assert at.main(argv[:8]) == 0
-    assert "seitenpruefung.py" not in [Path(k[1]).name for k in aufrufe]
+    assert at.main(["--teil", "rahmen"] + rahmen) == 0
+    assert [Path(k[1]).name for k in aufrufe] == [
+        "falldaten.py", "vorzeigeseite.py", "unternehmensseite.py", "bereinigung.py"]
+    with pytest.raises(SystemExit):
+        at.main(rahmen)   # beide Teile, aber ohne Paket
+
+
+def test_der_betriebsteil_baut_ohne_fall_in_einen_baum_mit_rahmen(tmp_path: Path, monkeypatch):
+    """So baut der Workflow von plv-fiktion den Abend: nur betrieb/, ohne Fall,
+    in den ausgecheckten Rahmen; die Seitenpruefung laeuft ohne --fall und
+    prueft die Kennungen nur im Betriebsteil."""
+    aufrufe: list = []
+    monkeypatch.setattr(at, "_schritt",
+                        lambda kommando, erlaubt=(0,): aufrufe.append(kommando) or 0)
+    aus = tmp_path / "seite"
+    assert at.main(["--teil", "betrieb", "--out", str(aus), "--vorschau", "vorschau",
+                    "--stands-paket", "paket", "--anker", "anker.jsonl", "--ab1", "A-B1.json"]) == 0
+    assert [Path(k[1]).name for k in aufrufe] == [
+        "falldaten.py", "unternehmensseite.py", "bereinigung.py", "vorschau.py",
+        "seitenpruefung.py"]
+    assert all("--fall" not in k and "--film" not in k for k in aufrufe)
+    # Der Workflow ruft die Kette aus einem anderen Verzeichnis auf (der Code
+    # liegt dort unter code/): Die Quellseiten kommen aus dem Codebaum der
+    # Kette, nicht relativ zum Arbeitsverzeichnis (gefunden in der Probe des
+    # Workflows am 15.10.2026).
+    seiten = aufrufe[1]
+    assert seiten[seiten.index("--quellen") + 1] == str(ROOT / "plv" / "seite")
+    with pytest.raises(SystemExit):
+        at.main(["--teil", "betrieb", "--out", str(aus)])   # ohne Paket

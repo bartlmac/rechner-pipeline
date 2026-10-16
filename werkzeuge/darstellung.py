@@ -13,6 +13,8 @@ was tatsaechlich kopiert wurde (Regie-Sperre, Positivliste).
 
 from __future__ import annotations
 
+import re
+import string
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import grafik
@@ -34,14 +36,35 @@ def _zahl(wert: Any, dez: int = 0) -> str:
     return grafik._zahl(wert, dez)
 
 
+#: Ein Datum, wie die Modelle es schreiben (``date.isoformat``).
+ISO_DATUM = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+#: Die ASCII-Zeichen, die :func:`maskiert` stehen laesst.
+_UNMASKIERT = frozenset(string.ascii_letters + string.digits + " .,/-")
+
+
+def maskiert(wert: Any) -> str:
+    """Ein Text aus fremder Quelle fuer eine Seite aus Markdown und HTML.
+
+    Jedes ASCII-Zeichen ausser Buchstabe, Ziffer, Leerzeichen und ``. , / -``
+    wird zur Zeichenreferenz (``<`` zu ``&#60;``). So bildet der Wert weder
+    Tag noch Verweis, Tabellenzelle, Zeilenumbruch, Liquid oder Formel; im
+    Browser steht er da wie vorher. Zeichen ausserhalb von ASCII bleiben:
+    Weder HTML noch Markdown noch Liquid kennen dort ein Steuerzeichen."""
+    return "".join(z if z in _UNMASKIERT or ord(z) > 127 else f"&#{ord(z)};"
+                   for z in str(wert))
+
+
 def datum(wert: Any) -> str:
     """ISO-Datum in der Schreibweise des Auftritts. Wohnt hier, weil
-    beide Erzeuger dieselben Stichtage schreiben."""
-    try:
-        jahr, monat, tag = str(wert).split("-")
-        return f"{tag}.{monat}.{jahr}"
-    except ValueError:
-        return str(wert)
+    beide Erzeuger dieselben Stichtage schreiben.
+
+    Was kein ISO-Datum ist, geht maskiert durch (:func:`maskiert`): Die
+    Stichtage des Betriebsteils kommen aus dem Snapshot, und den schreibt
+    ein Server, nicht dieser Code (Entscheid des Maintainers 16.10.2026)."""
+    text = str(wert)
+    if ISO_DATUM.fullmatch(text):
+        return f"{text[8:]}.{text[5:7]}.{text[:4]}"
+    return maskiert(text)
 
 
 def _mio(wert: Any) -> str:
@@ -257,17 +280,16 @@ def falldokumente(modell: Dict[str, Any]) -> Tuple[Tuple[str, str, str], ...]:
 #: Abnahmen, die eine Station NEBEN ihrem Gate traegt: der Stand, auf dem
 #: der Fall rechnet (A-K2 Rechenkern, A-T1 Tarifwerk, A-O1 Begriffsmodell;
 #: ADR-018 Nachtrag 01.10., ADR-025), beim Rechenkern; der Abbruch eines
-#: Falls (A-M5, ADR-026) beim Abschluss; die Auslieferung (A-B1) beim
-#: Zugang in die Buecher. A-B1 ist ein Gate der Linie, gezeichnet wird es
-#: aber im Fall (gate_entscheid --fall): Es gibt den Stand der Buecher, in
-#: die der Bestand eben gegangen ist, nach aussen frei (Entscheid des
-#: Maintainers, 03.10.2026).
+#: Falls (A-M5, ADR-026) beim Abschluss. Die Auslieferung (A-B1) stand bis
+#: zum Betriebsteil der Seite am Zugang in die Buecher; seit sie jeden Abend
+#: neu gezeichnet wird, steht sie nur im Betriebsteil (Entscheid des
+#: Maintainers 09.10.2026).
 STATION_WEITERE_GATES: Dict[int, Tuple[str, ...]] = {
-    7: ("A-K2", "A-T1", "A-O1"), 12: ("A-M5",), 13: ("A-B1",)}
+    7: ("A-K2", "A-T1", "A-O1"), 12: ("A-M5",)}
 
 #: Station je Gate — abgeleitet, nicht gepflegt. Ein Gate des Registers
-#: ohne Station ist ein Testbefund; das Gate der Linie A-B3 zeichnet
-#: ausserhalb jedes Falls und hat keine.
+#: ohne Station ist ein Testbefund; die Gates der Linie (A-B1, A-B3,
+#: ``falldaten.GATES_DER_LINIE``) haben keine.
 GATE_STATION: Dict[str, int] = {
     **{g: n for n, _, g in WEG_STATIONEN if g},
     **{g: n for n, gs in STATION_WEITERE_GATES.items() for g in gs},

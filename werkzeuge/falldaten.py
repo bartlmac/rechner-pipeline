@@ -781,11 +781,18 @@ def _staende_der_abnahmen(entscheide: List[Dict[str, Any]],
 
 
 def kette(fall: Path) -> Dict[str, Any]:
-    """Gate-Laeufe und menschliche Entscheide."""
+    """Gate-Laeufe und menschliche Entscheide des Falls.
+
+    Ein Gate der Linie (:data:`GATES_DER_LINIE`) gehoert nicht dazu, auch
+    wenn sein Snapshot im Fall liegt: Die Auslieferung A-B1 zeichnet der
+    Tagesbetrieb jeden Abend neu, und die Seite zeigt sie im Betriebsteil
+    (Entscheid des Maintainers 09.10.2026), nicht auf der Seite des Falls."""
     diagnostics = fall / "abgeleitet" / "diagnostics"
     gates = []
     for pfad in sorted(diagnostics.glob("*.gate.json")):
         d = _json(pfad) or {}
+        if _gate_von(d.get("gate")) in GATES_DER_LINIE:
+            continue
         gates.append({
             "kommando": d.get("command"),
             "gate": d.get("gate"),
@@ -799,7 +806,8 @@ def kette(fall: Path) -> Dict[str, Any]:
 
     rohe = [(pfad, d)
             for pfad in sorted((fall / "entscheide").glob("*.json"))
-            for d in [_json(pfad)] if isinstance(d, dict)]
+            for d in [_json(pfad)] if isinstance(d, dict)
+            and _gate_von(d.get("gate")) not in GATES_DER_LINIE]
 
     # Finale Zeichnungskette, ABGELEITET statt kuratiert: Der juengste
     # Abschluss-Snapshot (A-M4) bindet in seinen Pflichtbelegen die
@@ -1384,7 +1392,8 @@ def luecken(modell: Dict[str, Any]) -> List[Dict[str, str]]:
 
 
 def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any],
-                         protokoll_roh: Optional[bytes] = None) -> bytes:
+                         protokoll_roh: Optional[bytes] = None,
+                         oeffentlich: bool = False) -> bytes:
     """Das Paket gegen seine eigenen Belege halten (Review T22-05).
 
     Vorher genuegte der freie String ``pb1 == "gruen"`` in stand.json — ein
@@ -1414,6 +1423,8 @@ def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any
     for name, soll in sorted(dateien.items()):
         datei = paket / name
         if not datei.is_file():
+            if oeffentlich and _nicht_oeffentlich(name):
+                continue
             raise FalldatenFehler(f"{paket}: Belegdatei {name!r} fehlt")
         roh = protokoll_roh if name == "protokoll.jsonl" and protokoll_roh is not None else datei.read_bytes()
         ist = hashlib.sha256(roh).hexdigest()
@@ -1465,9 +1476,17 @@ def _pruefe_stands_paket(paket: Path, stand: Dict[str, Any], prov: Dict[str, Any
             f"{paket}: die Belegdatei 'tagesjournal.parquet' ist nicht das Journal, "
             "auf das die letzte gruene Protokollzeile sich festgelegt hat")
     _pruefe_abschluesse_gegen_das_protokoll(paket, stand, dateien)
-    _pruefe_buchungen_gegen_das_journal(paket, stand)
-    _pruefe_felder_gegen_das_protokoll(paket, stand, prov, zeilen, gruene, letzte)
+    if not oeffentlich:
+        _pruefe_buchungen_gegen_das_journal(paket, stand)
+    _pruefe_felder_gegen_das_protokoll(paket, stand, prov, zeilen, gruene, letzte, oeffentlich)
     return protokoll_roh
+
+
+def _nicht_oeffentlich(name: str) -> bool:
+    """Belegdateien auf Vertragsebene: Tagesjournal und Monatsabschluesse
+    (``.parquet``). Sie gehen an den, der das Paket exportiert, nicht an die
+    Seite (``unternehmensseite.stand``) und nicht in den Zweig betrieb."""
+    return Path(name).suffix == ".parquet"
 
 
 def _pruefe_abschluesse_gegen_das_protokoll(
@@ -1514,6 +1533,7 @@ def _pruefe_abschluesse_gegen_das_protokoll(
 def _pruefe_felder_gegen_das_protokoll(
     paket: Path, stand: Dict[str, Any], prov: Dict[str, Any],
     zeilen: List[Dict[str, Any]], gruene: List[Dict[str, Any]], letzte: Dict[str, Any],
+    oeffentlich: bool = False,
 ) -> None:
     """Die protokollgespeisten Bloecke von stand.json nachrechnen (Review T24-04).
 
@@ -1552,6 +1572,19 @@ def _pruefe_felder_gegen_das_protokoll(
             zeilen, journal=journal, abschluesse_dir=paket / PAKET_ABSCHLUESSE_DIR)
     except SeiteError as exc:
         raise FalldatenFehler(f"{paket}: {exc}") from exc
+    abschluesse_stand = list(stand.get("abschluesse") or [])
+    if oeffentlich and journal is None:
+        # Ohne Journal und Abschlussdateien rechnet die Ableitung die
+        # Monatszahlen nicht nach (sie fehlen dann, statt genullt zu sein).
+        # Was das Protokoll ueber jeden Abschluss sagt, muss trotzdem
+        # woertlich so in stand.json stehen; die Monatszahlen bindet der
+        # Ankersatz ueber stand_sha256.
+        from rechner_pipeline.betrieb.seite import KENNZAHL_FELDER
+
+        abschluesse_stand = [
+            {k: v for k, v in a.items() if k not in KENNZAHL_FELDER or k in e}
+            for a, e in zip(abschluesse_stand, abschluesse)
+        ] + abschluesse_stand[len(abschluesse):]
     erwartet = {
         "bestand": dict(letzte.get("bestand") or {}),
         "uebernahmen": list(letzte.get("uebernahmen") or []),
@@ -1561,6 +1594,7 @@ def _pruefe_felder_gegen_das_protokoll(
             gruene[0]["nachgeholt"][0] if gruene[0].get("nachgeholt") else gruene[0]["heute"]
         ),
     }
+    stand = dict(stand, abschluesse=abschluesse_stand)
     for feld, soll in erwartet.items():
         if stand.get(feld) != soll:
             raise FalldatenFehler(
@@ -1593,7 +1627,9 @@ def _pruefe_felder_gegen_das_protokoll(
 
     neugeschaeft = stand.get("neugeschaeft") or {}
     soll_woche = neugeschaeft_der_woche(
-        journal, _dt.date.fromisoformat(str(stand.get("stand"))))
+        journal, _dt.date.fromisoformat(str(stand.get("stand")))) if journal is not None else {}
+    if journal is None and not oeffentlich:
+        raise FalldatenFehler(f"{paket}: Belegdatei {PAKET_JOURNAL!r} fehlt")
     for feld, soll in soll_woche.items():
         if neugeschaeft.get(feld) != soll:
             raise FalldatenFehler(
@@ -1643,7 +1679,7 @@ def _pruefe_buchungen_gegen_das_journal(paket: Path, stand: Dict[str, Any]) -> N
             f"Journal {gezaehlt!r})")
 
 
-def _pruefe_auslieferung(paket: Path, fall: Optional[Path],
+def _pruefe_auslieferung(paket: Path, ab1: Optional[Path],
                          satz_sha256: str) -> Dict[str, Any]:
     """Eine AUSLIEFERUNG braucht die menschliche Abnahme A-B1.
 
@@ -1658,45 +1694,57 @@ def _pruefe_auslieferung(paket: Path, fall: Optional[Path],
     Schluesselring, den ein Konsument nicht hat. Deshalb heisst es hier
     "Angaben der Snapshot-Datei" und nie "gezeichnet" (dieselbe
     Ehrlichkeit wie im Betriebseingang, T19-02).
+
+    ``ab1`` ist die Snapshot-Datei selbst. Bis zum Betriebsteil der Seite
+    suchte die Pruefung sie unter ``entscheide/`` des Falls; der Betriebsteil
+    wird ohne Fall gebaut, und die Routine legt genau den Snapshot daneben,
+    der den Ankersatz des Abends bindet. Gelesen wird die Datei EINMAL; ihre
+    Pruefsumme steht im Ergebnis, und wer sie veroeffentlicht, haelt die
+    Bytes dagegen.
     """
+    import hashlib
+
     from rechner_pipeline.models.schemas import P9Snapshot, p9_snapshot_sha256
 
-    if fall is None:
+    if ab1 is None:
         raise FalldatenFehler(
-            f"{paket}: ausgeliefert, aber ohne Fall — die Abnahme A-B1 liegt "
-            "im Fall unter entscheide/, und ohne ihn ist sie nicht auffindbar")
-    verzeichnis = Path(fall) / "entscheide"
-    treffer = sorted(verzeichnis.glob("A-B1-*.json")) if verzeichnis.is_dir() else []
-    for pfad in treffer:
-        try:
-            daten = json.loads(pfad.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if P9Snapshot.validate_payload(daten):
-            continue
-        if daten.get("snapshot_sha256") != p9_snapshot_sha256(daten):
-            continue
-        if daten.get("gate") != "A-B1" or daten.get("entscheid") != "angenommen":
-            continue
-        belege = (daten.get("pflichtbelege") or {}).get("anker") or []
-        if satz_sha256 in [str(b) for b in belege]:
-            zeichnung = daten.get("zeichnung") or {}
-            return {
-                "snapshot_sha256": daten.get("snapshot_sha256"),
-                "rolle": zeichnung.get("rolle"),
-                "schluesselklasse": zeichnung.get("schluesselklasse"),
-                "entscheider": daten.get("entscheider"),
-            }
-    raise FalldatenFehler(
-        f"{paket}: das Paket ist als AUSLIEFERUNG ausgewiesen, aber keine "
-        f"angenommene A-B1-Abnahme im Fall bindet seinen Ankersatz "
-        f"({satz_sha256[:16]}…). Was nach aussen geht, zeichnet ein Mensch — "
-        "gates.gate_entscheid --gate A-B1")
+            f"{paket}: ausgeliefert, aber ohne Abnahme — die Auslieferung braucht "
+            "den Snapshot der A-B1, der ihren Ankersatz bindet (--ab1 <datei>)")
+    try:
+        roh = Path(ab1).read_bytes()
+        daten = json.loads(roh.decode("utf-8"))
+    except (OSError, ValueError) as exc:
+        raise FalldatenFehler(f"{ab1}: kein lesbarer Snapshot ({exc})") from exc
+    if not isinstance(daten, dict) or P9Snapshot.validate_payload(daten):
+        raise FalldatenFehler(f"{ab1}: kein gueltiger Entscheid-Snapshot")
+    if daten.get("snapshot_sha256") != p9_snapshot_sha256(daten):
+        raise FalldatenFehler(f"{ab1}: der Snapshot traegt nicht seine eigene Pruefsumme")
+    if daten.get("gate") != "A-B1" or daten.get("entscheid") != "angenommen":
+        raise FalldatenFehler(
+            f"{ab1}: keine angenommene A-B1-Abnahme (Gate {daten.get('gate')!r}, "
+            f"Entscheid {daten.get('entscheid')!r})")
+    belege = (daten.get("pflichtbelege") or {}).get("anker") or []
+    if satz_sha256 not in [str(b) for b in belege]:
+        raise FalldatenFehler(
+            f"{paket}: das Paket ist als AUSLIEFERUNG ausgewiesen, aber die "
+            f"A-B1-Abnahme {Path(ab1).name} bindet seinen Ankersatz "
+            f"({satz_sha256[:16]}…) nicht. Was nach aussen geht, zeichnet ein "
+            "Mensch — gates.gate_entscheid --gate A-B1")
+    zeichnung = daten.get("zeichnung") or {}
+    return {
+        "snapshot_sha256": daten.get("snapshot_sha256"),
+        "datei": str(ab1),
+        "datei_sha256": hashlib.sha256(roh).hexdigest(),
+        "entschieden_am": daten.get("entschieden_am"),
+        "rolle": zeichnung.get("rolle"),
+        "schluesselklasse": zeichnung.get("schluesselklasse"),
+        "entscheider": daten.get("entscheider"),
+    }
 
 
 def _pruefe_anker(paket: Path, stand: Dict[str, Any],
                   anker_datei: Optional[Path],
-                  fall: Optional[Path] = None,
+                  ab1: Optional[Path] = None,
                   protokoll_roh: Optional[bytes] = None,
                   ort: Optional[Path] = None) -> Dict[str, Any]:
     """Das Paket gegen einen Anker AUSSERHALB des Pakets halten (T24-04 b).
@@ -1756,7 +1804,7 @@ def _pruefe_anker(paket: Path, stand: Dict[str, Any],
     }
     if art == "auslieferung":
         verankerung["abnahme"] = _pruefe_auslieferung(
-            paket, fall, satz_hash(satz))
+            paket, ab1, satz_hash(satz))
     return verankerung
 
 
@@ -1769,11 +1817,12 @@ def _pruefe_anker(paket: Path, stand: Dict[str, Any],
 #: Station je Gate: aus den dreizehn Stationen der Darstellung
 #: (``darstellung.GATE_STATION``) — EINE Quelle fuer Karte, Fallseite und
 #: Kette.
-#: Gates der Linie, nicht des Falls: Sie zeichnen ausserhalb jedes Falls
-#: (ADR-025) und haben deshalb keine Station. A-B1 gehoert nicht dazu,
-#: obwohl es die Linie abnimmt: Sein Snapshot liegt im Fall und steht an
-#: Station 13 (darstellung.STATION_WEITERE_GATES).
-GATES_DER_LINIE = ("A-B3",)
+#: Gates der Linie, nicht des Falls: Sie nehmen den gefuehrten Bestand ab
+#: und haben deshalb keine Station. A-B3 zeichnet ausserhalb jedes Falls
+#: (ADR-025). A-B1 zeichnet der Tagesbetrieb jeden Abend; sein Snapshot liegt
+#: im Fall, die Seite zeigt ihn aber nur im Betriebsteil (Entscheid des
+#: Maintainers 09.10.2026), und die Kette des Falls fuehrt ihn nicht.
+GATES_DER_LINIE = ("A-B1", "A-B3")
 
 #: Wo die Kette keinen Erzeuger nennt, sagt der Ort im Fall-Arbeitsbereich
 #: (ADR-002), zu welcher Station eine Datei gehoert: die Lieferung und ihr
@@ -2259,7 +2308,8 @@ def belegkette(fall: Path, kette_modell: Optional[Dict[str, Any]] = None,
 
 def betrieb(paket: Optional[Path],
             anker_datei: Optional[Path] = None,
-            fall: Optional[Path] = None) -> Dict[str, Any]:
+            ab1: Optional[Path] = None,
+            oeffentlich: bool = False) -> Dict[str, Any]:
     """Der lebende Bestand aus dem Stands-Paket der Laufzeitumgebung.
 
     Fachkonzept docs/simulation/tagesbetrieb.md, Abschnitt 8.3: Die
@@ -2268,6 +2318,15 @@ def betrieb(paket: Optional[Path],
     Stands-Paket (``python -m rechner_pipeline.betrieb.seite --paket``),
     nicht aus einem Fall — erzeugt, nie abgetippt. Ohne Paket bleibt der
     Abschnitt weg; er ist kein Pflichtabschnitt eines Falls.
+
+    ``oeffentlich``: Das Paket traegt nur seine oeffentlichen Dateien, ohne
+    Tagesjournal und Monatsabschluesse (so liegt es im Zweig betrieb von
+    plv-fiktion, Weg C). Geprueft wird dann alles, was ohne diese Dateien
+    pruefbar ist: jede vorhandene Datei gegen stand.json, die Protokollkette
+    und was ihre letzte Zeile ueber das Paket sagt, der Anker mit der
+    Bindung von stand.json (Ankersatz-Schema 4) und die A-B1. Nicht
+    nachgerechnet werden die Zahlen, die nur Journal und Abschluesse tragen;
+    sie gelten, weil der Ankersatz stand.json als Ganzes bindet.
     """
     if paket is None:
         return {"vorhanden": False}
@@ -2301,38 +2360,23 @@ def betrieb(paket: Optional[Path],
     import tempfile
 
     with tempfile.TemporaryDirectory(prefix="stands-paket-") as tmp:
-        eingefroren = _friere_paket_ein(paket, stand, Path(tmp))
+        eingefroren = _friere_paket_ein(paket, stand, Path(tmp), oeffentlich)
         try:
-            protokoll_roh = _pruefe_stands_paket(eingefroren, stand, prov)
-            verankerung = _pruefe_anker(eingefroren, stand, anker_datei, fall, protokoll_roh,
+            protokoll_roh = _pruefe_stands_paket(eingefroren, stand, prov, oeffentlich=oeffentlich)
+            verankerung = _pruefe_anker(eingefroren, stand, anker_datei, ab1, protokoll_roh,
                                         ort=paket)
-            # Nachgerechnet, nicht geglaubt: Geschaeftsentwicklung und
-            # Bestandskennzahlen aus den Bytes, die eben gegen ihren Hash
-            # gingen, mit DENSELBEN Funktionen wie der Export (Schema 6).
-            # stand.json traegt beide Bloecke fuer den, der die Parquet-
-            # Dateien nicht hat; hier liegen sie, also muss es gleich sein.
-            from rechner_pipeline.bestand.parquet_io import read_portfolio
-            from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
-
-            journal = read_portfolio(eingefroren / _seite.PAKET_JOURNAL,
-                                     expected_columns=TAGESJOURNAL_NAMES)
-            try:
-                entwicklung = _seite.geschaeftsentwicklung(
-                    journal, _dt.date.fromisoformat(str(stand.get("stand"))),
-                    _dt.date.fromisoformat(str(stand.get("gefuehrt_seit"))))
-                kennzahlen = _seite.abschluss_kennzahlen(
-                    eingefroren / _seite.PAKET_ABSCHLUESSE_DIR,
-                    list(stand.get("abschluesse") or []))
-            except _seite.SeiteError as exc:
-                raise FalldatenFehler(f"{paket}: {exc}") from exc
-            for name, gerechnet in (("geschaeftsentwicklung", entwicklung),
-                                    ("abschluss_kennzahlen", kennzahlen)):
-                if stand.get(name) != gerechnet:
+            if oeffentlich and not (eingefroren / _seite.PAKET_JOURNAL).is_file():
+                # Nicht nachgerechnet, sondern gebunden: Der Ankersatz haelt
+                # stand.json als Ganzes (stand_sha256), die A-B1 den Satz.
+                entwicklung = stand.get("geschaeftsentwicklung")
+                kennzahlen = stand.get("abschluss_kennzahlen")
+                if not isinstance(entwicklung, dict) or not isinstance(kennzahlen, dict):
                     raise FalldatenFehler(
-                        f"{paket}: der Block {name!r} in stand.json steht so nicht "
-                        "in den Belegdateien des Pakets — nachgerechnet aus "
-                        "Tagesjournal und Abschluessen ergibt sich etwas anderes. "
-                        "Veroeffentlicht wird nur, was folgt")
+                        f"{paket}: stand.json traegt die Bloecke 'geschaeftsentwicklung' "
+                        "und 'abschluss_kennzahlen' nicht — ohne Journal und Abschluesse "
+                        "gibt es sie sonst nirgends")
+            else:
+                entwicklung, kennzahlen = _nachgerechnet(paket, eingefroren, stand)
         except FalldatenFehler as exc:
             raise FalldatenFehler(str(exc).replace(str(eingefroren), str(paket))) from exc
     return {
@@ -2365,6 +2409,42 @@ def betrieb(paket: Optional[Path],
                      "jeder Zeile prueft der Export vor dem Verankern",
         },
     }
+
+
+def _nachgerechnet(paket: Path, eingefroren: Path, stand: Dict[str, Any]) -> tuple:
+    """Geschaeftsentwicklung und Abschlusskennzahlen aus Journal und
+    Abschluessen des eingefrorenen Pakets, gegen die Bloecke in stand.json
+    gehalten. Rueckgabe: beide Bloecke."""
+    from rechner_pipeline.betrieb import seite as _seite
+
+    # Nachgerechnet, nicht geglaubt: Geschaeftsentwicklung und
+    # Bestandskennzahlen aus den Bytes, die eben gegen ihren Hash
+    # gingen, mit DENSELBEN Funktionen wie der Export (Schema 6).
+    # stand.json traegt beide Bloecke fuer den, der die Parquet-
+    # Dateien nicht hat; hier liegen sie, also muss es gleich sein.
+    from rechner_pipeline.bestand.parquet_io import read_portfolio
+    from rechner_pipeline.models.bestand import TAGESJOURNAL_NAMES
+
+    journal = read_portfolio(eingefroren / _seite.PAKET_JOURNAL,
+                             expected_columns=TAGESJOURNAL_NAMES)
+    try:
+        entwicklung = _seite.geschaeftsentwicklung(
+            journal, _dt.date.fromisoformat(str(stand.get("stand"))),
+            _dt.date.fromisoformat(str(stand.get("gefuehrt_seit"))))
+        kennzahlen = _seite.abschluss_kennzahlen(
+            eingefroren / _seite.PAKET_ABSCHLUESSE_DIR,
+            list(stand.get("abschluesse") or []))
+    except _seite.SeiteError as exc:
+        raise FalldatenFehler(f"{paket}: {exc}") from exc
+    for name, gerechnet in (("geschaeftsentwicklung", entwicklung),
+                            ("abschluss_kennzahlen", kennzahlen)):
+        if stand.get(name) != gerechnet:
+            raise FalldatenFehler(
+                f"{paket}: der Block {name!r} in stand.json steht so nicht "
+                "in den Belegdateien des Pakets — nachgerechnet aus "
+                "Tagesjournal und Abschluessen ergibt sich etwas anderes. "
+                "Veroeffentlicht wird nur, was folgt")
+    return entwicklung, kennzahlen
 
 
 _SKILL_MARKE = re.compile(r"``([a-z][a-z0-9-]*)``")
@@ -2497,7 +2577,8 @@ def rollen(fall: Path, kette_modell: Optional[Dict[str, Any]] = None) -> Dict[st
         "gelesen_aus": [".claude/agents/*.md", "entscheide/*.json (geltende Entscheide)",
                         ".claude/skills/", "pyproject.toml", "src/rechner_pipeline/**/*.py"],
     }
-def _friere_paket_ein(paket: Path, stand: Dict[str, Any], ziel: Path) -> Path:
+def _friere_paket_ein(paket: Path, stand: Dict[str, Any], ziel: Path,
+                      oeffentlich: bool = False) -> Path:
     """Jede in stand.json genannte Datei EINMAL lesen, gegen ihren Hash
     halten und nach ``ziel`` schreiben; stand.json dazu. Rueckgabe: das
     eingefrorene Paket."""
@@ -2512,6 +2593,8 @@ def _friere_paket_ein(paket: Path, stand: Dict[str, Any], ziel: Path) -> Path:
         if Path(str(name)).is_absolute() or ".." in Path(str(name)).parts:
             raise FalldatenFehler(f"{paket}: Belegdatei {name!r} liegt nicht im Paket")
         if not quelle.is_file():
+            if oeffentlich and _nicht_oeffentlich(str(name)):
+                continue
             raise FalldatenFehler(f"{paket}: Belegdatei {name!r} fehlt")
         roh = quelle.read_bytes()
         if hashlib.sha256(roh).hexdigest() != soll:
@@ -2592,7 +2675,8 @@ def aufwand(fall: Path, kette_modell: Optional[Dict[str, Any]] = None) -> Dict[s
 
 def sammle(fall: Path, abzuege: List[str],
            stands_paket: Optional[Path] = None,
-           anker: Optional[Path] = None) -> Dict[str, Any]:
+           anker: Optional[Path] = None,
+           ab1: Optional[Path] = None) -> Dict[str, Any]:
     manifest = _json(fall / "fall.json") or {}
     # Der Scope kommt aus demselben strengen Vertrag wie bei den Gates
     # (fall.lade_scope, T21-04) — nicht aus dem roh gelesenen Manifest.
@@ -2622,7 +2706,7 @@ def sammle(fall: Path, abzuege: List[str],
         "kette": kette_modell,
         "verankerung": verankerung(fall),
         "umbau": umbau(fall),
-        "betrieb": betrieb(stands_paket, anker, fall),
+        "betrieb": betrieb(stands_paket, anker, ab1),
         "rollen": rollen(fall, kette_modell),
         "fallauftrag": fallauftrag(fall),
         "zugangsprobe": zugangsprobe(fall),
@@ -2636,12 +2720,37 @@ def sammle(fall: Path, abzuege: List[str],
     return modell
 
 
+def sammle_betrieb(stands_paket: Path, anker: Optional[Path],
+                   ab1: Optional[Path] = None, oeffentlich: bool = False) -> Dict[str, Any]:
+    """Das Datenmodell des Betriebsteils der Seite: nur der gefuehrte Bestand,
+    aus Paket, Anker und A-B1 — ohne Fall.
+
+    Der Betriebsteil (``betrieb/``) wird jeden Abend neu gebaut, im Workflow
+    von plv-fiktion, wo es keinen Fall-Arbeitsbereich gibt. Alles, was er
+    zeigt, muss deshalb aus dem kommen, was der Tagesbetrieb abgibt; die
+    Seite des Falls dagegen kennt das Paket nicht und aendert sich nur mit
+    dem Rahmen.
+    """
+    modell: Dict[str, Any] = {
+        "schema_version": 1,
+        "teil": "betrieb",
+        "betrieb": betrieb(stands_paket, anker, ab1, oeffentlich),
+    }
+    modell["luecken"] = [
+        {"gruppe": "betrieb", "feld": str(l.get("was")), "was": str(l.get("was")),
+         "wirkung": str(l.get("wirkung"))}
+        for l in modell["betrieb"].get("luecken") or []]
+    return modell
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(
         prog="python werkzeuge/falldaten.py",
         description="Datenmodell einer Falldarstellung aus den Artefakten "
                     "(Beobachtungshilfe, kein Gate).")
-    p.add_argument("--fall", required=True)
+    p.add_argument("--fall", default=None,
+                   help="Fall-Arbeitsbereich; ohne ihn entsteht nur das Modell "
+                        "des Betriebsteils (Pflicht dann: --stands-paket, --anker)")
     p.add_argument("--abzug", action="append", default=[],
                    help="Registrierter Bestandsabzug je Stichtag, "
                         "in zeitlicher Reihenfolge (mehrfach angebbar)")
@@ -2654,17 +2763,31 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="Stands-Paket der Laufzeitumgebung (betrieb.seite "
                         "--paket): der lebende Bestand als Abschnitt der "
                         "Darstellung")
+    p.add_argument("--ab1", default=None,
+                   help="Snapshot der A-B1, der den Ankersatz einer "
+                        "Auslieferung bindet (Pflicht, wenn der Anker eine "
+                        "Auslieferung ausweist)")
+    p.add_argument("--oeffentliches-paket", dest="oeffentlich", action="store_true",
+                   help="das Paket traegt nur seine oeffentlichen Dateien, ohne "
+                        "Tagesjournal und Abschluesse (Zweig betrieb von plv-fiktion)")
     args = p.parse_args(argv)
 
-    fall = Path(args.fall).resolve()
-    if not (fall / "fall.json").is_file():
-        print(f"Kein Fall-Arbeitsbereich: {fall}", file=sys.stderr)
-        return 2
+    paket = Path(args.stands_paket) if args.stands_paket else None
+    anker = Path(args.anker) if args.anker else None
+    ab1 = Path(args.ab1) if args.ab1 else None
     try:
-        modell = sammle(
-            fall, args.abzug,
-            Path(args.stands_paket) if args.stands_paket else None,
-            Path(args.anker) if args.anker else None)
+        if args.fall is None:
+            if paket is None:
+                print("Ohne --fall braucht es --stands-paket (das Modell des "
+                      "Betriebsteils)", file=sys.stderr)
+                return 2
+            modell = sammle_betrieb(paket, anker, ab1, args.oeffentlich)
+        else:
+            fall = Path(args.fall).resolve()
+            if not (fall / "fall.json").is_file():
+                print(f"Kein Fall-Arbeitsbereich: {fall}", file=sys.stderr)
+                return 2
+            modell = sammle(fall, args.abzug, paket, anker, ab1)
     except FalldatenFehler as exc:
         print(f"Nicht erhebbar: {exc}", file=sys.stderr)
         return 2
@@ -2676,8 +2799,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         ziel.parent.mkdir(parents=True, exist_ok=True)
         ziel.write_text(text, encoding="utf-8")
         felder = sum(1 for _ in text.splitlines())
-        print(f"{ziel}  ({felder} Zeilen, "
-              f"{len(modell['abgrenzungen'])} Abgrenzungen abgeleitet)")
+        print(f"{ziel}  ({felder} Zeilen"
+              + (f", {len(modell['abgrenzungen'])} Abgrenzungen abgeleitet)"
+                 if "abgrenzungen" in modell else ", Betriebsteil)"))
     else:
         sys.stdout.write(text)
 

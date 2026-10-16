@@ -31,7 +31,9 @@ gekennzeichnete Beispielanbindung bleibt, steht in
 | `verlaufsprotokoll.py` | Sitzungstranskript zu einem lesbaren Verlauf |
 | `vorzeigeseite.py` | Datenmodell und Artefakte eines Falls zu einer statischen Seite |
 | `unternehmensseite.py` | die Seiten des fiktiven Unternehmens zusammenbauen |
-| `auftritt.py` | den ganzen Entwurf mit einem Kommando aus den Quellen bauen |
+| `auftritt.py` | den ganzen Entwurf mit einem Kommando aus den Quellen bauen, Rahmen und Betriebsteil oder einen davon (`--teil`) |
+| `rahmen_pr.py` | den Rahmen der Seite als Commit auf einen Zweig `beitrag/...` im Klon von plv-fiktion legen, mit `CODESTAND` |
+| `betriebszweig.py` | im Workflow von plv-fiktion: was im Zweig `betrieb` liegen darf, und dass sich außerhalb von `betrieb/` nichts geändert hat |
 | `grafik.py` | Bausteinsatz der generierten Darstellungen (Inline-SVG/HTML, modellfrei) |
 | `darstellung.py` | Abbildung Modellpfad -> Baustein-Eingabe, an einer Stelle |
 | `drift.py` | den veröffentlichten Stand gegen den Entwurf halten |
@@ -78,6 +80,7 @@ python werkzeuge/auftritt.py --fall faelle/baldrian-klv-tg2015-fall3 \
     --abzug baldrian_bestandsabzug_2027-01-01.csv \
     --stands-paket runs/stands-paket \
     --anker faelle/baldrian-klv-tg2015-fall3/abgeleitet/anker/anker.jsonl \
+    --ab1 <ablage>/A-B1.json \
     --film <ablage>/erklaerfilm.mp4 \
     [--verlauf verlauf.md]
 ```
@@ -95,7 +98,65 @@ die Prüfsumme in `unternehmensseite.FILM` und hält an, wenn die Datei fehlt
 oder eine andere Fassung ist. Eine neue Fassung braucht eine neue Freigabe
 und eine neue Prüfsumme. Das Vorschaubild liegt unter `plv/seite/film/`. Die Schritte der Kette bleiben
 einzeln aufrufbar (`falldaten.py`, `vorzeigeseite.py
---als-unterseite`, `unternehmensseite.py --daten`, `vorschau.py`).
+--als-unterseite`, `unternehmensseite.py --teil rahmen|betrieb --daten`,
+`vorschau.py`).
+
+### Rahmen und Betriebsteil
+
+Die Seite hat zwei Teile (Entscheid des Maintainers vom 09.10.2026). Der
+Betriebsteil liegt unter `betrieb/` und ändert sich jeden Abend mit dem
+geführten Bestand: die Bestandsführung (Quelle `plv/seite/betrieb/`), das
+Stands-Paket unter `betrieb/plv/` mit den Kopien seiner Berichte unter
+`betrieb/berichte/`, die drei Grafiken der Startseite und die geltende
+Auslieferung A-B1 als `betrieb/A-B1.json`. Alles andere ist der Rahmen; er
+ändert sich nur per Pull Request nach plv-fiktion.
+
+Die alten Adressen leiten im Rahmen weiter: `geschaeftsentwicklung/`, wo
+die Bestandsführung vorher stand, auf `betrieb/`, `plv/` („Bestand
+heute“) auf `betrieb/plv/` und `berichte/` ebenfalls auf `betrieb/plv/`
+(`plv/seite/<ordner>/index.html`). `berichte/` war nie eine Seite, und
+`betrieb/berichte/` hat keine; „Bestand heute“ verlinkt die Berichte. Die
+Seiten haben keinen Vorspann, Jekyll gibt sie also unverändert aus. Ihr
+Ziel prüft `seitenpruefung.py verweise` wie jeden Verweis. Sprungziele und
+einzelne Dateien unter den alten Adressen kommen nicht mit.
+
+`auftritt.py --teil beide` (Vorgabe) baut beides und prüft die ganze Seite.
+`--teil rahmen` baut nur den Rahmen, ohne Stands-Paket, und lässt Vorschau
+und Seitenprüfung aus, weil die Verweise in den Betriebsteil dann kein Ziel
+haben. `--teil betrieb` baut nur `betrieb/` in einen Baum, der den Rahmen
+schon trägt, ohne Fall: So baut der Workflow von plv-fiktion den Abend.
+
+Jeder Teil hat sein eigenes Datenmodell. Der Rahmen nimmt das Modell des
+Falls, und das trägt kein Stands-Paket; `unternehmensseite.py --teil
+rahmen` weist ein Modell mit Paket ab. Der Betriebsteil nimmt das Modell
+aus `falldaten.py` ohne `--fall`, nur aus Paket, Anker und A-B1
+(`--stands-paket`, `--anker`, `--ab1`). Die A-B1 ist dabei eine Datei: der
+Snapshot, der den Ankersatz des Pakets bindet. `falldaten.py` prüft
+Struktur, Prüfsumme des Snapshots und diese Bindung, nicht die Signatur.
+
+Die Startseite zeigt die drei Grafiken als Bild (`{{bild:bestand}}`,
+`{{bild:zugang}}`, `{{bild:leistungen}}`). Der Rahmen kennt nur die
+Dateinamen (`unternehmensseite.BILDER`); der Betriebsteil schreibt je
+Grafik eine SVG-Datei für breite Fenster und eine für das Telefon
+(`betrieb/<name>.svg`, `betrieb/<name>-handy.svg`). Ein Bild sieht das
+Stylesheet der Seite nicht; `grafik.datei` schreibt deshalb jede Farbe als
+Wert und die Größe in die Datei.
+
+Die Bestandsführung nennt jede Übernahme mit Namen und verlinkt ihre Seite.
+Weil der Betriebsteil den Fall nicht kennt, stehen Name und URL-Segment in
+`unternehmensseite.UEBERNAHMEN`; der Rahmen hält den Eintrag gegen den Fall,
+den er baut, und eine Übernahme im Paket ohne Eintrag hält den Betriebsteil
+an. Die Seite des Falls zeigt die A-B1 nicht mehr: Sie nennt an Station 13
+die Zugangsabnahme A-B2 und die gelieferten Summen und verweist auf die
+Bestandsführung.
+
+Im Zweig `betrieb` von plv-fiktion liegt das Paket ohne Tagesjournal und
+Monatsabschlüsse, denn beide tragen Policennummern. Dafür gibt es
+`--oeffentliches-paket` (bei `falldaten.py` und `auftritt.py`): Geprüft wird
+jede vorhandene Datei gegen `stand.json`, die Protokollkette und was ihre
+letzte Zeile über das Paket sagt, der Anker und die A-B1. Die Zahlen, die
+nur Journal und Abschlüsse tragen, rechnet niemand nach; sie gelten, weil
+der Ankersatz `stand.json` als Ganzes bindet (Ankersatz-Schema 4).
 
 Die Kennzahlen der Quellseiten sind `{{...}}`-Platzhalter. Der Bau löst
 sie aus dem falldaten-Modell des Falls auf, damit sie nicht von den
@@ -127,16 +188,16 @@ Fallberichts, mit Stand-Datum, Manifest-Hash und der Zeichnung der
 übernommenen Fälle, aus dem Paket gelesen, nie abgetippt. Ein Paket,
 dessen Stand nicht durch P-B1 ging, weist `falldaten.py` ab.
 
-Für die Unternehmensseiten ist das Paket Pflicht: Startseite,
-Geschäftsentwicklung und Finanzen zeigen den geführten Bestand
-(`{{...:betrieb....}}`-Kennzahlen, Tabellen `buchungen_je_art`,
-`abschluesse`, `uebernahmen_im_stand`); ohne Paket bricht der Bau mit
-dem Hinweis auf den Aufruf ab. Die Dateien des Pakets (Paketschema 6:
-die Tagesseite „Bestand heute“ als `index.html` und die bezeugten
-Berichte des jüngsten Abschlusses in der Wurzel, die Monatsabschlüsse
-unter `abschluesse/`) übernimmt `unternehmensseite.py` byteweise nach
-`<out>/plv/`, jede gegen die SHA-256 in `stand.json` gehalten, nichts
-wird umgeschrieben; die Vorschau verlinkt das Verzeichnis ganz.
+Für den Betriebsteil ist das Paket Pflicht: Die Bestandsführung zeigt den
+geführten Bestand (`{{...:betrieb....}}`-Kennzahlen, Tabellen
+`buchungen_je_art`, `abschluesse`, `uebernahmen_im_stand`), die Startseite
+dessen Grafiken; ohne Paket bricht der Bau mit dem Hinweis auf den Aufruf
+ab. Die Dateien des Pakets (Paketschema 6: die Tagesseite „Bestand heute“
+als `index.html` und die bezeugten Berichte des jüngsten Abschlusses in der
+Wurzel, die Monatsabschlüsse unter `abschluesse/`) übernimmt
+`unternehmensseite.py` byteweise nach `<out>/betrieb/plv/`, jede gegen die
+SHA-256 in `stand.json` gehalten, nichts wird umgeschrieben; die Vorschau
+verlinkt das Verzeichnis ganz.
 Bestandskennzahlen der Abschlüsse und Geschäftsentwicklung je Zeitraum
 stehen seit Paketschema 6 auch in `stand.json`, und der Anker bindet
 `stand.json`. `falldaten.py` rechnet beide aus den Abschlussdateien und
@@ -170,8 +231,8 @@ ein Paket ziehen will, arbeitet deshalb auf einer Kopie, nicht auf der
 Laufzeit.
 
 Der Stand ist ein Datum: Jeder neue Tageslauf ändert Kennzahlen und
-Paket, und `drift.py` meldet das als Abweichung. Das ist gewollt: Die
-veröffentlichte Seite ist eine gestempelte Momentaufnahme.
+Paket. `drift.py` vergleicht deshalb nur den Rahmen; `betrieb/` und
+`CODESTAND` zählen dort nicht.
 
 Die Zahlen der Seite kommen aus dem Datenmodell (`falldaten.py`),
 demselben, aus dem auch der Fallbericht gerendert wird. Seite und
@@ -408,11 +469,10 @@ nicht; es trägt Hostpfade, und die Wache hält den Bau an.
 ### Einmalig einzurichten (Mensch)
 
 Im Repository `bartlmac/plv-fiktion`: Pages mit der Quelle **GitHub
-Actions**. Den Workflow bringt der Bau mit
+Actions**. Den Workflow bringt der Rahmen mit
 (`plv/seite/.github/workflows/seite.yml`, im gebauten Baum unter
-`.github/`); er baut bei jedem Push auf `main` und veröffentlicht. Jekyll
-lässt `.github/` beim Bauen aus. Lokal genügt ein Klon neben diesem
-Repository:
+`.github/`). Jekyll lässt `.github/` beim Bauen aus. Lokal genügt ein Klon
+neben diesem Repository:
 
 ```
 git clone git@github.com:bartlmac/plv-fiktion.git ../plv-fiktion
@@ -422,30 +482,55 @@ Die Basis der Seite steht in `plv/seite/_config.yml` (`baseurl:
 "/plv-fiktion"`). So ergeben der lokale Bau mit dem Renderer von Pages und
 die Seite im Netz dieselben Pfade.
 
+Der Workflow läuft bei einem Push auf `main`, von Hand und nach Zeitplan
+(viermal in der Nacht nach dem Tageslauf, weil GitHub Zeitpläne verzögert
+oder auslässt); ein Push auf den Zweig `betrieb` startet ihn nicht. Er nimmt
+den Rahmen aus `main`, prüft den Zweig `betrieb` (`betriebszweig.py zweig`:
+nur `paket/` mit den öffentlichen Dateien, ihre Namen nur aus a-z, 0-9,
+`_`, `.` und `-`, dazu `anker.jsonl` und `A-B1.json`, kein `.github/`; jede
+HTML-Datei des Pakets ohne Skript, ohne eingebettetes oder absendendes
+Element, ohne meta refresh und ohne eine Adresse von außen, auch nicht als
+Verweis; keine Datei mit einem Vorspann `---`, den Jekyll verarbeiten
+würde), holt den Code des Commits aus `CODESTAND` und baut damit den Betriebsteil
+(`auftritt.py --teil betrieb --oeffentliches-paket`, mit Wache
+und Seitenprüfung). Danach prüft `betriebszweig.py rahmen`, dass außerhalb
+von `betrieb/` jede Datei wie in `main` ist. Erst dann baut Jekyll
+(`jekyll-build-pages` v1.0.13), und nur ein Lauf aus `main` liefert aus.
+Scheitert ein Schritt, wird nicht ausgeliefert, und die Seite vom Vortag
+bleibt stehen. Jede Action ist auf einen Commit gepinnt.
+
 Ein Push in dieses Repository veröffentlicht nichts. Veröffentlichen ist
 nach außen gerichtet und praktisch nicht zurückzunehmen (Indexierung,
-Caches); es bleibt eine menschliche Handlung, der Push nach `plv-fiktion`.
+Caches); es bleibt eine menschliche Handlung: der Merge eines Pull Requests
+für den Rahmen und, für den Betriebsteil, die Routine des Tagesbetriebs,
+die der Maintainer eingerichtet hat.
 
 ### Je Lauf
 
-Die Seite in ein gitignoriertes Verzeichnis bauen und den Baum als einen
-Commit nach `plv-fiktion` legen. Der neue Stand ersetzt den alten
-vollständig: Erst den Inhalt des Klons leeren, dann kopieren. Wer nur
-drüberkopiert, lässt verwaiste Artefakte der vorigen Version öffentlich
-liegen, und ein Artefakt, auf das keine Seite mehr zeigt, ist trotzdem
-abrufbar.
+Den Rahmen bringt ein Pull Request nach plv-fiktion. `rahmen_pr.py` baut
+dafür die ganze Seite aus dem Commit, auf dem dieser Baum steht (mit Wache
+und Seitenprüfung), und legt den Rahmen ohne `betrieb/` als einen Commit
+auf einen neuen Zweig `beitrag/...` im Klon, in einem eigenen
+Arbeitsverzeichnis (git worktree); der Klon selbst bleibt auf seinem Zweig.
+Was der Rahmen nicht mehr enthält, fällt dabei weg, damit keine verwaisten
+Dateien öffentlich liegen bleiben. Die Datei `CODESTAND` schreibt das
+Kommando selbst: den Commit, aus dem es gebaut hat. Mit diesem Code rendert
+der Workflow den Betriebsteil.
 
 ```
-python werkzeuge/auftritt.py --fall faelle/<fall> --name <kurzname> \
-    --abzug <abzug-1>.csv --abzug <abzug-2>.csv \
-    --stands-paket runs/stands-paket --film <ablage>/erklaerfilm.mp4 \
-    --anker faelle/<fall>/abgeleitet/anker/anker.jsonl [--verlauf verlauf.md]
-git -C ../plv-fiktion rm -rq .
-cp -r runs/seite/. ../plv-fiktion/
-git -C ../plv-fiktion add -A
-git -C ../plv-fiktion commit -m "Seite vom <datum>, gebaut aus <commit>"
-git -C ../plv-fiktion push
+python werkzeuge/rahmen_pr.py --klon ../plv-fiktion \
+    --fall faelle/<fall> --name <kurzname> \
+    --abzug <abzug-1>.csv --abzug <abzug-2>.csv --film <ablage>/erklaerfilm.mp4 \
+    --stands-paket <paket> --anker <anker>.jsonl --ab1 <A-B1>.json \
+    [--oeffentliches-paket] [--zweig beitrag/rahmen-JJJJ-MM-TT] [--basis main]
 ```
+
+Es hält an, wenn dieser Baum Änderungen außerhalb eines Commits trägt, wenn
+Bau oder Prüfung einen Befund haben, wenn der Klon nicht sauber ist, wenn
+der Zweig schon besteht oder nicht unter `beitrag/` liegt, und wenn der
+Rahmen `main` schon gleicht. Es schiebt nichts. Push, Pull Request und
+Merge macht der Maintainer, rechner-pipeline vor dem Merge: Liegt der
+Commit aus `CODESTAND` nicht auf GitHub, findet der Workflow den Code nicht.
 
 **Keine `index.html` in den Ausgabeordner legen.** Jekyll baut die
 `index.md` zu genau diesem Namen; eine von Hand danebengelegte Datei
@@ -482,23 +567,28 @@ ab `/` brechen dann.
 
 ### Die gebaute Seite prüfen
 
-Mit Stands-Paket, Anker und Vorschau fährt `auftritt.py` als letzten
+Mit dem Betriebsteil und der Vorschau fährt `auftritt.py` als letzten
 Schritt `seitenpruefung.py alle`; ein Befund hält den Bau an wie die
 Wache. Einzeln, etwa für einen Zweitbau:
 
 ```
 python werkzeuge/seitenpruefung.py alle --seite runs/<bau>/seite \
     --vorschau runs/<bau>/vorschau --fall faelle/<fall> --name <kurzname> \
-    --paket <stands-paket> --anker <anker>/anker.jsonl \
+    --paket <stands-paket> --anker <anker>/anker.jsonl --ab1 <A-B1>.json \
     --daten runs/<bau>/falldaten.json --repo .
 ```
 
+Ohne `--fall`, `--name` und `--daten` prüft `pruefsummen` nur den
+Betriebsteil, mit Paket, Anker und A-B1 als Quellen, und `breite` nimmt die
+Seiten jedes Falls im Baum als Hauptseiten. So läuft die Prüfung im
+Workflow von plv-fiktion; den Rahmen prüft der Bau des Pull Requests.
+
 | Prüfung | Befund |
 |---|---|
-| `verweise` | ein relativer Verweis ohne Ziel (auch das Ziel einer Weiterleitung), ein Sprungziel ohne id, ein absoluter Pfad; in einem Beleg (`artefakte/`, `plv/`) nur ein Hinweis, weil Belege unverändert erscheinen. Verweist ein Beleg vom Fallordner aus, legt der Bau dort, wohin der Browser auflöst, eine Weiterleitung ab; das Manifest der Bereinigung nennt sie |
-| `pages` | was Pages (Liquid, dann kramdown) anders liest als die Vorschau: eine Überschrift, die auf eine Attributliste `{: ...}` endet (eine eigene id heißt `{#x}`); `{{` oder `{%` außerhalb von raw; jedes `$` außerhalb von Code und `$$...$$` (kramdown kennt nur `$$...$$` als Formel); eine Seite, die nicht mit einer Überschrift beginnt (dann hat sie keinen Titel); eine .md unter `artefakte/` oder `plv/` (Pages entfernte das Original) |
-| `paket` | eine Datei unter `plv/`, die von `stand.json` abweicht oder dort fehlt; ein nicht veröffentlichter Eintrag außer Parquet; ein Bericht unter `berichte/` ohne bytegleiche Datei im Paket |
-| `pruefsummen` | eine angezeigte Kennung ohne Quelle (Datei des Falls, Manifest, Snapshot, Lieferregister, Paket, Anker, Protokoll, Commit) |
+| `verweise` | ein relativer Verweis ohne Ziel (auch das Ziel einer Weiterleitung), ein Sprungziel ohne id, ein absoluter Pfad; in einem Beleg (`artefakte/`, `betrieb/plv/`) nur ein Hinweis, weil Belege unverändert erscheinen. Verweist ein Beleg vom Fallordner aus, legt der Bau dort, wohin der Browser auflöst, eine Weiterleitung ab; das Manifest der Bereinigung nennt sie |
+| `pages` | was Pages (Liquid, dann kramdown) anders liest als die Vorschau: eine Überschrift, die auf eine Attributliste `{: ...}` endet (eine eigene id heißt `{#x}`); `{{` oder `{%` außerhalb von raw; jedes `$` außerhalb von Code und `$$...$$` (kramdown kennt nur `$$...$$` als Formel); eine Seite, die nicht mit einer Überschrift beginnt (dann hat sie keinen Titel); eine .md unter `artefakte/` oder `betrieb/plv/` (Pages entfernte das Original) |
+| `paket` | eine Datei unter `betrieb/plv/`, die von `stand.json` abweicht oder dort fehlt; ein nicht veröffentlichter Eintrag außer Parquet; ein Bericht unter `betrieb/berichte/` ohne bytegleiche Datei im Paket |
+| `pruefsummen` | eine angezeigte Kennung ohne Quelle (Datei des Falls, Manifest, Snapshot, Lieferregister, Paket, Anker, Protokoll, A-B1, Commit) |
 | `breite` | eine Hauptseite, die auf dem Telefon (390 px) breiter ist als der Bildschirm; die übrigen Seiten stehen als Hinweis da (Ansicht am Schreibtisch hat Vorrang, Entscheid 04.10.2026) |
 
 `breite` braucht Playwright wie `schau.py`; fehlt es, meldet `alle`

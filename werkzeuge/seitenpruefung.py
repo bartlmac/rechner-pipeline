@@ -14,16 +14,19 @@ Veroeffentlichung sie faehrt.
 * ``pages``: Was Pages anders liest als die Vorschau, steht nicht im
   Push-Baum: eine Ueberschrift, die auf eine Attributliste ``{: ...}``
   endet; Liquid ausserhalb von raw; eine Formel in ``$...$``.
-* ``paket``: Jede Datei des Stands-Pakets unter ``plv/`` traegt die
-  Pruefsumme, die ``stand.json`` fuer sie nennt; unter ``plv/`` liegt nichts
-  ohne Eintrag; was nicht veroeffentlicht ist, sind nur die Parquet-Tabellen;
-  jeder Bericht unter ``berichte/`` ist bytegleich mit einer Datei des
-  Pakets.
+* ``paket``: Jede Datei des Stands-Pakets unter ``betrieb/plv/`` traegt die
+  Pruefsumme, die ``stand.json`` fuer sie nennt; dort liegt nichts ohne
+  Eintrag; was nicht veroeffentlicht ist, sind nur die Parquet-Tabellen;
+  jeder Bericht unter ``betrieb/berichte/`` ist bytegleich mit einer Datei
+  des Pakets.
 * ``pruefsummen``: Jede hexadezimale Kennung (8 bis 64 Zeichen), die eine
   Seite anzeigt, gehoert zu einer bekannten Quelle — Datei des Falls,
   Manifest der Bereinigung, Snapshot, Lieferregister, Paket, Anker,
-  Protokoll — oder ist ein Commit des Codebaums. Eine Kennung ohne Quelle
-  behauptet etwas, das niemand nachschlagen kann.
+  Protokoll, die A-B1 — oder ist ein Commit des Codebaums. Eine Kennung ohne
+  Quelle behauptet etwas, das niemand nachschlagen kann. Ohne ``--fall``
+  prueft sie nur den Betriebsteil (``betrieb/``), mit Paket, Anker und A-B1
+  als Quellen: So laeuft sie im Workflow von plv-fiktion, wo es keinen Fall
+  gibt; den Rahmen prueft der Bau des Pull Requests.
 * ``breite``: Auf dem Telefon (390 Pixel) ist keine Hauptseite breiter als
   der Bildschirm (:data:`HAUPTSEITEN`); was breiter ist, verschiebt sich in
   seinem eigenen Rahmen. Jede andere Seite wird mitgemessen und als Hinweis
@@ -37,8 +40,11 @@ Aufruf (``alle`` faehrt alle fuenf, Exit 1 bei einem Befund)::
 
     python werkzeuge/seitenpruefung.py alle --seite runs/<bau>/seite \\
         --vorschau runs/<bau>/vorschau --fall faelle/<fall> --name <kurzname> \\
-        --paket <stands-paket> --anker <anker>/anker.jsonl \\
+        --paket <stands-paket> --anker <anker>/anker.jsonl --ab1 <A-B1>.json \\
         --daten runs/<bau>/falldaten.json --repo .
+
+Nur den Betriebsteil (im Workflow): dieselben Angaben ohne ``--fall``,
+``--name`` und ``--daten``.
 
 Jede Pruefung einzeln: ``verweise <vorschau>``, ``pages <seite>``,
 ``paket <seite> <paket>``,
@@ -63,9 +69,15 @@ from typing import Dict, Iterator, List, Optional, Set, Tuple
 #: Breite des Telefons in CSS-Pixeln (wie ``schau.py``, Ansicht "handy").
 TELEFON = 390
 #: Die Seiten, die auf dem Telefon bildschirmbreit bleiben MUESSEN —
-#: Einstieg, Geschaeftsentwicklung, Migrationen und die Seiten des Falls.
-HAUPTSEITEN = ("index.html", "geschaeftsentwicklung/index.html", "migrationen/index.html",
+#: Einstieg, Bestandsfuehrung, Migrationen und die Seiten des Falls.
+HAUPTSEITEN = ("index.html", "betrieb/index.html", "migrationen/index.html",
                "migrationen/{name}/index.html", "migrationen/{name}/entscheide.html")
+#: Das Stands-Paket und die Kopien seiner Berichte im Push-Baum
+#: (``unternehmensseite.STAND_DIR``): Belege, Byte fuer Byte.
+PAKET_DIR = "betrieb/plv"
+BERICHTE_DIR = "betrieb/berichte"
+#: Der Betriebsteil im Push-Baum (``unternehmensseite.BETRIEB_DIR``).
+BETRIEB_DIR = "betrieb"
 
 
 def _sha(pfad: Path) -> str:
@@ -113,7 +125,7 @@ def verweise(vorschau: Path) -> Tuple[List[str], str]:
     gesamt, extern = 0, collections.Counter()
     for seite in seiten:
         rel = seite.relative_to(wurzel).as_posix()
-        beleg = ("artefakte" in rel.split("/") or rel.startswith("plv/")) and rel not in weiter
+        beleg = ("artefakte" in rel.split("/") or rel.startswith(PAKET_DIR + "/")) and rel not in weiter
         text = seite.read_text(encoding="utf-8", errors="replace")
         for a, b in (re.findall(r"""\b(?:href|src|poster)\s*=\s*(?:"([^"]*)"|'([^']*)')""", text)
                      + re.findall(r"""http-equiv\s*=\s*["']refresh["'][^>]*?\bcontent\s*=\s*"""
@@ -200,7 +212,7 @@ def pages(seite: Path) -> Tuple[List[str], str]:
     for md in dateien:
         rel = md.relative_to(seite).as_posix()
         text = md.read_text(encoding="utf-8")
-        if "artefakte" in rel.split("/") or rel.startswith("plv/"):
+        if "artefakte" in rel.split("/") or rel.startswith(PAKET_DIR + "/"):
             befunde.append(f"{rel}: Markdown in einem Beleg — Pages macht daraus eine Seite "
                            f"und entfernt das Original")
             continue
@@ -231,11 +243,11 @@ def pages(seite: Path) -> Tuple[List[str], str]:
 # --------------------------------------------------------------------------- #
 
 def paket(seite: Path, stands_paket: Path) -> Tuple[List[str], str]:
-    """Befunde und Zusammenfassung des Abgleichs ``plv/`` und ``berichte/``
-    gegen ``stand.json`` des Stands-Pakets."""
+    """Befunde und Zusammenfassung des Abgleichs ``betrieb/plv/`` und
+    ``betrieb/berichte/`` gegen ``stand.json`` des Stands-Pakets."""
     stand = json.loads((stands_paket / "stand.json").read_text(encoding="utf-8"))
     dateien: Dict[str, str] = stand.get("dateien") or {}
-    plv = seite / "plv"
+    plv = seite / PAKET_DIR
     befunde: List[str] = []
     gleich, nicht = 0, []
     for name, summe in sorted(dateien.items()):
@@ -245,23 +257,23 @@ def paket(seite: Path, stands_paket: Path) -> Tuple[List[str], str]:
         elif _sha(z) == summe:
             gleich += 1
         else:
-            befunde.append(f"plv/{name}: weicht von stand.json ab")
+            befunde.append(f"{PAKET_DIR}/{name}: weicht von stand.json ab")
     for name in nicht:
         if not name.endswith(".parquet"):
-            befunde.append(f"plv/{name}: in stand.json, aber nicht veroeffentlicht")
+            befunde.append(f"{PAKET_DIR}/{name}: in stand.json, aber nicht veroeffentlicht")
     if plv.is_dir():
         for p in sorted(plv.rglob("*")):
             rel = p.relative_to(plv).as_posix()
             if p.is_file() and rel not in dateien:
-                befunde.append(f"plv/{rel}: ohne Eintrag in stand.json")
-    berichte = seite / "berichte"
+                befunde.append(f"{PAKET_DIR}/{rel}: ohne Eintrag in stand.json")
+    berichte = seite / BERICHTE_DIR
     kopien = sorted(p for p in berichte.rglob("*") if p.is_file()) if berichte.is_dir() else []
     for p in kopien:
         if dateien.get(p.name) != _sha(p):
-            befunde.append(f"berichte/{p.relative_to(berichte).as_posix()}: "
+            befunde.append(f"{BERICHTE_DIR}/{p.relative_to(berichte).as_posix()}: "
                            "keine bytegleiche Datei des Pakets")
-    zusammen = (f"plv/: {gleich} Dateien gleich stand.json, {len(nicht)} nicht "
-                f"veroeffentlicht; berichte/: {len(kopien)} Kopien; {len(befunde)} Befunde")
+    zusammen = (f"{PAKET_DIR}/: {gleich} Dateien gleich stand.json, {len(nicht)} nicht "
+                f"veroeffentlicht; {BERICHTE_DIR}/: {len(kopien)} Kopien; {len(befunde)} Befunde")
     return befunde, zusammen
 
 
@@ -280,28 +292,31 @@ def _hexwerte(x) -> Iterator[str]:
         yield x
 
 
-def bekannte_kennungen(seite: Path, fall: Path, name: str, stands_paket: Path,
-                       anker: Path, daten: Path) -> Dict[str, str]:
-    """Jede volle Kennung, die eine Quelle traegt, mit dem Namen der Quelle."""
+def bekannte_kennungen(seite: Path, fall: Optional[Path], name: Optional[str],
+                       stands_paket: Path, anker: Path, daten: Optional[Path],
+                       ab1: Optional[Path] = None) -> Dict[str, str]:
+    """Jede volle Kennung, die eine Quelle traegt, mit dem Namen der Quelle.
+    Ohne Fall nur die Quellen des Betriebsteils: Paket, Anker, A-B1."""
     bekannt: Dict[str, Set[str]] = collections.defaultdict(set)
-    modell = json.loads(daten.read_text(encoding="utf-8"))
+    modell = json.loads(daten.read_text(encoding="utf-8")) if daten else {}
     for e in ((modell.get("belegkette") or {}).get("dateien") or {}).values():
         bekannt["Datei des Falls"].add(e.get("sha256") or "")
-    manifest = seite / "migrationen" / name / "artefakte" / "bereinigung.json"
-    if manifest.is_file():
+    manifest = seite / "migrationen" / str(name) / "artefakte" / "bereinigung.json"
+    if name and manifest.is_file():
         m = json.loads(manifest.read_text(encoding="utf-8"))
         for e in m.get("bereinigt") or []:
             bekannt["Manifest"].update([e.get("sha256_original") or "",
                                         e.get("sha256_veroeffentlicht") or ""])
         for e in m.get("zurueckgehalten") or []:
             bekannt["Manifest"].add(e.get("sha256") or "")
-    for p in sorted((fall / "entscheide").glob("*.json")):
+    snapshots = sorted((fall / "entscheide").glob("*.json")) if fall else []
+    for p in snapshots + ([ab1] if ab1 else []):
         d = json.loads(p.read_text(encoding="utf-8"))
         bekannt["Snapshot"].update([d.get("snapshot_sha256") or "", _sha(p),
                                     p.stem.split("-", 2)[-1]])
         bekannt["Angabe in einem Snapshot"].update(_hexwerte(d))
-    eingang = fall / "eingang.json"
-    if eingang.is_file():
+    eingang = fall / "eingang.json" if fall else None
+    if eingang and eingang.is_file():
         for q in json.loads(eingang.read_text(encoding="utf-8")).get("quellen") or []:
             bekannt["Lieferregister"].add(q.get("sha256") or "")
     stand = json.loads((stands_paket / "stand.json").read_text(encoding="utf-8"))
@@ -310,8 +325,8 @@ def bekannte_kennungen(seite: Path, fall: Path, name: str, stands_paket: Path,
     for zeile in anker.read_text(encoding="utf-8").splitlines():
         if zeile.strip():
             bekannt["Anker"].update(_hexwerte(json.loads(zeile)))
-    if (seite / "plv").is_dir():
-        for p in sorted((seite / "plv").rglob("*.json*")):
+    if (seite / PAKET_DIR).is_dir():
+        for p in sorted((seite / PAKET_DIR).rglob("*.json*")):
             for zeile in p.read_text(encoding="utf-8").splitlines():
                 try:
                     bekannt["Protokoll des Pakets"].update(_hexwerte(json.loads(zeile)))
@@ -320,13 +335,15 @@ def bekannte_kennungen(seite: Path, fall: Path, name: str, stands_paket: Path,
     return {w: q for q, ws in bekannt.items() for w in ws if w}
 
 
-def pruefsummen(seite: Path, fall: Path, name: str, stands_paket: Path, anker: Path,
-                daten: Path, repo: Path) -> Tuple[List[str], str]:
+def pruefsummen(seite: Path, fall: Optional[Path], name: Optional[str], stands_paket: Path,
+                anker: Path, daten: Optional[Path], repo: Path,
+                ab1: Optional[Path] = None) -> Tuple[List[str], str]:
     """Befunde und Zusammenfassung: jede angezeigte Kennung mit ihrer Quelle.
 
     Nicht gelesen werden die Belege selbst (``migrationen/<name>/artefakte/``,
-    ``plv/``, ``berichte/``: sie SIND die Quellen), Farben und Skripte."""
-    alle = bekannte_kennungen(seite, fall, name, stands_paket, anker, daten)
+    ``betrieb/plv/``, ``betrieb/berichte/``, der Snapshot der A-B1: sie SIND
+    die Quellen), Farben und Skripte. Ohne Fall nur ``betrieb/``."""
+    alle = bekannte_kennungen(seite, fall, name, stands_paket, anker, daten, ab1)
     commits: Dict[str, bool] = {}
 
     def quelle(kennung: str) -> Optional[str]:
@@ -339,12 +356,14 @@ def pruefsummen(seite: Path, fall: Path, name: str, stands_paket: Path, anker: P
                 capture_output=True).returncode == 0
         return "Commit" if commits[kennung] else None
 
-    ausgenommen = (f"migrationen/{name}/artefakte/", "plv/", "berichte/")
+    ausgenommen = (f"migrationen/{name}/artefakte/", PAKET_DIR + "/", BERICHTE_DIR + "/")
     gefunden: collections.Counter = collections.Counter()
     befunde: List[str] = []
     for p in sorted(seite.rglob("*")):
         rel = p.relative_to(seite).as_posix()
         if not p.is_file() or rel.startswith(ausgenommen) or p.suffix not in (".md", ".html"):
+            continue
+        if fall is None and not rel.startswith(BETRIEB_DIR + "/"):
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
         text = re.sub(r"<(style|script)\b.*?</\1>", "", text, flags=re.S)
@@ -365,16 +384,21 @@ def pruefsummen(seite: Path, fall: Path, name: str, stands_paket: Path, anker: P
 # Breite auf dem Telefon
 # --------------------------------------------------------------------------- #
 
-def breite(vorschau: Path, name: str) -> Tuple[List[str], str]:
+def breite(vorschau: Path, name: Optional[str]) -> Tuple[List[str], str]:
     """Befunde und Zusammenfassung der Breite je Seite auf dem Telefon.
 
     Befund ist eine zu breite Hauptseite und eine Hauptseite, die fehlt;
     jede andere zu breite Seite steht als Hinweis in der Zusammenfassung.
+    Ohne ``name`` gelten die Seiten jedes Falls im Baum als Hauptseiten
+    (``migrationen/<fall>/entscheide.html`` zeigt ihn an).
     Wirft ``ImportError``, wenn Playwright fehlt."""
     from playwright.sync_api import sync_playwright
 
     wurzel = Path(os.path.normpath(vorschau.absolute()))
-    pflicht = [s.format(name=name) for s in HAUPTSEITEN]
+    namen = [name] if name else sorted(
+        p.parent.name for p in (wurzel / "migrationen").glob("*/entscheide.html"))
+    pflicht = ([s for s in HAUPTSEITEN if "{name}" not in s]
+               + [s.format(name=n) for n in namen for s in HAUPTSEITEN if "{name}" in s])
     alle = sorted((Path(d) / f).relative_to(wurzel).as_posix()
                   for d, _, fs in os.walk(wurzel, followlinks=True) for f in fs if f.endswith(".html"))
     befunde = [f"{rel}: Hauptseite fehlt in der Vorschau" for rel in pflicht if rel not in alle]
@@ -417,25 +441,29 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     def gemeinsam(q: argparse.ArgumentParser) -> None:
         q.add_argument("--seite", required=True, help="Push-Baum der Seite (auftritt.py --out)")
-        q.add_argument("--fall", required=True, help="Fallverzeichnis (auftritt.py --fall)")
-        q.add_argument("--name", required=True, help="Kurzname des Falls (auftritt.py --name)")
+        q.add_argument("--fall", default=None,
+                       help="Fallverzeichnis (auftritt.py --fall); ohne ihn nur der Betriebsteil")
+        q.add_argument("--name", default=None, help="Kurzname des Falls (auftritt.py --name)")
         q.add_argument("--paket", required=True, help="Stands-Paket (auftritt.py --stands-paket)")
         q.add_argument("--anker", required=True, help="Ankerdatei (auftritt.py --anker)")
-        q.add_argument("--daten", required=True, help="Datenmodell des Baus (falldaten.json)")
+        q.add_argument("--ab1", default=None, help="Snapshot der A-B1 (auftritt.py --ab1)")
+        q.add_argument("--daten", default=None,
+                       help="Datenmodell des Falls (falldaten.json); Pflicht mit --fall")
         q.add_argument("--repo", default=".", help="Codebaum, in dem Commits nachgeschlagen werden")
 
     q = teil.add_parser("verweise", help="Verweise und Sprungziele der Vorschau")
     q.add_argument("vorschau")
     q = teil.add_parser("pages", help="was Pages anders liest als die Vorschau")
     q.add_argument("seite")
-    q = teil.add_parser("paket", help="plv/ und berichte/ gegen stand.json")
+    q = teil.add_parser("paket", help="betrieb/plv/ und betrieb/berichte/ gegen stand.json")
     q.add_argument("seite")
     q.add_argument("paket")
     q = teil.add_parser("pruefsummen", help="jede angezeigte Kennung mit Quelle")
     gemeinsam(q)
     q = teil.add_parser("breite", help="Breite auf dem Telefon (braucht Playwright)")
     q.add_argument("vorschau")
-    q.add_argument("--name", required=True, help="Kurzname des Falls (auftritt.py --name)")
+    q.add_argument("--name", default=None, help="Kurzname des Falls (auftritt.py --name); "
+                                                "ohne ihn jeder Fall im Baum")
     q = teil.add_parser("alle", help="alle fuenf Pruefungen")
     gemeinsam(q)
     q.add_argument("--vorschau", required=True, help="gerenderte Vorschau (auftritt.py --vorschau)")
@@ -454,8 +482,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("playwright fehlt: .venv/bin/pip install playwright && "
                   ".venv/bin/playwright install chromium", file=sys.stderr)
             return 2
-    summen = (Path(args.seite), Path(args.fall), args.name, Path(args.paket),
-              Path(args.anker), Path(args.daten), Path(args.repo))
+    if (args.fall is None) != (args.daten is None) or (args.fall is None) != (args.name is None):
+        p.error("--fall, --name und --daten gehoeren zusammen (ohne sie: nur der Betriebsteil)")
+    summen = (Path(args.seite), Path(args.fall) if args.fall else None, args.name,
+              Path(args.paket), Path(args.anker), Path(args.daten) if args.daten else None,
+              Path(args.repo), Path(args.ab1) if args.ab1 else None)
     if args.pruefung == "pruefsummen":
         return _melde("Pruefsummen", pruefsummen(*summen))
     rc = _melde("Verweise", verweise(Path(args.vorschau)))

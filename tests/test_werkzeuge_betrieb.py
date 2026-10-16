@@ -156,8 +156,12 @@ def test_die_kette_reicht_das_paket_durch(tmp_path, monkeypatch):
     aufrufe = []
     monkeypatch.setattr(auftritt, "_schritt", lambda kommando, erlaubt=(0,): aufrufe.append(kommando) or 0)
     auftritt.main(["--fall", "f", "--name", "n", "--film", "f.mp4", "--stands-paket", str(tmp_path / "paket"),
-                   "--vorschau", ""])
-    assert "--stands-paket" in aufrufe[0] and str(tmp_path / "paket") in aufrufe[0]
+                   "--anker", "anker.jsonl", "--vorschau", ""])
+    # Das Paket geht an das Modell des Betriebsteils, nicht an das des Falls:
+    # Die Seite des Falls aendert sich nur mit dem Rahmen.
+    assert "--stands-paket" not in aufrufe[0]
+    betrieb = [k for k in aufrufe if k[1].endswith("falldaten.py") and "--fall" not in k]
+    assert len(betrieb) == 1 and str(tmp_path / "paket") in betrieb[0]
 
 
 @pytest.mark.parametrize("feld", ["gesamt", "je_ereignis"])

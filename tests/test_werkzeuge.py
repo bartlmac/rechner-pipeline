@@ -724,8 +724,8 @@ def test_der_auftritt_reicht_den_fehler_der_kette_durch(tmp_path: Path):
     """Bricht ein Kettenglied, bricht die Kette — mit demselben Urteil.
     Ein Entwurf aus einer halb gelaufenen Kette saehe vollstaendig aus
     und waere es nicht."""
-    code = at.main(["--fall", str(tmp_path / "kein-fall"), "--name", "x", "--film", "f.mp4",
-                    "--out", str(tmp_path / "seite"), "--vorschau", ""])
+    code = at.main(["--teil", "rahmen", "--fall", str(tmp_path / "kein-fall"), "--name", "x",
+                    "--film", "f.mp4", "--out", str(tmp_path / "seite"), "--vorschau", ""])
     assert code == 2
     assert not (tmp_path / "seite").exists()
 
@@ -1007,13 +1007,14 @@ def test_die_nachpruefung_findet_jede_verfaelschung(tmp_path: Path, art: str, me
     assert any(meldung in f for f in fehler), fehler
 
 
-def test_die_auslieferung_a_b1_steht_an_station_13(tmp_path: Path):
+def test_die_auslieferung_a_b1_steht_nicht_auf_der_fallseite(tmp_path: Path):
     """A-B1 gibt den Stand nach aussen frei; gezeichnet wird es mit --fall,
-    Snapshot und Protokoll liegen im Fall. Ohne Station stuenden sie als
-    "Arbeitsunterlagen" unter "Nicht auf dieser Seite" — die Abnahme, die die
-    oeffentlichen Zahlen deckt, fehlte auf der Seite (Messung 03.10.2026).
-    Jetzt: Station 13, veroeffentlicht, das Protokoll bereinigt, der
-    Entscheid mit dem Gate benannt."""
+    Snapshot und Protokoll liegen im Fall. Bis zum Betriebsteil stand es an
+    Station 13. Seit der Tagesbetrieb es jeden Abend neu zeichnet, zeigt die
+    Seite es nur im Betriebsteil (Entscheid des Maintainers 09.10.2026): Die
+    Seite des Falls aendert sich nur mit dem Rahmen und nennt A-B2. Die Kette
+    des Falls fuehrt A-B1 nicht, Snapshot und Protokoll haben keine Station
+    und werden nicht kopiert."""
     fall, _, alt, neu = _fall_mit_hostpfaden(tmp_path)
     ab1 = "entscheide/A-B1-" + "e" * 64 + ".json"
     (fall / ab1).write_text(json.dumps({
@@ -1028,21 +1029,17 @@ def test_die_auslieferung_a_b1_steht_an_station_13(tmp_path: Path):
         encoding="utf-8")
     modell = _modell(fall)
     kette = modell["belegkette"]["dateien"]
-    assert kette[ab1]["station"] == 13
-    # Der Kasten der Karte zeigt den Snapshot des Haupt-Gates zuerst.
-    import darstellung
-    zeilen = darstellung.kasten_belege(modell, 13, lambda f: f, "#13")
-    assert [z for z, _ in zeilen if z.startswith("Snapshot")][0] == "Snapshot A-B2"
-    assert kette["abgeleitet/diagnostics/gate_entscheid_ab1.gate.json"]["station"] == 13
+    assert kette[ab1]["station"] is None
+    assert kette["abgeleitet/diagnostics/gate_entscheid_ab1.gate.json"]["station"] is None
+    assert kette[ab2]["station"] == 13, "Positivkontrolle: A-B2 bleibt an Station 13"
+    assert "A-B1" not in {e["gate"] for e in modell["kette"]["entscheide"]}
+    assert not any("A-B1" in str(g["gate"]) for g in modell["kette"]["gates"])
     kopiert, bericht = vz._kopiere(fall, tmp_path / "seite", modell)
-    assert f"artefakte/{ab1}" in kopiert
-    assert "abgeleitet/diagnostics/gate_entscheid_ab1.gate.json" in {x["original"] for x in bericht["bereinigt"]}
+    assert f"artefakte/{ab1}" not in kopiert and f"artefakte/{ab2}" in kopiert
     seite = _fallseite(fall, modell, tmp_path, kopiert, None, unterseite=True, bereinigt=bericht)
     station_13 = seite.split("## Station 13 ", 1)[1].split("\n## ", 1)[0]
-    assert "`A-B1` **Auslieferung**" in station_13
-    assert "A-B1: Entscheid **angenommen** am 04.10.2026" in station_13
-    assert f"(artefakte/{ab1})" in station_13
-    assert "entscheide" not in modell["belegkette"]["ohne_station"]
+    assert "`A-B2` **Zugangsabnahme**" in station_13
+    assert "A-B1" not in station_13
 
 
 def test_der_auftritt_bewacht_den_ganzen_push_baum(tmp_path: Path, monkeypatch):
@@ -1053,11 +1050,13 @@ def test_der_auftritt_bewacht_den_ganzen_push_baum(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(at, "_schritt",
                         lambda kommando, erlaubt=(0,): aufrufe.append(kommando) or 0)
     aus = tmp_path / "seite"
-    argv = ["--fall", "f", "--name", "n", "--film", "f.mp4", "--out", str(aus), "--vorschau", "vorschau"]
+    argv = ["--fall", "f", "--name", "n", "--film", "f.mp4", "--out", str(aus), "--vorschau", "vorschau",
+            "--stands-paket", "p", "--anker", "a.jsonl", "--ab1", "A-B1.json"]
     assert at.main(argv) == 0
     assert [Path(k[1]).name for k in aufrufe] == [
-        "falldaten.py", "vorzeigeseite.py", "unternehmensseite.py", "bereinigung.py", "vorschau.py"]
-    assert aufrufe[3][2:] == ["--wache", str(aus)]
+        "falldaten.py", "vorzeigeseite.py", "unternehmensseite.py", "falldaten.py",
+        "unternehmensseite.py", "bereinigung.py", "vorschau.py", "seitenpruefung.py"]
+    assert aufrufe[5][2:] == ["--wache", str(aus)]
     aufrufe.clear()
     monkeypatch.setattr(at, "_schritt", lambda kommando, erlaubt=(0,): (
         aufrufe.append(kommando) or (1 if "--wache" in kommando else 0)))
@@ -1116,6 +1115,25 @@ def test_volatile_stempel_sind_kein_drift(tmp_path: Path):
     entwurf = _entwurf(tmp_path, "Inhalt A", wert=1)
 
     assert dr.main(["--seite", str(entwurf), "--repo", str(repo)]) == 0
+
+
+def test_der_betriebsteil_und_codestand_sind_kein_drift(tmp_path: Path, capsys):
+    """Drift ist eine Frage des Rahmens: Den Betriebsteil baut der Workflow
+    jeden Abend dazu, er liegt nie in main; CODESTAND schreibt erst das
+    Kommando fuer den Pull Request des Rahmens. Ein geaenderter Rahmen bleibt
+    Drift (Positivkontrolle)."""
+    import subprocess
+    repo = _seitenrepo(tmp_path)
+    (repo / "CODESTAND").write_text("a" * 40 + "\n", encoding="utf-8")
+    subprocess.run(["git", "add", "CODESTAND"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "Codestand"], cwd=repo, check=True)
+    entwurf = _entwurf(tmp_path, "Inhalt A", wert=1)
+    (entwurf / "betrieb").mkdir()
+    (entwurf / "betrieb" / "index.md").write_text("# Bestandsführung\n", encoding="utf-8")
+    assert dr.main(["--seite", str(entwurf), "--repo", str(repo)]) == 0
+    (entwurf / "artefakte" / "a.json").write_text('{"wert": 2}', encoding="utf-8")
+    assert dr.main(["--seite", str(entwurf), "--repo", str(repo)]) == 1
+    assert "GEAENDERT: artefakte/a.json" in capsys.readouterr().out
 
 
 def test_inhaltliche_abweichung_ist_drift(tmp_path: Path, capsys):
@@ -1572,30 +1590,38 @@ def test_das_stands_paket_wird_gehalten_uebernommen_und_verlinkt(tmp_path: Path)
         "{{tabelle:uebernahmen_im_stand}}\n", encoding="utf-8")
     modell = {"betrieb": betrieb}
     ziel = tmp_path / "seite"
-    (ziel / "plv").mkdir(parents=True)
-    (ziel / "plv" / "alt.html").write_text("Rest eines frueheren Stands", encoding="utf-8")
-    assert us.stand(modell, ziel) == ["plv/bestandsbericht_2026-09-01.html", "plv/index.html"]
-    assert (ziel / "plv" / "index.html").read_bytes() == (paket / "index.html").read_bytes()  # byteweise
-    assert (ziel / "plv" / "bestandsbericht_2026-09-01.html").is_file()
-    assert not (ziel / "plv" / "alt.html").exists()
+    plv = ziel / "betrieb" / "plv"
+    plv.mkdir(parents=True)
+    (plv / "alt.html").write_text("Rest eines frueheren Stands", encoding="utf-8")
+    assert us.stand(modell, ziel) == ["betrieb/plv/bestandsbericht_2026-09-01.html",
+                                      "betrieb/plv/index.html"]
+    assert (plv / "index.html").read_bytes() == (paket / "index.html").read_bytes()  # byteweise
+    assert (plv / "bestandsbericht_2026-09-01.html").is_file()
+    assert not (plv / "alt.html").exists()
 
-    us.baue(quellen, ziel, modell)
+    # Eine Uebernahme, die UEBERNAHMEN nicht kennt, haelt den Bau an: Ihren
+    # Namen und ihre Seite bringt der Rahmen mit, der Betriebsteil kennt den
+    # Fall nicht.
+    with pytest.raises(vz.VeroeffentlichungFehler, match="UEBERNAHMEN"):
+        us.baue(quellen, ziel, modell)
+    us.UEBERNAHMEN["probe"] = ("probe", "Probe KLV")
+    try:
+        us.baue(quellen, ziel, modell)
+    finally:
+        del us.UEBERNAHMEN["probe"]
     seite = (ziel / "index.md").read_text(encoding="utf-8")
     assert "2.556 in Kraft, Stand 06.09.2026, Manifest " + "ed" * 8 in seite
     assert "| Zugang | 933 |" in seite
-    assert "[Monatsbericht zum 01.09.2026](plv/bestandsbericht_2026-09-01.html)" in seite
-    assert "| probe | 01.01.2026 | 834 |" in seite
-    # Die Uebernahme des eigenen Falls heisst wie auf der Startseite, nicht
-    # wie ihr Verzeichnis (Nachpruefung 04.10.2026).
-    us.baue(quellen, ziel, dict(modell, fall={"name": "probe"}))
-    assert "| Probe | 01.01.2026 | 834 |" in (ziel / "index.md").read_text(encoding="utf-8")
+    assert "[Monatsbericht zum 01.09.2026](betrieb/plv/bestandsbericht_2026-09-01.html)" in seite
+    assert "| [Probe KLV](migrationen/probe/) | 01.01.2026 | 834 |" in seite
     assert "KLV" in seite and "{{" not in seite
     # Eine Ebene tiefer zeigt derselbe Verweis nach oben.
     (quellen / "tiefer").mkdir()
     (quellen / "tiefer" / "index.md").write_text(
         "Fiktives Unternehmen\n{{tabelle:abschluesse}}\n", encoding="utf-8")
+    (quellen / "index.md").write_text("Fiktives Unternehmen\n# Start\n", encoding="utf-8")
     us.baue(quellen, ziel, modell)
-    assert "](../plv/bestandsbericht_2026-09-01.html)" in (
+    assert "](../betrieb/plv/bestandsbericht_2026-09-01.html)" in (
         ziel / "tiefer" / "index.md").read_text(encoding="utf-8")
 
     # Ohne Paket: Kennzahl unaufloesbar, mit dem Hinweis auf den Aufruf.
@@ -1776,6 +1802,10 @@ def test_die_fallseite_erzaehlt_jede_station_mit_gate_und_geschehen(tmp_path: Pa
         "verankerung": {"vorhanden": True, "getragen": 834, "vertraege": 834, "residuum_summe": -0.14, "residuum_max_abs": 0.02},
         "abgrenzungen": [{"was": "dk_stichtag_2 liegt nicht fuer jeden Vertrag vor", "zahlen": "811 von 834"}],
         "umbau": {"vorhanden": True, "gesamt": {"summe": 4269, "vorgabe": 18000}, "befunde": ["ein Stolperdraht"]},
+        "bestand": {"anzahl": 834, "abzuege": [{"deckkap": {"summe": 33437445.97},
+                                                 "jbrutto": {"summe": 2786944.3}}]},
+        # Der Tagesstand im Modell bleibt draussen: Die Seite des Falls
+        # aendert sich nur mit dem Rahmen (Betriebsteil, 15.10.2026).
         "betrieb": {"vorhanden": True, "stand": "2026-09-08", "bestand": {"in_force": 2556, "uebernommen_in_force": 818},
                     "uebernahmen": [{"stichtag": "2026-01-01", "vertraege": 834}]},
     }
@@ -1806,7 +1836,9 @@ def test_die_fallseite_erzaehlt_jede_station_mit_gate_und_geschehen(tmp_path: Pa
     assert "Schlüsselklasse simulation" not in seite
     assert "1 frühere Runde überholt" in seite
     assert "bindet 64 Artefakte" in seite
-    assert "Zum 01.01.2026 treten 834 Verträge" in seite
+    assert ("Zum 01.01.2026 treten 834 Verträge mit einem Deckungskapital von 33.437.445,97 € "
+            "und einem laufenden Jahresbeitrag von 2.786.944,30 € als Zugang") in seite
+    assert "2.556" not in seite and "818" not in seite and "08.09.2026" not in seite
     # Was nicht glatt lief, steht nicht in einem Kasten am Rand, sondern
     # in den beiden Kapiteln, die dafuer da sind.
     assert "811 von 834" in seite and "ein Stolperdraht" in seite
@@ -1987,10 +2019,10 @@ def test_belege_auf_vertragsebene_werden_geprueft_aber_nicht_veroeffentlicht(tmp
                "protokoll.jsonl": hashlib.sha256(protokoll).hexdigest()}}
     ziel = tmp_path / "seite"
     uebernommen = us.stand({"betrieb": betrieb}, ziel)
-    assert "plv/protokoll.jsonl" in uebernommen and "plv/index.html" in uebernommen
+    assert "betrieb/plv/protokoll.jsonl" in uebernommen and "betrieb/plv/index.html" in uebernommen
     assert not any(n.endswith(".parquet") for n in uebernommen)
-    assert not (ziel / "plv" / "tagesjournal.parquet").exists()
-    assert (ziel / "plv" / "protokoll.jsonl").is_file()
+    assert not (ziel / "betrieb" / "plv" / "tagesjournal.parquet").exists()
+    assert (ziel / "betrieb" / "plv" / "protokoll.jsonl").is_file()
     (paket / "tagesjournal.parquet").write_bytes(b"manipuliert")
     with pytest.raises(vz.VeroeffentlichungFehler, match="weicht von stand.json ab"):
         us.stand({"betrieb": betrieb}, tmp_path / "seite2")
@@ -2293,11 +2325,12 @@ def test_die_vokabulare_der_kette_sind_geschlossen():
     from rechner_pipeline.gates import register
     from rechner_pipeline.models.belegrollen import BELEGROLLEN
 
-    linie = {"A-B3"}   # zeichnet ausserhalb jedes Falls (ADR-025)
+    # A-B3 zeichnet ausserhalb jedes Falls (ADR-025); A-B1 zeichnet der
+    # Tagesbetrieb jeden Abend, die Seite zeigt es nur im Betriebsteil
+    # (Entscheid des Maintainers 09.10.2026).
+    linie = {"A-B1", "A-B3"}
     assert set(fd.GATES_DER_LINIE) == linie
     assert set(darstellung.GATE_STATION) == {g.kennung for g in register.REGISTER} - linie
-    # A-B1 nimmt die Linie ab, gezeichnet wird es im Fall: Station 13 (03.10.2026).
-    assert darstellung.GATE_STATION["A-B1"] == 13
     rollen = {r for je_scope in BELEGROLLEN.values() for t in je_scope.values() for r in t}
     assert set(fd.ROLLE_TITEL) == rollen | set(register._BELEGROLLE_GATE)
     assert set(fd.BELEG_ARTEN) >= set(fd._MEHRFACH)
@@ -2808,13 +2841,17 @@ def test_die_betriebssicht_des_pakets_findet_ihre_berichte(tmp_path):
     betrieb["dateien"]["index.html"] = hashlib.sha256(index).hexdigest()
     ziel = tmp_path / "seite"
     aus = us.stand({"betrieb": betrieb}, ziel)
-    kopie = ziel / "berichte" / "bestandsbericht_2026-09-01.html"
+    # Das Paket liegt im Betriebsteil (betrieb/plv/); seine Verweise loesen
+    # dort auf, also neben ihm: betrieb/berichte/.
+    berichte = ziel / "betrieb" / "berichte"
+    kopie = berichte / "bestandsbericht_2026-09-01.html"
     assert kopie.read_bytes() == (paket / "bestandsbericht_2026-09-01.html").read_bytes()
-    assert "berichte/bestandsbericht_2026-09-01.html" in aus
+    assert "betrieb/berichte/bestandsbericht_2026-09-01.html" in aus
     # Nur was das Paket traegt, und nichts unter plv/ doppelt.
-    assert not (ziel / "berichte" / "fehlt.html").exists()
-    assert sorted(p.relative_to(ziel).as_posix() for p in (ziel / "berichte").iterdir()) == [
-        "berichte/bestandsbericht_2026-09-01.html"]
+    assert not (berichte / "fehlt.html").exists()
+    assert sorted(p.relative_to(ziel).as_posix() for p in berichte.iterdir()) == [
+        "betrieb/berichte/bestandsbericht_2026-09-01.html"]
+    assert not (ziel / "berichte").exists(), "ausserhalb von betrieb/ schreibt der Betriebsteil nichts"
 
 
 def _protokoll(pfad: Path, antworten, rolle=None, name=None) -> Path:
