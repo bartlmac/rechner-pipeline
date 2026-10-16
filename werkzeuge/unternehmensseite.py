@@ -571,9 +571,11 @@ def _freigabe(modell: Dict[str, Any]) -> str:
 
     Geprueft sind Struktur, Pruefsumme und Bindung an den Ankersatz, nicht
     die Signatur; die Seite sagt deshalb "Angaben der Snapshot-Datei"
-    (ADR-029, Entscheid d des Maintainers vom 15.10.2026). Nennt der Snapshot
-    die Schluesselklasse simulation, weist das Kleingedruckte die Zeichnung
-    als Simulation aus (ADR-029, Entscheidung)."""
+    (ADR-029, Entscheid d des Maintainers vom 15.10.2026). Das Kleingedruckte
+    weist die Zeichnung immer als Simulation aus, gleich welche
+    Schluesselklasse der Snapshot nennt: Auch die Klasse steht in der Datei,
+    deren Signatur die Seite nicht prueft (Entscheid des Maintainers
+    16.10.2026)."""
     abnahme = (_betrieb(modell).get("verankerung") or {}).get("abnahme")
     if not abnahme:
         raise KeyError("betrieb.verankerung.abnahme: der Stand ist keine Auslieferung — "
@@ -582,10 +584,8 @@ def _freigabe(modell: Dict[str, Any]) -> str:
     satz = (f"Angaben der Snapshot-Datei zur Auslieferung A-B1: Entscheid **angenommen** "
             f"am {am}, Rolle {darstellung.maskiert(abnahme.get('rolle') or '—')} "
             f"([Snapshot]({Path(AB1_DATEI).name})).")
-    if abnahme.get("schluesselklasse") == "simulation":
-        satz += ('\n\n<p class="kleingedruckt">Gezeichnet mit einem Simulationsschlüssel; '
-                 "die Signatur prüft diese Seite nicht.</p>")
-    return satz
+    return satz + ('\n\n<p class="kleingedruckt">Gezeichnet mit einem Simulationsschlüssel; '
+                   "die Signatur prüft diese Seite nicht.</p>")
 
 
 def freigabe(modell: Dict[str, Any], ziel: Path) -> str:

@@ -182,8 +182,7 @@ def test_der_betriebsteil_schreibt_nur_unter_betrieb(auslieferung, tmp_path, mon
     seite = (betrieb / "index.md").read_text(encoding="utf-8")
     assert "{{" not in seite and "Angaben der Snapshot-Datei zur Auslieferung A-B1" in seite
     assert "([Snapshot](A-B1.json))" in seite and "Signatur geprüft" not in seite
-    klasse = json.loads(a["ab1"].read_text(encoding="utf-8"))["zeichnung"]["schluesselklasse"]
-    assert ("Gezeichnet mit einem Simulationsschlüssel" in seite) == (klasse == "simulation")
+    assert "Gezeichnet mit einem Simulationsschlüssel; die Signatur prüft diese Seite nicht." in seite
     for name in us.BILDER:
         for datei in (f"{name}.svg", f"{name}-handy.svg"):
             text = (betrieb / datei).read_text(encoding="utf-8")
@@ -226,6 +225,18 @@ def test_der_betriebsteil_braucht_eine_freigabe(auslieferung, tmp_path, capsys, 
     daten.write_text(json.dumps(modell), encoding="utf-8")
     assert us.main(["--teil", "betrieb", "--quellen", str(QUELLEN), "--daten", str(daten),
                     "--out", str(tmp_path / "seite3")]) == 0, "Positivkontrolle"
+
+
+@pytest.mark.parametrize("klasse", ["simulation", "mensch", None])
+def test_die_freigabe_nennt_die_zeichnung_immer_eine_simulation(auslieferung, klasse):
+    """Die Seite prueft die Signatur der A-B1 nicht, also auch nicht die
+    Schluesselklasse, die in derselben Datei steht. Der Satz steht deshalb
+    immer (Entscheid des Maintainers 16.10.2026)."""
+    a = auslieferung
+    modell = fd.sammle_betrieb(a["oeffentlich"], a["anker"], a["ab1"], True)
+    modell["betrieb"]["verankerung"]["abnahme"]["schluesselklasse"] = klasse
+    assert ('<p class="kleingedruckt">Gezeichnet mit einem Simulationsschlüssel; '
+            "die Signatur prüft diese Seite nicht.</p>") in us._freigabe(modell)
 
 
 @pytest.mark.parametrize("feld, gut, schlecht", [
