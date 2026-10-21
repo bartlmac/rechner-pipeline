@@ -40,6 +40,12 @@ aufnehmenden Unternehmens. In der Vorfuehrung werden alle menschlichen
 Rollen simuliert (Schluesselklasse `simulation`); die Regie der
 Vorzeige haelt ihre Auftragsprofile (ADR-017).
 
+Die Rollen sind nicht an ein Modell oder einen Agenten-Harness gebunden.
+Codex, OpenCode, Claude Code und Pi sind Beispiele für solche Harnesses.
+Wie die Programmleitung einen Lauf auch mit Open-Weight-Modellen optional über
+Herdr orchestrieren und zusätzlich Modelle und Harnesses fallbezogen vergleichen
+kann, steht in [Orchestrierung und Modellvergleiche mit Herdr](mehrmodell-orchestrierung.md).
+
 ## Skill-Katalog (v1, Faehigkeiten je Skill)
 
 | Rolle | Skill | Kern-Auftrag | Haerte-Grenze (was der Skill NICHT darf) |
