@@ -1209,7 +1209,16 @@ def fuehrungswert_nachgerechnet(suite: Dict[str, Any], fall: Path,
     return []
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+#: Die Optionen, deren Wert ein Pfad ist (relativ zum Arbeitsverzeichnis des
+#: Aufrufs). Im Aufruf des Belegs stehen sie relativ zum Fall, wo sie darin
+#: liegen; der Konsument loest sie gegen seinen Fall auf. Die uebrigen Werte
+#: sind Namen im Fall (registrierte Quellen, der Schichtbeleg) oder Zahlen.
+PFAD_OPTIONEN = ("--bestand", "--config", "--zeilen")
+
+
+def parser() -> argparse.ArgumentParser:
+    """Die Kommandozeile der Suite — auch fuer den Konsumenten, der den
+    Aufruf eines Belegs nachrechnet (Pruefrunde T28, Befund 01)."""
     p = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.gates.migrationssuite_lauf",
         description="Migrationscontrolling ueber den Fall fahren "
@@ -1282,12 +1291,72 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Tarifwerk, Verfahren der Quelle, Dynamiksatz und Stichtag des
     # gelieferten Deckungskapitals stehen in der Spez (ADR-024, Nachtrag).
     verweigere_entfallene_schalter(p)
-    args = p.parse_args(argv)
+    return p
 
+
+def _aufruf(args: argparse.Namespace, schluessel) -> List[str]:
+    """Der vollstaendige Aufruf, normalisiert: ohne ``--fall``,
+    ``--repo-root`` und ``--out``, Pfade relativ zum Fall, jede Spalte
+    ausdruecklich (auch die Vorgabe)."""
+    a = ["--generation", str(args.generation),
+         "--abzug-1", str(args.abzug_1), "--abzug-2", str(args.abzug_2),
+         "--gevo-protokoll", str(args.protokoll),
+         "--bestand", schluessel(Path(args.bestand)),
+         "--config", schluessel(Path(args.config)),
+         "--stichtag-1", str(args.stichtag_1), "--stichtag-2", str(args.stichtag_2)]
+    if args.zeilen is not None:
+        a += ["--zeilen", schluessel(Path(args.zeilen))]
+    for option, wert in (("--vorgeschichte", args.vorgeschichte),
+                         ("--red-anteile-datei", args.red_anteile_datei),
+                         ("--anker-erwartungswerte", args.anker_quelle),
+                         ("--schicht", args.schicht)):
+        if wert is not None:
+            a += [option, str(wert)]
+    for wert in args.red_anteil_kandidaten:
+        a += ["--red-anteil-kandidat", repr(float(wert))]
+    for name in VORGABE:
+        a += [f"--spalte-{name}", str(getattr(args, f"spalte_{name}"))]
+    return a
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = parser().parse_args(argv)
+    code, ergebnis = fuehre_suite(args)
+    if ergebnis is None:
+        return code
+    fall = Path(args.fall).resolve()
+    ziel = Path(args.out) if args.out else (
+        fall / "abgeleitet" / "berichte" / "migrationssuite.json")
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    with ziel.open("w", encoding="utf-8") as datei:
+        json.dump(ergebnis, datei, indent=2, ensure_ascii=False,
+                  sort_keys=True, default=str)
+        datei.write("\n")
+
+    print(f"Migrationssuite: {ergebnis['anzahl']} Vertraege, "
+          f"{ergebnis['bestanden']} bestanden")
+    luecken = ergebnis.get("pruefluecken") or []
+    if luecken:
+        print(f"  {len(luecken)} Pruefluecken — der Bestands-Scope von A-M4 "
+              "duldet keine:")
+        for l in luecken[:5]:
+            print(f"    {str(l)[:140]}")
+    print(f"  vollstaendig geprueft: {ergebnis.get('vollstaendig_geprueft')}")
+    print(f"  {ziel}")
+    return code
+
+
+def fuehre_suite(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]]]:
+    """Die Suite ohne Schreiben: ``(Exit-Code, Beleg)``; bei einem
+    Bedienfehler ``(2, None)`` mit Meldung auf stderr. Der Konsument ruft
+    genau diese Funktion mit dem Aufruf des Belegs (Pruefrunde T28,
+    Befund 01): Die Komponentenzahl, mit der ein Vergleich seine Toleranz
+    weitet, ist dann die des Erzeugers auf den gebundenen Eingaben und
+    nicht die, die ein Beleg behauptet."""
     fall = Path(args.fall).resolve()
     if not (fall / "fall.json").is_file():
         print(f"Kein Fall-Arbeitsbereich: {fall}", file=sys.stderr)
-        return 2
+        return 2, None
 
     spalten = {n: getattr(args, f"spalte_{n}") for n in VORGABE}
     # Jede Eingabe genau einmal lesen und binden (Review T25-05,
@@ -1308,7 +1377,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         regeln = tarifregeln_des_falls(fall, spez)
     except ValueError as exc:
         print(f"migrationssuite_lauf: {exc}", file=sys.stderr)
-        return 2
+        return 2, None
     abzug_1 = _lies_csv(fall, args.abzug_1, bindung)
 
     auspraegungen = None
@@ -1318,7 +1387,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not isinstance(zeilen, list):
             print(f"{args.zeilen}: erwartet wird die Zeilenliste aus "
                   "gates.transformation_anwenden --zeilen", file=sys.stderr)
-            return 2
+            return 2, None
         auspraegungen = auspraegungen_je_police(spez, zeilen)
         summen = {str(z["police_id"]): float(z["sum_insured"]) for z in zeilen}
 
@@ -1333,7 +1402,7 @@ def main(argv: Optional[List[str]] = None) -> int:
               "Anteile gehoeren zu den Ereignissen der Vorgeschichte) — "
               "ohne sie wuerde die Auskunft weder gelesen noch gebunden",
               file=sys.stderr)
-        return 2
+        return 2, None
     if args.vorgeschichte is not None:
         vorgeschichte = _lies_csv(fall, args.vorgeschichte, bindung)
         beitragsfrei_seit = beitragsfrei_seit_jahr_je_police(
@@ -1439,7 +1508,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             tarifwerk_der_spez={args.generation: regeln.tarifwerk})
     except (MigrationszugangFehler, ValueError) as exc:
         print(f"Fuehrungswert nicht rechenbar: {exc}", file=sys.stderr)
-        return 2
+        return 2, None
 
     # Die Pruefmenge wird an der LIEFERUNG gemessen, nicht an sich
     # selbst: erwartete Anzahl ist die Zeilenzahl des Abzugs zum
@@ -1466,26 +1535,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     # und mit welchen Regeln.
     ergebnis["eingaben"] = bindung.als_beleg()
     ergebnis["tarifregeln"] = regeln.als_beleg()
-
-    ziel = Path(args.out) if args.out else (
-        fall / "abgeleitet" / "berichte" / "migrationssuite.json")
-    ziel.parent.mkdir(parents=True, exist_ok=True)
-    with ziel.open("w", encoding="utf-8") as datei:
-        json.dump(ergebnis, datei, indent=2, ensure_ascii=False,
-                  sort_keys=True, default=str)
-        datei.write("\n")
-
-    print(f"Migrationssuite: {ergebnis['anzahl']} Vertraege, "
-          f"{ergebnis['bestanden']} bestanden")
-    luecken = ergebnis.get("pruefluecken") or []
-    if luecken:
-        print(f"  {len(luecken)} Pruefluecken — der Bestands-Scope von A-M4 "
-              "duldet keine:")
-        for l in luecken[:5]:
-            print(f"    {str(l)[:140]}")
-    print(f"  vollstaendig geprueft: {ergebnis.get('vollstaendig_geprueft')}")
-    print(f"  {ziel}")
-    return 0
+    # Der vollstaendige Aufruf (Pruefrunde T28, Befund 01): Mit ihm rechnet
+    # A-M4 die Suite nach, statt ihr zu glauben.
+    ergebnis["aufruf"] = _aufruf(args, bindung.schluessel)
+    return 0, ergebnis
 
 
 if __name__ == "__main__":  # pragma: no cover

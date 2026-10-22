@@ -46,7 +46,7 @@ import io as _io
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline import fall as fall_mod
@@ -637,7 +637,16 @@ def _stichprobe(beleg: Dict[str, Any], abnahme: str) -> Stichprobe:
     )
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+#: Die Optionen, deren Wert ein Pfad ist (relativ zum Arbeitsverzeichnis des
+#: Aufrufs). Im Aufruf des Belegs stehen sie relativ zum Fall, wo sie darin
+#: liegen; der Konsument loest sie gegen seinen Fall auf. Die uebrigen Werte
+#: sind Namen im Fall (registrierte Quellen, der Schichtbeleg) oder Zahlen.
+PFAD_OPTIONEN = ("--bestand", "--zeilen")
+
+
+def parser() -> argparse.ArgumentParser:
+    """Die Kommandozeile des Tests — auch fuer den Konsumenten, der den
+    Aufruf eines Belegs nachrechnet (Pruefrunde T28, Befund 01)."""
     p = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.gates.aktuartest_lauf",
         description="Den aktuariellen Test einer Abnahme fahren "
@@ -719,12 +728,64 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--out", default=None,
                    help="Zielpfad (Vorgabe: <fall>/abgeleitet/berichte/...)")
     verweigere_entfallene_schalter(p)
-    args = p.parse_args(argv)
+    return p
 
+
+def _aufruf(args: argparse.Namespace, schluessel) -> List[str]:
+    """Der vollstaendige Aufruf, normalisiert: ohne ``--fall``,
+    ``--repo-root`` und ``--out``, Pfade relativ zum Fall."""
+    a = ["--abnahme", str(args.abnahme), "--generation", str(args.generation),
+         "--erwartungswerte", str(args.erwartungswerte),
+         "--stichprobe", str(args.stichprobe),
+         "--bestand", schluessel(Path(args.bestand))]
+    if args.zeilen is not None:
+        a += ["--zeilen", schluessel(Path(args.zeilen))]
+    for option, wert in (("--vorgeschichte", args.vorgeschichte),
+                         ("--anker-erwartungswerte", args.anker_quelle),
+                         ("--red-anteile-datei", args.red_anteile_datei),
+                         ("--plausibilitaet-beleg", args.plausibilitaet_beleg),
+                         ("--plausibilitaet-vorfallart", args.plausibilitaet_vorfallart),
+                         ("--schicht", args.schicht)):
+        if wert is not None:
+            a += [option, str(wert)]
+    for wert in args.plausibilitaet_groessen:
+        a += ["--plausibilitaet-groesse", str(wert)]
+    for wert in args.red_anteil_kandidaten:
+        a += ["--red-anteil-kandidat", repr(float(wert))]
+    return a
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = parser().parse_args(argv)
+    code, ergebnis = fuehre_test(args)
+    if ergebnis is None:
+        return code
+    fall = Path(args.fall).resolve()
+    ziel = Path(args.out) if args.out else (
+        fall / "abgeleitet" / "berichte" / ZIELNAME[args.abnahme])
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    with ziel.open("w", encoding="utf-8") as datei:
+        json.dump(ergebnis, datei, indent=2, ensure_ascii=False, sort_keys=True)
+        datei.write("\n")
+
+    print(f"{args.abnahme}: {ergebnis['anzahl']} Vertraege, "
+          f"{ergebnis['bestanden']} bestanden, "
+          f"{ergebnis['fehlgeschlagen']} mit Befund")
+    print(f"  Urteil: {'bestanden' if ergebnis['test_bestanden'] else 'NICHT bestanden'}")
+    print(f"  {ziel}")
+    return code
+
+
+def fuehre_test(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]]]:
+    """Den Test ohne Schreiben: ``(Exit-Code, Beleg)``; bei einem
+    Bedienfehler ``(2, None)`` mit Meldung auf stderr. Der Konsument ruft
+    genau diese Funktion mit dem Aufruf des Belegs (Pruefrunde T28,
+    Befund 01): Komponentenzahl und Profil, mit denen ein Vergleich urteilt,
+    sind dann die des Erzeugers und nicht die, die ein Beleg behauptet."""
     fall = Path(args.fall).resolve()
     if not (fall / "fall.json").is_file():
         print(f"Kein Fall-Arbeitsbereich: {fall}", file=sys.stderr)
-        return 2
+        return 2, None
 
     # Jede Eingabe genau einmal lesen und binden (Review T25-05,
     # Haelfte b): Vorher trug das Ergebnis dieses Kommandos KEINE einzige
@@ -743,14 +804,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         regeln = tarifregeln_des_falls(fall, spez)
     except ValueError as exc:
         print(f"aktuartest_lauf: {exc}", file=sys.stderr)
-        return 2
+        return 2, None
     bestand = read_portfolio_aus_bytes(bindung.binde(Path(args.bestand)).roh)
 
     gemeldet = lieferung.get("test")
     if gemeldet and gemeldet != args.abnahme:
         print(f"Die Lieferung gehoert zu {gemeldet}, gefahren werden soll "
               f"{args.abnahme}", file=sys.stderr)
-        return 2
+        return 2, None
 
     # Die Merkmalsauspraegungen je Police waehlen die Spez-Zelle. Sie
     # kommen aus den transformierten Zeilen (der Stamm traegt sie nicht);
@@ -765,14 +826,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not isinstance(zeilen, list):
             print(f"{args.zeilen}: erwartet wird die Zeilenliste aus "
                   "gates.transformation_anwenden --zeilen", file=sys.stderr)
-            return 2
+            return 2, None
         auspraegungen = auspraegungen_je_police(spez, zeilen)
         summen_je_police = {
             str(z["police_id"]): float(z["sum_insured"]) for z in zeilen}
     elif len(spez.zellen) > 1:
         print(f"Spez traegt {len(spez.zellen)} Zellen — ohne --zeilen ist "
               "die Zellwahl je Police nicht bestimmbar", file=sys.stderr)
-        return 2
+        return 2, None
     else:
         auspraegungen = {
             str(r["police_id"]): {}
@@ -799,7 +860,7 @@ def main(argv: Optional[List[str]] = None) -> int:
               "Anteile gehoeren zu den Ereignissen der Vorgeschichte) — "
               "ohne sie wuerde die Auskunft weder gelesen noch gebunden",
               file=sys.stderr)
-        return 2
+        return 2, None
     if args.vorgeschichte is not None:
         from rechner_pipeline.gates.migrationssuite_lauf import (
             VORGABE,
@@ -856,11 +917,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("--plausibilitaet-beleg verlangt --plausibilitaet-groesse "
                   "und --plausibilitaet-vorfallart — ein Beleg ohne Groesse "
                   "und Reichweite ist keiner", file=sys.stderr)
-            return 2
+            return 2, None
         if not vorgeschichte:
             print("--plausibilitaet-vorfallart verlangt --vorgeschichte: die "
                   "Reichweite folgt aus der Metadatenliste", file=sys.stderr)
-            return 2
+            return 2, None
         # Der Beleg muss REGISTRIERT sein — eine unregistrierte Datei
         # faellt hier hart auf, bevor irgendein Vergleich entfaellt.
         # Der Beleg wird GELESEN, nicht nur benannt: Vorher zitierte das
@@ -877,7 +938,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not betroffen:
             print(f"Vorfallart {art!r} kommt in der Vorgeschichte nicht vor — "
                   "der Beleg traefe keinen Vertrag", file=sys.stderr)
-            return 2
+            return 2, None
         quelle = (
             f"Kein herleitbarer Erwartungswert laut {beleg_pfad.name} "
             f"(Reichweite: Vorgeschichte mit Vorfallart {art})"
@@ -982,19 +1043,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             for police in plaus_verweigert
         }
 
-    ziel = Path(args.out) if args.out else (
-        fall / "abgeleitet" / "berichte" / ZIELNAME[args.abnahme])
-    ziel.parent.mkdir(parents=True, exist_ok=True)
-    with ziel.open("w", encoding="utf-8") as datei:
-        json.dump(ergebnis, datei, indent=2, ensure_ascii=False, sort_keys=True)
-        datei.write("\n")
-
-    print(f"{args.abnahme}: {ergebnis['anzahl']} Vertraege, "
-          f"{ergebnis['bestanden']} bestanden, "
-          f"{ergebnis['fehlgeschlagen']} mit Befund")
-    print(f"  Urteil: {'bestanden' if ergebnis['test_bestanden'] else 'NICHT bestanden'}")
-    print(f"  {ziel}")
-    return 0
+    # Der vollstaendige Aufruf (Pruefrunde T28, Befund 01): Mit ihm rechnen
+    # die Vorlage und der Entscheid den Test nach, statt ihm zu glauben.
+    ergebnis["aufruf"] = _aufruf(args, bindung.schluessel)
+    return 0, ergebnis
 
 
 if __name__ == "__main__":  # pragma: no cover

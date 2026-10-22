@@ -36,8 +36,8 @@ startet keinen Gate-Lauf.
 | P-B1 (Version `4.0.0`) | `gates.bestand_validate` | den geführten Bestand |
 | A-K2-Vorlage (Version `2.0.0`) | `gates.kernstand_belegen` | die Änderung des Kernstands (Rechenkern, Referenzwerte, Grundsatzdokumentation) gegenüber dem zuletzt abgenommenen Stand; legt Beleg und lesbare Sicht als Vorlage für A-K2 vor |
 | A-T1-Vorlage (Version `2.0.0`) | `gates.tarifwerk_belegen` | die Änderung des Tarifwerks (Tarifpläne und Parametrierung der eigenen Generationen) gegenüber dem zuletzt abgenommenen Stand; legt Beleg und lesbare Sicht als Vorlage für A-T1 vor |
-| A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
-| A-M4-Vorlage (Version `10.1.0`) | `gates.abnahmebericht` | die Migrationssuite und die Pflichtbelege des Migrationscontrollings; rendert die Entscheidungsvorlage für A-M4 |
+| A-M-Vorlagen (Version `3.0.0`) | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
+| A-M4-Vorlage (Version `11.0.0`) | `gates.abnahmebericht` | die Migrationssuite und die Pflichtbelege des Migrationscontrollings; rendert die Entscheidungsvorlage für A-M4 |
 
 Was ein versioniertes Gate im Einzelnen prüft und wie seine Version
 gewachsen ist, steht in den Abschnitten darunter.
@@ -112,6 +112,17 @@ Versionen:
 - `2.0.0`: Ein Vergleichsstand, dem der Gegenstand an den heutigen Pfaden fehlt, wird verweigert. Vorher schrieb ein solcher Lauf einen Beleg: Gegen einen Stand vor dem Umzug nach `plv/` belegte A-T1 das Tarifwerk „vorher“ als leer und jeden Tarifplan und jede Generation als neu (ADR-028, Nachtrag). Im selben Sprung zählen beide nur noch die Dateien ihres Gegenstands: im Kern Code und Rechnungsgrundlagen, bei den Referenzwerten die JSON-Dateien, bei den Tarifplänen die Markdown-Dateien. Eine fremde Datei daneben (eine PDF der Doku-Engine, eine `.DS_Store`) machte den Stand vorher still „anders“. P9 und `stand_belegen` lesen diese Fingerabdrücke nur; ihre Versionen folgen ihren eigenen Regeln.
 
 
+### A-M-Vorlagen: der aktuarielle Test
+
+Die Vorlage rechnet das Ergebnis von innen nach außen nach: jeden
+Einzelvergleich gegen die Toleranz des Profils, jedes Vertragsurteil,
+Zähler und Stichprobe, alle Verteilungsgrößen und Abnahmegrenzen.
+
+Versionen:
+
+- `2.0.0`: der aktuarielle Test in drei Abnahmen (A-M1, A-M2, A-M3) mit eigenen Profilen und Prüfpunkten.
+- `3.0.0`: Im Bestands-Scope nennt das Ergebnis seinen Aufruf (`aufruf`), und Vorlage wie Entscheid fahren den Test damit auf den gebundenen Eingaben neu und halten das ganze Ergebnis dagegen. Komponentenzahl je Vertrag und Kriterien des Profils sind damit die des Erzeugers und nicht die des Ergebnisses. Ein Ergebnis ohne Aufruf, mit einer behaupteten Komponentenzahl oder mit eigenen Kriterien war vorher gültig (Prüfrunde T28, Befund 01).
+
 ### A-M4-Vorlage: Migrationssuite und Migrationscontrolling
 
 Die Vorlage berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu.
@@ -134,6 +145,7 @@ Versionen:
 - `9.0.0`: Die Führungsprobe trägt Fassung 5, Tarifwerk und Quellverfahren aus der Spez statt aus Schaltern; ihr Aufruf nennt keine Tarifschalter mehr. Ein Beleg der Fassung 4 war gültig und ist mit seinem Aufruf nicht mehr nachrechenbar (ADR-024, Nachtrag).
 - `10.0.0`: Der Führungswert der Suite wird auf den gebundenen Bytes (Bestand, Nebentabellen, Config, Tarifwerk der Spez) über denselben Weg wie die Suite nachgerechnet und in der Vorlage ausgewiesen (Summary `fuehrungswert`, HTML je Vertrag). A-M4 bindet die Spez der Generation (Summary `tarifregeln`), und jeder Beleg der Bestandsstrecke (Übernahme, Schicht, aktuarieller Test, Suite, Führungsprobe) muss genau ihre Regeln nennen und sie gelesen haben. Ein verfälschter Führungswert oder ein Beleg mit anderer Regelangabe war vorher gültig (Prüfrunde G, ADR-024, vierter Nachtrag).
 - `10.1.0`: Die Erzeugung des Berichts kann seinen Ort im Fall nennen (`bericht_ort`); dann verweist der Bericht relativ zu sich selbst auf die Bestandsberichte. Vorher zeigten die Verweise fallrelativ ins Leere (zwei tote Verweise im gezeichneten Bericht von Fall 3). Das Feld ist optional: Ein Beleg ohne es bleibt gültig und wird wie bisher gerendert, damit ein gezeichneter Bericht bytegleich reproduzierbar bleibt.
+- `11.0.0`: Im Bestands-Scope nennt die Suite ihren Aufruf (`aufruf`), und die Vorlage fährt sie damit auf den gebundenen Eingaben neu und hält den ganzen Beleg dagegen. Die Komponentenzahl, um die ein Vergleich seine Toleranz weitet, ist damit die des Erzeugers und nicht die des Belegs. Eine Suite ohne Aufruf oder mit einem abweichenden Feld war vorher ein gültiger Beleg; der Prüfer hatte mit 200.001 behaupteten Komponenten eine um 1.000 EUR falsche Prüfaussage bis zur gezeichneten Annahme gebracht (Prüfrunde T28, Befund 01).
 
 ## Die Versionsregel
 

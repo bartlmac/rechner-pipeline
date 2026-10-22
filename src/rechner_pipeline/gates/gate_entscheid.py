@@ -1904,6 +1904,7 @@ def _passende_bestandsbelege(
                         stichtag_2=stichtage[1],
                         erwartetes_system=dict(system),
                         fall=fall,
+                        repo_root=repo_root,
                     )
                 )
                 if "abnahmebericht" in pfade:
@@ -3276,6 +3277,18 @@ def main(argv: Optional[List[str]] = None):
                         "Annahme verweigert: das Testergebnis traegt "
                         "nicht den aktuellen Systemstand — Test und "
                         f"Gate neu fahren: {am1_kommando}",
+                    )
+                # Pruefrunde T28, Befund 01: Komponentenzahl und Profil, mit
+                # denen das Ergebnis urteilt, stehen im Ergebnis selbst. Die
+                # Annahme rechnet den Test deshalb mit seinem Aufruf nach,
+                # dieselbe Funktion wie die Vorlage.
+                am1_nachrechnung = am1_gate.test_nachgerechnet(
+                    am1_test, fall, Path(args.repo_root).resolve())
+                if am1_nachrechnung:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: " + "; ".join(am1_nachrechnung[:3])
+                        + f" — Test und Gate neu fahren: {am1_kommando}",
                     )
                 am1_titel = (
                     am1_ledger.get("summary", {})

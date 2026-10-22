@@ -45,6 +45,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
+from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline.gates._common import (
     hashes_von,
@@ -87,7 +88,13 @@ GATES: Dict[str, str] = {
 #: Der Vorgabetest, wenn das Kommando ohne ``--test`` laeuft: der
 #: Stichtagstest, mit dem jede Migration beginnt.
 GATE = GATES["A-M1"]
-GATE_VERSION = "2.0.0"
+#: 3.0.0 (Pruefrunde T28, Befund 01): Im Bestands-Scope nennt das Ergebnis
+#: seinen Aufruf (``aufruf``), und die Vorlage faehrt den Test damit auf den
+#: gebundenen Eingaben neu und haelt das ganze Ergebnis dagegen
+#: (:func:`test_nachgerechnet`). Komponentenzahl und Profil eines Vergleichs
+#: sind damit die des Erzeugers. Ein Ergebnis ohne Aufruf, mit einer
+#: behaupteten Komponentenzahl oder mit eigenen Kriterien war vorher gueltig.
+GATE_VERSION = "3.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -145,6 +152,64 @@ def _ok(ist: float, soll: float, k: Kriterium, komponenten: int = 1) -> bool:
     unschaerfe = _CENT_UNSCHAERFE * max(0, komponenten - 1)
     return math.isclose(
         ist, soll, rel_tol=k.rel_tol, abs_tol=k.abs_tol + unschaerfe)
+
+
+def test_nachgerechnet(test: Dict[str, Any], fall: Path, repo_root: Path) -> List[str]:
+    """Den Test mit dem Aufruf des Ergebnisses neu fahren und Feld fuer Feld
+    gegen das Ergebnis halten (Pruefrunde T28, Befund 01).
+
+    :func:`test_fehler` rechnet jedes Urteil nach, aber mit dem Massstab, den
+    das Ergebnis selbst nennt: die Komponentenzahl an jeder Vertragszeile und
+    die Kriterien des Profils. Wer beides behauptet, kauft sich Toleranz. Im
+    Bestands-Scope, in dem A-M1 bis A-M3 die Ergebnisse pinnen, werden sie
+    deshalb nicht gelesen, sondern vom Erzeuger (``gates.aktuartest_lauf``) auf
+    den gebundenen Eingaben hergeleitet, und mit ihnen jedes andere Feld
+    (dieselbe Figur wie die Nachrechnung der Fuehrungsprobe und der Suite in
+    ``gates.abnahmebericht``). Weicht ein Feld ab, bezeugt das Ergebnis nicht
+    den Lauf, den es nennt.
+    """
+    import contextlib
+    import io
+
+    from rechner_pipeline.gates import aktuartest_lauf
+
+    aufruf = test.get("aufruf") if isinstance(test, dict) else None
+    if not isinstance(aufruf, list) or not all(isinstance(a, str) for a in aufruf):
+        return ["Ergebnis nennt seinen Aufruf nicht — ein Beleg, den niemand "
+                "nachrechnen kann, bezeugt keine Pruefung; den Test neu fahren "
+                "(gates.aktuartest_lauf)"]
+    argv = ["--fall", str(fall), "--repo-root", str(repo_root)]
+    for i, wert in enumerate(aufruf):
+        if (i and aufruf[i - 1] in aktuartest_lauf.PFAD_OPTIONEN
+                and not Path(wert).is_absolute()):
+            wert = str(fall / wert)
+        argv.append(wert)
+    meldungen = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(meldungen), contextlib.redirect_stdout(io.StringIO()):
+            _code, neu = aktuartest_lauf.fuehre_test(aktuartest_lauf.parser().parse_args(argv))
+    except (Exception, SystemExit) as exc:  # noqa: BLE001 — jede Form zaehlt
+        return [f"Ergebnis ist mit seinem eigenen Aufruf nicht nachrechenbar "
+                f"({type(exc).__name__}: {exc}) {meldungen.getvalue()[:200]}".strip()]
+    if neu is None:
+        return ["Ergebnis ist mit seinem eigenen Aufruf nicht nachrechenbar: "
+                + meldungen.getvalue()[:300]]
+
+    def norm(wert: Any) -> Any:
+        return json.loads(json.dumps(wert, sort_keys=True, default=str))
+
+    beleg, gerechnet = norm(test), norm(neu)
+    abweichend = sorted(k for k in set(beleg) | set(gerechnet)
+                        if beleg.get(k) != gerechnet.get(k))
+    if not abweichend:
+        return []
+    policen = sorted(
+        str(u.get("police_id")) for u, v in zip(beleg.get("vertraege") or [],
+                                               gerechnet.get("vertraege") or [])
+        if isinstance(u, dict) and u != v)
+    return [f"Ergebnis weicht vom nachgerechneten Test desselben Aufrufs ab in "
+            f"{abweichend[:8]}" + (f" (Policen {policen[:5]})" if policen else "")
+            + " — es bezeugt nicht die Pruefung, die es nennt"]
 
 
 def _profil_aus_beleg(beleg: Mapping[str, Any]) -> Testprofil:
@@ -1046,6 +1111,21 @@ def main(argv: Optional[List[str]] = None):
         if fall is not None and (fall / "fall.json").is_file() else []
     )
     input_hashes = hashes_von([test_gelesen, *fall_json], base=fall)
+    if not fehler and fall_json:
+        # Im Bestands-Scope pinnen A-M1 bis A-M3 das Ergebnis; die Vorlage
+        # rechnet es dann nach (3.0.0), statt seinen Massstab zu glauben. Der
+        # Scope kommt aus den eben gebundenen Bytes von fall.json.
+        try:
+            scope = fall_mod._scope_aus_manifest(fall_json[0].json())
+        except (fall_mod.FallFehler, ValueError) as exc:
+            fehler = [f"Fall-Scope nicht lesbar: {exc}"]
+        else:
+            if scope == "bestand":
+                if not args.repo_root:
+                    return _usage(
+                        "im Bestands-Scope rechnet die Vorlage den Test nach "
+                        "und braucht --repo-root")
+                fehler = test_nachgerechnet(test, fall, Path(args.repo_root))
     if fehler:
         return _finalize(build_result(
             command=kennung, gate=gate, gate_version=GATE_VERSION,
