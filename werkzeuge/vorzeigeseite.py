@@ -120,6 +120,28 @@ keep_files:
 """
 
 
+#: Jede Unternehmensseite muss diesen Hinweis woertlich tragen — die
+#: Banderole oben auf der Seite. Fehlt er, wird nicht gebaut.
+BANDEROLE = "Fiktives Unternehmen"
+
+#: Das Repository hinter der Seite. Die Fusszeile jeder Seite verweist
+#: darauf (Entscheid des Maintainers 22.10.2026, Auftrag A-015).
+QUELLCODE = "https://github.com/bartlmac/rechner-pipeline"
+
+
+def fusszeile(wurzel: str) -> str:
+    """Die Kennzeichnung der Vorfuehrung: eine schmale Fusszeile auf jeder
+    Seite, ausserhalb der Unternehmensstimme (Seitenkonzept, Regel 1). Sie
+    gehoert zum Rahmen und fuehrt hinter die Kulissen und zum Quellcode.
+
+    ``unternehmensseite`` setzt sie unter jede Unternehmensseite, die
+    Fallseite als Unterseite traegt sie selbst. Beide nehmen sie von hier;
+    eine Abschrift bliebe beim naechsten Wortlaut zurueck."""
+    return (f'<div class="fuss-fiktion">{BANDEROLE} — '
+            f'<a href="{wurzel}hinter-den-kulissen/">Hinter den Kulissen</a> · '
+            f'<a href="{QUELLCODE}">Quellcode</a></div>')
+
+
 class VeroeffentlichungFehler(RuntimeError):
     """Etwas darf nicht auf die Seite — fail-fast statt Warnung."""
 
@@ -766,8 +788,7 @@ def _entscheide_seite(fall: Path, modell: Dict[str, Any],
         z.append("*(noch keine Entscheide im Fall)*")
     z.append("")
     if unterseite:
-        z.append('<div class="fuss-fiktion">Fiktives Unternehmen — '
-                 '<a href="../../hinter-den-kulissen/">Hinter den Kulissen</a></div>')
+        z.append(fusszeile("../../"))
         z.append("")
     z.append(f"*Diese Seite wurde am {heute} aus dem Systemstand "
              f"`{stand['commit'][:12]}` erzeugt.*")
@@ -1488,8 +1509,7 @@ def _seiten(fall: Path, modell: Dict[str, Any], repo: Path,
     def fuss() -> List[str]:
         f: List[str] = [""]
         if unterseite:
-            f.append('<div class="fuss-fiktion">Fiktives Unternehmen — '
-                     '<a href="../../hinter-den-kulissen/">Hinter den Kulissen</a></div>')
+            f.append(fusszeile("../../"))
             f.append("")
         f.append(f"*Erzeugt am {heute} aus dem Systemstand "
                  f"`{stand['commit'][:12]}`.*")

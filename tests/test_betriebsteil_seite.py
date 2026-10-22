@@ -500,6 +500,18 @@ WEITERLEITUNGEN = {"geschaeftsentwicklung": "../betrieb/", "plv": "../betrieb/pl
                    "berichte": "../betrieb/plv/"}
 
 
+def test_keine_quellseite_schreibt_die_fusszeile_selbst():
+    """Unter jede Quellseite setzt der Bau die Fusszeile (_mit_fusszeile),
+    ausser sie traegt schon eine. Eine eigene behielte ihren Wortlaut, wenn
+    sich fusszeile aendert (Auftrag A-015). Die Weiterleitungen sind fertiges
+    HTML und tragen sie woertlich (test_eine_alte_adresse_leitet_weiter).
+
+    Mutationsprobe: eine Fusszeile von Hand in it/index.md -> rot."""
+    eigene = sorted(p.relative_to(QUELLEN).as_posix() for p in QUELLEN.rglob("*.md")
+                    if "fuss-fiktion" in p.read_text(encoding="utf-8"))
+    assert eigene == []
+
+
 def test_jede_html_datei_des_rahmens_ist_eine_weiterleitung():
     """Ausser dem Layout liegen im Rahmen nur die Weiterleitungen als HTML;
     eine neue ohne Eintrag in WEITERLEITUNGEN bliebe sonst ungeprueft."""

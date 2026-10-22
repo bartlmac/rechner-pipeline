@@ -42,11 +42,7 @@ import betriebszweig
 import darstellung
 import grafik
 import vorzeigeseite
-from vorzeigeseite import VeroeffentlichungFehler, _pruefe_regie
-
-#: Jede Unternehmensseite muss diesen Hinweis woertlich tragen — die
-#: Banderole oben auf der Seite. Fehlt er, wird nicht gebaut.
-BANDEROLE = "Fiktives Unternehmen"
+from vorzeigeseite import BANDEROLE, VeroeffentlichungFehler, _pruefe_regie, fusszeile
 
 #: Kennzahl-Platzhalter der Quellseiten: ``{{art:pfad}}``. Die Werte
 #: kommen beim Bau aus dem falldaten-Modell des aktuellen Falls —
@@ -175,13 +171,6 @@ def reiter(wurzel: str, aktiv: str = "") -> str:
         return f'<nav class="kopf"><a href="{wurzel}">← Startseite</a></nav>'
     teile = [f'<a href="#{anker}">{titel}</a>' for anker, titel in REITER]
     return '<nav class="kopf">' + "".join(teile) + "</nav>"
-
-
-def fusszeile(wurzel: str) -> str:
-    """Die Kennzeichnung der Vorfuehrung: eine schmale Fusszeile auf jeder
-    Seite, ausserhalb der Unternehmensstimme (Seitenkonzept, Regel 1)."""
-    return (f'<div class="fuss-fiktion">{BANDEROLE} — '
-            f'<a href="{wurzel}hinter-den-kulissen/">Hinter den Kulissen</a></div>')
 
 
 def _mit_reiter(text: str, wurzel: str, aktiv: str) -> str:

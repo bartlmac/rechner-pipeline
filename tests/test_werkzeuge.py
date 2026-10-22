@@ -552,8 +552,37 @@ def test_jede_seite_traegt_die_kennzeichnung_auch_ohne_zutun_des_autors(tmp_path
     us.baue(quellen, tmp_path / "seite", {})
     seite = (tmp_path / "seite" / "it" / "index.md").read_text(encoding="utf-8")
     assert us.BANDEROLE in seite
-    assert seite.rstrip().endswith("Hinter den Kulissen</a></div>")
+    assert seite.rstrip().endswith(us.fusszeile("../"))
     assert 'href="../hinter-den-kulissen/"' in seite
+
+
+def test_die_fusszeile_fuehrt_hinter_die_kulissen_und_zum_quellcode(tmp_path: Path):
+    """Die Fusszeile gehoert zum Rahmen und verbindet die Seite mit dem
+    Repository: "Fiktives Unternehmen — Hinter den Kulissen · Quellcode" auf
+    jeder Seite, auch der Startseite und im Betriebsteil (Entscheid des
+    Maintainers 22.10.2026, Auftrag A-015).
+
+    Mutationsprobe: den Verweis auf den Quellcode aus fusszeile nehmen -> rot."""
+    import html
+    import re
+
+    for wurzel in ("", "../", "../../"):
+        fuss = us.fusszeile(wurzel)
+        assert f'<a href="{wurzel}hinter-den-kulissen/">Hinter den Kulissen</a>' in fuss
+        assert '<a href="https://github.com/bartlmac/rechner-pipeline">Quellcode</a>' in fuss
+        assert (html.unescape(re.sub(r"<[^>]+>", "", fuss))
+                == "Fiktives Unternehmen — Hinter den Kulissen · Quellcode")
+    quellen = _quellseiten(tmp_path)
+    (quellen / "it").mkdir()
+    (quellen / "it" / "index.md").write_text("# IT\n", encoding="utf-8")
+    (quellen / "betrieb").mkdir()
+    (quellen / "betrieb" / "index.md").write_text(
+        "Fiktives Unternehmen\n\n# Betrieb\n", encoding="utf-8")
+    us.baue(quellen, tmp_path / "seite", {})
+    us.baue(quellen, tmp_path / "seite", {}, "betrieb")
+    for rel, wurzel in (("index.md", ""), ("it/index.md", "../"), ("betrieb/index.md", "../")):
+        seite = (tmp_path / "seite" / rel).read_text(encoding="utf-8")
+        assert seite.rstrip().endswith(us.fusszeile(wurzel)), rel
 
 
 def test_mit_banderole_wird_der_baum_gespiegelt(tmp_path: Path):
@@ -705,6 +734,13 @@ def test_die_fallseite_als_unterseite_haengt_im_auftritt(tmp_path: Path):
     assert "stylesheet" not in seite
     assert seite.startswith("# ")
     assert 'nav class="kopf"' in seite and 'href="../../"' in seite
+    # Jede Seite des Falls traegt die Fusszeile des Rahmens, mit der Tiefe
+    # der Unterseite (Auftrag A-015). Mutationsprobe: eine der beiden
+    # Stellen in vorzeigeseite wieder mit dem alten Wortlaut -> rot.
+    for name in ("index.md", "belege.md", "entscheide.md"):
+        text = (ziel / name).read_text(encoding="utf-8")
+        assert text.count('class="fuss-fiktion"') == 1, name
+        assert vz.fusszeile("../../") in text, name
 
     # Ohne den Schalter bleibt die Seite eigenstaendig veroeffentlichbar.
     solo = tmp_path / "solo"

@@ -22,7 +22,10 @@ IT-Fachleute (Bewerber und Fachpublikum).
    außerhalb der Unternehmensstimme („Hinter den Kulissen“), erreichbar
    über eine schmale Fußzeile auf jeder Seite. Dorthin gehört auch die
    Dokumentation der Entwicklung (Fachkonzepte, Entstehung der Bestände,
-   Erfahrungsannahmen, Quellcode).
+   Erfahrungsannahmen, Quellcode). Die Fußzeile gehört zum Rahmen und
+   verweist auch auf das Repository: „Fiktives Unternehmen — Hinter den
+   Kulissen · Quellcode“, auf jeder Seite, auch der Startseite (Entscheid
+   des Maintainers 22.10.2026).
 2. **Ein Leser je Seite.** Aktuariat und IT sind strikt getrennt.
 3. **Betrieb und Migrationen je Zielgruppe.** Die Startseite trennt
    Geschäftsentwicklung (Betrieb) und Bestandsmigrationen; Aktuariat und
