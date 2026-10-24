@@ -3,7 +3,7 @@
 # setuptools und wheel bei jedem frischen Aufbau neu auf — der eine
 # Installationsweg war fuer die Laufzeit, nicht fuer den Build
 # reproduzierbar. tests/test_abhaengigkeiten.py haelt die Pins exakt.
-requires = ["setuptools==84.0.0", "wheel==0.48.0"]
+requires = ["setuptools==84.1.0", "wheel==0.48.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -30,7 +30,7 @@ dependencies = [
     "pyarrow==25.0.1",
     "matplotlib==3.11.1",
     "pydantic==2.13.4",
-    "pypdf==6.19.0",
+    "pypdf==6.21.2",
 ]
 
 [project.optional-dependencies]
