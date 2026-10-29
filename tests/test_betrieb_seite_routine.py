@@ -225,14 +225,20 @@ def test_trockenlauf_schiebt_nicht(welt):
 # --- Vorpruefung, mit Attrappen fuer docker und systemctl --------------------
 
 
-def _attrappen(wurzel: Path, revision: str) -> str:
+def _attrappen(wurzel: Path, revision: str, gate_log: Path | None = None) -> str:
+    """docker und systemctl als Attrappen. Mit gate_log schreibt die
+    Attrappe jeden Aufruf des Gates A-B1 (seine Argumente, wie compose sie
+    bekaeme) in diese Datei und verweigert wie das Gate (Exit 20)."""
     bin_ = wurzel / "bin"
     bin_.mkdir(exist_ok=True)
+    gate = (f'  *"gate_entscheid"*) echo "$*" >> "{gate_log}"; exit 20 ;;\n'
+            if gate_log is not None else "")
     (bin_ / "docker").write_text(
         "#!/usr/bin/env bash\n"
         'case "$*" in\n'
         '  *"config --images tageslauf"*) echo "ghcr.io/x/rechner-pipeline-plv:probe" ;;\n'
         f'  "image inspect"*) echo "{revision}" ;;\n'
+        + gate +
         '  *) echo "docker-Attrappe: $*" >&2; exit 9 ;;\n'
         "esac\n", encoding="utf-8")
     (bin_ / "systemctl").write_text("#!/usr/bin/env bash\necho inactive\n", encoding="utf-8")
@@ -282,6 +288,42 @@ def test_die_vorpruefung_haelt_an(vorpruefung, zeile, revision, meldung):
     lauf = _routine(_einstellungen(vorpruefung), "pruefen", path=_attrappen(vorpruefung, revision))
     assert lauf.returncode != 0
     assert meldung in lauf.stderr
+
+
+def test_der_fall_haengt_unter_seinem_namen_im_container(tmp_path_factory, monkeypatch):
+    """Die Entscheide eines Falls binden ihn an seinen Verzeichnisnamen
+    (fall.py; gate_entscheid prueft die Fallbindung jedes Snapshots gegen
+    den Namen aus --fall). Haengt die Routine den Fall unter /fall ein,
+    heisst er im Container "fall", und das Gate verweigert jede A-B1 mit
+    "Fallbindung '<name>' statt 'fall'" (HALT der Phase 4, 29.10.2026).
+    Deshalb haengt ab1 den Fall unter /fall/<name> ein und nennt ihn so.
+    Die Testwelt der Phase 3 und die Fixtures hier nannten ihren Fall
+    woertlich "fall" und konnten es nicht sehen; dieser Fall heisst anders,
+    und die Attrappe haelt fest, was das Gate bekommt.
+
+    Mutationsprobe: in ab1 wieder unter /fall einhaengen oder --fall /fall
+    uebergeben -> rot."""
+    wurzel = tmp_path_factory.mktemp("fallname")
+    _wie_im_image(monkeypatch)
+    ablage = _ablage(wurzel / "plv" / "daten")
+    assert tageslauf(ablage, dt.date(2026, 2, 3), image_digest=DIGEST)[0] == EXIT_OK
+    st.stands_paket(ablage, wurzel / "ausgabe" / "paket",
+                    anker_verzeichnis=wurzel / "anker", art=ak.ART_AUSLIEFERUNG)
+    fall = wurzel / "baldrian-probe-fall"
+    (fall / "entscheide").mkdir(parents=True)          # keine A-B1: das Gate wird gerufen
+    origin = _origin_mit_main(wurzel, "a" * 40)
+    _git("clone", "-q", "--bare", str(origin), str(wurzel / "klon.git"))
+    aufrufe = wurzel / "docker-aufrufe.log"
+    lauf = _routine(_einstellungen(wurzel, FALL=str(fall)), "lauf", "--ohne-push",
+                    path=_attrappen(wurzel, "a" * 40, gate_log=aufrufe))
+    assert lauf.returncode != 0 and "A-B1 nicht angenommen" in lauf.stderr, lauf.stderr
+    assert "ohne Luecke" in lauf.stdout          # bis zur A-B1 gekommen, dort erst der Halt
+    gate = aufrufe.read_text(encoding="utf-8")
+    assert "gate_entscheid" in gate and " --gate A-B1 " in gate
+    assert f" -v {fall}:/fall/{fall.name} " in gate
+    assert f" --fall /fall/{fall.name} " in gate
+    assert f"{fall}:/fall " not in gate and " --fall /fall " not in gate
+    assert "betrieb" not in _git("--git-dir", str(origin), "branch", "--list", "betrieb")
 
 
 # --- Was die Dateien zusichern ----------------------------------------------

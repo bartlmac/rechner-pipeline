@@ -196,14 +196,20 @@ ab1() {
   if [ -n "$B1" ]; then ok "A-B1 liegt schon: $(basename "$B1")"; return; fi
   local tag_de
   tag_de="$(date -d "$HEUTE" +%d.%m.%Y)"
+  # Der Fall haengt unter seinem Namen: seine Entscheide binden ihn an den
+  # Verzeichnisnamen (fall.py; gate_entscheid prueft die Fallbindung jedes
+  # Snapshots gegen den Namen aus --fall). Unter /fall hiesse er "fall", und
+  # das Gate verweigerte jede A-B1 (HALT der Phase 4, 29.10.2026).
+  local fall_name
+  fall_name="$(basename "$FALL")"
   compose run --rm -T --no-deps --entrypoint python \
-    -v "$FALL:/fall" -v "$LINIE:/linie:ro" -v "$ANKER_DIR:/anker:ro" \
+    -v "$FALL:/fall/$fall_name" -v "$LINIE:/linie:ro" -v "$ANKER_DIR:/anker:ro" \
     -v "$ORDNUNG:/ring/zeichnungsordnung.json:ro" \
     -v "$VORSTAND_KEY:/ring/vorstand.key:ro" \
     -v "$BETRIEB_MENSCH_KEY:/ring/betrieb-mensch.key:ro" \
     -v "$MANDAT:/ring/mandat.txt:ro" \
     tageslauf -m rechner_pipeline.gates.gate_entscheid \
-    --fall /fall --linie /linie --gate A-B1 --entscheid angenommen \
+    --fall "/fall/$fall_name" --linie /linie --gate A-B1 --entscheid angenommen \
     --entscheider "$ENTSCHEIDER" \
     --begruendung "Auslieferung des Stands vom $tag_de, gezeichnet von der Routine des Betriebsteils (Simulation)" \
     --repo-root /opt/rechner-pipeline \
