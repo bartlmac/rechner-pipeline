@@ -95,7 +95,9 @@ Die Vorzeige darf in den ersten Ausbaustufen davon abweichen.
   zu 3 als gemessene Schnittstelle, die Grenze Ebene 3 zu 4 als feste
   Liste der heute bestehenden Importe in die Simulationsmodule
   (Generator, Stochastik, Ereignis-Engine, Fortschreibungs-Kommando,
-  Neugeschäft; `VORZEIGE_NACH_WERKZEUG_ERLAUBT` in
+  Neugeschäft — seit ADR-031 Zufallsströme, Ziehung und Tagesstrom statt
+  der Ereignis-Engine, die als Buchung Ebene 3 ist, drei benannte Kanten;
+  `VORZEIGE_NACH_WERKZEUG_ERLAUBT` in
   `ontologie/code_karte.py`, jede neue Kante ist ein Befund), und aus
   Ebene 2 keine Kante in Ebene 4. Nicht gemessen sind Ebene 1
   (Entwickler und KI haben keinen Code) und die Teile der Ebene 4

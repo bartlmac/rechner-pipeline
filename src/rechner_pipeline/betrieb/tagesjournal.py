@@ -23,7 +23,9 @@ Der Buchungstag wird deterministisch aus dem Wirkungstag abgeleitet:
   Wirkungsjahr — dann auf den naechsten Werktag. Die Leistung wirkt am
   Wirkungstag, das Unternehmen erfaehrt es spaeter; der Bestand von
   gestern fuehrt solche Vertraege noch als aktiv. Das ist kein Fehler,
-  das ist ein Versicherer.
+  das ist ein Versicherer. Seit ADR-031 nennt der Tagesstrom dem
+  Tageslauf den Meldetag jedes Todes (``meldetage``); ohne Strom zieht
+  das Journal ihn hier selbst.
 * Neugeschaeft des Tagesbetriebs: Antrags- und Policierungstag ist der
   Buchungstag — der Verkaufstag, den die Police-Nummer traegt
   (:func:`rechner_pipeline.betrieb.neugeschaeft.verkaufstag`); der

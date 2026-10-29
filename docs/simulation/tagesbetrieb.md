@@ -80,7 +80,9 @@ Der Buchungstag wird deterministisch aus dem Wirkungstag abgeleitet:
   den nächsten Werktag gerundet. Die Leistung wirkt am Wirkungstag, das
   Unternehmen erfährt es später; so sieht der Bestand von gestern
   Verträge noch als aktiv, die es aktuariell nicht mehr sind. Das ist
-  kein Fehler, das ist ein Versicherer.
+  kein Fehler, das ist ein Versicherer. Seit ADR-031 nennt der
+  Tagesstrom der Simulation dem Tageslauf den Meldetag jedes Todes; die
+  Führung zieht ihn nicht mehr selbst.
 - Neugeschäft: Antrags- und Policierungstag ist der Buchungstag (ein
   Werktag, Abschnitt 4); der Versicherungsbeginn ist der nächste
   Monatserste nach dem Buchungstag. Die Police steht ab Buchungstag im

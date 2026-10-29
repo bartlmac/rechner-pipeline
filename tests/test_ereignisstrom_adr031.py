@@ -393,3 +393,40 @@ def test_die_buchung_kommt_ohne_die_welt_aus(klv):
         pd.testing.assert_frame_equal(getattr(mit, name), getattr(ohne, name))
     with pytest.raises((AttributeError, TypeError, ereignisse.EreignisError)):
         ereignisse.fortschreiben(stamm, ohne_welt, BIS, zugaenge=zugaenge)
+
+
+# --------------------------------------------------------------------------- #
+# 6. Bitgleich zur Engine vor ADR-031
+# --------------------------------------------------------------------------- #
+
+#: Fingerabdruck der fuenf Tabellen (sha256 ueber die sha256 der Parquet-
+#: Dateien in der Reihenfolge der Fortschreibung), gerechnet mit der
+#: UNGETEILTEN Engine auf dem Stand c58605e (vor ADR-031) fuer genau die
+#: Welten der Fixtures oben. Die geteilte Engine (Ziehung, dann Buchung)
+#: muss ihn treffen — das ist das Prüfkriterium des ADR im Kleinen. Eine
+#: Aenderung der Draw-Reihenfolge, eines Stroms oder einer Buchung macht
+#: ihn rot; wer ihn aendert, aendert die Simulation und sagt es.
+FINGERABDRUCK_VOR_ADR031 = {
+    "klv": "7389876586f9f3f01e6ad1b03e0b0ecfb07e97414c5ed26e3624844b85387958",
+    "bu": "525d76f8990fe3c4de624c42eaad36aa1a5d373dca509bae851d098ced23a3b4",
+}
+
+
+def _fingerabdruck(fortschreibung, tmp_path: Path) -> str:
+    import hashlib
+
+    teile = []
+    for name in fortschreibung._fields:
+        p = tmp_path / f"{name}.parquet"
+        write_portfolio(getattr(fortschreibung, name), p)
+        teile.append(hashlib.sha256(p.read_bytes()).hexdigest())
+    return hashlib.sha256("".join(teile).encode()).hexdigest()
+
+
+@pytest.mark.parametrize("welt", ["klv", "bu"])
+def test_die_geteilte_engine_ist_bitgleich_zur_engine_vor_adr031(welt, klv, bu, tmp_path):
+    config, stamm, zugaenge = klv if welt == "klv" else bu
+    geteilt = ereignisse.buche(stamm, config, BIS, _liste(config, stamm, zugaenge))
+    assert _fingerabdruck(geteilt, tmp_path / "geteilt") == FINGERABDRUCK_VOR_ADR031[welt]
+    fassade = ereignisse.fortschreiben(stamm, config, BIS, zugaenge=zugaenge)
+    assert _fingerabdruck(fassade, tmp_path / "fassade") == FINGERABDRUCK_VOR_ADR031[welt]

@@ -24,10 +24,14 @@ Was ein Lauf tut, in dieser Reihenfolge:
 2. **Neugeschaeft.** Alle Verkaufstage vom Betriebsbeginn bis heute
    (:mod:`rechner_pipeline.betrieb.neugeschaeft`) — je Tag fuer sich
    reproduzierbar.
-3. **Fortschreibung bis heute.** Basisbestand (die uebernommenen Vertraege; eigenes Geschaeft entsteht Werktag fuer Werktag)
-   plus Uebernahme-Eingaenge plus Neugeschaeft, EIN Lauf der bestehenden
-   Engine (``bestand.ereignisse.fortschreiben``); die Buchungen der
-   Uebernahmen stehen dem Journal voran wie in ``cli_fortschreibung``.
+3. **Fortschreibung bis heute.** Erst die Welt, dann die Buecher
+   (ADR-031): Der Tagesstrom (``betrieb.ziehung.tagesstrom``) liefert das
+   Neugeschaeft seit dem Betriebsbeginn (eigenes Geschaeft entsteht Werktag
+   fuer Werktag), die Ereignisliste des Basisbestands (die uebernommenen
+   Vertraege) und des Neugeschaefts und die Meldetage der Todesfaelle; die
+   Buchung (``bestand.ereignisse.fortschreiben`` mit dieser Liste) wendet
+   sie mit Betraegen aus dem Kern an. Die Buchungen der Uebernahmen stehen
+   dem Journal voran wie in ``cli_fortschreibung``.
 4. **Tagesjournal.** Die bis heute faelligen, noch nicht gebuchten
    Buchungen anfuegen (:mod:`rechner_pipeline.betrieb.tagesjournal`).
 5. **Wache.** Die P-B1-Engine (``bestand.vorbedingungen.lies_und_pruefe_pb1``)
