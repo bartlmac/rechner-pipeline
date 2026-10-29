@@ -667,9 +667,12 @@ def pruefe_fuehrung(
             felder_config = grundlagen(pid, str(row["tarif_generation"]))
         except ValueError as exc:
             befund(pid, "grundlagen", str(exc)); continue
+        # Dieselbe wirksame Parametrierung wie der Kern: ausgelassene
+        # optionale Spez-Felder erhalten hier ihre ModelPoint-Defaults.
+        kw = model_point_kwargs(row, zelle_felder)
         abweichend = sorted(
             f for f in GENERATION_FIELDS
-            if f in zelle_felder and felder_config.get(f) != zelle_felder[f])
+            if felder_config.get(f) != kw[f])
         if abweichend:
             befund(pid, "grundlagen",
                    f"Rechnungsgrundlagen der Config weichen von der Spez-Zelle "
@@ -689,7 +692,6 @@ def pruefe_fuehrung(
             befund(pid, "stammsumme",
                    f"Stammsumme {float(row['sum_insured']):.2f} statt "
                    f"{erwartete_summe:.2f} (Grund-/Ursprungssumme der Pruefstrecke)")
-        kw = model_point_kwargs(row, zelle_felder)
         kw["sum_insured"] = erwartete_summe
         grund_mp = ModelPoint(**kw)
         # Bausteine

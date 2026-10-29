@@ -37,7 +37,7 @@ startet keinen Gate-Lauf.
 | A-K2-Vorlage (Version `2.0.0`) | `gates.kernstand_belegen` | die Änderung des Kernstands (Rechenkern, Referenzwerte, Grundsatzdokumentation) gegenüber dem zuletzt abgenommenen Stand; legt Beleg und lesbare Sicht als Vorlage für A-K2 vor |
 | A-T1-Vorlage (Version `2.0.0`) | `gates.tarifwerk_belegen` | die Änderung des Tarifwerks (Tarifpläne und Parametrierung der eigenen Generationen) gegenüber dem zuletzt abgenommenen Stand; legt Beleg und lesbare Sicht als Vorlage für A-T1 vor |
 | A-M-Vorlagen (Version `4.0.0`) | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
-| A-M4-Vorlage (Version `12.0.0`) | `gates.abnahmebericht` | die Migrationssuite und die Pflichtbelege des Migrationscontrollings; rendert die Entscheidungsvorlage für A-M4 |
+| A-M4-Vorlage (Version `13.0.0`) | `gates.abnahmebericht` | die Migrationssuite und die Pflichtbelege des Migrationscontrollings; rendert die Entscheidungsvorlage für A-M4 |
 
 Was ein versioniertes Gate im Einzelnen prüft und wie seine Version
 gewachsen ist, steht in den Abschnitten darunter.
@@ -148,6 +148,7 @@ Versionen:
 - `10.1.0`: Die Erzeugung des Berichts kann seinen Ort im Fall nennen (`bericht_ort`); dann verweist der Bericht relativ zu sich selbst auf die Bestandsberichte. Vorher zeigten die Verweise fallrelativ ins Leere (zwei tote Verweise im gezeichneten Bericht von Fall 3). Das Feld ist optional: Ein Beleg ohne es bleibt gültig und wird wie bisher gerendert, damit ein gezeichneter Bericht bytegleich reproduzierbar bleibt.
 - `11.0.0`: Im Bestands-Scope nennt die Suite ihren Aufruf (`aufruf`), und die Vorlage fährt sie damit auf den gebundenen Eingaben neu und hält den ganzen Beleg dagegen. Die Komponentenzahl, um die ein Vergleich seine Toleranz weitet, ist damit die des Erzeugers und nicht die des Belegs. Eine Suite ohne Aufruf oder mit einem abweichenden Feld war vorher ein gültiger Beleg; der Prüfer hatte mit 200.001 behaupteten Komponenten eine um 1.000 EUR falsche Prüfaussage bis zur gezeichneten Annahme gebracht (Prüfrunde T28, Befund 01).
 - `12.0.0`: Die Suite kann eine abgeleitete Korrekturschicht nur aus einem vollständig nachgerechneten Schichtbeleg übernehmen. Fehlt eine Pflichtbindung oder weicht ein Schichtwert vom Erzeugerlauf ab, wird die Vorlage verweigert; vorher konnte der Schichtbeleg seine Pflichtbindungen selbst auswählen (Prüfrunde T28, Befund 02).
+- `13.0.0`: Die Rechnungsgrundlagen der Config werden je Police gegen die vollständige wirksame Spez-Zelle geprüft, einschließlich der Kern-Defaults für ausgelassene optionale Felder. Eine Config mit anderem `zillmer_dauer`, Stornoabschlag oder Ratenzuschlag konnte vorher trotz einer Spez ohne dieses Feld einen anderen Führungswert erzeugen (Prüfrunde T28, Befund 04).
 
 ## Die Versionsregel
 

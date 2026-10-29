@@ -50,6 +50,7 @@ from rechner_pipeline.bestand.parquet_io import (
 from rechner_pipeline.gates._common import Eingangsbindung
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.models.bestand import (
+    GENERATION_FIELDS,
     alt_absetzung_ist_teilkuendigung,
     model_point_kwargs,
 )
@@ -1065,6 +1066,29 @@ FUEHRUNGSWERT_NEBENTABELLEN = ("historie.parquet", "scheiben.parquet", "merkmale
                                "reduktionen.parquet")
 
 
+def _grundlagen_der_spez_je_police(bestand: Any, merkmale: Any,
+                                   spez: Any) -> Dict[str, Dict[str, Any]]:
+    """Die wirksamen ModelPoint-Felder jeder Spez-Zelle, einschliesslich
+    Kern-Defaults. Die Merkmale sind dieselben gebundenen Bytes, mit denen
+    die Fuehrung ihre Config-Zelle waehlt (T28-04)."""
+    auspraegungen: Dict[str, Dict[str, str]] = {}
+    if merkmale is not None:
+        for pid, dimension, wert in zip(
+                merkmale["police_id"], merkmale["dimension"],
+                merkmale["auspraegung"]):
+            auspraegungen.setdefault(str(pid), {})[str(dimension)] = str(wert)
+    ergebnis: Dict[str, Dict[str, Any]] = {}
+    for zeile in bestand.to_dict("records"):
+        police = str(zeile["police_id"])
+        try:
+            zelle = _zelle(spez, auspraegungen.get(police, {}))
+        except SystemExit as exc:
+            raise ValueError(str(exc)) from exc
+        wirksam = model_point_kwargs(zeile, zelle.model_point)
+        ergebnis[police] = {f: wirksam[f] for f in GENERATION_FIELDS}
+    return ergebnis
+
+
 def fuehrungswert_rechnen(
     bestand: Any,
     lies_neben: Any,
@@ -1072,6 +1096,7 @@ def fuehrungswert_rechnen(
     stichtage: Dict[str, dt.date],
     *,
     tarifwerk_der_spez: Dict[str, Dict[str, Any]],
+    spez: Any,
 ) -> Tuple[str, Dict[str, Dict[str, Optional[Dict[str, Any]]]]]:
     """Der Fuehrungswert aus Bestand, Nebentabellen und Config — EIN Weg fuer
     die Produzentin (diese Suite) und fuer A-M4, das ihn nachrechnet
@@ -1101,7 +1126,9 @@ def fuehrungswert_rechnen(
         scheiben=tabellen["scheiben.parquet"], merkmale=tabellen["merkmale.parquet"],
         schichten=tabellen["schichten.parquet"], verankerung=tabellen["verankerung.parquet"],
         reduktionen=tabellen["reduktionen.parquet"],
-        tarifwerk_der_spez=tarifwerk_der_spez)
+        tarifwerk_der_spez=tarifwerk_der_spez,
+        grundlagen_der_spez=_grundlagen_der_spez_je_police(
+            bestand, tabellen["merkmale.parquet"], spez))
 
 
 def fuehrungswert_nachgerechnet(suite: Dict[str, Any], fall: Path,
@@ -1117,9 +1144,10 @@ def fuehrungswert_nachgerechnet(suite: Dict[str, Any], fall: Path,
     hergeleitet, nicht gelesen — dieselbe Figur wie bei der Fuehrungsprobe
     und P-B1: der Bestand mit ``bestand_sha256``, jede Nebentabelle, die neben
     ihm liegt (sie muss gebunden sein, und eine gebundene muss dort liegen),
-    die Config mit ``config_sha256``, die Stichtage der Suite und das
-    Tarifwerk der Spez, die A-M4 bindet. Eine Datei, deren Bytes nicht mehr
-    die gebundenen sind, wird nicht nachgerechnet, sondern genannt.
+    die Config mit ``config_sha256``, die Stichtage der Suite, das Tarifwerk
+    und die wirksamen Rechnungsgrundlagen der gebundenen Spez. Eine Datei,
+    deren Bytes nicht mehr die gebundenen sind, wird nicht nachgerechnet,
+    sondern genannt.
     """
     from rechner_pipeline.bestand.migrationszugang import MigrationszugangFehler
 
@@ -1165,6 +1193,10 @@ def fuehrungswert_nachgerechnet(suite: Dict[str, Any], fall: Path,
     config_roh, fehler = gebunden_lesen(config_schluessel[0])
     if fehler:
         befunde.append(fehler)
+    spez_roh, fehler = gebunden_lesen(schluessel_von(
+        spez_pfad(fall, tarifregeln.generation)))
+    if fehler:
+        befunde.append(fehler)
     neben: Dict[str, Optional[bytes]] = {}
     for name in FUEHRUNGSWERT_NEBENTABELLEN:
         schluessel = schluessel_von(verzeichnis / name)
@@ -1182,10 +1214,14 @@ def fuehrungswert_nachgerechnet(suite: Dict[str, Any], fall: Path,
         return ["Fuehrungswert nicht nachgerechnet — die Eingaben sind nicht die, auf "
                 f"denen die Suite rechnete: {befunde[:5]}; die Suite neu ausfuehren"]
     try:
+        spez = lade_spez_aus_bytes(spez_roh)
+        if spez.generation != tarifregeln.generation:
+            raise ValueError("Spez-Generation weicht von den Tarifregeln ab")
         konvention, werte = fuehrungswert_rechnen(
             read_portfolio_aus_bytes(bestand_roh), neben.get, config_roh.decode("utf-8"),
             {t: _parse(str(suite.get(t))) for t in ("stichtag_1", "stichtag_2")},
-            tarifwerk_der_spez={tarifregeln.generation: dict(tarifregeln.tarifwerk)})
+            tarifwerk_der_spez={tarifregeln.generation: dict(tarifregeln.tarifwerk)},
+            spez=spez)
     except (MigrationszugangFehler, ValueError) as exc:
         return [f"Fuehrungswert nicht nachgerechnet: {exc}"]
     abweichend: List[str] = []
@@ -1505,7 +1541,8 @@ def fuehre_suite(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
             # das der Spez sein, mit dem diese Suite prueft (ADR-024,
             # Nachtrag) — sonst stuende im selben Beleg ein Wert nach einer
             # anderen Regel.
-            tarifwerk_der_spez={args.generation: regeln.tarifwerk})
+            tarifwerk_der_spez={args.generation: regeln.tarifwerk},
+            spez=spez)
     except (MigrationszugangFehler, ValueError) as exc:
         print(f"Fuehrungswert nicht rechenbar: {exc}", file=sys.stderr)
         return 2, None
