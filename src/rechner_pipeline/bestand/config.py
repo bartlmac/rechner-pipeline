@@ -151,6 +151,30 @@ class VerteilungsSpec:
         return errors
 
 
+def spearman_to_pearson(rho: float) -> float:
+    """Convert a Spearman rank correlation to the Gaussian-copula Pearson rho."""
+    return 2.0 * math.sin(math.pi * rho / 6.0)
+
+
+def build_corr_matrix(order, korrelationen):
+    """Symmetric Pearson matrix over ``order`` from configured Spearman pairs.
+
+    Die Matrix gehoert zur Weltsicht der Config (ADR-031): Hier wird sie
+    gebaut und auf Realisierbarkeit geprueft (``Korrelation``,
+    ``TarifGeneration.validate``); die Copula der Simulation
+    (``bestand.stochastik``) zieht auf ihr.
+    """
+    import numpy as np
+
+    index = {name: i for i, name in enumerate(order)}
+    m = np.eye(len(order))
+    for korr in korrelationen:
+        i, j = index[korr.var_i], index[korr.var_j]
+        r = spearman_to_pearson(float(korr.rho))
+        m[i, j] = m[j, i] = r
+    return m
+
+
 @dataclass
 class Korrelation:
     var_i: str
@@ -512,8 +536,6 @@ class TarifGeneration:
         # stillschweigend (bis ~Faktor 2) verfaelschen. Nicht-PSD = Config-Fehler.
         if self.korrelationen and not any("korrelation" in e for e in errors):
             import numpy as np
-
-            from rechner_pipeline.bestand.stochastik import build_corr_matrix
 
             matrix = build_corr_matrix(korrelierbar, self.korrelationen)
             min_eig = float(np.linalg.eigvalsh((matrix + matrix.T) / 2.0).min())

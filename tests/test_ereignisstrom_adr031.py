@@ -234,3 +234,93 @@ def test_ein_unbuchbares_ereignis_ist_ein_fehler(klv):
     falsch.loc[i, "ereignis"] = "INV"
     with pytest.raises(ereignisse.EreignisError, match="nicht buchbar"):
         ereignisse.buche(stamm, config, BIS, Ereignisliste(zugaenge, falsch))
+
+
+# --------------------------------------------------------------------------- #
+# 4. Der Tagesstrom: Neugeschaeft, Ereignisse und Meldetage in einem Aufruf
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture(scope="module")
+def plv():
+    """Die Config der Vorzeige (Betriebsbeginn, Nummernkreise, Meldeverzug)
+    mit einem kleinen Basisbestand aus ihrem Zugangsstrom."""
+    config = load_config(REPO / "plv" / "configs" / "bestand_gesamt.toml")
+    strom = bestand_aus_zugangsstrom(config)
+    stamm = strom[strom["insurance_start"] < pd.Timestamp(dt.date(1998, 1, 1))]
+    return config, stamm.head(60).reset_index(drop=True)
+
+
+def test_der_tagesstrom_nennt_jeden_tod_den_die_fuehrung_bucht(plv):
+    """Die Meldetage des Stroms decken jeden Tod des Ledgers — auch die Tode,
+    die eine Uebernahme mitbringt (``ledger_voran``)."""
+    from rechner_pipeline.betrieb.ziehung import tagesstrom
+
+    config, stamm = plv
+    betriebsbeginn, heute = dt.date(2026, 1, 5), BIS
+    voran = pd.DataFrame([{
+        "police_id": int(stamm["police_id"].iloc[0]), "tarif_generation": "x",
+        "ereignis": "TOD", "vertragsjahr": 3,
+        "status_date": pd.Timestamp("2019-07-01"), "betrag_art": "Todesfallleistung",
+        "betrag": 1.0, "betrag_herkunft": "geliefert",
+    }])
+    strom = tagesstrom(config, stamm, betriebsbeginn, heute, ledger_voran=voran)
+    assert len(strom.liste.zugaenge) > 0, "kein Neugeschaeft im Fenster"
+    ergebnis = ereignisse.buche(stamm, config, heute, strom.liste)
+    tode = ergebnis.ledger[ergebnis.ledger["ereignis"] == "TOD"]
+    assert len(tode) > 0, "die Welt hat keinen Tod gezogen"
+    gebucht = {(int(p), pd.Timestamp(d).year) for p, d in zip(tode["police_id"], tode["status_date"])}
+    assert gebucht <= set(strom.meldetage)
+    assert (int(stamm["police_id"].iloc[0]), 2019) in strom.meldetage
+
+
+def test_das_tagesjournal_nimmt_die_meldetage_aus_dem_tagesstrom(plv):
+    """Mit Strom: dieselben Buchungstage wie die Ableitung aus der Config
+    (bitgleich). Ohne Meldetag fuer einen Tod: ein Befund, kein stiller
+    Rueckgriff auf die Welt. Ein anderer Meldetag: sichtbar."""
+    from rechner_pipeline.betrieb.tagesjournal import TagesjournalError, mit_buchungstagen
+    from rechner_pipeline.betrieb.ziehung import tagesstrom
+
+    config, stamm = plv
+    strom = tagesstrom(config, stamm, dt.date(2026, 1, 5), BIS)
+    ledger = ereignisse.buche(stamm, config, BIS, strom.liste).ledger
+    aus_strom = mit_buchungstagen(config, ledger, meldetage=strom.meldetage)
+    aus_config = mit_buchungstagen(config, ledger)
+    pd.testing.assert_frame_equal(aus_strom, aus_config)
+    tod = ledger[ledger["ereignis"] == "TOD"].iloc[0]
+    schluessel = (int(tod["police_id"]), pd.Timestamp(tod["status_date"]).year)
+    ohne = {k: v for k, v in strom.meldetage.items() if k != schluessel}
+    with pytest.raises(TagesjournalError, match=rf"police {schluessel[0]}: kein Meldetag"):
+        mit_buchungstagen(config, ledger, meldetage=ohne)
+    anders = dict(strom.meldetage)
+    anders[schluessel] = anders[schluessel] + 400
+    assert not mit_buchungstagen(config, ledger, meldetage=anders).equals(aus_config)
+
+
+def test_die_buchung_zieht_nicht(klv, monkeypatch):
+    """Die Buchung mit einer gegebenen Liste ruft die Welt nicht; die
+    Fassade tut es (Positivkontrolle)."""
+    config, stamm, zugaenge = klv
+    liste = _liste(config, stamm, zugaenge)
+
+    def verweigert(*args, **kwargs):
+        raise AssertionError("die Welt wurde gerufen")
+
+    monkeypatch.setattr(ereignisse, "ziehe", verweigert)
+    monkeypatch.setattr(ereignisse, "ziehe_vertrag", verweigert)
+    monkeypatch.setattr(ereignisse, "ziehe_bu_vertrag", verweigert)
+    assert len(ereignisse.buche(stamm, config, BIS, liste).ledger) > 0
+    with pytest.raises(AssertionError, match="die Welt wurde gerufen"):
+        ereignisse.fortschreiben(stamm, config, BIS, zugaenge=zugaenge)
+
+
+def test_die_ratsche_nennt_genau_die_drei_kanten_des_adr():
+    """ADR-031, Entscheid des Maintainers vom 2026-10-29: drei benannte
+    Kanten aus der Fuehrung in die Welt — nicht mehr, nicht weniger (==)."""
+    from rechner_pipeline.ontologie.code_karte import VORZEIGE_NACH_WERKZEUG_ERLAUBT
+
+    assert VORZEIGE_NACH_WERKZEUG_ERLAUBT == {
+        ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/betrieb/ziehung.py"),
+        ("rechner_pipeline/bestand/ereignisse.py", "rechner_pipeline/bestand/ziehung.py"),
+        ("rechner_pipeline/betrieb/tagesjournal.py", "rechner_pipeline/bestand/zufallsstroeme.py"),
+    }

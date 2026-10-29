@@ -1142,13 +1142,18 @@ def fortschreiben(
     scheiben: pd.DataFrame | None = None,
     schichten: pd.DataFrame | None = None,
     verankerung: pd.DataFrame | None = None,
+    liste: Ereignisliste | None = None,
 ) -> Fortschreibung:
     """Roll the base portfolio forward to ``bis`` — ziehen, dann buchen.
 
     Die Fassade vor ADR-031, unveraendert in Schnittstelle und Ergebnis:
     Die Welt zieht (:func:`rechner_pipeline.bestand.ziehung.ziehe`, und bei
     ``neuzugang_ab`` ihren jaehrlichen Zugangsstrom), die Fuehrung bucht
-    (:func:`buche`). Wer die Liste selbst mitbringt, ruft :func:`buche`.
+    (:func:`buche`). Wer die Liste schon hat (der Tageslauf mit seinem
+    Tagesstrom), uebergibt sie als ``liste``: Dann wird nicht gezogen,
+    sondern genau diese Liste gebucht — dasselbe wie :func:`buche`; die
+    Liste traegt ihre Zugaenge selbst und schliesst ``zugaenge`` und
+    ``neuzugang_ab`` aus.
 
     ``schichten`` und ``verankerung`` (Freischaltung, Schritt 5) sind die
     Korrekturschicht je uebernommenem Vertrag und ihr Verankerungs-
@@ -1193,6 +1198,15 @@ def fortschreiben(
     would re-simulate it from insurance_start), unique positive police_id,
     valid event rates, durations within the engine's 0..50 window.
     """
+    if liste is not None:
+        if zugaenge is not None or neuzugang_ab is not None:
+            raise EreignisError(
+                "liste schliesst zugaenge und neuzugang_ab aus — die Liste "
+                "traegt ihre Zugaenge selbst, ein Erzeuger je Lauf")
+        return buche(
+            stamm, config, bis, liste, merkmale=merkmale, scheiben=scheiben,
+            schichten=schichten, verankerung=verankerung,
+        )
     _stamm_pruefen(stamm, config)
     bis = pd.Timestamp(bis).date()
     zugaenge = _zugaenge_bestimmen(

@@ -67,26 +67,20 @@ from rechner_pipeline.bestand.config import BestandConfig, TarifGeneration
 from rechner_pipeline.bestand.generator import _baue_frame, _ziehe_attribute
 from rechner_pipeline.models.bestand import STAMM_NAMES, leerer_stamm, stamm_dtypes
 from rechner_pipeline.bestand.zufallsstroeme import STROEME
+# Die Nummern gehoeren der Fuehrung (betrieb.nummernkreis, ADR-031): Das
+# Neugeschaeft vergibt sie nach ihrer Regel, das Tagesjournal liest sie
+# dort, ohne die Welt zu fragen. Die Namen bleiben hier erreichbar.
+from rechner_pipeline.betrieb.nummernkreis import (  # noqa: F401 — Re-Exporte
+    NeugeschaeftError,
+    ist_tagesneugeschaeft,
+    nummern_des_verkaufstags,
+    verkaufstag,
+)
 
 #: SeedSequence-Konstante des Tagesneugeschaefts — getrennt vom
 #: jaehrlichen Neuzugang ([seed, 771177, ...])
 #: und von der Ereignis-Engine ([seed, 424242, police_id]).
 NEUGESCHAEFT_STREAM = STROEME["neugeschaeft"]  # Register: bestand.zufallsstroeme
-
-#: police_id-Offset des Tagesneugeschaefts im Nummernkreis der Generation.
-_TAGES_ID_OFFSET = 5_000_000
-#: Nummern je Verkaufstag (k = 1..99) und je Fensterjahr.
-_JE_TAG = 100
-_JE_JAHR = 100_000
-#: Obergrenze des Nummernkreises (Generation belegt 10 Mio; der
-#: jaehrliche Neuzugang endet vor 8 Mio, das Tagesneugeschaeft ab 5 Mio
-#: darf also bis unter 8 Mio reichen).
-_ID_GRENZE = 8_000_000
-
-
-class NeugeschaeftError(ValueError):
-    """Config oder Tag passen nicht zum Tagesneugeschaeft (fail-fast)."""
-
 
 def generationsseed(name: str) -> int:
     """Der Seed-Beitrag einer Generation: ihr Name, nicht ihre Position."""
@@ -146,31 +140,6 @@ def naechster_monatserster(tag: _dt.date) -> _dt.date:
     return _dt.date(tag.year, tag.month + 1, 1)
 
 
-def _police_ids(gen: TarifGeneration, kreis: int, tag: _dt.date, anzahl: int) -> np.ndarray:
-    """Police-Nummern eines Verkaufstags im Nummernkreis ``kreis`` der
-    Generation (config.nummernkreis, T22-09 — nicht ihre Position)."""
-    fensterjahr = tag.year - gen.gueltig_von.year
-    if anzahl >= _JE_TAG:
-        raise NeugeschaeftError(
-            f"generation {gen.name}: {anzahl} Vertraege am {tag.isoformat()} "
-            f"— der Nummernkreis traegt {_JE_TAG - 1} je Tag; das Jahresziel "
-            "oder die Wochentagsgewichte sind fuer einen Tagesbetrieb unplausibel"
-        )
-    basis = (
-        kreis * 10_000_000
-        + _TAGES_ID_OFFSET
-        + fensterjahr * _JE_JAHR
-        + tag.timetuple().tm_yday * _JE_TAG
-    )
-    if basis + _JE_TAG > kreis * 10_000_000 + _ID_GRENZE:
-        raise NeugeschaeftError(
-            f"generation {gen.name}: Verkaufsfenster ab {gen.gueltig_von.isoformat()} "
-            f"reicht im Jahr {tag.year} ueber den Nummernkreis des "
-            "Tagesneugeschaefts hinaus (hoechstens 30 Fensterjahre)"
-        )
-    return basis + np.arange(1, anzahl + 1, dtype=np.int64)
-
-
 def neugeschaeft_am(config: BestandConfig, tag: _dt.date) -> pd.DataFrame:
     """Die an ``tag`` abgeschlossenen Vertraege aller Generationen (POL-Basiszeilen).
 
@@ -197,7 +166,7 @@ def neugeschaeft_am(config: BestandConfig, tag: _dt.date) -> pd.DataFrame:
         anzahl = ganz + (1 if u < erwartung - ganz else 0)
         if anzahl == 0:
             continue
-        police_ids = _police_ids(gen, config.nummernkreis(gen), tag, anzahl)
+        police_ids = nummern_des_verkaufstags(gen, config.nummernkreis(gen), tag, anzahl)
         attribute = _ziehe_attribute(gen, rng, anzahl)
         beginn = naechster_monatserster(tag)
         frames.append(_baue_frame(gen, attribute, [beginn] * anzahl, police_ids))
@@ -236,34 +205,3 @@ def neugeschaeft_zwischen(
     if df["police_id"].duplicated().any():
         raise NeugeschaeftError("police_id-Kollision im Tagesneugeschaeft")
     return df.sort_values("police_id", kind="stable").reset_index(drop=True)
-
-
-def ist_tagesneugeschaeft(kreis: int, police_id: int) -> bool:
-    """Liegt die Nummer im Tagesneugeschaefts-Abschnitt des Nummernkreises ``kreis``?"""
-    rest = int(police_id) - kreis * 10_000_000
-    return _TAGES_ID_OFFSET <= rest < _ID_GRENZE
-
-
-def verkaufstag(gen: TarifGeneration, kreis: int, police_id: int) -> _dt.date:
-    """Den Verkaufstag aus der Police-Nummer zurueckrechnen (Umkehrung).
-
-    Die Nummer traegt Fensterjahr und Tag des Jahres; das Tagesjournal
-    prueft damit, dass eine ZUG-Buchung des Tagesneugeschaefts an dem Tag
-    gebucht ist, an dem die Police verkauft wurde.
-    """
-    rest = int(police_id) - kreis * 10_000_000 - _TAGES_ID_OFFSET
-    if not 0 <= rest < _ID_GRENZE - _TAGES_ID_OFFSET:
-        raise NeugeschaeftError(
-            f"police {police_id} liegt nicht im Nummernkreis des "
-            f"Tagesneugeschaefts der Generation {gen.name}"
-        )
-    fensterjahr, rest = divmod(rest, _JE_JAHR)
-    tag_des_jahres, k = divmod(rest, _JE_TAG)
-    if k == 0 or tag_des_jahres == 0:
-        raise NeugeschaeftError(
-            f"police {police_id}: keine Tagesneugeschaefts-Nummer (k={k}, "
-            f"Tag {tag_des_jahres})"
-        )
-    return _dt.date(gen.gueltig_von.year + fensterjahr, 1, 1) + _dt.timedelta(
-        days=tag_des_jahres - 1
-    )

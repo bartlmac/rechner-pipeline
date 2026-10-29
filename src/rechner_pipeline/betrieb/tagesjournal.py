@@ -63,7 +63,7 @@ import numpy as np
 import pandas as pd
 
 from rechner_pipeline.bestand.config import BestandConfig, Meldeverzug
-from rechner_pipeline.betrieb.neugeschaeft import (
+from rechner_pipeline.betrieb.nummernkreis import (
     NeugeschaeftError,
     ist_tagesneugeschaeft,
     verkaufstag,
@@ -74,6 +74,11 @@ from rechner_pipeline.models.bestand import (
     TAGESJOURNAL_SPALTEN,
     validate_tagesjournal as _validate_vertrag,
 )
+# Der Meldeverzug ist Simulation (ADR-031). Seine Ziehung steht hier, weil
+# die Leser des Journals sie hier binden; der Tagesstrom (betrieb.ziehung)
+# ruft sie und nennt dem Tageslauf die Meldetage, und mit Strom zieht das
+# Journal nicht selbst. Der Strom-Import ist die Kante, an der die Ratsche
+# der Schichtenkarte diese Kopplung sieht (vor ADR-031 sah sie sie nicht).
 from rechner_pipeline.bestand.zufallsstroeme import STROEME
 
 #: SeedSequence-Konstante des Meldeverzugs — getrennt von Batch, jaehrlichem
@@ -82,6 +87,9 @@ MELDEVERZUG_STREAM = STROEME["meldeverzug"]  # Register: bestand.zufallsstroeme
 
 #: 95-Prozent-Quantil der Standardnormalverteilung (lognormal: p95 = median * exp(sigma * z95)).
 _Z95 = NormalDist().inv_cdf(0.95)
+
+#: (police_id, Wirkungsjahr) -> Meldeverzug in Tagen, wie der Tagesstrom sie nennt.
+Meldetage = Dict[Tuple[int, int], int]
 
 #: Schluessel einer Ledger-Zeile im Tagesjournal.
 SCHLUESSEL: Tuple[str, ...] = ("police_id", "ereignis", "status_date", "betrag_art")
@@ -123,7 +131,8 @@ def meldeverzug_tage(config: BestandConfig, police_id: int, wirkungsjahr: int) -
     Lognormal mit Median ``median_tage`` und 95-Prozent-Quantil ``p95_tage``
     (Config), gerundet auf ganze Tage, nie negativ. Ein eigener Substream
     je (Police, Wirkungsjahr): Weder die Reihenfolge der Laeufe noch
-    andere Policen veraendern den Verzug.
+    andere Policen veraendern den Verzug. Eine Ziehung der Welt (ADR-031):
+    Der Tagesstrom ruft sie fuer jeden Tod, den die Fuehrung bucht.
     """
     verzug = config.tagesbetrieb.meldeverzug_tod
     fehler = verzug.validate("meldeverzug_tod")
@@ -167,6 +176,24 @@ def _generationsindex(config: BestandConfig) -> Dict[str, Tuple[int, Any]]:
     return {g.name: (config.nummernkreis(g), g) for g in config.generationen}
 
 
+def _meldeverzug(
+    config: BestandConfig, police_id: int, wirkungstag: _dt.date,
+    meldetage: Optional[Meldetage],
+) -> int:
+    """Der Meldeverzug eines Todes: aus dem Tagesstrom (``meldetage``), oder
+    — ohne Liste — gezogen wie vor ADR-031. Ein Tod, den der Strom nicht
+    nennt, ist ein Befund: Der Strom nennt jeden Tod, den die Fuehrung bucht."""
+    if meldetage is None:
+        return meldeverzug_tage(config, police_id, wirkungstag.year)
+    try:
+        return int(meldetage[(int(police_id), wirkungstag.year)])
+    except KeyError:
+        raise TagesjournalError(
+            f"police {police_id}: kein Meldetag fuer den Tod mit Wirkung "
+            f"{wirkungstag.isoformat()} im Tagesstrom — die Liste passt nicht "
+            "zum Ledger") from None
+
+
 def buchungstag(
     config: BestandConfig,
     police_id: int,
@@ -174,8 +201,13 @@ def buchungstag(
     wirkungstag: _dt.date,
     herkunft_der_zeile: str,
     tarif_generation: str,
+    *,
+    meldetage: Optional[Meldetage] = None,
 ) -> _dt.date:
-    """Der Buchungstag einer Ledger-Zeile nach den Regeln des Konzepts."""
+    """Der Buchungstag einer Ledger-Zeile nach den Regeln des Konzepts.
+
+    ``meldetage`` sind die Meldetage der Todesfaelle aus dem Tagesstrom
+    (ADR-031); ohne sie zieht das Journal den Meldeverzug selbst."""
     wirkungstag = pd.Timestamp(wirkungstag).date()
     if herkunft_der_zeile == "neugeschaeft":
         index = _generationsindex(config)
@@ -196,17 +228,20 @@ def buchungstag(
             )
         return tag
     if ereignis == "TOD":
-        verzug = meldeverzug_tage(config, police_id, wirkungstag.year)
+        verzug = _meldeverzug(config, police_id, wirkungstag, meldetage)
         return naechster_werktag(wirkungstag + _dt.timedelta(days=verzug))
     return naechster_werktag(wirkungstag)
 
 
-def mit_buchungstagen(config: BestandConfig, ledger: pd.DataFrame) -> pd.DataFrame:
+def mit_buchungstagen(
+    config: BestandConfig, ledger: pd.DataFrame, *,
+    meldetage: Optional[Meldetage] = None,
+) -> pd.DataFrame:
     """Die Sicht des Tagesjournals auf JEDE Ledger-Zeile (ohne Faelligkeitsfilter).
 
     Spalten wie das Tagesjournal; Reihenfolge nach Buchungstag, dann
     Schluessel. Was davon in der Tabelle steht, entscheidet der gefuehrte
-    Tag (:func:`faellige_zeilen`).
+    Tag (:func:`faellige_zeilen`). ``meldetage`` wie bei :func:`buchungstag`.
     """
     fehlend = [c for c in LEDGER_NAMES if c not in ledger.columns]
     if fehlend:
@@ -223,7 +258,8 @@ def mit_buchungstagen(config: BestandConfig, ledger: pd.DataFrame) -> pd.DataFra
     for z in ledger.itertuples(index=False):
         pid, ereignis = int(z.police_id), str(z.ereignis)
         quelle = herkunft(config, pid, ereignis, str(z.betrag_herkunft), str(z.tarif_generation))
-        tag = buchungstag(config, pid, ereignis, z.status_date, quelle, str(z.tarif_generation))
+        tag = buchungstag(config, pid, ereignis, z.status_date, quelle, str(z.tarif_generation),
+                          meldetage=meldetage)
         zeilen.append({
             "buchungsdatum": pd.Timestamp(tag),
             "police_id": pid,
@@ -255,9 +291,10 @@ def gebuchte_sicht(
     heute: _dt.date,
     *,
     ab_tag: Optional[_dt.date] = None,
+    meldetage: Optional[Meldetage] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Historie, Ledger und Scheiben auf das beschraenken, was bis ``heute``
-    GEBUCHT ist (Review T22-04).
+    GEBUCHT ist (Review T22-04). ``meldetage`` wie bei :func:`buchungstag`.
 
     ``ab_tag`` ist der Betriebsbeginn: Ereignisse mit Wirkungstag davor sind
     Vorgeschichte und gehoeren vollstaendig zum Eroeffnungsstand — sie
@@ -283,7 +320,7 @@ def gebuchte_sicht(
 
     if len(ledger) == 0:
         return historie, ledger, scheiben
-    sicht = mit_buchungstagen(config, ledger)
+    sicht = mit_buchungstagen(config, ledger, meldetage=meldetage)
     offen = sicht[sicht["buchungsdatum"] > pd.Timestamp(heute)]
     if ab_tag is not None:
         offen = offen[offen["status_date"] >= pd.Timestamp(ab_tag)]
@@ -352,6 +389,7 @@ def tagesjournal_ergaenzen(
     bis_tag: _dt.date,
     *,
     ab_tag: _dt.date,
+    meldetage: Optional[Meldetage] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Die bis ``bis_tag`` faelligen, noch nicht gebuchten Ledger-Zeilen anfuegen.
 
@@ -373,7 +411,7 @@ def tagesjournal_ergaenzen(
             f"Betriebsbeginn {ab_tag.isoformat()}"
         )
     journal = journal[list(TAGESJOURNAL_NAMES)].reset_index(drop=True) if len(journal) else leeres_tagesjournal()
-    sicht = mit_buchungstagen(config, ledger)
+    sicht = mit_buchungstagen(config, ledger, meldetage=meldetage)
     if len(journal):
         letzter = pd.Timestamp(journal["buchungsdatum"].max()).date()
         if letzter > bis_tag:
@@ -404,6 +442,7 @@ def validate_tagesjournal(
     bis_tag: _dt.date,
     *,
     ab_tag: _dt.date,
+    meldetage: Optional[Meldetage] = None,
 ) -> List[str]:
     """Bijektion Tagesjournal <-> Ledger fuer alle Buchungen in ``[ab_tag, bis_tag]``.
 
@@ -414,7 +453,7 @@ def validate_tagesjournal(
     Fehlerlisten-Idiom (leer = deckungsgleich).
     """
     try:
-        sicht = mit_buchungstagen(config, ledger)
+        sicht = mit_buchungstagen(config, ledger, meldetage=meldetage)
     except TagesjournalError as exc:
         return [str(exc)]
     return _validate_vertrag(journal, sicht, ab_tag=ab_tag, bis_tag=bis_tag)

@@ -121,6 +121,8 @@ EBENE_JE_MODUL: Dict[str, str] = {
     "rechner_pipeline/bestand/generator.py": "werkzeug",
     "rechner_pipeline/bestand/stochastik.py": "werkzeug",
     "rechner_pipeline/bestand/ziehung.py": "werkzeug",
+    "rechner_pipeline/bestand/zufallsstroeme.py": "werkzeug",
+    "rechner_pipeline/betrieb/ziehung.py": "werkzeug",
     "rechner_pipeline/bestand/cli_fortschreibung.py": "werkzeug",
     "rechner_pipeline/betrieb/neugeschaeft.py": "werkzeug",
 }
@@ -133,13 +135,23 @@ EBENE_JE_MODUL: Dict[str, str] = {
 #: geben (ein Gate, das den Generator importiert, prueft nicht mehr, es
 #: erzeugt).
 VORZEIGE_NACH_WERKZEUG_ERLAUBT: Set[tuple] = {
-    ("rechner_pipeline/bestand/config.py", "rechner_pipeline/bestand/stochastik.py"),
-    # ADR-031: Die Engine ist in Ziehung (Ebene 4) und Buchung (Ebene 3,
-    # bestand/ereignisse.py) geschnitten; die Fassade ``fortschreiben`` ist
-    # die eine Stelle, an der die Buchung die Welt ruft.
+    # ADR-031 (drei benannte Kanten, Entscheid des Maintainers 2026-10-29):
+    # Die Engine ist in Ziehung (Ebene 4) und Buchung (Ebene 3) geschnitten,
+    # dazwischen liegt die Ereignisliste. Die Fuehrung ruft die Welt an genau
+    # diesen Stellen, als Lieferanten.
+    # 1. Der Tageslauf holt den Tagesstrom (Neugeschaeft, Ereignisse,
+    #    Meldetage) und bucht ihn dann.
+    ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/betrieb/ziehung.py"),
+    # 2. Die Fassade ``fortschreiben`` (ziehen, dann buchen in einem Aufruf —
+    #    die Schnittstelle vor ADR-031, die Tests und cli_fortschreibung
+    #    rufen); die Buchung selbst, ``buche``, importiert die Welt nicht.
     ("rechner_pipeline/bestand/ereignisse.py", "rechner_pipeline/bestand/ziehung.py"),
-    ("rechner_pipeline/betrieb/tagesjournal.py", "rechner_pipeline/betrieb/neugeschaeft.py"),
-    ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/betrieb/neugeschaeft.py"),
+    # 3. Das Tagesjournal zieht den Meldeverzug (Strom ``meldeverzug``) —
+    #    mit Tagesstrom nimmt es die Meldetage aus der Liste, ohne Strom
+    #    (Leser mit der Config allein) zieht es selbst. Die Kopplung, die
+    #    die Ratsche vor ADR-031 nicht sah, weil zufallsstroeme kein
+    #    Werkzeugmodul war.
+    ("rechner_pipeline/betrieb/tagesjournal.py", "rechner_pipeline/bestand/zufallsstroeme.py"),
 }
 
 #: Die Zielsystem-Schnittstelle, wie sie heute benutzt wird: alle Kanten

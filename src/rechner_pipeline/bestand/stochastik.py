@@ -131,20 +131,12 @@ def transform(u: np.ndarray, typ: str, params: Dict[str, Any]) -> np.ndarray:
 # --------------------------------------------------------------------------- #
 
 
-def spearman_to_pearson(rho: float) -> float:
-    """Convert a Spearman rank correlation to the Gaussian-copula Pearson rho."""
-    return 2.0 * math.sin(math.pi * rho / 6.0)
-
-
-def build_corr_matrix(order: Sequence[str], korrelationen: Sequence[Any]) -> np.ndarray:
-    """Symmetric Pearson matrix over ``order`` from configured Spearman pairs."""
-    index = {name: i for i, name in enumerate(order)}
-    m = np.eye(len(order))
-    for korr in korrelationen:
-        i, j = index[korr.var_i], index[korr.var_j]
-        r = spearman_to_pearson(float(korr.rho))
-        m[i, j] = m[j, i] = r
-    return m
+# Die Korrelationsmatrix wird in der Config gebaut und geprueft (Weltsicht,
+# ADR-031); hier bleiben die Namen fuer die Leser der Copula erreichbar.
+from rechner_pipeline.bestand.config import (  # noqa: E402, F401 — Re-Exporte
+    build_corr_matrix,
+    spearman_to_pearson,
+)
 
 
 def nearest_psd(matrix: np.ndarray, eps: float = 1e-8) -> np.ndarray:
