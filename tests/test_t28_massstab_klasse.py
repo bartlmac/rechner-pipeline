@@ -103,6 +103,14 @@ def test_ein_legitimer_mehrkomponentenvertrag_bleibt_gruen(am4_fall):
     assert abnahmebericht._suite_nachgerechnet(suite, am4_fall, REPO_ROOT) == []
 
 
+def test_nachrechnung_unterscheidet_bool_und_zahl_im_suite_beleg(am4_fall):
+    """Der ganze Beleg muss auch den JSON-Typ bezeugen: In Python ist
+    ``True == 1``, im gespeicherten Beleg sind das verschiedene Aussagen."""
+    suite = _suite(am4_fall)
+    suite["vertraege"][_erste_einkomponentige(suite)]["pruefungen"][0]["komponenten"] = True
+    assert abnahmebericht._suite_nachgerechnet(suite, am4_fall, REPO_ROOT)
+
+
 # --------------------------------------------------------------------------- #
 # Die Gegenproben des Pruefers
 # --------------------------------------------------------------------------- #
@@ -228,6 +236,15 @@ def test_jedes_ergebnis_des_aktuariellen_tests_traegt_seinen_aufruf_und_ist_nach
         assert aktuartest.test_nachgerechnet(test, am4_fall, REPO_ROOT) == [], abnahme
         ergebnis = _at_vorlage(am4_fall, abnahme)
         assert ergebnis.exit_code == Exit.OK, (abnahme, _fehler(ergebnis))
+
+
+def test_nachrechnung_unterscheidet_bool_und_zahl_im_aktuartest(am4_fall):
+    from rechner_pipeline.gates import aktuartest
+
+    test = json.loads((am4_fall / AT_BELEGE["A-M1"]).read_text(encoding="utf-8"))
+    vertrag, _ = _erster_wertvergleich_mit_einer_komponente(test)
+    vertrag["komponenten"] = True
+    assert aktuartest.test_nachgerechnet(test, am4_fall, REPO_ROOT)
 
 
 def test_eine_behauptete_komponentenzahl_kauft_im_verlaufstest_keine_toleranz(am4_fall):

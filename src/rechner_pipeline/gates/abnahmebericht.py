@@ -1738,9 +1738,15 @@ def _suite_nachgerechnet(suite: Dict[str, Any], fall: Path, repo_root: Path) -> 
     def norm(wert: Any) -> Any:
         return json.loads(json.dumps(wert, sort_keys=True, default=str))
 
+    def kanonisch(wert: Any) -> str:
+        # JSON unterscheidet true, 1 und 1.0. Python-== wuerde sie als
+        # gleich behandeln und damit einen anderen Beleg durchlassen.
+        return json.dumps(wert, sort_keys=True, ensure_ascii=False)
+
     beleg, gerechnet = norm(suite), norm(neu)
     abweichend = sorted(k for k in set(beleg) | set(gerechnet)
-                        if beleg.get(k) != gerechnet.get(k))
+                        if (k not in beleg or k not in gerechnet
+                            or kanonisch(beleg[k]) != kanonisch(gerechnet[k])))
     if not abweichend:
         return []
     policen = sorted(
