@@ -402,12 +402,18 @@ def ziehe(
     """
     from rechner_pipeline.bestand.auswertung import grundlagen_je_police
 
+    # Die Welt zieht mit ihrer Sicht (Seed, Annahmen) und liest das Tarifwerk
+    # der Fuehrung (Schalter, BU-Grundlagen) — beide Sichten derselben Datei.
+    welt, fuehrung = config.welt(), config.fuehrung()
+    konfig_fehler = welt.annahmen.validate()
+    if konfig_fehler:
+        raise EreignisError("; ".join(konfig_fehler))
     bis = pd.Timestamp(bis).date()
     grundlagen = grundlagen_je_police(config, merkmale)
     bu_generationen = {
-        g.name: g.bu_generation_fields() for g in config.generationen if g.produkt == "bu"
+        g.name: g.bu_generation_fields for g in fuehrung.generationen if g.produkt == "bu"
     }
-    tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
+    tarifwerk_je_generation = {g.name: g.tarifwerk for g in fuehrung.generationen}
     zeilen: List[Dict[str, Any]] = []
     for row in gesamt.to_dict("records"):
         name = str(row["tarif_generation"])
@@ -415,13 +421,13 @@ def ziehe(
         try:
             if str(row.get("produkt", "klv")) == "bu":
                 zeilen.extend(ziehe_bu_vertrag(
-                    row, bu_generationen[name], config.annahmen, config.seed, bis,
+                    row, bu_generationen[name], welt.annahmen, welt.seed, bis,
                     ab_jahr=ab_jahr, bu_seit=seit if zustand == "BU" else None,
                 ))
             else:
                 zeilen.extend(ziehe_vertrag(
-                    row, grundlagen(int(row["police_id"]), name), config.annahmen,
-                    config.seed, bis, ab_jahr=ab_jahr,
+                    row, grundlagen(int(row["police_id"]), name), welt.annahmen,
+                    welt.seed, bis, ab_jahr=ab_jahr,
                     pex_jahr=seit if zustand == "PEX" else None,
                     tarifwerk=tarifwerk_je_generation[name],
                 ))

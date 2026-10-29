@@ -735,14 +735,19 @@ def _simuliere_bu_vertrag(
     )
 
 
-def _stamm_pruefen(stamm: pd.DataFrame, config: BestandConfig) -> None:
+def _annahmen_pruefen(config: BestandConfig) -> None:
+    """Die Erfahrungsannahmen der Welt (die Fassade fragt sie vor der Ziehung,
+    wie vor ADR-031; die Buchung braucht sie nicht)."""
+    konfig_fehler = config.annahmen.validate()
+    if konfig_fehler:
+        raise EreignisError("; ".join(konfig_fehler))
+
+
+def _stamm_pruefen(stamm: pd.DataFrame) -> None:
     """Die Waechter des Basisbestands (fail-fast, vor Ziehung und Buchung)."""
     fehlend = [c for c in STAMM_NAMES if c not in stamm.columns]
     if fehlend:
         raise EreignisError(f"Stamm-Spalten fehlen: {fehlend}")
-    konfig_fehler = config.annahmen.validate()
-    if konfig_fehler:
-        raise EreignisError("; ".join(konfig_fehler))
     # Zwei zulaessige Formen, unterschieden am Bestandszugang:
     #
     # EIGENES Geschaeft (Zugang = Versicherungsbeginn) muss ein
@@ -927,7 +932,7 @@ def buche(
     :func:`fortschreiben`, Byte fuer Byte, wenn die Liste die Ziehung
     derselben Welt ist.
     """
-    _stamm_pruefen(stamm, config)
+    _stamm_pruefen(stamm)
     bis = pd.Timestamp(bis).date()
     zugaenge = _pruefe_mitgebrachte_zugaenge(stamm, liste.zugaenge)
     gesamt = (
@@ -947,9 +952,12 @@ def buche(
     # rechnen wie der Bericht, sonst laufen sie auseinander.
     from rechner_pipeline.bestand.auswertung import grundlagen_je_police
 
+    # Die Buchung liest die Sicht der Fuehrung (ADR-031): Tarifwerk, Kern-
+    # felder, BU-Grundlagen. Seed und Annahmen der Welt kennt sie nicht.
+    fuehrung = config.fuehrung()
     grundlagen = grundlagen_je_police(config, merkmale)
-    generationen = {g.name: g.generation_fields() for g in config.generationen}
-    tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
+    generationen = {g.name: g.generation_fields for g in fuehrung.generationen}
+    tarifwerk_je_generation = {g.name: g.tarifwerk for g in fuehrung.generationen}
     mitgebracht_je_police = _mitgebrachte_scheiben(stamm, scheiben, grundlagen)
     try:
         schicht_je_police = schichten_je_police(stamm, schichten, verankerung)
@@ -967,8 +975,8 @@ def buche(
                 f"schichten: Korrekturschicht an einem eigenen Vertrag "
                 f"(police {eigene[:5]}) — nur ein uebernommener Vertrag ist verankert")
     bu_generationen = {
-        g.name: g.bu_generation_fields()
-        for g in config.generationen
+        g.name: g.bu_generation_fields
+        for g in fuehrung.generationen
         if g.produkt == "bu"
     }
 
@@ -1207,7 +1215,8 @@ def fortschreiben(
             stamm, config, bis, liste, merkmale=merkmale, scheiben=scheiben,
             schichten=schichten, verankerung=verankerung,
         )
-    _stamm_pruefen(stamm, config)
+    _stamm_pruefen(stamm)
+    _annahmen_pruefen(config)
     bis = pd.Timestamp(bis).date()
     zugaenge = _zugaenge_bestimmen(
         stamm, config, bis, neuzugang_ab=neuzugang_ab, zugaenge=zugaenge)

@@ -324,3 +324,72 @@ def test_die_ratsche_nennt_genau_die_drei_kanten_des_adr():
         ("rechner_pipeline/bestand/ereignisse.py", "rechner_pipeline/bestand/ziehung.py"),
         ("rechner_pipeline/betrieb/tagesjournal.py", "rechner_pipeline/bestand/zufallsstroeme.py"),
     }
+
+
+# --------------------------------------------------------------------------- #
+# 5. Zwei Sichten auf dieselbe Config
+# --------------------------------------------------------------------------- #
+
+
+def test_die_sichten_decken_jedes_feld_der_config_genau_einmal():
+    """Fuehrung und Welt teilen sich die Felder der Config vollstaendig und
+    ueberschneidungsfrei (==, damit ein neues Feld eingeordnet werden muss);
+    die Grenze folgt A-T1: NICHT_TARIFWERK liegt bis auf den Nummernkreis in
+    der Welt, der Nummernkreis bei der Fuehrung."""
+    import dataclasses
+
+    from rechner_pipeline.bestand import config as cfg
+    from rechner_pipeline.models.tarifwerkabnahme import NICHT_TARIFWERK
+
+    for klasse, sichten in cfg.SICHT_FELDER.items():
+        felder = {f.name for f in dataclasses.fields(getattr(cfg, klasse))}
+        f, w, b = (set(sichten[k]) for k in ("fuehrung", "welt", "beide"))
+        assert f | w | b == felder, (klasse, sorted(felder ^ (f | w | b)))
+        assert not (f & w) and not (f & b) and not (w & b), klasse
+    welt_der_generation = set(cfg.SICHT_FELDER["TarifGeneration"]["welt"])
+    a_t1 = {("korrelationen" if k == "korrelation" else k) for k in NICHT_TARIFWERK}
+    assert a_t1 - {"nummernkreis"} == welt_der_generation
+    assert "nummernkreis" in cfg.SICHT_FELDER["TarifGeneration"]["fuehrung"]
+
+
+def test_die_fuehrungssicht_traegt_kein_welt_feld_und_umgekehrt(plv):
+    import dataclasses
+
+    from rechner_pipeline.bestand import config as cfg
+
+    config, _ = plv
+    fuehrung, welt = config.fuehrung(), config.welt()
+    namen_f = {f.name for f in dataclasses.fields(cfg.Fuehrungssicht)} | {
+        f.name for f in dataclasses.fields(cfg.GenerationFuehrung)}
+    namen_w = {f.name for f in dataclasses.fields(cfg.Weltsicht)} | {
+        f.name for f in dataclasses.fields(cfg.GenerationWelt)}
+    for welt_feld in ("seed", "annahmen", "verteilungen", "korrelationen",
+                      "neuzugang_pro_jahr", "meldeverzug_tod", "wochentagsgewichte"):
+        assert welt_feld not in namen_f, welt_feld
+    for fuehrungs_feld in ("tarifwerk", "generation_fields", "nummernkreis",
+                           "betriebsbeginn", "zellen", "gueltig_von"):
+        assert fuehrungs_feld not in namen_w, fuehrungs_feld
+    assert [g.name for g in fuehrung.generationen] == [g.name for g in welt.generationen]
+    g0 = config.generationen[0]
+    assert fuehrung.generation(g0.name).tarifwerk == g0.tarifwerk()
+    assert fuehrung.generation(g0.name).nummernkreis == config.nummernkreis(g0)
+    assert welt.seed == config.seed and welt.annahmen is config.annahmen
+    with pytest.raises(KeyError):
+        fuehrung.generation("gibt-es-nicht")
+
+
+def test_die_buchung_kommt_ohne_die_welt_aus(klv):
+    """Mit einer Config, deren Weltfelder fehlen, bucht die Fuehrung eine
+    gegebene Liste — dasselbe Ergebnis wie mit der ganzen Datei. Die
+    Fassade (ziehen, dann buchen) braucht die Welt (Positivkontrolle)."""
+    import dataclasses
+
+    config, stamm, zugaenge = klv
+    liste = _liste(config, stamm, zugaenge)
+    ohne_welt = dataclasses.replace(config, seed=None, annahmen=None)
+    mit = ereignisse.buche(stamm, config, BIS, liste)
+    ohne = ereignisse.buche(stamm, ohne_welt, BIS, liste)
+    for name in mit._fields:
+        pd.testing.assert_frame_equal(getattr(mit, name), getattr(ohne, name))
+    with pytest.raises((AttributeError, TypeError, ereignisse.EreignisError)):
+        ereignisse.fortschreiben(stamm, ohne_welt, BIS, zugaenge=zugaenge)
