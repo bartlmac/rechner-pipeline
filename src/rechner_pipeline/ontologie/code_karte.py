@@ -120,7 +120,7 @@ EBENE_JE_SCHICHT: Dict[str, str] = {
 EBENE_JE_MODUL: Dict[str, str] = {
     "rechner_pipeline/bestand/generator.py": "werkzeug",
     "rechner_pipeline/bestand/stochastik.py": "werkzeug",
-    "rechner_pipeline/bestand/ereignisse.py": "werkzeug",
+    "rechner_pipeline/bestand/ziehung.py": "werkzeug",
     "rechner_pipeline/bestand/cli_fortschreibung.py": "werkzeug",
     "rechner_pipeline/betrieb/neugeschaeft.py": "werkzeug",
 }
@@ -134,9 +134,11 @@ EBENE_JE_MODUL: Dict[str, str] = {
 #: erzeugt).
 VORZEIGE_NACH_WERKZEUG_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/bestand/config.py", "rechner_pipeline/bestand/stochastik.py"),
-    ("rechner_pipeline/bestand/kennzahlen.py", "rechner_pipeline/bestand/ereignisse.py"),
+    # ADR-031: Die Engine ist in Ziehung (Ebene 4) und Buchung (Ebene 3,
+    # bestand/ereignisse.py) geschnitten; die Fassade ``fortschreiben`` ist
+    # die eine Stelle, an der die Buchung die Welt ruft.
+    ("rechner_pipeline/bestand/ereignisse.py", "rechner_pipeline/bestand/ziehung.py"),
     ("rechner_pipeline/betrieb/tagesjournal.py", "rechner_pipeline/betrieb/neugeschaeft.py"),
-    ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/bestand/ereignisse.py"),
     ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/betrieb/neugeschaeft.py"),
 }
 
