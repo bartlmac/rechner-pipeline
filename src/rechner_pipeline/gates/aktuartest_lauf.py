@@ -545,6 +545,15 @@ def _schichten(
                 f"Schichtbeleg {name!r}: {len(roh['schichten'])} Schichten, "
                 f"aber {getragen} getragene Policen behauptet — die Tabelle "
                 "passt nicht zu ihrer Zusammenfassung")
+        # Pruefrunde T28, Befund 02: Die Pruefungen darueber halten den Beleg
+        # gegen sich selbst und gegen die Eingaben, die er aufzaehlt. Ob er
+        # die Eingaben aufzaehlt, die eine Schicht braucht, und ob seine Werte
+        # aus ihnen folgen, sagt nur der Erzeuger: Er rechnet nach.
+        from rechner_pipeline.gates.verankerung_belegen import schichtbeleg_nachgerechnet
+
+        nachrechnung = schichtbeleg_nachgerechnet(gelesen.json(), fall, Path(repo_root).resolve())
+        if nachrechnung:
+            raise SystemExit(f"Schichtbeleg {name!r}: " + "; ".join(nachrechnung[:2]))
         roh = roh["schichten"]
     else:
         roh = _lies_registriert(fall, name, bindung)

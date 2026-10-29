@@ -205,7 +205,7 @@ GATE = "A-M4.migrationscontrolling"
 #: die Komponentenzahl, die die Toleranz eines Vergleichs weitet, ist die des
 #: Erzeugers, nicht die des Belegs. Eine Suite ohne Aufruf oder mit einem
 #: abweichenden Feld war vorher ein gueltiger Beleg.
-GATE_VERSION = "11.0.0"
+GATE_VERSION = "12.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,

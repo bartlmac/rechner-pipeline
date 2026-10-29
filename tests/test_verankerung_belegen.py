@@ -20,12 +20,13 @@ import pandas as pd
 import pytest
 
 from rechner_pipeline.gates.aktuartest_lauf import _schichten
-from rechner_pipeline.gates.verankerung_belegen import baue_schichtbeleg
-from rechner_pipeline.gates._provenienz import systemstand
+from rechner_pipeline.gates.verankerung_belegen import baue_schichtbeleg, main as erzeuge_schichtbeleg
+from rechner_pipeline.fall import anlegen
 from rechner_pipeline.kern import KLV_DEFAULT
 from rechner_pipeline.kern.korrekturschicht import Schichtparameter
 from rechner_pipeline.kern.rechenkern import Rechenkern
 from rechner_pipeline.models.bestand import GENERATION_FIELDS
+from tests.tarifregeln_testhelfer import lege_spez
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -128,24 +129,22 @@ def test_mehrzellige_spez_verlangt_merkmale():
 # --------------------------------------------------------------------------- #
 
 
-def _wrapper_datei(tmp_path: Path, *, kaputt: str = "") -> Path:
+def _wrapper_datei(tmp_path: Path, *, kaputt: str = "",
+                   policen: tuple[int, ...] = (7000001,)) -> Path:
     fall = tmp_path / "fall"
+    anlegen(fall, scope="bestand")
     (fall / "abgeleitet" / "schichten").mkdir(parents=True)
     eingabe = fall / "abgeleitet" / "bestand" / "verankerung.parquet"
     eingabe.parent.mkdir(parents=True)
-    _verankerung(7000001).to_parquet(eingabe)
-    import hashlib
-
-    beleg = baue_schichtbeleg(
-        _verankerung(7000001), _bestand(7000001), None, _spez_einzellig(),
-        formfunktion="proportional_zur_basis")
-    beleg["provenienz"] = {
-        "systemstand": systemstand(REPO_ROOT),
-        "eingaben": {
-            "abgeleitet/bestand/verankerung.parquet": hashlib.sha256(
-                eingabe.read_bytes()).hexdigest()},
-        "parameter": {"formfunktion": "proportional_zur_basis"},
-    }
+    _verankerung(*policen).to_parquet(eingabe)
+    _bestand(*policen).to_parquet(eingabe.with_name("bestand.parquet"))
+    lege_spez(fall, _spez_einzellig().zellen[0].model_point)
+    pfad = fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"
+    assert erzeuge_schichtbeleg([
+        "--fall", str(fall), "--repo-root", str(REPO_ROOT),
+        "--generation", "klv/tg2015", "--out", str(pfad),
+    ]) == 0
+    beleg = json.loads(pfad.read_text(encoding="utf-8"))
     if kaputt == "systemstand":
         beleg["provenienz"]["systemstand"] = {"gefaelscht": "x"}
     if kaputt == "ohne_provenienz":
@@ -166,7 +165,6 @@ def _wrapper_datei(tmp_path: Path, *, kaputt: str = "") -> Path:
     if kaputt == "tabelle_passt_nicht":
         beleg["summary"]["getragen"] = 2
         beleg["summary"]["vertraege"] = 2
-    pfad = fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"
     pfad.write_text(json.dumps(beleg), encoding="utf-8")
     if kaputt == "eingabe":
         eingabe.write_bytes(eingabe.read_bytes() + b"x")
@@ -180,6 +178,63 @@ def test_abgeleiteter_beleg_wird_nur_mit_nachgerechneter_bindung_akzeptiert(
         fall, "abgeleitet/schichten/verankerung_schichten.json",
         repo_root=REPO_ROOT)
     assert isinstance(schichten["7000001"]["hist"], Schichtparameter)
+
+
+def test_echter_beleg_mit_zwei_policen_bleibt_bindbar(tmp_path):
+    fall = _wrapper_datei(tmp_path, policen=(7000001, 7000002))
+    schichten = _schichten(
+        fall, "abgeleitet/schichten/verankerung_schichten.json",
+        repo_root=REPO_ROOT)
+    assert set(schichten) == {"7000001", "7000002"}
+
+
+@pytest.mark.parametrize("mutation", [
+    "alle_eingaben_fehlen",
+    "verankerung_fehlt",
+    "residuum_summe_verfaelscht",
+    "schichtparameter_verfaelscht",
+])
+def test_schichtbeleg_prueft_pflichtbindungen_und_werte(tmp_path, mutation):
+    """T28-02: Der Beleg darf weder seine Pflichtquellen auswaehlen noch
+    einen anderen Zahlenwert bei gleich bleibenden Eingaben behaupten.
+    Die Positivkontrolle mit zwei Policen steht unmittelbar darueber."""
+    fall = _wrapper_datei(tmp_path, policen=(7000001, 7000002))
+    pfad = fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"
+    beleg = json.loads(pfad.read_text(encoding="utf-8"))
+    if mutation == "alle_eingaben_fehlen":
+        beleg["provenienz"]["eingaben"] = {}
+    elif mutation == "verankerung_fehlt":
+        del beleg["provenienz"]["eingaben"][
+            "abgeleitet/bestand/verankerung.parquet"]
+    elif mutation == "residuum_summe_verfaelscht":
+        beleg["summary"]["residuum_summe"] += 100
+    else:
+        beleg["schichten"]["7000001"]["hist"]["rho"] += 0.01
+    pfad.write_text(json.dumps(beleg), encoding="utf-8")
+    with pytest.raises(SystemExit, match="nachgerechneten Beleg"):
+        _schichten(fall, "abgeleitet/schichten/verankerung_schichten.json",
+                   repo_root=REPO_ROOT)
+
+
+@pytest.mark.parametrize("feld", ["befunde", "rumpfmonate"])
+def test_nachrechnung_unterscheidet_bool_und_zahl(tmp_path, feld):
+    """Ein echter Schichtbeleg darf durch 0 -> false weder im Urteil noch
+    im Schichtparameter einen anderen JSON-Typ erhalten. Python-Gleichheit
+    allein faengt diese Aenderung nicht."""
+    fall = _wrapper_datei(tmp_path)
+    pfad = fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"
+    beleg = json.loads(pfad.read_text(encoding="utf-8"))
+    if feld == "befunde":
+        assert beleg["summary"]["befunde"] == 0
+        beleg["summary"]["befunde"] = False
+    else:
+        hist = beleg["schichten"]["7000001"]["hist"]
+        assert hist["rumpfmonate"] == 0
+        hist["rumpfmonate"] = False
+    pfad.write_text(json.dumps(beleg), encoding="utf-8")
+    with pytest.raises(SystemExit, match="nachgerechneten Beleg"):
+        _schichten(fall, "abgeleitet/schichten/verankerung_schichten.json",
+                   repo_root=REPO_ROOT)
 
 
 def test_manipulation_der_eingabe_faellt_hart(tmp_path):

@@ -94,7 +94,7 @@ GATE = GATES["A-M1"]
 #: (:func:`test_nachgerechnet`). Komponentenzahl und Profil eines Vergleichs
 #: sind damit die des Erzeugers. Ein Ergebnis ohne Aufruf, mit einer
 #: behaupteten Komponentenzahl oder mit eigenen Kriterien war vorher gueltig.
-GATE_VERSION = "3.0.0"
+GATE_VERSION = "4.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
