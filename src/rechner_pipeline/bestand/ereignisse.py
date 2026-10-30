@@ -105,6 +105,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as _dt
+import math
 from typing import Any, Dict, List, Mapping, NamedTuple, Tuple
 
 import numpy as np
@@ -423,6 +424,106 @@ def _keine_weiteren(police_id: int, offen: int) -> None:
             "oder vor dem Zugang; die Liste passt nicht zum Vertrag")
 
 
+def _ohne_parameter(e: Mapping[str, Any]) -> bool:
+    return math.isnan(float(e["anteil"])) and not str(e["verfahren"] or "")
+
+
+def _regelverstoesse(
+    row: Mapping[str, Any],
+    ereignisse,
+    ab_jahr: int,
+    pex_jahr: int | None,
+    *,
+    tarifwerk: Mapping[str, Any],
+) -> List[str]:
+    """Die Liste EINES KLV-Vertrags gegen die Regeln der Welt halten
+    (Fehlerlisten-Idiom, leer = buchbar).
+
+    Die Ziehung zieht nur, was der Zustand zulaesst (Modul-Docstring von
+    ``bestand.ziehung``). Eine Liste, die von aussen kommt, kann mehr
+    behaupten; die Buchung bucht sie nicht still (Pruefung der
+    merge-session, Befund B1): Der Wirkungstag ist der Jahrestag des
+    Vertragsjahrs; die Beitragsfreistellung kommt hoechstens einmal, nur
+    beitragspflichtig und nicht an einem beitragsfrei uebernommenen
+    Vertrag; nach ihr gibt es kein Storno, keine Erhoehung und keine
+    Herabsetzung; kein Storno und keine Teilkuendigung im Ablaufjahr, keine
+    Erhoehung und keine Herabsetzung nach dem Beitragsende, keine
+    Herabsetzung in einem Tarif, der sie nicht kennt. Anteil und Verfahren
+    tragen nur Herabsetzung und Teilkuendigung, den Satz ohne Verfahren die
+    Erhoehung, die uebrigen Ereignisse nichts. Was nach dem Ende des
+    Vertrags steht, meldet die Buchung selbst (``_keine_weiteren``); einen
+    fremden Code ebenso.
+    """
+    start = pd.Timestamp(row["insurance_start"]).date()
+    n = int(row["duration"])
+    t = int(row["premium_duration"])
+    kennt_herabsetzung = str(tarifwerk["red_verfahren"]) != TEILKUENDIGUNG
+    fehler: List[str] = []
+    beitragsfrei_ab: int | None = pex_jahr
+    for e in ereignisse:
+        jahr, code = int(e["vertragsjahr"]), str(e["ereignis"])
+        wo = f"{code} im Vertragsjahr {jahr}"
+        jahrestag = _add_years(start, jahr)
+        if pd.Timestamp(e["wirkungstag"]).date() != jahrestag:
+            fehler.append(f"{wo}: Wirkungstag {pd.Timestamp(e['wirkungstag']).date().isoformat()} "
+                          f"ist nicht der Jahrestag {jahrestag.isoformat()}")
+        if code in REDUKTION_EREIGNISSE:
+            if math.isnan(float(e["anteil"])) or not str(e["verfahren"] or ""):
+                fehler.append(f"{wo}: ohne Anteil oder Verfahren")
+        elif code == ERH:
+            if math.isnan(float(e["anteil"])) or str(e["verfahren"] or ""):
+                fehler.append(f"{wo}: braucht einen Satz und kein Verfahren")
+        elif code in (TOD, STO, PEX) and not _ohne_parameter(e):
+            fehler.append(f"{wo}: traegt Anteil oder Verfahren, das Ereignis hat keine")
+        if code == PEX:
+            if beitragsfrei_ab is not None:
+                fehler.append(f"{wo}: zweite Beitragsfreistellung — beitragsfrei seit Jahr {beitragsfrei_ab}")
+            elif not jahr < t:
+                fehler.append(f"{wo}: Beitragsfreistellung nach dem Beitragsende (t={t})")
+            beitragsfrei_ab = jahr
+        elif code == STO:
+            if beitragsfrei_ab is not None:
+                fehler.append(f"{wo}: Storno nach der Beitragsfreistellung im Jahr {beitragsfrei_ab}")
+            if not jahr < n:
+                fehler.append(f"{wo}: Storno im Ablaufjahr (n={n})")
+        elif code == ERH:
+            if beitragsfrei_ab is not None:
+                fehler.append(f"{wo}: Erhoehung nach der Beitragsfreistellung im Jahr {beitragsfrei_ab}")
+            elif not jahr < t:
+                fehler.append(f"{wo}: Erhoehung nach dem Beitragsende (t={t})")
+        elif code == RED:
+            if beitragsfrei_ab is not None:
+                fehler.append(f"{wo}: Herabsetzung nach der Beitragsfreistellung im Jahr {beitragsfrei_ab}")
+            elif not jahr < t:
+                fehler.append(f"{wo}: Herabsetzung nach dem Beitragsende (t={t})")
+            elif not kennt_herabsetzung:
+                fehler.append(f"{wo}: Herabsetzung in einem Tarif, der sie nicht kennt")
+        elif code == TKU:
+            if not jahr < n:
+                fehler.append(f"{wo}: Teilkuendigung im Ablaufjahr (n={n})")
+        if code in (TOD, STO):
+            break
+    return fehler
+
+
+def _bu_regelverstoesse(row: Mapping[str, Any], ereignisse) -> List[str]:
+    """Die Liste EINES BU-Vertrags: Wirkungstag am Jahrestag, keine Parameter
+    (die Zustandsregeln prueft die Buchung selbst)."""
+    start = pd.Timestamp(row["insurance_start"]).date()
+    fehler: List[str] = []
+    for e in ereignisse:
+        jahr, code = int(e["vertragsjahr"]), str(e["ereignis"])
+        jahrestag = _add_years(start, jahr)
+        if pd.Timestamp(e["wirkungstag"]).date() != jahrestag:
+            fehler.append(f"{code} im Vertragsjahr {jahr}: Wirkungstag "
+                          f"{pd.Timestamp(e['wirkungstag']).date().isoformat()} ist nicht der "
+                          f"Jahrestag {jahrestag.isoformat()}")
+        if code in (INV, REA, TOD) and not _ohne_parameter(e):
+            fehler.append(f"{code} im Vertragsjahr {jahr}: traegt Anteil oder Verfahren, "
+                          "das Ereignis hat keine")
+    return fehler
+
+
 def _je_jahr(ereignisse) -> Dict[int, List[Mapping[str, Any]]]:
     aus: Dict[int, List[Mapping[str, Any]]] = {}
     for e in ereignisse:
@@ -465,6 +566,9 @@ def _buche_vertrag(
     police_id = int(row["police_id"])
     start = pd.Timestamp(row["insurance_start"]).date()
     n = int(row["duration"])
+    verstoesse = _regelverstoesse(row, ereignisse, ab_jahr, pex_jahr, tarifwerk=tarifwerk)
+    if verstoesse:
+        raise EreignisError(f"police {police_id}: " + "; ".join(verstoesse[:3]))
 
     vertrag = _Vertrag(
         ModelPoint(**model_point_kwargs(row, generation_fields)),
@@ -658,6 +762,9 @@ def _buche_bu_vertrag(
     start = pd.Timestamp(row["insurance_start"]).date()
     n = int(row["duration"])
     rente = float(row["bu_rente"])
+    verstoesse = _bu_regelverstoesse(row, ereignisse)
+    if verstoesse:
+        raise EreignisError(f"police {police_id}: " + "; ".join(verstoesse[:3]))
     events: List[Dict[str, Any]] = []
 
     def buche(ereignis: str, jahr: int, betrag: float, status: Any) -> None:
