@@ -24,11 +24,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from rechner_pipeline.fall import registrieren
+from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.gates import fall_belegen, gate_entscheid
 from rechner_pipeline.gates.abox_validate import main as pq3
 from rechner_pipeline.models import fallauftrag as fa
@@ -140,6 +143,91 @@ def test_der_vorstand_beauftragt_und_der_auftrag_bindet_was_er_sagt(fall):
     [aq1] = _snapshots(fall, "A-Q1")
     assert aq1["fallauftrag"] == auftrag["snapshot_sha256"]
     assert (fall / fa.AUFTRAG_SICHT_RELATIV).is_file()
+
+
+def test_auftrag_bindet_den_gelieferten_eingang_auch_bei_zwischenregistrierung(
+    fall, tmp_path, monkeypatch,
+):
+    """Eine Registrierung im zweiten Prozess trennt die beiden alten Lesungen."""
+    quelle = tmp_path / "nachgereicht.txt"
+    quelle.write_text("synthetische Nachlieferung\n", encoding="utf-8")
+    original = fall_belegen.lieferung
+    aufrufe = 0
+
+    def lieferung_mit_zwischenregistrierung(*args, **kwargs):
+        nonlocal aufrufe
+        ergebnis = original(*args, **kwargs)
+        aufrufe += 1
+        if aufrufe == 2:
+            subprocess.run(
+                [sys.executable, "-m", "rechner_pipeline.fall", "registrieren",
+                 "--fall", str(fall), "--datei", str(quelle)],
+                check=True, capture_output=True, text=True,
+            )
+        return ergebnis
+
+    monkeypatch.setattr(fall_belegen, "lieferung", lieferung_mit_zwischenregistrierung)
+    ergebnis = fallauftrag_zeichnen(fall, streng=False)
+    assert aufrufe == 2
+    assert ergebnis.exit_code == 20
+    assert ergebnis.errors[0]["code"] == "eingang"
+    assert _snapshots(fall, AUFTRAG_GATE) == []
+
+
+def test_auftrag_vergleicht_und_bindet_dieselbe_eingangslesung(fall, monkeypatch):
+    """Die Hashbindung darf nach dem Vorlagenvergleich nicht neu lesen."""
+    original_lesen = gate_entscheid.lies_gehasht
+    original_hash = gate_entscheid._sha256_datei
+    eingangslesungen = 0
+
+    def lesen(pfad):
+        nonlocal eingangslesungen
+        if Path(pfad) == fall / "eingang.json":
+            eingangslesungen += 1
+        return original_lesen(pfad)
+
+    def kein_zweiter_eingangshash(pfad):
+        assert Path(pfad) != fall / "eingang.json"
+        return original_hash(pfad)
+
+    monkeypatch.setattr(gate_entscheid, "lies_gehasht", lesen)
+    monkeypatch.setattr(gate_entscheid, "_sha256_datei", kein_zweiter_eingangshash)
+    assert fallauftrag_zeichnen(fall).exit_code == 0
+    assert eingangslesungen == 1
+
+
+def test_snapshot_vertrag_verweigert_zwei_eingangs_hashes(fall):
+    fallauftrag_zeichnen(fall)
+    [auftrag] = _snapshots(fall, AUFTRAG_GATE)
+    auftrag["artefakt_hashes"]["eingang.json"] = "ab" * 32
+    assert any("auftrag.lieferung.eingang_sha256" in fehler
+               for fehler in P9Snapshot.validate_payload(auftrag))
+
+
+def test_auftrag_zeichnet_keine_zwischenzeitlich_abweichende_quelle(
+    fall, tmp_path, monkeypatch,
+):
+    """Der Snapshot muss jede registrierte Quelle gegen den Eingang binden."""
+    assert fall_mod.pruefen(fall) == []
+    quelle = next((fall / "eingang").iterdir())
+    original = gate_entscheid.lies_gehasht
+    gewechselt = False
+
+    def lesen_nach_quellwechsel(pfad):
+        nonlocal gewechselt
+        if Path(pfad) == fall / "eingang.json" and not gewechselt:
+            austausch = tmp_path / "andere-quelle"
+            austausch.write_bytes(b"synthetische andere Quelle\n")
+            austausch.replace(quelle)
+            gewechselt = True
+        return original(pfad)
+
+    monkeypatch.setattr(gate_entscheid, "lies_gehasht", lesen_nach_quellwechsel)
+    ergebnis = fallauftrag_zeichnen(fall, streng=False)
+    assert gewechselt
+    assert ergebnis.exit_code == 20
+    assert ergebnis.errors[0]["code"] == "eingang"
+    assert _snapshots(fall, AUFTRAG_GATE) == []
 
 
 def test_der_auftrag_verweist_auf_die_abnahmen_der_linie(tmp_path):

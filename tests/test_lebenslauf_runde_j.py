@@ -501,6 +501,8 @@ NUR_ANNAHME = sorted([
     "'Gezeichnete Ablehnung verweigert'",
     # Inhalt von Auftrag/Abbruch im Snapshot
     "args.entscheid == 'angenommen' and args.gate in P9_LEBENSLAUF_FELDER",
+    # A-M6 bindet die registrierten Quellen auch beim Schreiben des Snapshots
+    "args.entscheid == 'angenommen' and args.gate == AUFTRAG_GATE",
     # Ausgabe
     "args.gate == AUFTRAG_GATE and args.entscheid == 'angenommen'",
     "args.gate == ABBRUCH_GATE and args.entscheid == 'angenommen'",
