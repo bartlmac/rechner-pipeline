@@ -54,9 +54,10 @@ der Verabredung.
 
 **Ziehen und Buchen sind im Code getrennt, im selben Lauf.** Dazwischen
 liegt genau ein Datentyp, die Ereignisliste. Ihr Vertrag (Codes, Schema,
-Fehler) liegt heute im Modul der Welt, und die Buchung importiert ihn von
-dort; ihn in ein Modul der Führung oder nach `models/` zu legen, ist ein
-Folgepunkt (ein reiner Umzug, bitgleich).
+Fehler, dazu die Zugangslage eines Vertrags) liegt heute im Modul der
+Welt, und die Buchung importiert ihn von dort; ihn in ein Modul der
+Führung oder nach `models/` zu legen, ist ein Folgepunkt (ein reiner
+Umzug, bitgleich).
 
 * Die **Ziehung** (`bestand/ziehung.py`, Ebene 4) führt je Vertrag den
   Zustand mit und liefert eine `Ereignisliste`: je Zeile Police, laufende
@@ -81,8 +82,10 @@ Folgepunkt (ein reiner Umzug, bitgleich).
   Erhöhung und keine Herabsetzung, kein Storno im Ablaufjahr, keine
   Erhöhung nach dem Beitragsende, und die Form der Einträge (Anteil und
   Verfahren nur bei Herabsetzung und Teilkündigung, der Satz bei der
-  Erhöhung). Eine Liste, die mehr behauptet, als die Welt zieht, wird
-  nicht still gebucht. Die Buchung kennt weder Seed noch Annahmen.
+  Erhöhung). Eine Liste in Zugreihenfolge, die mehr behauptet, als die
+  Welt zieht, wird nicht still gebucht; die Reihenfolge selbst und
+  Doppelungen im selben Vertragsjahr prüft die Buchung noch nicht
+  (Folgepunkt). Die Buchung kennt weder Seed noch Annahmen.
 * `fortschreiben` bleibt als **Fassade** (ziehen, dann buchen in einem
   Aufruf) — die Schnittstelle vor diesem ADR, unverändert in Signatur und
   Ergebnis. `_simuliere_vertrag` ebenso je Vertrag.
@@ -157,7 +160,8 @@ Folgepunkt (ein reiner Umzug, bitgleich).
   die Buchung aus einer gegebenen Liste ist die Fortschreibung Byte für
   Byte (KLV und BU), eine Mutation der Ziehung wird sichtbar oder ist
   ein Fehler, die Buchung hält die Liste gegen die Regeln der Welt (je
-  Regel ein Test), der Tagesstrom nennt jeden Tod, das Tagesjournal nimmt
+  Befund der Merge-Prüfung ein Test; acht Zweige der Regeln sind noch
+  ungetestet, Folgepunkt), der Tagesstrom nennt jeden Tod, das Tagesjournal nimmt
   die Meldetage aus dem Strom, jede Generation steht mit ihrem Tarifwerk
   in der Führungssicht, die Buchung kommt ohne jedes Weltfeld aus, die
   Sichten decken jedes Feld, die Ratsche nennt genau drei Kanten, und ein
@@ -217,6 +221,35 @@ vertauschter Draw-Reihenfolge, Tagesjournal ohne die Meldetage der Liste)
 machen jeweils mindestens einen Test rot; die Ziehung selbst pinnt der
 Fingerabdruck-Test gegen die Engine vor diesem ADR
 (`FINGERABDRUCK_VOR_ADR031`, auf c58605e gerechnet).
+
+## Folgepunkte
+
+Aus den zwei Merge-Prüfungen, heute ohne Folge, weil die Liste im selben
+Lauf aus der Ziehung kommt, in Zugreihenfolge:
+
+* **Reihenfolge und Doppelungen in der Liste.** Die Regeln der Buchung
+  laufen in Listenreihenfolge und setzen die Zugreihenfolge voraus; ein
+  späteres Ereignis, das vor der Beitragsfreistellung in der Liste steht,
+  umgeht sie, und eine zweite Erhöhung oder Teilkündigung im selben
+  Vertragsjahr, die die Welt nie zieht, wird gebucht. Eine gültige Liste
+  in anderer Reihenfolge wird mit falscher Begründung abgelehnt. Die
+  Klasse schließt eine Formregel: je Vertrag das Vertragsjahr nicht
+  fallend in der laufenden Nummer, je Jahr höchstens eine
+  Beitragsfreistellung, Herabsetzung, Teilkündigung und Erhöhung.
+* **Ungetestete Zweige der Regeln.** Ohne eigenen Test sind der
+  Wirkungstag innerhalb des Jahres, Erhöhung und Herabsetzung nach dem
+  Beitragsende (die Erhöhung fängt zusätzlich der Kern), die Herabsetzung
+  in einem Tarif ohne Herabsetzung, die Teilkündigung im Ablaufjahr, eine
+  Beitragsfreistellung mit Anteil, die Formregel der BU und der
+  beitragsfrei übernommene Vertrag als Startzustand. Die Gegenrichtung
+  ist gedeckt: Eine Regel, die strenger ist als die Welt, macht die Suite
+  rot.
+* **Der Vertrag der Liste** (Codes, Schema, Fehler und die Zugangslage
+  eines Vertrags) zieht aus dem Modul der Welt in ein Modul der Führung
+  oder nach `models/`; die Ziehung importiert ihn dann von dort. Ein reiner
+  Umzug, bitgleich; danach trägt nur noch die Fassade die zweite Kante.
+* **Die Weitergabe der Meldetage** im Tageslauf bekommt einen Test, der
+  den Rückfallzweig des Tagesjournals während eines Tageslaufs verweigert.
 
 ## Bewusst nicht Bestandteil
 

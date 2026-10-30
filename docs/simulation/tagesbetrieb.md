@@ -81,8 +81,10 @@ Der Buchungstag wird deterministisch aus dem Wirkungstag abgeleitet:
   Unternehmen erfährt es später; so sieht der Bestand von gestern
   Verträge noch als aktiv, die es aktuariell nicht mehr sind. Das ist
   kein Fehler, das ist ein Versicherer. Seit ADR-031 nennt der
-  Tagesstrom der Simulation dem Tageslauf den Meldetag jedes Todes; die
-  Führung zieht ihn nicht mehr selbst.
+  Tagesstrom der Simulation dem Tageslauf den Meldetag jedes Todes, und
+  das Tagesjournal übernimmt ihn. Die Ziehung des Meldeverzugs steht
+  weiter im Modul des Tagesjournals; ohne Tagesstrom zieht das Journal sie
+  dort selbst (ADR-031, dritte Kante).
 - Neugeschäft: Antrags- und Policierungstag ist der Buchungstag (ein
   Werktag, Abschnitt 4); der Versicherungsbeginn ist der nächste
   Monatserste nach dem Buchungstag. Die Police steht ab Buchungstag im
