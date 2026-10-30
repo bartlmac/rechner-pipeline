@@ -31,9 +31,10 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   (2026-09-04, external review finding T19-06), because a rebase would
   break the merge plan's "additive only" rule for every branch built on
   it. New commits follow the rule.
-- The four agent roles of the KI-Tool (ADR-018: `agent/aktuariat`,
-  `agent/architektur`, `agent/rechenkern`, `agent/programmleitung`) are
-  defined under `.claude/agents/` and mirrored in `.agents/agents/`
+- The five agent roles of the KI-Tool (ADR-018: `agent/aktuariat`,
+  `agent/architektur`, `agent/rechenkern`, `agent/programmleitung`,
+  `agent/betrieb`) are defined under `.claude/agents/` and mirrored in
+  `.agents/agents/`
   (parity test-enforced). They prepare and hand over; they never sign a
   human gate.
 - Use the repo-scoped skills in `.agents/skills/` when running Codex and
