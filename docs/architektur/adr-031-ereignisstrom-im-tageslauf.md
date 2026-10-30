@@ -1,11 +1,11 @@
 # ADR-031: Der Ereignisstrom als Eingang der Buchung
 
-**Status:** angenommen am 2026-10-29 (Maintainer, Entscheid E-007 auf die
-Vorlage der Projektleitung: Option B mit zwei Sichten auf die Config,
-bitgleich auch auf der laufenden Ablage; drei benannte Kanten in der
-Ratsche statt einer, Entscheid vom selben Tag). Gebaut im Auftrag A-032;
-Entwurf vom 2026-10-22 aus Befund A29-03 der externen Prüfrunde vom
-2026-10-14.
+**Status:** angenommen am 2026-10-29 (Maintainer): Option B mit zwei
+Sichten auf die Config, bitgleich auch auf der laufenden Ablage; drei
+benannte Kanten in der Ratsche statt einer. Entwurf vom 2026-10-22 aus
+Befund A29-03 der externen Prüfrunde vom 2026-10-14; Nachzug nach der
+Merge-Prüfung am 2026-10-30 (Zustandsregeln der Buchung, Tests der
+Sichten, Folgepunkte).
 
 ## Kontext
 
@@ -38,8 +38,8 @@ Gemessen am Stand 0b6470c, vor dem Bau:
   den Meldeverzug eines Todesfalls selbst (Strom `meldeverzug`), und die
   Ratsche sah es nicht, weil `zufallsstroeme` nicht als Werkzeugmodul
   geführt war.
-* 107 Testdateien nennen Tageslauf oder Fortschreibung; 35 importieren
-  `fortschreiben` aus `bestand.ereignisse`, vier rufen Funktionen des
+* 107 Testdateien nennen Tageslauf oder Fortschreibung; über dreißig
+  importieren `fortschreiben` aus `bestand.ereignisse`, vier rufen Funktionen des
   Tagesjournals mit der Config allein, ohne Liste. Ein AST-Inventar
   (`tests/test_herabsetzung_und_teilkuendigung.py`) hält die
   Buchungsliterale je Modul fest, darunter die von `ereignisse.py`.
@@ -53,7 +53,10 @@ der Verabredung.
 ## Entscheidung
 
 **Ziehen und Buchen sind im Code getrennt, im selben Lauf.** Dazwischen
-liegt genau ein Datentyp.
+liegt genau ein Datentyp, die Ereignisliste. Ihr Vertrag (Codes, Schema,
+Fehler) liegt heute im Modul der Welt, und die Buchung importiert ihn von
+dort; ihn in ein Modul der Führung oder nach `models/` zu legen, ist ein
+Folgepunkt (ein reiner Umzug, bitgleich).
 
 * Die **Ziehung** (`bestand/ziehung.py`, Ebene 4) führt je Vertrag den
   Zustand mit und liefert eine `Ereignisliste`: je Zeile Police, laufende
@@ -62,15 +65,24 @@ liegt genau ein Datentyp.
   das Verfahren einer Herabsetzung oder Teilkündigung, den Erhöhungssatz
   einer dynamischen Erhöhung. Dazu die Zugänge des Neugeschäfts als
   POL-Basiszeilen. Sie liest Rechnungsgrundlagen (die Tafelbasis, die
-  Übergangswahrscheinlichkeiten des BU-Produkts), nie einen Rechenwert;
-  einen Rechenkern baut sie nicht. Der Ablauf ist kein gezogenes
-  Ereignis: Ihn bucht die Führung aus den Vertragsdaten.
+  Übergangswahrscheinlichkeiten des BU-Produkts), nie einen Rechenwert.
+  Für die KLV baut sie keinen Rechenkern; für die BU baut sie das Produkt
+  aus `kern/` und liest seine Übergänge, rechnet aber keinen Betrag. Der
+  Ablauf ist kein gezogenes Ereignis: Ihn bucht die Führung aus den
+  Vertragsdaten.
 * Die **Buchung** (`bestand/ereignisse.py`, Ebene 3, `buche`) wendet die
   Liste mit Beträgen aus dem Kern an und schreibt Statushistorie, Ledger,
   Scheiben, Zugänge und Reduktionen. Jedes Ereignis der Liste kommt in
   die Bücher oder ist ein Fehler — nach dem Ende des Vertrags, jenseits
-  des Horizonts, für eine fremde Police oder im falschen Zustand. Nichts
-  wird still verworfen. Die Buchung kennt weder Seed noch Annahmen.
+  des Horizonts, für eine fremde Police oder im falschen Zustand. Vor dem
+  ersten Kernaufruf hält die Buchung die Liste gegen die Regeln der Welt:
+  Wirkungstag am Jahrestag des Vertragsjahrs, Beitragsfreistellung
+  höchstens einmal und nur beitragspflichtig, danach kein Storno, keine
+  Erhöhung und keine Herabsetzung, kein Storno im Ablaufjahr, keine
+  Erhöhung nach dem Beitragsende, und die Form der Einträge (Anteil und
+  Verfahren nur bei Herabsetzung und Teilkündigung, der Satz bei der
+  Erhöhung). Eine Liste, die mehr behauptet, als die Welt zieht, wird
+  nicht still gebucht. Die Buchung kennt weder Seed noch Annahmen.
 * `fortschreiben` bleibt als **Fassade** (ziehen, dann buchen in einem
   Aufruf) — die Schnittstelle vor diesem ADR, unverändert in Signatur und
   Ergebnis. `_simuliere_vertrag` ebenso je Vertrag.
@@ -79,7 +91,11 @@ liegt genau ein Datentyp.
   Ereignisliste und die **Meldetage** der Todesfälle (der Meldeverzug,
   bis hierher vom Tagesjournal gezogen) — auch der Tode, die eine
   Übernahme mitbringt. Der Tageslauf ruft erst den Strom, dann die
-  Buchung, dann das Tagesjournal mit den Meldetagen aus dem Strom. Die
+  Buchung, dann das Tagesjournal mit den Meldetagen aus dem Strom. Dass
+  der Tageslauf die Meldetage weitergibt, hält noch kein Test; ohne sie
+  zöge das Journal über die dritte Kante selbst, mit denselben Werten
+  (Folgepunkt: ein Test, der den Rückfallzweig während eines Tageslaufs
+  verweigert). Die
   Arithmetik der Nummernkreise (Verkaufstag aus der Police-Nummer) zieht
   in `betrieb/nummernkreis.py` zur Führung; das Neugeschäft der Welt
   vergibt die Nummern nach derselben Regel.
@@ -133,30 +149,38 @@ liegt genau ein Datentyp.
   `plv/tarifplaene` und `plv/configs` sind unberührt. Keine Gate-Version
   ändert sich.
 * **Laufende Ablage:** keine Umstellung über das Image hinaus; der
-  nächste Image-Wechsel folgt dem Weg aus A-026 (Probe auf Kopien,
-  Umstellen, Tageslauf, Timer).
+  nächste Image-Wechsel folgt dem eingeübten Weg (Probe auf Kopien der
+  Ablage, Umstellen, Tageslauf, Timer).
 * **Tests:** Die bestehenden Testdateien zu Tageslauf und Fortschreibung
   sind unverändert; das ist Teil des Nachweises. Neu:
   `tests/test_ereignisstrom_adr031.py` — die Liste entsteht ohne Kern,
   die Buchung aus einer gegebenen Liste ist die Fortschreibung Byte für
   Byte (KLV und BU), eine Mutation der Ziehung wird sichtbar oder ist
-  ein Fehler, der Tagesstrom nennt jeden Tod, das Tagesjournal nimmt die
-  Meldetage aus dem Strom, die Buchung kommt ohne die Welt aus, die
-  Sichten decken jedes Feld, die Ratsche nennt genau drei Kanten.
+  ein Fehler, die Buchung hält die Liste gegen die Regeln der Welt (je
+  Regel ein Test), der Tagesstrom nennt jeden Tod, das Tagesjournal nimmt
+  die Meldetage aus dem Strom, jede Generation steht mit ihrem Tarifwerk
+  in der Führungssicht, die Buchung kommt ohne jedes Weltfeld aus, die
+  Sichten decken jedes Feld, die Ratsche nennt genau drei Kanten, und ein
+  Fingerabdruck hält die geteilte Engine gegen die Engine vor diesem ADR.
 * **PLV bleibt Simulation:** Der Strom kommt aus der Simulation; es gibt
   keinen Weg für echte Kundenereignisse. Die Naht ist kein Produktivweg.
 
 ## Nachweis bitgleich
 
-Werkzeuge: `docs-local/a032-bitgleich-testwelten.sh` und
-`docs-local/a032-bitgleich-ablage.sh` (nach dem Muster der Probe in
-`laufzeit-image-*.sh`), jeweils alter Codebaum gegen neuen auf dem Host,
+Werkzeuge: zwei Vergleichsskripte im Arbeitsbaum des Maintainers (nicht
+im Repository). Das erste führt `cli_fortschreibung` und die Phase ablage
+von `werkzeuge/welt/welt_aufstellen.sh` mit altem und neuem Codebaum und
+vergleicht die Ausgaben; das zweite kopiert die laufende Ablage zweimal,
+führt auf beiden Kopien den Tageslauf mit altem und neuem Codebaum und
+vergleicht Stand, Tagesjournal, Abschlüsse und Übernahmen sowie die
+Protokollzeile ohne Code-Hash und Zeichnung. Beides auf dem Host,
 29.10.2026. Alt ist der Stand vor diesem ADR (c58605e), neu der Stand mit
-Ziehung, Tagesstrom und Sichten (11c3e6c; die Commits danach ändern nur
-Doku und Tests). Eine Nullmessung alt gegen alt ging voraus und war
-ebenfalls bitgleich.
+Ziehung, Tagesstrom und Sichten (11c3e6c); die Zustandsregeln der Buchung
+kamen am 30.10.2026 mit einem weiteren Vergleichslauf hinzu. Eine
+Nullmessung alt gegen alt ging voraus und war ebenfalls bitgleich; die
+Merge-Prüfung hat beide Vergleiche unabhängig wiederholt.
 
-**Testwelten** (`a032-bitgleich-testwelten.sh`, `bis` 2026-10-29):
+**Testwelten** (erstes Skript, `bis` 2026-10-29):
 
 * `cli_fortschreibung` über die drei Configs in `plv/configs` (gesamt,
   klv, bu), Bestand aus dem Nichts ab dem ersten Verkaufstag der ältesten
@@ -174,8 +198,8 @@ ebenfalls bitgleich.
   Codebaum, den das Welt-Skript zu Recht verweigert) mit denselben
   Schlüsseln und Einstellungen als Phase ablage von Hand wiederholt.
 
-**Kopie der laufenden Ablage** (`docs-local/a032-bitgleich-ablage.sh`,
-29.10.2026 21:29 CET): zwei Kopien von `~/apps/plv/daten` (Stand
+**Kopie der laufenden Ablage** (zweites Skript, 29.10.2026 21:29 CET):
+zwei Kopien der laufenden Ablage (Stand
 `stand-00280e615a39ea3c`, geführt bis 2026-10-29, Config
 `bestand_gesamt.toml`, Betriebsbeginn 1994-07-01, eine Übernahme mit 834
 Verträgen), Tageslauf auf dem Host mit dem Stand davor (c58605e) und mit

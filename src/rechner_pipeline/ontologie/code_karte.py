@@ -144,7 +144,10 @@ VORZEIGE_NACH_WERKZEUG_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/betrieb/ziehung.py"),
     # 2. Die Fassade ``fortschreiben`` (ziehen, dann buchen in einem Aufruf —
     #    die Schnittstelle vor ADR-031, die Tests und cli_fortschreibung
-    #    rufen); die Buchung selbst, ``buche``, importiert die Welt nicht.
+    #    rufen). Die Buchung selbst, ``buche``, ruft keine Ziehung; den
+    #    Vertrag der Liste (Codes, Schema, Fehler) liest sie heute aus dem
+    #    Modul der Welt — Folgepunkt: den Vertrag in ein Modul der Fuehrung
+    #    oder nach models/ legen, dann traegt nur noch die Fassade die Kante.
     ("rechner_pipeline/bestand/ereignisse.py", "rechner_pipeline/bestand/ziehung.py"),
     # 3. Das Tagesjournal zieht den Meldeverzug (Strom ``meldeverzug``) —
     #    mit Tagesstrom nimmt es die Meldetage aus der Liste, ohne Strom

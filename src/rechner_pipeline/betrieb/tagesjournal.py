@@ -78,9 +78,11 @@ from rechner_pipeline.models.bestand import (
 )
 # Der Meldeverzug ist Simulation (ADR-031). Seine Ziehung steht hier, weil
 # die Leser des Journals sie hier binden; der Tagesstrom (betrieb.ziehung)
-# ruft sie und nennt dem Tageslauf die Meldetage, und mit Strom zieht das
-# Journal nicht selbst. Der Strom-Import ist die Kante, an der die Ratsche
-# der Schichtenkarte diese Kopplung sieht (vor ADR-031 sah sie sie nicht).
+# ruft sie und nennt dem Tageslauf die Meldetage, und mit Strom nimmt das
+# Journal sie aus der Liste. Dass der Tageslauf sie weitergibt, haelt noch
+# kein Test; der Rueckfall zoege dieselben Werte (Folgepunkt). Der
+# Strom-Import ist die Kante, an der die Ratsche der Schichtenkarte diese
+# Kopplung sieht (vor ADR-031 sah sie sie nicht).
 from rechner_pipeline.bestand.zufallsstroeme import STROEME
 
 #: SeedSequence-Konstante des Meldeverzugs — getrennt von Batch, jaehrlichem
