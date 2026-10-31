@@ -85,6 +85,10 @@ ul.gross li {
   padding: .8rem 1rem; border-left: 4px solid var(--primaer);
   display: flex; align-items: center;
 }
+/* Eine Rasterspalte ist mindestens so breit wie ihr laengstes Wort; ist
+   "Berufsunfaehigkeitsversicherung" breiter als das Telefon, darf es hier
+   brechen, sonst schiebt es die Seite auf. */
+ul.gross li { overflow-wrap: anywhere; }
 @media (max-width: 40rem) { ul.gross { grid-template-columns: 1fr; } }
 
 /* --- Kennzahlen: Kachel, Anteil, Diagrammreihe --- */
@@ -360,10 +364,13 @@ code { font: .85em ui-monospace, monospace; background: #eceff0; padding: .1em .
 .schaubild { overflow-x: auto; margin: 1rem 0; }
 /* Eine Kennung (Gate, Platzhalter mit Anzahl) bricht nicht in sich um. */
 .kennung { white-space: nowrap; }
-/* Ein langer Dateiname, eine Pruefsumme oder ein zitierter Pfad im
-   Fliesstext darf umbrechen, wo sonst die Zeile ueber den Rand liefe (auf
-   dem Telefon). */
-main p, main li { overflow-wrap: break-word; }
+/* Ein Wort, das laenger ist als seine Zeile, darf umbrechen, wo es sonst
+   ueber den Rand liefe (auf dem Telefon): ein langer Dateiname, eine
+   Pruefsumme oder ein zitierter Pfad im Fliesstext, ein langes Wort in
+   einer Ueberschrift wie "Bestandsmigrationen" in einer breiten Schrift.
+   Nicht in Tabellen: Eine Tabelle mit fester Spaltenbreite braeche sonst
+   ihre Kopfzeilen mitten im Wort. */
+main h1, main h2, main h3, main p, main li { overflow-wrap: break-word; }
 p code, li code { overflow-wrap: anywhere; }
 .schaubild svg { display: block; min-width: 860px; width: 100%; max-width: 1920px; height: auto; }
 .schaubild a.artefakt:hover text, .schaubild a.artefakt:focus text { fill: var(--akzent); }
