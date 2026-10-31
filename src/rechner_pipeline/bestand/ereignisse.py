@@ -1,9 +1,22 @@
-"""Ereignis-Engine: Statushistorie der Fortschreibung (Storno/Tod/PEX/Ablauf).
+"""Ereignis-Engine: die Buchung der Fortschreibung (Storno/Tod/PEX/Ablauf).
 
 The MUST building block of the stable-kernel paradigm (decision 2026-08-11):
 the portfolio is rolled forward as a status history — the contract-level
 state process — while every calculated amount (RKW, paid-up sum, benefits)
 comes from the stable kernel in-process, never from formulas of this module.
+
+Seit ADR-031 ist die Engine in Ziehung und Buchung geschnitten. Die
+ZIEHUNG (``bestand.ziehung``, Ebene 4) sagt, was in der simulierten Welt
+geschieht, und liefert eine :class:`~rechner_pipeline.bestand.ziehung.Ereignisliste`
+— ohne einen Betrag des Kerns. Die BUCHUNG (dieses Modul, Ebene 3,
+:func:`buche`) wendet die Liste mit Betraegen aus dem Kern an und schreibt
+Statushistorie, Ledger, Scheiben, Zugaenge und Reduktionen. Eine Anwendung
+ohne Simulation (etwa ein Cashflow-Lauf) ruft nur die Buchung mit einer
+gegebenen Liste. :func:`fortschreiben` ist die Fassade fuer beides in einem
+Aufruf — die Schnittstelle vor ADR-031, unveraendert; sie ist die eine
+Stelle, an der die Buchung die Welt ruft (Ratsche ``code_karte``). Die
+Buchung ist bitgleich zur ungeteilten Engine: dieselbe Reihenfolge je
+Vertragsjahr, dieselben Kernaufrufe.
 
 Model (Stufe 1, annual):
 
@@ -92,6 +105,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as _dt
+import math
 from typing import Any, Dict, List, Mapping, NamedTuple, Tuple
 
 import numpy as np
@@ -121,30 +135,36 @@ from rechner_pipeline.models.bestand import (
     STAMM_NAMES,
     STAMM_SPALTEN,
     REDUKTIONEN_SPALTEN,
+    REDUKTION_EREIGNISSE,
     STATUS_HISTORIE_SPALTEN,
     bu_model_point_kwargs,
     model_point_kwargs,
     reduktion_ereignis,
 )
-from rechner_pipeline.bestand.zufallsstroeme import STROEME
-
-#: SeedSequence-Konstante: separates event streams from the generator's
-#: generation streams ([seed, gen_index]) — never reuse for other purposes.
-#: Separation assumptions (SeedSequence normalizes trailing zeros, so
-#: [seed, X] == [seed, X, 0]): police_id must be > 0 (enforced in
-#: :func:`fortschreiben`; the generator issues >= 10_000_001) and gen_index
-#: stays small — a third stream family needs a NEW distinct constant.
-EREIGNIS_STREAM = STROEME["ereignis"]  # Register: bestand.zufallsstroeme
-#: EIGENER Substrom der Herabsetzung. Die feste Draw-Reihenfolge des
-#: Hauptstroms ist der Grund, warum Laeufe verschiedener Configs
-#: pfadweise vergleichbar sind — ein neuer Draw in ihr haette JEDEN
-#: bestehenden Bestand verschoben, obwohl sich fachlich nichts aendert.
-#: Das Haus fuehrt eigene Stroeme je Familie (NEUZUGANG_STREAM,
-#: MELDEVERZUG_STREAM); dies ist einer davon.
-HERABSETZUNG_STREAM = STROEME["herabsetzung"]  # Register: bestand.zufallsstroeme
-#: EIGENER Substrom der Teilkuendigung (eigener Geschaeftsvorfall TKU seit
-#: dem Entscheid des Maintainers 2026-10-01) — aus demselben Grund.
-TEILKUENDIGUNG_STREAM = STROEME["teilkuendigung"]  # Register: bestand.zufallsstroeme
+# Die Ziehung (Ebene 4): die EINE Kante der Buchung in die Welt. Ueber sie
+# kommen die Stromkonstanten (fuer Leser, die sie hier erwarten), die Codes
+# der Ereignisliste, der gemeinsame Fehler und die Fassade zum Erzeuger.
+from rechner_pipeline.bestand.ziehung import (  # noqa: F401 — Re-Exporte
+    EREIGNIS_STREAM,
+    ERH,
+    HERABSETZUNG_STREAM,
+    INV,
+    PEX,
+    REA,
+    RED,
+    STO,
+    TEILKUENDIGUNG_STREAM,
+    TKU,
+    TOD,
+    Ereignisliste,
+    EreignisError,
+    bu_uebergang,
+    neuzugaenge as _neuzugaenge_der_welt,
+    ziehe,
+    ziehe_bu_vertrag,
+    ziehe_vertrag,
+    zugangslage as _zugangslage,
+)
 
 #: Betrags-Art der BU-GeVos: die von diesem Geschaeftsvorfall betroffene
 #: versicherte Jahresrente (Bezugsgroesse der Nachweisung) — bei
@@ -171,10 +191,6 @@ def _bjb(kern: Rechenkern, jahr: int = 0) -> float:
 #: Sentinel fuer "Argument nicht gesetzt" (None ist ein gueltiger Wert:
 #: GeVos ohne Zustandswechsel).
 _KEIN_ARGUMENT = object()
-
-
-class EreignisError(ValueError):
-    """Raised when the portfolio and config do not fit the simulation."""
 
 
 class Fortschreibung(NamedTuple):
@@ -208,28 +224,6 @@ def _vertragsjahr(beginn: _dt.date, datum: _dt.date) -> int:
     """
     monate = (datum.year - beginn.year) * 12 + (datum.month - beginn.month)
     return max(0, monate // 12)
-
-
-def _zugangslage(row: Mapping[str, Any]) -> Tuple[int, str, int]:
-    """Ab welchem Vertragsjahr und in welchem Zustand ein Vertrag laeuft.
-
-    Eigenes Geschaeft beginnt bei Vertragsjahr 0 im Zustand POL — dort
-    faellt der Bestandszugang auf den Versicherungsbeginn und die Antwort
-    ist die bisherige. Ein UEBERNOMMENER Vertrag tritt spaeter ein, mit
-    dem Alter und dem Zustand, den er mitbringt: Die Jahre davor gehoeren
-    dem abgebenden Unternehmen und duerfen nicht simuliert werden — sonst
-    erfaende die Engine eine Geschichte, die anderswo bereits stattfand,
-    und wuerde sie als unsere buchen.
-
-    Rueckgabe: (erstes zu simulierendes Vertragsjahr, Zustand beim
-    Zugang, Vertragsjahr des Zustandswechsels).
-    """
-    beginn = pd.Timestamp(row["insurance_start"]).date()
-    zugang = pd.Timestamp(row["bestandszugang"]).date()
-    ab_jahr = _vertragsjahr(beginn, zugang)
-    zustand = str(row.get("status_code", "POL"))
-    seit = _vertragsjahr(beginn, pd.Timestamp(row["status_date"]).date())
-    return ab_jahr, zustand, seit
 
 
 def _leerer_frame(spalten) -> pd.DataFrame:
@@ -418,12 +412,130 @@ def _event(
     }
 
 
-def _simuliere_vertrag(
+def _keine_weiteren(police_id: int, offen: int) -> None:
+    """Jedes Ereignis der Liste wird gebucht — oder die Liste passt nicht
+    zum Vertrag (nach seinem Ende, jenseits des Horizonts, vor seinem
+    Zugang). Fail-fast statt stillem Verwerfen: Eine Ziehung, die nicht in
+    die Buecher kommt, waere unsichtbar."""
+    if offen:
+        raise EreignisError(
+            f"police {police_id}: {offen} Ereignis(se) der Liste bleiben "
+            "ungebucht — nach dem Ende des Vertrags, jenseits des Horizonts "
+            "oder vor dem Zugang; die Liste passt nicht zum Vertrag")
+
+
+def _ohne_parameter(e: Mapping[str, Any]) -> bool:
+    return math.isnan(float(e["anteil"])) and not str(e["verfahren"] or "")
+
+
+def _regelverstoesse(
+    row: Mapping[str, Any],
+    ereignisse,
+    ab_jahr: int,
+    pex_jahr: int | None,
+    *,
+    tarifwerk: Mapping[str, Any],
+) -> List[str]:
+    """Die Liste EINES KLV-Vertrags gegen die Regeln der Welt halten
+    (Fehlerlisten-Idiom, leer = buchbar).
+
+    Die Ziehung zieht nur, was der Zustand zulaesst (Modul-Docstring von
+    ``bestand.ziehung``). Eine Liste, die von aussen kommt, kann mehr
+    behaupten; die Buchung bucht sie nicht still (Pruefung der
+    merge-session, Befund B1): Der Wirkungstag ist der Jahrestag des
+    Vertragsjahrs; die Beitragsfreistellung kommt hoechstens einmal, nur
+    beitragspflichtig und nicht an einem beitragsfrei uebernommenen
+    Vertrag; nach ihr gibt es kein Storno, keine Erhoehung und keine
+    Herabsetzung; kein Storno und keine Teilkuendigung im Ablaufjahr, keine
+    Erhoehung und keine Herabsetzung nach dem Beitragsende, keine
+    Herabsetzung in einem Tarif, der sie nicht kennt. Anteil und Verfahren
+    tragen nur Herabsetzung und Teilkuendigung, den Satz ohne Verfahren die
+    Erhoehung, die uebrigen Ereignisse nichts. Was nach dem Ende des
+    Vertrags steht, meldet die Buchung selbst (``_keine_weiteren``); einen
+    fremden Code ebenso.
+    """
+    start = pd.Timestamp(row["insurance_start"]).date()
+    n = int(row["duration"])
+    t = int(row["premium_duration"])
+    kennt_herabsetzung = str(tarifwerk["red_verfahren"]) != TEILKUENDIGUNG
+    fehler: List[str] = []
+    beitragsfrei_ab: int | None = pex_jahr
+    for e in ereignisse:
+        jahr, code = int(e["vertragsjahr"]), str(e["ereignis"])
+        wo = f"{code} im Vertragsjahr {jahr}"
+        jahrestag = _add_years(start, jahr)
+        if pd.Timestamp(e["wirkungstag"]).date() != jahrestag:
+            fehler.append(f"{wo}: Wirkungstag {pd.Timestamp(e['wirkungstag']).date().isoformat()} "
+                          f"ist nicht der Jahrestag {jahrestag.isoformat()}")
+        if code in REDUKTION_EREIGNISSE:
+            if math.isnan(float(e["anteil"])) or not str(e["verfahren"] or ""):
+                fehler.append(f"{wo}: ohne Anteil oder Verfahren")
+        elif code == ERH:
+            if math.isnan(float(e["anteil"])) or str(e["verfahren"] or ""):
+                fehler.append(f"{wo}: braucht einen Satz und kein Verfahren")
+        elif code in (TOD, STO, PEX) and not _ohne_parameter(e):
+            fehler.append(f"{wo}: traegt Anteil oder Verfahren, das Ereignis hat keine")
+        if code == PEX:
+            if beitragsfrei_ab is not None:
+                fehler.append(f"{wo}: zweite Beitragsfreistellung — beitragsfrei seit Jahr {beitragsfrei_ab}")
+            elif not jahr < t:
+                fehler.append(f"{wo}: Beitragsfreistellung nach dem Beitragsende (t={t})")
+            beitragsfrei_ab = jahr
+        elif code == STO:
+            if beitragsfrei_ab is not None:
+                fehler.append(f"{wo}: Storno nach der Beitragsfreistellung im Jahr {beitragsfrei_ab}")
+            if not jahr < n:
+                fehler.append(f"{wo}: Storno im Ablaufjahr (n={n})")
+        elif code == ERH:
+            if beitragsfrei_ab is not None:
+                fehler.append(f"{wo}: Erhoehung nach der Beitragsfreistellung im Jahr {beitragsfrei_ab}")
+            elif not jahr < t:
+                fehler.append(f"{wo}: Erhoehung nach dem Beitragsende (t={t})")
+        elif code == RED:
+            if beitragsfrei_ab is not None:
+                fehler.append(f"{wo}: Herabsetzung nach der Beitragsfreistellung im Jahr {beitragsfrei_ab}")
+            elif not jahr < t:
+                fehler.append(f"{wo}: Herabsetzung nach dem Beitragsende (t={t})")
+            elif not kennt_herabsetzung:
+                fehler.append(f"{wo}: Herabsetzung in einem Tarif, der sie nicht kennt")
+        elif code == TKU:
+            if not jahr < n:
+                fehler.append(f"{wo}: Teilkuendigung im Ablaufjahr (n={n})")
+        if code in (TOD, STO):
+            break
+    return fehler
+
+
+def _bu_regelverstoesse(row: Mapping[str, Any], ereignisse) -> List[str]:
+    """Die Liste EINES BU-Vertrags: Wirkungstag am Jahrestag, keine Parameter
+    (die Zustandsregeln prueft die Buchung selbst)."""
+    start = pd.Timestamp(row["insurance_start"]).date()
+    fehler: List[str] = []
+    for e in ereignisse:
+        jahr, code = int(e["vertragsjahr"]), str(e["ereignis"])
+        jahrestag = _add_years(start, jahr)
+        if pd.Timestamp(e["wirkungstag"]).date() != jahrestag:
+            fehler.append(f"{code} im Vertragsjahr {jahr}: Wirkungstag "
+                          f"{pd.Timestamp(e['wirkungstag']).date().isoformat()} ist nicht der "
+                          f"Jahrestag {jahrestag.isoformat()}")
+        if code in (INV, REA, TOD) and not _ohne_parameter(e):
+            fehler.append(f"{code} im Vertragsjahr {jahr}: traegt Anteil oder Verfahren, "
+                          "das Ereignis hat keine")
+    return fehler
+
+
+def _je_jahr(ereignisse) -> Dict[int, List[Mapping[str, Any]]]:
+    aus: Dict[int, List[Mapping[str, Any]]] = {}
+    for e in ereignisse:
+        aus.setdefault(int(e["vertragsjahr"]), []).append(e)
+    return aus
+
+
+def _buche_vertrag(
     row: Mapping[str, Any],
     generation_fields: Mapping[str, Any],
-    annahmen,
-    seed: int,
     bis: _dt.date,
+    ereignisse,
     ab_jahr: int = 0,
     pex_jahr: int | None = None,
     *,
@@ -431,42 +543,41 @@ def _simuliere_vertrag(
     mitgebracht: List[Tuple[int, float, Rechenkern]] = (),
     schicht: Tuple[Any, int] | None = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Simulate one contract; returns (events, NEUE Scheiben, Herabsetzungen).
+    """Die Ereignisse EINES KLV-Vertrags buchen; returns (events, NEUE
+    Scheiben, Herabsetzungen).
+
+    ``ereignisse`` sind die Eintraege der Ereignisliste dieses Vertrags
+    (:func:`rechner_pipeline.bestand.ziehung.ziehe_vertrag`), in
+    Zugreihenfolge. Die Buchung laeuft ueber dieselben Vertragsjahre wie
+    die Ziehung und wendet je Jahr die Ereignisse in ihrer Reihenfolge an,
+    mit Betraegen aus dem Kern: Tod und Storno beenden den Vertrag, die
+    Beitragsfreistellung fixiert die beitragsfreie Summe, Herabsetzung und
+    Teilkuendigung wirken auf den Zustand in der Vorgangsfolge, die
+    Erhoehung legt eine Scheibe an. Der Ablauf ist kein Ereignis der Liste:
+    Ihn bucht die Fuehrung, wenn der Vertrag alle ``n`` Jahre ueberlebt hat
+    und ``insurance_end <= bis``.
 
     ``ab_jahr`` ist das erste zu simulierende Vertragsjahr — 0 fuer
     eigenes Geschaeft, das Zugangsjahr fuer einen uebernommenen Vertrag.
     ``pex_jahr`` setzt ihn beitragsfrei ab diesem Vertragsjahr, ohne die
     Beitragsfreistellung noch einmal zu buchen: Sie ist beim abgebenden
     Unternehmen geschehen, die Uebernahme hat sie bereits verbucht.
-
-    Beides zusammen heisst: Die Engine simuliert die Zukunft des
-    Vertrags, nicht seine Vergangenheit.
     """
     police_id = int(row["police_id"])
     start = pd.Timestamp(row["insurance_start"]).date()
     n = int(row["duration"])
-    t = int(row["premium_duration"])
-    x = int(row["entry_age"])
+    verstoesse = _regelverstoesse(row, ereignisse, ab_jahr, pex_jahr, tarifwerk=tarifwerk)
+    if verstoesse:
+        raise EreignisError(f"police {police_id}: " + "; ".join(verstoesse[:3]))
 
     vertrag = _Vertrag(
         ModelPoint(**model_point_kwargs(row, generation_fields)),
         tarifwerk=tarifwerk, mitgebracht=mitgebracht, schicht=schicht,
     )
-    rng = np.random.Generator(
-        np.random.PCG64(np.random.SeedSequence([seed, EREIGNIS_STREAM, police_id]))
-    )
 
     events: List[Dict[str, Any]] = []
     scheiben: List[Dict[str, Any]] = []
     reduktionen: List[Dict[str, Any]] = []
-    rng_red = np.random.Generator(
-        np.random.PCG64(
-            np.random.SeedSequence([seed, HERABSETZUNG_STREAM, police_id]))
-    )
-    rng_tk = np.random.Generator(
-        np.random.PCG64(
-            np.random.SeedSequence([seed, TEILKUENDIGUNG_STREAM, police_id]))
-    )
 
     def buche(
         code: str, jahr: int, art: str, betrag: float, status: Any = _KEIN_ARGUMENT
@@ -522,6 +633,8 @@ def _simuliere_vertrag(
     pex_summe = (
         vertrag.beitragsfreie_summe(pex_jahr) if pex_jahr is not None else 0.0
     )
+    je_jahr = _je_jahr(ereignisse)
+    offen = sum(len(v) for v in je_jahr.values())
     horizont_erreicht = False
 
     for j in range(ab_jahr, n):
@@ -529,75 +642,33 @@ def _simuliere_vertrag(
         if stichtag_jahr > bis:
             horizont_erreicht = True
             break
-
-        # Feste Draw-Reihenfolge je Jahr (Raten sind nur Schwellen, siehe
-        # Modul-Docstring): eine Rate von 0 verbraucht ihren Draw trotzdem —
-        # sonst waeren Laeufe verschiedener Configs nicht pfadweise
-        # vergleichbar (Common Random Numbers, Rate-0-Baseline).
-        # 1. Tod im Vertragsjahr j: Erfahrungsannahme auf der Tafel-qx
-        #    erster Ordnung der Tarifbasis. Bei b = 0 wird die Tafel gar
-        #    nicht angefasst (Tafelgrenzen bleiben unberuehrt).
-        qx_erste_ordnung = (
-            vertrag.grund.basis.qx_at(x + j) if annahmen.tod.b else 0.0
-        )
-        if rng.random() < annahmen.tod(qx_erste_ordnung):
-            buche("TOD", j + 1, "Todesfallleistung", vertrag.leistung(
-                pex_summe if beitragsfrei_ab is not None else None))
-            return events, scheiben, reduktionen
-
-        if beitragsfrei_ab is None:
-            # 2. Storno (nur beitragspflichtig, nicht im Ablaufjahr):
-            if j + 1 < n and rng.random() < annahmen.storno(0.0):
-                buche("STO", j + 1, "RKW", vertrag.rkw(j + 1))
+        # Die Ereignisse des Jahres in der Reihenfolge der Ziehung (Tod,
+        # Storno, Beitragsfreistellung, Herabsetzung, Teilkuendigung,
+        # Erhoehung) — die Betraege kommen aus dem Kern, zum Zustand, den
+        # der Vertrag JETZT hat.
+        for e in je_jahr.get(j + 1, ()):
+            offen -= 1
+            code = str(e["ereignis"])
+            if code == TOD:
+                buche("TOD", j + 1, "Todesfallleistung", vertrag.leistung(
+                    pex_summe if beitragsfrei_ab is not None else None))
+                _keine_weiteren(police_id, offen)
                 return events, scheiben, reduktionen
-            # 3. Beitragsfreistellung (nur solange Beitraege laufen):
-            if j + 1 < t and rng.random() < annahmen.beitragsfreistellung(0.0):
+            if code == STO:
+                buche("STO", j + 1, "RKW", vertrag.rkw(j + 1))
+                _keine_weiteren(police_id, offen)
+                return events, scheiben, reduktionen
+            if code == PEX:
                 beitragsfrei_ab = j + 1
                 pex_summe = vertrag.pex(j + 1)
                 buche("PEX", j + 1, "VS_bfr", pex_summe)
-        if beitragsfrei_ab is None:
-            # 4. Beitragsherabsetzung (nur ohne PEX, NUR solange Beitraege
-            #    laufen: j + 1 < t, und nur in einem Tarif, der sie kennt). Der
-            #    Draw kommt aus einem EIGENEN Strom (HERABSETZUNG_STREAM) — in
-            #    der Reihenfolge oben haette er jeden bestehenden Bestand
-            #    verschoben. Beliebig viele je Vertrag (Entscheid 2026-10-01):
-            #    eine zweite Herabsetzung wirkt auf den herabgesetzten Vertrag.
-            #
-            #    ZUSICHERUNG, kein Stilmittel: Die Ziehung steht im and-Band
-            #    HINTER der Jahresbedingung (Kurzschluss), und ``rng_red``
-            #    wird nur hier verbraucht, chronologisch je Vertragsjahr. Nur
-            #    so bleiben die Ziehungen frueherer Jahre bitgleich, wenn sich
-            #    die Bedingung spaeterer Jahre aendert.
-            #
-            #    Der uebernommene Tarif (``red_verfahren = teilkuendigung``)
-            #    kennt keine Beitragsherabsetzung: Was die Quelle dort
-            #    "Herabsetzung" nennt, ist die Teilkuendigung der PLV und kommt
-            #    allein aus deren Strom (4b). Sein Herabsetzungsstrom wird
-            #    nicht gezogen — der fruehere zweite Weg (Wunsch als TKU
-            #    ausgefuehrt, Annahme A1) entfaellt mit der doppelten Rate.
-            if (vertrag.kennt_herabsetzung and (j + 1 < t)
-                    and rng_red.random() < annahmen.herabsetzung(0.0)):
-                reduziere_vertrag(j + 1, float(annahmen.red_anteil),
-                                  str(vertrag.tarifwerk["red_verfahren"]))
-        # 4b. Teilkuendigung (eigener Geschaeftsvorfall TKU, Entscheid des
-        #    Maintainers 2026-10-01): in JEDER Generation, beitragspflichtig,
-        #    ausfinanziert UND nach einer Beitragsfreistellung, in jedem
-        #    Vertragsjahr vor dem Ablauf (j + 1 < n). EIGENER Strom
-        #    (TEILKUENDIGUNG_STREAM), Ziehung hinter der Jahresbedingung wie
-        #    oben: Mit Rate 0 (Vorgabe) ist sie latent, und kein anderer Strom
-        #    verschiebt sich. Beliebig viele je Vertrag: jede wirkt auf den
-        #    Zustand, den der Vertrag dann hat (auch nach einer Herabsetzung,
-        #    einer frueheren Teilkuendigung oder der Beitragsfreistellung).
-        if ((j + 1 < n)
-                and rng_tk.random() < annahmen.teilkuendigung(0.0)):
-            reduziere_vertrag(j + 1, float(annahmen.tk_anteil), TEILKUENDIGUNG)
-        if beitragsfrei_ab is None:
-            # 5. Dynamische Erhoehung (nur beitragspflichtig, solange
-            #    Beitraege laufen): neue Scheibe, kein Statuswechsel.
-            # Auch nach Vorgaengen (Entscheid 2026-09-26): die Erhoehung
-            # bezieht sich auf die gefuehrte Summe danach.
-            if j + 1 < t and rng.random() < annahmen.erhoehung(0.0):
-                betrag = annahmen.erh_prozent * vertrag.gesamt_vs()
+            elif code in REDUKTION_EREIGNISSE:
+                reduziere_vertrag(j + 1, float(e["anteil"]), str(e["verfahren"]))
+            elif code == ERH:
+                # Dynamische Erhoehung: neue Scheibe, kein Statuswechsel. Auch
+                # nach Vorgaengen (Entscheid 2026-09-26): die Erhoehung bezieht
+                # sich auf die gefuehrte Summe danach.
+                betrag = float(e["anteil"]) * vertrag.gesamt_vs()
                 mp_s = vertrag.erhoehe(j + 1, betrag)
                 scheiben.append(
                     {
@@ -622,7 +693,12 @@ def _simuliere_vertrag(
                 # Bewertung). Eigene Zeile, eigene Betragsart.
                 buche("ERH", j + 1, BJB_BETRAG_ART,
                       _bjb(vertrag.scheiben[-1][2]), status=None)
+            else:
+                raise EreignisError(
+                    f"police {police_id}: Ereignis {code!r} der Liste ist fuer "
+                    "einen KLV-Vertrag nicht buchbar")
 
+    _keine_weiteren(police_id, offen)
     if not horizont_erreicht:
         # Ablauf: alle n Jahre ueberlebt und insurance_end <= bis.
         buche("ABL", n, "Ablaufleistung", vertrag.leistung(
@@ -630,56 +706,122 @@ def _simuliere_vertrag(
     return events, scheiben, reduktionen
 
 
-def _pruefe_wegzuege(
-    police_id: int, zustand: str, alter: int, dauer: int, summe: float
-) -> None:
-    """Markov-Bedingung nach der Transformation: die Wegzuege aus einem
-    Zustand duerfen sich nicht auf mehr als 1 summieren.
+def _simuliere_vertrag(
+    row: Mapping[str, Any],
+    generation_fields: Mapping[str, Any],
+    annahmen,
+    seed: int,
+    bis: _dt.date,
+    ab_jahr: int = 0,
+    pex_jahr: int | None = None,
+    *,
+    tarifwerk: Mapping[str, Any],
+    mitgebracht: List[Tuple[int, float, Rechenkern]] = (),
+    schicht: Tuple[Any, int] | None = None,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Simulate one contract: ziehen, dann buchen (die Fassade je Vertrag).
 
-    Die einzelne Annahme wird auf [0, 1] geklemmt, die SUMME konkurrierender
-    Risiken bleibt davon ungeschuetzt — eine zu grosse Marge (b) koennte
-    sie ueber 1 heben. Die kumulierten Schwellen der Ziehung wuerden das
-    letzte Risiko dann still stutzen, und die Simulation liefe auf einer
-    anderen Verteilung als das gleichnamige Zustandsmodell (das hier
-    fail-fast abbricht). Deshalb dieselbe Grenze wie in
-    :meth:`rechner_pipeline.kern.zustandsmodell.Zustandsmodell._wegzuege`.
+    Die Schnittstelle vor ADR-031; liefert (events, NEUE Scheiben,
+    Herabsetzungen) wie :func:`_buche_vertrag`.
     """
-    if summe > 1.0 + 1e-12:
-        raise EreignisError(
-            f"police {police_id}: transformierte Wegzuege aus {zustand} "
-            f"(Alter {alter}, Dauer {dauer}) summieren auf {summe} > 1 — "
-            "die Erfahrungsannahmen heben die Uebergangswahrscheinlichkeiten "
-            "ueber die Markov-Grenze (b zu gross)"
+    gezogen = ziehe_vertrag(
+        row, generation_fields, annahmen, seed, bis, ab_jahr, pex_jahr,
+        tarifwerk=tarifwerk,
+    )
+    return _buche_vertrag(
+        row, generation_fields, bis, gezogen, ab_jahr, pex_jahr,
+        tarifwerk=tarifwerk, mitgebracht=mitgebracht, schicht=schicht,
+    )
+
+
+def _buche_bu_vertrag(
+    row: Mapping[str, Any],
+    generation_fields: Mapping[str, Any],
+    bis: _dt.date,
+    ereignisse,
+    ab_jahr: int = 0,
+    bu_seit: int | None = None,
+) -> List[Dict[str, Any]]:
+    """Die Ereignisse EINES BU-Vertrags buchen; liefert die gebuchten GeVos.
+
+    Der Zustandsprozess ist derselbe, den der Kern bewertet; welche
+    Uebergaenge geschehen, sagt die Ziehung
+    (:func:`rechner_pipeline.bestand.ziehung.ziehe_bu_vertrag`). Hier wird
+    gebucht: die Invalidisierung mit der beginnenden Rente (Zustand BU),
+    die Reaktivierung mit der endenden (Zustand POL), der Tod mit der
+    endenden Rente im Leistungsbezug und mit 0 aus dem Anwaerterstand, der
+    Ablauf mit der Rente, wenn der Vertrag im Leistungsbezug endet.
+
+    Gitter und Konventionen wie beim KLV-Pfad: Vertragsjahr ``j`` läuft von
+    Jahrestag ``j`` bis ``j+1``, Ereignisse werden am Jahrestag ``j+1``
+    gebucht.
+    """
+    from rechner_pipeline.kern.produkte.bu import AKTIV, BU_ZUSTAND
+
+    police_id = int(row["police_id"])
+    start = pd.Timestamp(row["insurance_start"]).date()
+    n = int(row["duration"])
+    rente = float(row["bu_rente"])
+    verstoesse = _bu_regelverstoesse(row, ereignisse)
+    if verstoesse:
+        raise EreignisError(f"police {police_id}: " + "; ".join(verstoesse[:3]))
+    events: List[Dict[str, Any]] = []
+
+    def buche(ereignis: str, jahr: int, betrag: float, status: Any) -> None:
+        events.append(
+            _event(
+                police_id, ereignis, jahr, _add_years(start, jahr),
+                BU_BETRAG_ART, betrag, status,
+            )
         )
 
+    # Wie beim KLV-Pfad: Ein uebernommener Vertrag bringt seinen Zustand mit.
+    zustand = BU_ZUSTAND if bu_seit is not None else AKTIV
+    je_jahr = _je_jahr(ereignisse)
+    offen = sum(len(v) for v in je_jahr.values())
+    horizont_erreicht = False
 
-def bu_uebergang(produkt, annahmen):
-    """Übergangsfunktion des BU-Zustandsprozesses auf Erfahrungsannahmen.
+    for j in range(ab_jahr, n):
+        if _add_years(start, j + 1) > bis:
+            horizont_erreicht = True
+            break
+        for e in je_jahr.get(j + 1, ()):
+            offen -= 1
+            code = str(e["ereignis"])
+            if zustand == AKTIV:
+                if code == INV:
+                    # Invalidisierung: die BU-Rente beginnt (Beitragsbefreiung
+                    # ist im Produkt implizit — Beitraege laufen nur in aktiv).
+                    buche("INV", j + 1, rente, "BU")
+                    zustand = BU_ZUSTAND
+                elif code == TOD:
+                    buche("TOD", j + 1, 0.0, "TOD")
+                    _keine_weiteren(police_id, offen)
+                    return events
+                else:
+                    raise EreignisError(
+                        f"police {police_id}: Ereignis {code!r} der Liste ist im "
+                        "Anwaerterstand eines BU-Vertrags nicht buchbar")
+            else:
+                if code == REA:
+                    # Reaktivierung: die Rente endet, der Vertrag ist wieder
+                    # Anwaerter (und wieder beitragspflichtig).
+                    buche("REA", j + 1, rente, "POL")
+                    zustand = AKTIV
+                elif code == TOD:
+                    buche("TOD", j + 1, rente, "TOD")
+                    _keine_weiteren(police_id, offen)
+                    return events
+                else:
+                    raise EreignisError(
+                        f"police {police_id}: Ereignis {code!r} der Liste ist im "
+                        "Leistungsbezug eines BU-Vertrags nicht buchbar")
 
-    Legt die Erfahrungsschicht (3. Ordnung) über die vier
-    Ausscheideordnungen des Produkts: jede Übergangswahrscheinlichkeit
-    erster Ordnung wird durch ihre :class:`~rechner_pipeline.bestand.config.Annahme`
-    transformiert. Die Simulation der Fortschreibung nutzt genau diese
-    Funktion — sie ist damit auch der Ansatzpunkt, um die simulierte
-    Zustandsverteilung gegen ein Modell derselben Ordnung zu prüfen
-    (statt gegen die Bewertungsgrundlage erster Ordnung).
-    """
-    from rechner_pipeline.kern.produkte.bu import AKTIV, BU_ZUSTAND, TOT
-
-    zuordnung = {
-        (AKTIV, BU_ZUSTAND): annahmen.invalidisierung,
-        (AKTIV, TOT): annahmen.aktivensterblichkeit,
-        (BU_ZUSTAND, AKTIV): annahmen.reaktivierung,
-        (BU_ZUSTAND, TOT): annahmen.invalidensterblichkeit,
-    }
-
-    def uebergang(von: str, nach: str, alter: int, dauer: int) -> float:
-        annahme = zuordnung.get((von, nach))
-        if annahme is None:
-            return 0.0
-        return annahme(produkt._uebergang(von, nach, alter, dauer))
-
-    return uebergang
+    _keine_weiteren(police_id, offen)
+    if not horizont_erreicht:
+        # Ablauf: die Rente endet spaetestens mit dem Vertrag.
+        buche("ABL", n, rente if zustand == BU_ZUSTAND else 0.0, "ABL")
+    return events
 
 
 def _simuliere_bu_vertrag(
@@ -691,169 +833,28 @@ def _simuliere_bu_vertrag(
     ab_jahr: int = 0,
     bu_seit: int | None = None,
 ) -> List[Dict[str, Any]]:
-    """Simuliere einen BU-Vertrag; liefert die gebuchten GeVos.
-
-    Der Zustandsprozess ist derselbe, den der Kern bewertet — die
-    Übergangswahrscheinlichkeiten kommen aus dem Produkt
-    (:meth:`rechner_pipeline.kern.produkte.bu.BU._uebergang`, also aus den
-    vier Ausscheideordnungen), nicht aus freien Raten. Darüber liegt die
-    Erfahrungsschicht (:class:`~rechner_pipeline.bestand.config.Annahmen`):
-    sie transformiert jede Übergangswahrscheinlichkeit affin, sodass die
-    Simulation auf dritter Ordnung läuft, während die Bewertung
-    unverändert auf erster bleibt.
-
-    Gitter und Konventionen wie beim KLV-Pfad: Vertragsjahr ``j`` läuft von
-    Jahrestag ``j`` bis ``j+1``, Ereignisse werden am Jahrestag ``j+1``
-    gebucht, Alter im Jahr ``j`` ist ``x + j`` (identisch zur
-    Jahresindizierung des Zustandsmodells). Die BU-Dauer (volle Jahre im
-    Leistungsbezug) wird wie in der Engine bei der Select-Periode gekappt.
-
-    Draw-Contract: EIN Uniform-Draw je simuliertem Vertragsjahr, Schwellen
-    in fester Reihenfolge — aus ``aktiv`` erst Invalidisierung, dann Tod;
-    aus ``bu`` erst Reaktivierung, dann Tod. Das ist exakt die
-    Multinomialziehung der Übergangsmatrix des Jahres.
-    """
-    from rechner_pipeline.kern.produkte.bu import (
-        AKTIV,
-        BU,
-        BU_ZUSTAND,
-        TOT as TOT_ZUSTAND,
-        BUModelPoint,
+    """Simuliere einen BU-Vertrag: ziehen, dann buchen (die Fassade je Vertrag)."""
+    gezogen = ziehe_bu_vertrag(
+        row, generation_fields, annahmen, seed, bis, ab_jahr=ab_jahr, bu_seit=bu_seit,
+    )
+    return _buche_bu_vertrag(
+        row, generation_fields, bis, gezogen, ab_jahr=ab_jahr, bu_seit=bu_seit,
     )
 
-    police_id = int(row["police_id"])
-    start = pd.Timestamp(row["insurance_start"]).date()
-    n = int(row["duration"])
-    x = int(row["entry_age"])
-    rente = float(row["bu_rente"])
 
-    produkt = BU(BUModelPoint(**bu_model_point_kwargs(row, generation_fields)))
-    uebergang = bu_uebergang(produkt, annahmen)
-    max_dauer = produkt.modell.max_dauer
-    rng = np.random.Generator(
-        np.random.PCG64(np.random.SeedSequence([seed, EREIGNIS_STREAM, police_id]))
-    )
-
-    events: List[Dict[str, Any]] = []
-
-    def buche(ereignis: str, jahr: int, betrag: float, status: Any) -> None:
-        events.append(
-            _event(
-                police_id, ereignis, jahr, _add_years(start, jahr),
-                BU_BETRAG_ART, betrag, status,
-            )
-        )
-
-    # Wie beim KLV-Pfad: Ein uebernommener Vertrag bringt seinen Zustand
-    # mit. Steht er im Leistungsbezug, zaehlt die Verweildauer ab dem
-    # Vertragsjahr der Invalidisierung — sie steuert Reaktivierung und
-    # Sterblichkeit im Leistungsbezug (Select-Periode).
-    zustand = BU_ZUSTAND if bu_seit is not None else AKTIV
-    dauer = min(ab_jahr - bu_seit, max_dauer) if bu_seit is not None else 0
-    horizont_erreicht = False
-
-    for j in range(ab_jahr, n):
-        if _add_years(start, j + 1) > bis:
-            horizont_erreicht = True
-            break
-        alter = x + j
-        u = rng.random()
-        if zustand == AKTIV:
-            p_inv = uebergang(AKTIV, BU_ZUSTAND, alter, 0)
-            p_tod = uebergang(AKTIV, TOT_ZUSTAND, alter, 0)
-            _pruefe_wegzuege(police_id, AKTIV, alter, 0, p_inv + p_tod)
-            if u < p_inv:
-                # Invalidisierung: die BU-Rente beginnt (Beitragsbefreiung
-                # ist im Produkt implizit — Beitraege laufen nur in aktiv).
-                buche("INV", j + 1, rente, "BU")
-                zustand, dauer = BU_ZUSTAND, 0
-            elif u < p_inv + p_tod:
-                buche("TOD", j + 1, 0.0, "TOD")
-                return events
-        else:
-            p_rea = uebergang(BU_ZUSTAND, AKTIV, alter, dauer)
-            p_tod = uebergang(BU_ZUSTAND, TOT_ZUSTAND, alter, dauer)
-            _pruefe_wegzuege(police_id, BU_ZUSTAND, alter, dauer, p_rea + p_tod)
-            if u < p_rea:
-                # Reaktivierung: die Rente endet, der Vertrag ist wieder
-                # Anwaerter (und wieder beitragspflichtig).
-                buche("REA", j + 1, rente, "POL")
-                zustand, dauer = AKTIV, 0
-            elif u < p_rea + p_tod:
-                buche("TOD", j + 1, rente, "TOD")
-                return events
-            else:
-                dauer = min(dauer + 1, max_dauer)
-
-    if not horizont_erreicht:
-        # Ablauf: die Rente endet spaetestens mit dem Vertrag.
-        buche("ABL", n, rente if zustand == BU_ZUSTAND else 0.0, "ABL")
-    return events
-
-
-def fortschreiben(
-    stamm: pd.DataFrame,
-    config: BestandConfig,
-    bis: _dt.date,
-    *,
-    neuzugang_ab: _dt.date | None = None,
-    merkmale: pd.DataFrame | None = None,
-    zugaenge: pd.DataFrame | None = None,
-    scheiben: pd.DataFrame | None = None,
-    schichten: pd.DataFrame | None = None,
-    verankerung: pd.DataFrame | None = None,
-) -> Fortschreibung:
-    """Roll the base portfolio forward to ``bis``.
-
-    ``schichten`` und ``verankerung`` (Freischaltung, Schritt 5) sind die
-    Korrekturschicht je uebernommenem Vertrag und ihr Verankerungs-
-    zeitpunkt (``schichten.parquet``, ``verankerung.parquet`` der
-    Uebernahme): Storno zahlt Basiswert plus Schichtwert. Beide Tabellen
-    gehoeren zusammen; eine Schicht ohne Anker ist ein Fehler.
-
-    ``scheiben`` (Freischaltung, Schritt 4) sind die MITGEBRACHTEN
-    Erhoehungsscheiben uebernommener Vertraege (``scheiben.parquet`` der
-    Uebernahme): Bausteine vor dem Bestandszugang, auf denen die Engine
-    weiterrechnet — Rueckkaufswert, beitragsfreie Summe, Gesamtsumme und
-    die Bezugsgroesse neuer Erhoehungen. Jede Scheibe traegt ihr gamma1
-    selbst (ADR-011). Eine Scheibe NACH dem Zugang oder an einem eigenen
-    Vertrag ist ein Fehler: Der Bestand waere bereits fortgeschrieben.
-    Zurueck kommen nur die NEUEN Scheiben (siehe Modul-Docstring).
-
-    Returns :class:`Fortschreibung` — Statushistorie (state changes only;
-    a dynamische Erhoehung changes no state), Ereignis-Ledger (every GeVo
-    incl. ERH/ZUG), the created Erhoehungsscheiben and the Neuzugaenge.
-
-    ``neuzugang_ab`` (Referenzstichtag) schaltet den simulierten Neuzugang
-    frei: neue Vertraege mit Beginn in ``[neuzugang_ab, bis]`` entstehen aus
-    :func:`rechner_pipeline.bestand.generator.neuzugaenge` (Volumen je
-    Generation: ``neuzugang_pro_jahr``), erhalten einen ZUG-Ledger-Eintrag
-    und werden ab ihrem Beginn mitsimuliert. Der Basisbestand darf dann
-    keine Vertraege am oder nach dem Referenzstichtag enthalten (Doppelzaehlung).
-
-    ``zugaenge`` (Tagesbetrieb, Fachkonzept docs/simulation/tagesbetrieb.md)
-    bringt die Neuzugaenge MIT, statt sie ueber den jaehrlichen Erzeuger
-    zu ziehen: POL-Basiszeilen, die genau wie der simulierte Neuzugang
-    ihren ZUG-Eintrag bekommen und ab ihrem Beginn mitsimuliert werden.
-    Der Beginn darf hinter ``bis`` liegen (verkauft, Beginn folgt) — dann
-    steht der Zugang im Ledger, und die Engine simuliert noch nichts.
-    Schliesst ``neuzugang_ab`` aus: ein Erzeuger je Lauf.
-
-    ``stamm`` is the generator's base portfolio (one POL row per contract);
-    the event assumptions come from ``config.annahmen``, the amounts from the
-    stable kernel. Pure function of (stamm, config, bis, neuzugang_ab) —
-    seed-deterministic, the Stamm itself is never mutated. Fail-fast
-    guards: only POL base rows
-    (an Auskunfts- or Journalsicht fed back in is an error — the engine
-    would re-simulate it from insurance_start), unique positive police_id,
-    valid event rates, durations within the engine's 0..50 window.
-    """
-    fehlend = [c for c in STAMM_NAMES if c not in stamm.columns]
-    if fehlend:
-        raise EreignisError(f"Stamm-Spalten fehlen: {fehlend}")
+def _annahmen_pruefen(config: BestandConfig) -> None:
+    """Die Erfahrungsannahmen der Welt (die Fassade fragt sie vor der Ziehung,
+    wie vor ADR-031; die Buchung braucht sie nicht)."""
     konfig_fehler = config.annahmen.validate()
     if konfig_fehler:
         raise EreignisError("; ".join(konfig_fehler))
+
+
+def _stamm_pruefen(stamm: pd.DataFrame) -> None:
+    """Die Waechter des Basisbestands (fail-fast, vor Ziehung und Buchung)."""
+    fehlend = [c for c in STAMM_NAMES if c not in stamm.columns]
+    if fehlend:
+        raise EreignisError(f"Stamm-Spalten fehlen: {fehlend}")
     # Zwei zulaessige Formen, unterschieden am Bestandszugang:
     #
     # EIGENES Geschaeft (Zugang = Versicherungsbeginn) muss ein
@@ -913,8 +914,19 @@ def fortschreiben(
             "Grenze — der Kern selbst rechnet seit 3.0.0 bis zur "
             "Tafel-Erschoepfung)"
         )
-    bis = pd.Timestamp(bis).date()
 
+
+def _zugaenge_bestimmen(
+    stamm: pd.DataFrame,
+    config: BestandConfig,
+    bis: _dt.date,
+    *,
+    neuzugang_ab: _dt.date | None,
+    zugaenge: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """Die Zugaenge eines Laufs: mitgebracht (Tagesbetrieb), aus dem
+    jaehrlichen Erzeuger der Welt (``neuzugang_ab``) oder keine — ein
+    Erzeuger je Lauf, mit denselben Waechtern wie vor ADR-031."""
     hat_neuzugang = any(g.neuzugang_pro_jahr > 0 for g in config.generationen)
     if zugaenge is not None and neuzugang_ab is not None:
         raise EreignisError(
@@ -923,8 +935,8 @@ def fortschreiben(
             "(Tagesbetrieb), nie beide in einem Lauf"
         )
     if zugaenge is not None:
-        zugaenge = _pruefe_mitgebrachte_zugaenge(stamm, zugaenge)
-    elif neuzugang_ab is not None and hat_neuzugang:
+        return _pruefe_mitgebrachte_zugaenge(stamm, zugaenge)
+    if neuzugang_ab is not None and hat_neuzugang:
         neuzugang_ab = pd.Timestamp(neuzugang_ab).date()
         if neuzugang_ab > bis:
             raise EreignisError(
@@ -940,9 +952,7 @@ def fortschreiben(
                 "den Zeitraum doppelt besiedeln (ein Erzeuger je Zeitfenster) — "
                 "der Basisbestand darf nur Vertraege bis zum Referenzstichtag tragen"
             )
-        from rechner_pipeline.bestand.generator import neuzugaenge
-
-        zugaenge = neuzugaenge(config, neuzugang_ab, bis)
+        zugaenge = _neuzugaenge_der_welt(config, neuzugang_ab, bis)
         ueberschneidung = set(zugaenge["police_id"]) & set(stamm["police_id"])
         if ueberschneidung:
             raise EreignisError(
@@ -959,8 +969,88 @@ def fortschreiben(
                 "des Verlaufsfensters der Bestand-Engine (0..50) — "
                 "duration-Verteilung bzw. max_endalter der Config begrenzen"
             )
-    else:
-        zugaenge = _leerer_frame(STAMM_SPALTEN)
+        return zugaenge
+    return _leerer_frame(STAMM_SPALTEN)
+
+
+def _vertraege_pruefen(gesamt: pd.DataFrame, config: BestandConfig) -> None:
+    """Jeder Vertrag gehoert zu einer Generation der Config, und Produkt des
+    Vertrags und Produkt seiner Generation passen zusammen — sonst liefe
+    die Zeile mit fremden Rechnungsgrundlagen still durch Ziehung, Buchung
+    und Auswertung (eine BU-Generation traegt z.B. keine KLV-Kosten)."""
+    generationen = {g.name for g in config.generationen}
+    produkt_je_generation = {g.name: g.produkt for g in config.generationen}
+    for row in gesamt.to_dict("records"):
+        name = str(row["tarif_generation"])
+        if name not in generationen:
+            raise EreignisError(
+                f"police {row['police_id']}: Tarifgeneration {name!r} nicht in Config "
+                f"(bekannt: {sorted(generationen)})"
+            )
+        produkt = str(row.get("produkt", "klv"))
+        if produkt_je_generation.get(name) != produkt:
+            raise EreignisError(
+                f"police {row['police_id']}: produkt {produkt!r} passt nicht "
+                f"zur Tarifgeneration {name!r} (produkt "
+                f"{produkt_je_generation.get(name)!r})"
+            )
+
+
+def _ereignisse_je_police(ereignisse: pd.DataFrame) -> Dict[int, List[Dict[str, Any]]]:
+    """police_id -> ihre Eintraege der Ereignisliste in Zugreihenfolge (lfd)."""
+    from rechner_pipeline.bestand.ziehung import EREIGNISLISTE_NAMES
+
+    fehlend = [c for c in EREIGNISLISTE_NAMES if c not in ereignisse.columns]
+    if fehlend:
+        raise EreignisError(f"Ereignisliste: Spalten fehlen: {fehlend}")
+    aus: Dict[int, List[Dict[str, Any]]] = {}
+    if len(ereignisse) == 0:
+        return aus
+    geordnet = ereignisse.sort_values(["police_id", "lfd"], kind="stable")
+    for e in geordnet.to_dict("records"):
+        aus.setdefault(int(e["police_id"]), []).append(e)
+    return aus
+
+
+def buche(
+    stamm: pd.DataFrame,
+    config: BestandConfig,
+    bis: _dt.date,
+    liste: Ereignisliste,
+    *,
+    merkmale: pd.DataFrame | None = None,
+    scheiben: pd.DataFrame | None = None,
+    schichten: pd.DataFrame | None = None,
+    verankerung: pd.DataFrame | None = None,
+) -> Fortschreibung:
+    """Die Buchung (ADR-031): eine gegebene Ereignisliste bis ``bis`` auf den
+    Basisbestand anwenden, mit Betraegen aus dem Kern.
+
+    ``liste`` ist, was die Welt geschehen laesst
+    (:class:`~rechner_pipeline.bestand.ziehung.Ereignisliste`): die
+    Zugaenge als POL-Basiszeilen und die Ereignisse aller Vertraege. Die
+    Buchung zieht nichts; sie kennt weder Seed noch Annahmen. Jeder Zugang
+    bekommt seinen ZUG-Eintrag (Summe und Beitrag), jeder Vertrag wird ab
+    seinem Zugang gebucht, jedes Ereignis der Liste kommt in die Buecher
+    oder ist ein Fehler. ``scheiben``, ``schichten`` und ``verankerung``
+    wie bei :func:`fortschreiben`.
+
+    Returns :class:`Fortschreibung` — dieselben fuenf Tabellen wie
+    :func:`fortschreiben`, Byte fuer Byte, wenn die Liste die Ziehung
+    derselben Welt ist.
+    """
+    _stamm_pruefen(stamm)
+    bis = pd.Timestamp(bis).date()
+    zugaenge = _pruefe_mitgebrachte_zugaenge(stamm, liste.zugaenge)
+    gesamt = (
+        pd.concat([stamm, zugaenge], ignore_index=True) if len(zugaenge) else stamm
+    )
+    _vertraege_pruefen(gesamt, config)
+    je_police = _ereignisse_je_police(liste.ereignisse)
+    fremd = sorted(set(je_police) - set(int(p) for p in gesamt["police_id"]))
+    if fremd:
+        raise EreignisError(
+            f"Ereignisliste nennt Policen, die der Bestand nicht fuehrt: {fremd[:5]}")
 
     # Rechnungsgrundlagen je Vertrag statt je Generation: Ist eine
     # Generation in Tarifzellen aufgeteilt, steht die Sterbetafel in der
@@ -969,9 +1059,12 @@ def fortschreiben(
     # rechnen wie der Bericht, sonst laufen sie auseinander.
     from rechner_pipeline.bestand.auswertung import grundlagen_je_police
 
+    # Die Buchung liest die Sicht der Fuehrung (ADR-031): Tarifwerk, Kern-
+    # felder, BU-Grundlagen. Seed und Annahmen der Welt kennt sie nicht.
+    fuehrung = config.fuehrung()
     grundlagen = grundlagen_je_police(config, merkmale)
-    generationen = {g.name: g.generation_fields() for g in config.generationen}
-    tarifwerk_je_generation = {g.name: g.tarifwerk() for g in config.generationen}
+    generationen = {g.name: g.generation_fields for g in fuehrung.generationen}
+    tarifwerk_je_generation = {g.name: g.tarifwerk for g in fuehrung.generationen}
     mitgebracht_je_police = _mitgebrachte_scheiben(stamm, scheiben, grundlagen)
     try:
         schicht_je_police = schichten_je_police(stamm, schichten, verankerung)
@@ -989,11 +1082,10 @@ def fortschreiben(
                 f"schichten: Korrekturschicht an einem eigenen Vertrag "
                 f"(police {eigene[:5]}) — nur ein uebernommener Vertrag ist verankert")
     bu_generationen = {
-        g.name: g.bu_generation_fields()
-        for g in config.generationen
+        g.name: g.bu_generation_fields
+        for g in fuehrung.generationen
         if g.produkt == "bu"
     }
-    produkt_je_generation = {g.name: g.produkt for g in config.generationen}
 
     alle_events: List[Dict[str, Any]] = []
     alle_scheiben: List[Dict[str, Any]] = []
@@ -1033,53 +1125,33 @@ def fortschreiben(
             _event(int(zugang["police_id"]), "ZUG", 0, beginn,
                    BJB_BETRAG_ART, bjb, status_code=None)
         )
-    gesamt = (
-        pd.concat([stamm, zugaenge], ignore_index=True) if len(zugaenge) else stamm
-    )
     for row in gesamt.to_dict("records"):
         name = str(row["tarif_generation"])
-        if name not in generationen:
-            raise EreignisError(
-                f"police {row['police_id']}: Tarifgeneration {name!r} nicht in Config "
-                f"(bekannt: {sorted(generationen)})"
-            )
-        # Produkt des Vertrags und Produkt seiner Generation muessen
-        # zusammenpassen — sonst liefe die Zeile mit fremden
-        # Rechnungsgrundlagen still durch Engine und Auswertung (eine
-        # BU-Generation traegt z.B. keine KLV-Kosten).
+        pid = int(row["police_id"])
         ab_jahr, zustand, seit = _zugangslage(row)
         produkt = str(row.get("produkt", "klv"))
-        if produkt_je_generation.get(name) != produkt:
-            raise EreignisError(
-                f"police {row['police_id']}: produkt {produkt!r} passt nicht "
-                f"zur Tarifgeneration {name!r} (produkt "
-                f"{produkt_je_generation.get(name)!r})"
-            )
         try:
             if produkt == "bu":
-                # BU: Uebergaenge aus den Rechnungsgrundlagen des
-                # Produkts, transformiert durch die Erfahrungsannahmen
-                # (Storno/Beitragsfreistellung/Erhoehung kennt das
-                # Beispielprodukt nicht; die zugehoerigen Annahmen wirken
-                # daher nur auf KLV-Generationen).
-                events = _simuliere_bu_vertrag(
-                    row, bu_generationen[name], config.annahmen, config.seed, bis,
+                # BU: Uebergaenge aus den Rechnungsgrundlagen des Produkts,
+                # transformiert durch die Erfahrungsannahmen, gezogen in der
+                # Welt; hier die Buchung der Rente.
+                events = _buche_bu_vertrag(
+                    row, bu_generationen[name], bis, je_police.get(pid, ()),
                     ab_jahr=ab_jahr,
                     bu_seit=seit if zustand == "BU" else None,
                 )
                 neue_scheiben = []
                 neue_reduktionen = []
             else:
-                events, neue_scheiben, neue_reduktionen = _simuliere_vertrag(
-                    row, grundlagen(int(row["police_id"]), name),
-                    config.annahmen, config.seed, bis,
+                events, neue_scheiben, neue_reduktionen = _buche_vertrag(
+                    row, grundlagen(pid, name), bis, je_police.get(pid, ()),
                     ab_jahr=ab_jahr,
                     pex_jahr=seit if zustand == "PEX" else None,
                     tarifwerk=tarifwerk_je_generation[name],
-                    mitgebracht=mitgebracht_je_police.get(int(row["police_id"]), ()),
+                    mitgebracht=mitgebracht_je_police.get(pid, ()),
                     schicht=(
-                        schicht_je_police[int(row["police_id"])][:2]
-                        if int(row["police_id"]) in schicht_je_police else None
+                        schicht_je_police[pid][:2]
+                        if pid in schicht_je_police else None
                     ),
                 )
         except EreignisError:
@@ -1172,6 +1244,98 @@ def fortschreiben(
     ).reset_index(drop=True)
     return Fortschreibung(
         historie, ledger, scheiben_df, zugaenge, reduktionen_df)
+
+
+def fortschreiben(
+    stamm: pd.DataFrame,
+    config: BestandConfig,
+    bis: _dt.date,
+    *,
+    neuzugang_ab: _dt.date | None = None,
+    merkmale: pd.DataFrame | None = None,
+    zugaenge: pd.DataFrame | None = None,
+    scheiben: pd.DataFrame | None = None,
+    schichten: pd.DataFrame | None = None,
+    verankerung: pd.DataFrame | None = None,
+    liste: Ereignisliste | None = None,
+) -> Fortschreibung:
+    """Roll the base portfolio forward to ``bis`` — ziehen, dann buchen.
+
+    Die Fassade vor ADR-031, unveraendert in Schnittstelle und Ergebnis:
+    Die Welt zieht (:func:`rechner_pipeline.bestand.ziehung.ziehe`, und bei
+    ``neuzugang_ab`` ihren jaehrlichen Zugangsstrom), die Fuehrung bucht
+    (:func:`buche`). Wer die Liste schon hat (der Tageslauf mit seinem
+    Tagesstrom), uebergibt sie als ``liste``: Dann wird nicht gezogen,
+    sondern genau diese Liste gebucht — dasselbe wie :func:`buche`; die
+    Liste traegt ihre Zugaenge selbst und schliesst ``zugaenge`` und
+    ``neuzugang_ab`` aus.
+
+    ``schichten`` und ``verankerung`` (Freischaltung, Schritt 5) sind die
+    Korrekturschicht je uebernommenem Vertrag und ihr Verankerungs-
+    zeitpunkt (``schichten.parquet``, ``verankerung.parquet`` der
+    Uebernahme): Storno zahlt Basiswert plus Schichtwert. Beide Tabellen
+    gehoeren zusammen; eine Schicht ohne Anker ist ein Fehler.
+
+    ``scheiben`` (Freischaltung, Schritt 4) sind die MITGEBRACHTEN
+    Erhoehungsscheiben uebernommener Vertraege (``scheiben.parquet`` der
+    Uebernahme): Bausteine vor dem Bestandszugang, auf denen die Engine
+    weiterrechnet — Rueckkaufswert, beitragsfreie Summe, Gesamtsumme und
+    die Bezugsgroesse neuer Erhoehungen. Jede Scheibe traegt ihr gamma1
+    selbst (ADR-011). Eine Scheibe NACH dem Zugang oder an einem eigenen
+    Vertrag ist ein Fehler: Der Bestand waere bereits fortgeschrieben.
+    Zurueck kommen nur die NEUEN Scheiben (siehe Modul-Docstring).
+
+    Returns :class:`Fortschreibung` — Statushistorie (state changes only;
+    a dynamische Erhoehung changes no state), Ereignis-Ledger (every GeVo
+    incl. ERH/ZUG), the created Erhoehungsscheiben and the Neuzugaenge.
+
+    ``neuzugang_ab`` (Referenzstichtag) schaltet den simulierten Neuzugang
+    frei: neue Vertraege mit Beginn in ``[neuzugang_ab, bis]`` entstehen aus
+    :func:`rechner_pipeline.bestand.generator.neuzugaenge` (Volumen je
+    Generation: ``neuzugang_pro_jahr``), erhalten einen ZUG-Ledger-Eintrag
+    und werden ab ihrem Beginn mitsimuliert. Der Basisbestand darf dann
+    keine Vertraege am oder nach dem Referenzstichtag enthalten (Doppelzaehlung).
+
+    ``zugaenge`` (Tagesbetrieb, Fachkonzept docs/simulation/tagesbetrieb.md)
+    bringt die Neuzugaenge MIT, statt sie ueber den jaehrlichen Erzeuger
+    zu ziehen: POL-Basiszeilen, die genau wie der simulierte Neuzugang
+    ihren ZUG-Eintrag bekommen und ab ihrem Beginn mitsimuliert werden.
+    Der Beginn darf hinter ``bis`` liegen (verkauft, Beginn folgt) — dann
+    steht der Zugang im Ledger, und die Engine simuliert noch nichts.
+    Schliesst ``neuzugang_ab`` aus: ein Erzeuger je Lauf.
+
+    ``stamm`` is the generator's base portfolio (one POL row per contract);
+    the event assumptions come from ``config.annahmen``, the amounts from the
+    stable kernel. Pure function of (stamm, config, bis, neuzugang_ab) —
+    seed-deterministic, the Stamm itself is never mutated. Fail-fast
+    guards: only POL base rows
+    (an Auskunfts- or Journalsicht fed back in is an error — the engine
+    would re-simulate it from insurance_start), unique positive police_id,
+    valid event rates, durations within the engine's 0..50 window.
+    """
+    if liste is not None:
+        if zugaenge is not None or neuzugang_ab is not None:
+            raise EreignisError(
+                "liste schliesst zugaenge und neuzugang_ab aus — die Liste "
+                "traegt ihre Zugaenge selbst, ein Erzeuger je Lauf")
+        return buche(
+            stamm, config, bis, liste, merkmale=merkmale, scheiben=scheiben,
+            schichten=schichten, verankerung=verankerung,
+        )
+    _stamm_pruefen(stamm)
+    _annahmen_pruefen(config)
+    bis = pd.Timestamp(bis).date()
+    zugaenge = _zugaenge_bestimmen(
+        stamm, config, bis, neuzugang_ab=neuzugang_ab, zugaenge=zugaenge)
+    gesamt = (
+        pd.concat([stamm, zugaenge], ignore_index=True) if len(zugaenge) else stamm
+    )
+    _vertraege_pruefen(gesamt, config)
+    liste = Ereignisliste(zugaenge, ziehe(gesamt, config, bis, merkmale=merkmale))
+    return buche(
+        stamm, config, bis, liste, merkmale=merkmale, scheiben=scheiben,
+        schichten=schichten, verankerung=verankerung,
+    )
 
 
 def _mitgebrachte_scheiben(

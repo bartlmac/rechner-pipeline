@@ -147,3 +147,12 @@ ließ aber alte Pfade in Abnahme und Routinen weiterleben.
   (`deploy/welt/`, `deploy/plv/`, `configs/`), `quellsystem` aus dem Wurzelverzeichnis
   importieren oder nach `lieferungen/` schreiben, müssen nachgezogen
   werden.
+
+## Nachtrag 2026-10-29 (ADR-031)
+
+Die Modulliste der Simulation in der Tabelle oben ist seit ADR-031
+überholt: `bestand/ereignisse.py` ist die Buchung der Führung (Ebene 3);
+die Simulation stellen `bestand/generator.py`, `stochastik.py`,
+`zufallsstroeme.py`, `ziehung.py`, `cli_fortschreibung.py`,
+`betrieb/neugeschaeft.py` und `betrieb/ziehung.py`. Maßgeblich bleibt
+`EBENE_JE_MODUL` in `ontologie/code_karte.py`.

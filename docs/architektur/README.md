@@ -75,6 +75,7 @@ Stelle arbeitet, die sie regeln.
 | [022](adr-022-zugangsabnahme-a-b2.md) | Der Betrieb nimmt den Zugang eines übernommenen Bestands mit einer Probe ab | gilt |
 | [023](adr-023-herabsetzung-und-teilkuendigung.md) | Herabsetzung und Teilkündigung sind getrennte Geschäftsvorfälle | gilt |
 | [029](adr-029-taeglicher-betriebsteil-der-seite.md) | Die Seite zeigt jeden Abend den geführten Tag: Der Server schiebt Daten, GitHub prüft und rendert sie | gilt |
+| [031](adr-031-ereignisstrom-im-tageslauf.md) | Ziehen und Buchen sind getrennt: Die Welt liefert eine Ereignisliste, die Führung bucht sie mit Beträgen aus dem Kern; zwei Sichten auf die Config | gilt |
 
 **Repository und Entwicklung**
 

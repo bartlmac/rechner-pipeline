@@ -24,10 +24,14 @@ Was ein Lauf tut, in dieser Reihenfolge:
 2. **Neugeschaeft.** Alle Verkaufstage vom Betriebsbeginn bis heute
    (:mod:`rechner_pipeline.betrieb.neugeschaeft`) — je Tag fuer sich
    reproduzierbar.
-3. **Fortschreibung bis heute.** Basisbestand (die uebernommenen Vertraege; eigenes Geschaeft entsteht Werktag fuer Werktag)
-   plus Uebernahme-Eingaenge plus Neugeschaeft, EIN Lauf der bestehenden
-   Engine (``bestand.ereignisse.fortschreiben``); die Buchungen der
-   Uebernahmen stehen dem Journal voran wie in ``cli_fortschreibung``.
+3. **Fortschreibung bis heute.** Erst die Welt, dann die Buecher
+   (ADR-031): Der Tagesstrom (``betrieb.ziehung.tagesstrom``) liefert das
+   Neugeschaeft seit dem Betriebsbeginn (eigenes Geschaeft entsteht Werktag
+   fuer Werktag), die Ereignisliste des Basisbestands (die uebernommenen
+   Vertraege) und des Neugeschaefts und die Meldetage der Todesfaelle; die
+   Buchung (``bestand.ereignisse.fortschreiben`` mit dieser Liste) wendet
+   sie mit Betraegen aus dem Kern an. Die Buchungen der Uebernahmen stehen
+   dem Journal voran wie in ``cli_fortschreibung``.
 4. **Tagesjournal.** Die bis heute faelligen, noch nicht gebuchten
    Buchungen anfuegen (:mod:`rechner_pipeline.betrieb.tagesjournal`).
 5. **Wache.** Die P-B1-Engine (``bestand.vorbedingungen.lies_und_pruefe_pb1``)
@@ -149,7 +153,8 @@ from rechner_pipeline.betrieb._zeichnung import (
     lade_zeichner,
     verlange_betrieb,
 )
-from rechner_pipeline.betrieb.neugeschaeft import NeugeschaeftError, neugeschaeft_zwischen
+# Der Tagesstrom (ADR-031): die eine Kante des Tageslaufs in die Welt.
+from rechner_pipeline.betrieb.ziehung import NeugeschaeftError, tagesstrom
 from rechner_pipeline.betrieb.seite import SEITE_STAGING_DIR
 from rechner_pipeline.betrieb.tagesjournal import (
     TagesjournalError,
@@ -1844,9 +1849,17 @@ def _stand_bauen(
     if fehler_ab3 is not None:
         raise TageslaufError(fehler_ab3)
 
-    zugaenge = neugeschaeft_zwischen(config, betriebsbeginn, heute)
+    # Erst die Welt (ADR-031): Neugeschaeft, Ereignisse und Meldetage in
+    # einem Strom; dann die Buecher: die Fortschreibung bucht genau diese
+    # Liste mit Betraegen aus dem Kern (``fortschreiben(..., liste=)`` ist
+    # ``buche``; der Name des Schritts bleibt).
+    strom = tagesstrom(
+        config, basis, betriebsbeginn, heute, merkmale=merkmale,
+        ledger_voran=(pd.concat(ledger_voran, ignore_index=True) if ledger_voran else None),
+    )
+    zugaenge = strom.liste.zugaenge
     ergebnis = fortschreiben(
-        basis, config, heute, zugaenge=zugaenge, merkmale=merkmale,
+        basis, config, heute, liste=strom.liste, merkmale=merkmale,
         scheiben=scheiben_ueb, schichten=schichten, verankerung=verankerung,
     )
     historie, ledger = ergebnis.historie, ergebnis.ledger
@@ -1863,7 +1876,8 @@ def _stand_bauen(
     # bleiben mit ihren Zustandszeilen und Scheiben draussen und kommen an
     # ihrem Buchungstag — Seite, Stand und Journal sagen dasselbe.
     historie, ledger, scheiben = gebuchte_sicht(
-        config, historie, ledger, scheiben_fort, heute, ab_tag=betriebsbeginn)
+        config, historie, ledger, scheiben_fort, heute, ab_tag=betriebsbeginn,
+        meldetage=strom.meldetage)
     gesamt = fuehre_fort(mit_zugaengen(basis, ergebnis.zugaenge), historie)
 
     ausgaben.append(write_portfolio(
@@ -1932,6 +1946,9 @@ def _stand_bauen(
         "_teilbestaende": {
             u.fall: sorted(int(p) for p in u.bestand["police_id"]) for u in uebernahmen
         },
+        # Die Meldetage des Stroms fuer Journal und Abschluesse dieses Laufs
+        # (ADR-031) — kein Protokollinhalt, der Aufrufer nimmt sie heraus.
+        "_meldetage": strom.meldetage,
     }
     return ablage.arbeit, zahlen
 
@@ -2527,7 +2544,7 @@ def _gebuchte_reduktionen(reduktionen, ledger):
 
 def _stichtagssicht(
     tabellen: Dict[str, Any], config: BestandConfig, stichtag: _dt.date,
-    betriebsbeginn: _dt.date,
+    betriebsbeginn: _dt.date, *, meldetage: Optional[Dict[Tuple[int, int], int]] = None,
 ) -> Dict[str, Any]:
     """Die Tabellen des Laufs auf den Buchungsstand des STICHTAGS zurueckschneiden.
 
@@ -2575,7 +2592,7 @@ def _stichtagssicht(
     """
     historie, ledger, scheiben = gebuchte_sicht(
         config, tabellen["historie"], tabellen["ledger"], tabellen["scheiben"],
-        stichtag, ab_tag=betriebsbeginn,
+        stichtag, ab_tag=betriebsbeginn, meldetage=meldetage,
     )
     sicht = dict(tabellen)
     sicht["historie"], sicht["ledger"], sicht["scheiben"] = historie, ledger, scheiben
@@ -3159,6 +3176,7 @@ def _tageslauf_mit_config(
             config, config_pfad, ablage, heute, zeichner, aufschalten=aufschalten,
             zugangsprobe_fall=zugangsprobe_fall, kern_version=kern_version, code=code)
         zeile.update(zahlen)
+        meldetage = zeile.pop("_meldetage")
         tabellen, geprueft, befunde = _wache(arbeit, config_pfad, heute)
         zeile["pb1"] = {
             "urteil": "gruen" if not befunde else "rot",
@@ -3169,6 +3187,7 @@ def _tageslauf_mit_config(
             exit_code = EXIT_WACHE_ROT
             zeile.pop("_uebernommene_policen", None)
             zeile.pop("_teilbestaende", None)
+            zeile.pop("_meldetage", None)
         else:
             # Tagesjournal auf dem geprueften Ledger (dieselben Bytes).
             journal_alt = (
@@ -3176,9 +3195,11 @@ def _tageslauf_mit_config(
                 if ablage.tagesjournal_pfad.is_file() else leeres_tagesjournal()
             )
             journal, neu = tagesjournal_ergaenzen(
-                journal_alt, tabellen["ledger"], config, heute, ab_tag=betriebsbeginn)
+                journal_alt, tabellen["ledger"], config, heute, ab_tag=betriebsbeginn,
+                meldetage=meldetage)
             befunde_journal = validate_tagesjournal(
-                journal, tabellen["ledger"], config, heute, ab_tag=betriebsbeginn)
+                journal, tabellen["ledger"], config, heute, ab_tag=betriebsbeginn,
+                meldetage=meldetage)
             if befunde_journal:
                 raise TagesjournalError("; ".join(befunde_journal[:5]))
             # "gebucht" und "zeilen_gesamt" zaehlen BUCHUNGEN (Zeilen) — ein
@@ -3240,7 +3261,8 @@ def _tageslauf_mit_config(
             def _nachgerechnet(stichtag: _dt.date, pfad: Path) -> List[str]:
                 """Ein vorgefundener Abschluss gegen die Sicht seines Stichtags
                 — derselbe Aufruf wie beim Nachrechnen unten."""
-                sicht = _stichtagssicht(tabellen, config, stichtag, betriebsbeginn)
+                sicht = _stichtagssicht(tabellen, config, stichtag, betriebsbeginn,
+                                        meldetage=meldetage)
                 return pruefe_abschluss(
                     pfad, sicht["portfolio"], sicht["historie"], config,
                     scheiben=sicht["scheiben"],
@@ -3272,7 +3294,7 @@ def _tageslauf_mit_config(
                     # erwartbar. Die Protokollzeile nennt sie, damit ein
                     # Mensch sie sieht — vorher sah sie niemand.
                     sicht = _stichtagssicht(
-                        tabellen, config, stichtag, betriebsbeginn)
+                        tabellen, config, stichtag, betriebsbeginn, meldetage=meldetage)
                     befunde = pruefe_abschluss(
                         pfad, sicht["portfolio"], sicht["historie"], config,
                         scheiben=sicht["scheiben"],
@@ -3304,7 +3326,8 @@ def _tageslauf_mit_config(
                     # Der Abschluss ist, was am Stichtag GEBUCHT war. Wache und
                     # Tagesseite bleiben auf der Sicht von heute — dort ist sie
                     # richtig, denn sie berichten ueber heute.
-                    sicht = _stichtagssicht(tabellen, config, stichtag, betriebsbeginn)
+                    sicht = _stichtagssicht(tabellen, config, stichtag, betriebsbeginn,
+                                            meldetage=meldetage)
                     # Der Abschluss bekommt dieselben Nebentabellen wie die Wache
                     # und der Bericht — sonst weist er die Korrekturschicht als
                     # null aus, obwohl die Fuehrung sie traegt (N-01).
@@ -3403,6 +3426,7 @@ def _tageslauf_mit_config(
         # ist ein roter Lauf mit Protokollzeile — kein Traceback ohne Nachweis.
         zeile.pop("_uebernommene_policen", None)
         zeile.pop("_teilbestaende", None)
+        zeile.pop("_meldetage", None)
         zeile["fehler"] = f"{type(exc).__name__}: {exc}"
         if exit_code == EXIT_OK:
             exit_code = EXIT_NACHLAUF if "pb1" in zeile else EXIT_USAGE

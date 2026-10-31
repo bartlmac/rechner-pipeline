@@ -151,6 +151,30 @@ class VerteilungsSpec:
         return errors
 
 
+def spearman_to_pearson(rho: float) -> float:
+    """Convert a Spearman rank correlation to the Gaussian-copula Pearson rho."""
+    return 2.0 * math.sin(math.pi * rho / 6.0)
+
+
+def build_corr_matrix(order, korrelationen):
+    """Symmetric Pearson matrix over ``order`` from configured Spearman pairs.
+
+    Die Matrix gehoert zur Weltsicht der Config (ADR-031): Hier wird sie
+    gebaut und auf Realisierbarkeit geprueft (``Korrelation``,
+    ``TarifGeneration.validate``); die Copula der Simulation
+    (``bestand.stochastik``) zieht auf ihr.
+    """
+    import numpy as np
+
+    index = {name: i for i, name in enumerate(order)}
+    m = np.eye(len(order))
+    for korr in korrelationen:
+        i, j = index[korr.var_i], index[korr.var_j]
+        r = spearman_to_pearson(float(korr.rho))
+        m[i, j] = m[j, i] = r
+    return m
+
+
 @dataclass
 class Korrelation:
     var_i: str
@@ -512,8 +536,6 @@ class TarifGeneration:
         # stillschweigend (bis ~Faktor 2) verfaelschen. Nicht-PSD = Config-Fehler.
         if self.korrelationen and not any("korrelation" in e for e in errors):
             import numpy as np
-
-            from rechner_pipeline.bestand.stochastik import build_corr_matrix
 
             matrix = build_corr_matrix(korrelierbar, self.korrelationen)
             min_eig = float(np.linalg.eigvalsh((matrix + matrix.T) / 2.0).min())
@@ -978,6 +1000,116 @@ class Tagesbetrieb:
         return errors
 
 
+# --------------------------------------------------------------------------- #
+# Zwei Sichten auf dieselbe Datei (ADR-031)
+# --------------------------------------------------------------------------- #
+
+#: Welches Feld welcher Sicht gehoert — je Dataclass vollstaendig und
+#: ueberschneidungsfrei; ``tests/test_ereignisstrom_adr031.py`` haelt die
+#: Vereinigung mit ``==`` gegen die Felder der Klassen, damit ein neues Feld
+#: eingeordnet werden MUSS. Die Grenze folgt A-T1
+#: (``models.tarifwerkabnahme.NICHT_TARIFWERK``): Erfahrung, Verteilungen
+#: und Neuzugang sind Welt. Betriebsbeginn, Nummernkreise und die
+#: Berichtsfelder gehoeren der Fuehrung, obwohl A-T1 sie nicht zum Tarifwerk
+#: zaehlt; Plausibilitaet und Referenzstichtag der Welt (Entscheid des
+#: Maintainers 2026-10-29). "beide": der Schluessel, ueber den sich die
+#: Sichten einer Generation wiederfinden, und die Container, die aufgeteilt
+#: werden.
+SICHT_FELDER: Dict[str, Dict[str, Tuple[str, ...]]] = {
+    "BestandConfig": {
+        "fuehrung": ("beschreibung",),
+        "welt": ("seed", "annahmen", "plausibilitaet", "referenzstichtag"),
+        "beide": ("generationen", "tagesbetrieb"),
+    },
+    "Tagesbetrieb": {
+        "fuehrung": ("betriebsbeginn", "teilbestand_getrennt", "berichtshinweis"),
+        "welt": ("wochentagsgewichte", "meldeverzug_tod"),
+        "beide": (),
+    },
+    "TarifGeneration": {
+        "fuehrung": (
+            "gueltig_von", "gueltig_bis", "max_endalter", "produkt", "knoten",
+            "scheiben_mit_gamma1", "stoab_je_baustein", "red_verfahren", "tku_umfang",
+            "nummernkreis", "zins", "tafel", "alpha", "beta1", "gamma1", "gamma2",
+            "gamma3", "policy_fee", "min_alter_flex", "min_rlz_flex", "stoab_satz",
+            "stoab_min", "stoab_max", "zillmer_dauer", "ratzu_zw2", "ratzu_zw4",
+            "ratzu_zw12", "tafel_aktiv", "tafel_i", "tafel_ri", "tafel_ti", "zuschlag",
+            "zellen",
+        ),
+        "welt": ("neuzugang_pro_jahr", "neuzugang_trend", "verteilungen", "korrelationen"),
+        "beide": ("name",),
+    },
+}
+
+
+@dataclass(frozen=True)
+class GenerationFuehrung:
+    """Das Tarifwerk einer Generation, wie die Fuehrung es liest: Fenster,
+    Produkt, Nummernkreis, die Kernfelder (``generation_fields``), die
+    Schalter (``tarifwerk``), die BU-Grundlagen und die Zellen. Kein Seed,
+    keine Annahme, keine Verteilung."""
+
+    name: str
+    gueltig_von: _dt.date
+    gueltig_bis: _dt.date
+    max_endalter: int
+    produkt: str
+    knoten: str
+    nummernkreis: int
+    generation_fields: Mapping[str, Any]
+    tarifwerk: Mapping[str, Any]
+    bu_generation_fields: Optional[Mapping[str, Any]]
+    zellen: Tuple[TarifZelle, ...]
+
+
+@dataclass(frozen=True)
+class Fuehrungssicht:
+    """Was die Fuehrung von der Config liest (ADR-031): die Tarifwerke der
+    Generationen, der Betriebsbeginn, die Nummernkreise, die Berichtsfelder.
+    Eine Anwendung ohne Simulation (etwa ein Cashflow-Lauf) kommt mit dieser
+    Sicht und dem Bestand aus."""
+
+    beschreibung: str
+    betriebsbeginn: Optional[_dt.date]
+    teilbestand_getrennt: bool
+    berichtshinweis: str
+    generationen: Tuple[GenerationFuehrung, ...]
+
+    def generation(self, name: str) -> GenerationFuehrung:
+        for g in self.generationen:
+            if g.name == name:
+                return g
+        raise KeyError(f"Tarifgeneration {name!r} nicht in der Config")
+
+
+@dataclass(frozen=True)
+class GenerationWelt:
+    """Was die Welt ueber eine Generation weiss: Verkaufsvolumen und die
+    Verteilung des Neugeschaefts. Das Fenster, in dem sie verkauft, liest
+    die Welt aus der Fuehrungssicht."""
+
+    name: str
+    neuzugang_pro_jahr: int
+    neuzugang_trend: float
+    verteilungen: Mapping[str, VerteilungsSpec]
+    korrelationen: Tuple[Korrelation, ...]
+
+
+@dataclass(frozen=True)
+class Weltsicht:
+    """Was die Welt von der Config liest (ADR-031): Seed, Erfahrungsannahmen,
+    Plausibilitaet, Referenzstichtag, Wochentagsgewichte, Meldeverzug und je
+    Generation Neuzugang und Verteilungen. Kein Tarifwerk."""
+
+    seed: int
+    annahmen: Annahmen
+    plausibilitaet: Mapping[str, Tuple[float, float]]
+    referenzstichtag: Optional[_dt.date]
+    wochentagsgewichte: Mapping[str, float]
+    meldeverzug_tod: Meldeverzug
+    generationen: Tuple[GenerationWelt, ...]
+
+
 @dataclass
 class BestandConfig:
     seed: int
@@ -1036,6 +1168,47 @@ class BestandConfig:
         if len(kreise) != len(set(kreise)):
             fehler.append("nummernkreis: nicht eindeutig — zwei Generationen teilten sich Police-Nummern")
         return fehler
+
+    def fuehrung(self) -> Fuehrungssicht:
+        """Die Sicht der Fuehrung auf diese Config (ADR-031)."""
+        return Fuehrungssicht(
+            beschreibung=self.beschreibung,
+            betriebsbeginn=self.tagesbetrieb.betriebsbeginn,
+            teilbestand_getrennt=self.tagesbetrieb.teilbestand_getrennt,
+            berichtshinweis=self.tagesbetrieb.berichtshinweis,
+            generationen=tuple(
+                GenerationFuehrung(
+                    name=g.name, gueltig_von=g.gueltig_von, gueltig_bis=g.gueltig_bis,
+                    max_endalter=g.max_endalter, produkt=g.produkt, knoten=g.knoten,
+                    nummernkreis=self.nummernkreis(g),
+                    generation_fields=g.generation_fields(), tarifwerk=g.tarifwerk(),
+                    bu_generation_fields=(
+                        g.bu_generation_fields() if g.produkt == "bu" else None),
+                    zellen=tuple(g.zellen),
+                )
+                for g in self.generationen
+            ),
+        )
+
+    def welt(self) -> Weltsicht:
+        """Die Sicht der Welt auf diese Config (ADR-031)."""
+        return Weltsicht(
+            seed=self.seed,
+            annahmen=self.annahmen,
+            plausibilitaet=dict(self.plausibilitaet),
+            referenzstichtag=self.referenzstichtag,
+            wochentagsgewichte=dict(self.tagesbetrieb.wochentagsgewichte),
+            meldeverzug_tod=self.tagesbetrieb.meldeverzug_tod,
+            generationen=tuple(
+                GenerationWelt(
+                    name=g.name, neuzugang_pro_jahr=g.neuzugang_pro_jahr,
+                    neuzugang_trend=g.neuzugang_trend,
+                    verteilungen=dict(g.verteilungen),
+                    korrelationen=tuple(g.korrelationen),
+                )
+                for g in self.generationen
+            ),
+        )
 
     def nummernkreis(self, gen: TarifGeneration) -> int:
         """Der Nummernkreis einer Generation: explizit aus der Config, sonst
