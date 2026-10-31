@@ -47,6 +47,7 @@ from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.gates import stand_belegen as _stand
 from rechner_pipeline.gates._common import (
     Exit,
+    GeleseneDatei,
     ToolboxResult,
     build_result,
     ein_ausgabe_benannt,
@@ -86,11 +87,12 @@ def fall_angaben(fall: Path) -> Dict[str, str]:
     return {"name": Path(fall).name, "scope": fall_mod.lade_scope(Path(fall))}
 
 
-def lieferung(fall: Path) -> Dict[str, Any]:
+def lieferung(fall: Path, *, eingang_gelesen: Optional[GeleseneDatei] = None) -> Dict[str, Any]:
     """Die Lieferung, wie der Fall sie bindet (ADR-002): der SHA-256 von
     ``eingang.json`` und je registrierter Quelle Name und SHA-256."""
     # Einmal lesen: Hash und Inhalt aus denselben Bytes (Review T23-01).
-    gelesen = lies_gehasht(Path(fall) / fall_mod.EINGANG_REGISTER)
+    gelesen = (eingang_gelesen if eingang_gelesen is not None
+               else lies_gehasht(Path(fall) / fall_mod.EINGANG_REGISTER))
     register = gelesen.json()
     quellen = sorted(({"datei": q["datei"], "sha256": q["sha256"]}
                       for q in register.get("quellen") or []), key=lambda q: q["datei"])

@@ -1904,6 +1904,7 @@ def _passende_bestandsbelege(
                         stichtag_2=stichtage[1],
                         erwartetes_system=dict(system),
                         fall=fall,
+                        repo_root=repo_root,
                     )
                 )
                 if "abnahmebericht" in pfade:
@@ -2150,6 +2151,7 @@ def _lebenslauf_vorlage(
     systemstand: Mapping[str, str],
     schluesselring: Mapping[str, bytes],
     eingang_befund: List[str],
+    eingang_gelesen: Optional[GeleseneDatei] = None,
 ) -> Tuple[Optional[dict], Optional[str], List[str]]:
     """Die Vorlage von A-M6 bzw. A-M5 am festen Ort, NACHGERECHNET gegen Fall,
     Eingang, Ordnung und Linie: ``(inhalt, vorlage_sha256, fehler)``.
@@ -2180,7 +2182,8 @@ def _lebenslauf_vorlage(
         try:
             soll = {
                 "fall": fall_belegen.fall_angaben(fall),
-                "lieferung": fall_belegen.lieferung(fall),
+                "lieferung": fall_belegen.lieferung(
+                    fall, eingang_gelesen=eingang_gelesen),
                 "zielsystem": fall_belegen.zielsystem(linie_pfad),
             }
         except (fall_mod.FallFehler, OSError, ValueError, KeyError) as exc:
@@ -2770,16 +2773,25 @@ def main(argv: Optional[List[str]] = None):
         if sf:
             return _sperre("freigabe", "Annahme verweigert: externe Freigabeschluessel "
                            "ungueltig: " + "; ".join(sf[:5]))
+        eingang_gelesen = None
+        if args.gate == AUFTRAG_GATE:
+            try:
+                eingang_gelesen = lies_gehasht(fall / "eingang.json")
+            except OSError as exc:
+                return _sperre("eingang", f"Eingang nicht lesbar: {exc}")
         lebenslauf_inhalt, vorlage_sha, vorlage_fehler = _lebenslauf_vorlage(
             args.gate, fall, ordnung=zeichnungsordnung, linie_pfad=linie_pfad,
             linie=ordnungsglieder, systemstand=entscheid_systemstand,
-            schluesselring=schluesselring, eingang_befund=eingangs_fehler)
+            schluesselring=schluesselring, eingang_befund=eingangs_fehler,
+            eingang_gelesen=eingang_gelesen)
         if vorlage_fehler:
             return _sperre("vorbedingung", f"Annahme verweigert: {args.gate} braucht seine "
                            "Vorlage: " + "; ".join(vorlage_fehler[:5]))
         rolle_der_vorlage = "fallauftrag" if args.gate == AUFTRAG_GATE else "fallabbruch"
         pflichtbelege[rolle_der_vorlage] = [str(vorlage_sha)]
-        bekannte_hashes["eingang.json"] = _sha256_datei(fall / "eingang.json")
+        bekannte_hashes["eingang.json"] = (
+            eingang_gelesen.sha256 if eingang_gelesen is not None
+            else _sha256_datei(fall / "eingang.json"))
     # Annahme-Sperre: eine Annahme setzt einen integeren Fall und
     # endgueltige Entscheidungen voraus — sonst wuerde ein ungeloester
     # Quellen-Widerspruch oder der Arbeitsstand eines Agenten still zur
@@ -3276,6 +3288,18 @@ def main(argv: Optional[List[str]] = None):
                         "Annahme verweigert: das Testergebnis traegt "
                         "nicht den aktuellen Systemstand — Test und "
                         f"Gate neu fahren: {am1_kommando}",
+                    )
+                # Pruefrunde T28, Befund 01: Komponentenzahl und Profil, mit
+                # denen das Ergebnis urteilt, stehen im Ergebnis selbst. Die
+                # Annahme rechnet den Test deshalb mit seinem Aufruf nach,
+                # dieselbe Funktion wie die Vorlage.
+                am1_nachrechnung = am1_gate.test_nachgerechnet(
+                    am1_test, fall, Path(args.repo_root).resolve())
+                if am1_nachrechnung:
+                    return _sperre(
+                        "vorbedingung",
+                        "Annahme verweigert: " + "; ".join(am1_nachrechnung[:3])
+                        + f" — Test und Gate neu fahren: {am1_kommando}",
                     )
                 am1_titel = (
                     am1_ledger.get("summary", {})
@@ -3916,6 +3940,17 @@ def main(argv: Optional[List[str]] = None):
         # Der Inhalt des Auftrags bzw. Abbruchs, signiert (ADR-026): Wer spaeter
         # liest, wer den Fall fuehrt und unter welchen Mandaten, liest es hier.
         kern_inhalt[P9_LEBENSLAUF_FELDER[args.gate]] = lebenslauf_inhalt
+    if args.entscheid == "angenommen" and args.gate == AUFTRAG_GATE:
+        # Der Eingang wurde vor der Vorlage geprueft. Falls danach eine
+        # registrierte Kopie oder die Quellenmenge wechselt, duerfen die
+        # Inventar-Hashes des Snapshots keinen anderen Stand beauftragen.
+        quellen = lebenslauf_inhalt["lieferung"]["quellen"]
+        erwartet = {f"eingang/{q['datei']}": q["sha256"] for q in quellen}
+        inventar = {name: sha for name, sha in kern_inhalt["artefakt_hashes"].items()
+                    if name.startswith("eingang/")}
+        if inventar != erwartet:
+            return _sperre("eingang", "Annahme verweigert: registrierte Quellen "
+                           "weichen beim Zeichnen von der Lieferung ab")
     if auftrag_spitze is not None:
         # Jede Zeichnung im Fall (Annahme oder gezeichnete Ablehnung) nennt
         # signiert den Auftrag, auf dem sie steht (Nachtrag Pruefrunde J).

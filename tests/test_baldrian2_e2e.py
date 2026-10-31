@@ -340,7 +340,9 @@ def gefahrener_fall(tmp_path_factory) -> Path:
     # Zehn Eingaben, eine gebunden: so war der Stand. Und ausgerechnet die
     # eine wurde ZWEIMAL gelesen — einmal zum Verarbeiten, viel spaeter
     # noch einmal zum Hashen. Jetzt stammt beides aus einem Lesevorgang,
-    # und das ist hier nachpruefbar.
+    # und das ist hier nachpruefbar. Die unabhängige Nachrechnung des
+    # Schichtbelegs liest denselben Bestand ein zweites Mal; jede der
+    # beiden Rechnungen bindet ihre verarbeiteten Bytes selbst.
     bestand_schluessel = next(
         k for k in ms_eingaben if k.endswith("bestand.parquet"))
     assert ms_beleg["bestand_sha256"] == ms_eingaben[bestand_schluessel]
@@ -906,19 +908,14 @@ def test_die_aktuarielle_abnahme_trifft_die_gelieferten_werte(
     assert bericht["mengenbefunde"] == []
 
 
-def test_der_bestand_wird_genau_einmal_gelesen(gefahrener_fall: Path):
-    """Review T25-05, Haelfte (b), Klasse (2): Das Controlling las den
-    Bestand ZWEIMAL — einmal zum Verarbeiten, viel spaeter noch einmal
-    zum Hashen. Dazwischen lag der ganze Lauf; der Beleg bezeugte damit
-    nicht die verarbeiteten Bytes.
-
-    Der Hash-Vergleich im Beleg zeigt das NICHT: In einem ruhigen Test
-    aendert sich die Datei zwischen beiden Lesungen nicht, also stimmen
-    beide Hashes. Bezeugt wird die Behauptung erst durch Zaehlen."""
+def test_bestand_je_rechnung_einmal_gelesen(gefahrener_fall: Path):
+    """Das Controlling liest den Bestand einmal fuer sein Urteil, die
+    neue unabhaengige Schicht-Nachrechnung einmal fuer ihres. Ein dritter
+    Zugriff waere wieder das ungebundene spaete Hashen aus T25-05."""
     bestand = gefahrener_fall / "abgeleitet" / "bestand" / "bestand.parquet"
     assert LESEZAEHLER, "der Zaehler hat nichts gesehen"
-    assert LESEZAEHLER.get(str(bestand.resolve())) == 1, sorted(
-        (n, k) for k, n in LESEZAEHLER.items() if n > 1)
+    assert LESEZAEHLER.get(str(bestand.resolve())) == 2, sorted(
+        (n, k) for k, n in LESEZAEHLER.items() if n > 2)
 
 
 def test_das_controlling_prueft_jeden_vertrag(gefahrener_fall: Path):

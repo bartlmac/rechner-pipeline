@@ -86,7 +86,9 @@ INVENTAR = {
     "gates/fuehrungsprobe.py": (1, 1, 0),
     "gates/gate_entscheid.py": (0, 1, 0),
     "gates/generation_golden.py": (1, 1, 0),
-    "gates/migrationssuite_lauf.py": (1, 1, 0),
+    # T28-04: A-M4 liest die bereits gebundene Spez auch fuer die wirksamen
+    # ModelPoint-Grundlagen des Fuehrungswerts; beide Leser nutzen den Lader.
+    "gates/migrationssuite_lauf.py": (2, 2, 0),
     "gates/verankerung_belegen.py": (1, 1, 0),
     "quellen/tafel_import.py": (1, 0, 0),
     "spez/erzeugen.py": (0, 0, 1),

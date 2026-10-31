@@ -1293,15 +1293,16 @@ def test_ein_beleg_dessen_parameterblock_eine_auskunft_fuehrt_die_eingaben_nicht
         _schicht_pruefen(fall, name, _auskunft_des_falls(fall))
 
 
-def test_keine_auskunft_auf_beiden_seiten_gilt_als_gleich(gefahrener_fall):
-    """Die Gegenseite der Welt-Gleichheit: Ein Beleg ohne Auskunft (weder
-    im Parameterblock noch unter den Eingaben) und ein Lauf ohne Auskunft
-    sind dieselbe Welt — sonst waere jeder Fall ohne Herabsetzungen
-    gesperrt. Mutationsprobe: ``None`` == ``None`` als ungleich -> rot."""
+def test_behauptete_welt_ohne_auskunft_ersetzt_keinen_erzeugerlauf(gefahrener_fall):
+    """Ein Beleg mit Auskunft wird nicht durch das Streichen von Name und
+    Hash zu einem Beleg ohne Auskunft. Nur der Erzeuger kann die andere
+    Welt nachrechnen; ein echter Beleg ohne Auskunft wird separat in
+    ``test_verankerung_belegen`` positiv geprueft."""
     fall = gefahrener_fall
     name = _prov_manipuliert(fall, _ohne_auskunft_ueberhaupt,
                              "schicht_ohne.json")
-    assert _schicht_pruefen(fall, name, None)
+    with pytest.raises(SystemExit, match="nachgerechneten Beleg"):
+        _schicht_pruefen(fall, name, None)
     with pytest.raises(SystemExit, match="keine Auskunft"):
         _schicht_pruefen(fall, name, _auskunft_des_falls(fall))
 
@@ -1413,11 +1414,16 @@ def test_die_version_des_abnahmeberichts_nennt_den_grund():
     # der Tabelle: 7.0.0 (Pruefrunde 2026-10-01), 8.0.0 (Fuehrungswert,
     # 2026-10-01), 9.0.0 (Tarifregeln aus der Spez, ADR-024 Nachtrag) und
     # 10.0.0 (Pruefrunde G: Fuehrungswert nachgerechnet, Belege an der Spez)
-    # und 10.1.0 (Ort des Berichts, relative Verweise) erweitern denselben
-    # Abschnitt; der Grund fuer 6.0.0 steht weiter darin.
+    # und 10.1.0 (Ort des Berichts, relative Verweise) und 11.0.0 (Suite
+    # nachgerechnet, Pruefrunde T28), 12.0.0 (Schichtbeleg) und 13.0.0
+    # (wirksame Rechnungsgrundlagen) erweitern denselben Abschnitt; der
+    # Grund fuer 6.0.0 steht weiter darin.
     abschnitt = gate_dokument.split("\n### A-M4-Vorlage", 1)[1].split("\n## ", 1)[0]
     versionen = {z.split("`")[1]: z for z in abschnitt.splitlines() if z.startswith("- `")}
-    assert abnahmebericht.GATE_VERSION == "10.1.0"
+    assert abnahmebericht.GATE_VERSION == "13.0.0"
+    assert "Rechnungsgrundlagen" in versionen["13.0.0"]
+    assert "Schichtbeleg" in versionen["12.0.0"]
+    assert "aufruf" in versionen["11.0.0"]
     assert "bericht_ort" in versionen["10.1.0"]
     assert "nachgerechnet" in versionen["10.0.0"]
     assert "Spez" in versionen["9.0.0"]

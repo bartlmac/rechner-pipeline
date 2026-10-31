@@ -200,7 +200,12 @@ GATE = "A-M4.migrationscontrolling"
 #: die Verweise fallrelativ ins Leere. Optional (ADR-012, Minor): Ein Beleg
 #: ohne das Feld bleibt gueltig und wird wie bisher gerendert, damit ein
 #: gezeichneter Bericht bytegleich reproduzierbar bleibt.
-GATE_VERSION = "10.1.0"
+#: 11.0.0 (Pruefrunde T28, Befund 01): Im Bestands-Scope traegt die Suite
+#: ihren Aufruf (``aufruf``), und A-M4 rechnet sie damit vollstaendig nach;
+#: die Komponentenzahl, die die Toleranz eines Vergleichs weitet, ist die des
+#: Erzeugers, nicht die des Belegs. Eine Suite ohne Aufruf oder mit einem
+#: abweichenden Feld war vorher ein gueltiger Beleg.
+GATE_VERSION = "13.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -1630,12 +1635,19 @@ def _bestands_suite_fehler(
     stichtag_2: str,
     erwartetes_system: Dict[str, str],
     fall: Path,
+    repo_root: Path,
 ) -> List[str]:
     """Vollstaendigkeit und Fallstand der Suite im Bestands-Scope.
 
     ``fall`` hat keinen Standardwert (Pruefrunde G): Ohne ihn waere der
     Fuehrungswert nur der Form nach geprueft, und jeder Aufrufer — Bericht
-    und Entscheid — muss ihn nachrechnen lassen.
+    und Entscheid — muss ihn nachrechnen lassen. ``repo_root`` ebenso wenig
+    (Pruefrunde T28, Befund 01): Mit ihm wird die ganze Suite nachgerechnet
+    (:func:`_suite_nachgerechnet`).
+
+    Ausserhalb des Bestands-Scopes laeuft diese Pruefung nicht: Dort ist die
+    Suite ein Ergebnis des Aufrufers ohne Erzeuger, den jemand nachfahren
+    koennte, und A-M4 pinnt sie im Tarif-Scope nicht (``models.belegrollen``).
     """
     fehler: List[str] = []
     erwartet = {
@@ -1677,7 +1689,74 @@ def _bestands_suite_fehler(
         return fehler
     regeln, _, _ = _tarifregeln_soll(fall, suite)
     fehler.extend(fuehrungswert_nachgerechnet(suite, Path(fall), regeln))
-    return fehler
+    if fehler:
+        return fehler
+    return _suite_nachgerechnet(suite, Path(fall), Path(repo_root))
+
+
+def _suite_nachgerechnet(suite: Dict[str, Any], fall: Path, repo_root: Path) -> List[str]:
+    """Die Suite mit dem Aufruf des Belegs neu fahren und Feld fuer Feld
+    gegen den Beleg halten (Pruefrunde T28, Befund 01).
+
+    ``_suite_fehler`` rechnet jedes Urteil nach, aber mit der Toleranz, die
+    der Beleg selbst nennt: Die Komponentenzahl je Vergleich stand nur dort.
+    Der Pruefer behauptete 200.001 Komponenten fuer eine Police ohne
+    Erhoehungsscheibe, und Bericht wie A-M4 nahmen eine um 1.000 EUR falsche
+    Pruefaussage an. Die Zahl wird jetzt nicht gelesen, sondern vom Erzeuger
+    auf den gebundenen Eingaben hergeleitet, und mit ihr jedes andere Feld
+    (dieselbe Figur wie ``_fuehrungsprobe_nachgerechnet``). Weicht ein Feld
+    ab, bezeugt der Beleg nicht den Lauf, den er nennt.
+    """
+    import contextlib
+    import io
+
+    from rechner_pipeline.gates import migrationssuite_lauf
+
+    aufruf = suite.get("aufruf")
+    if not isinstance(aufruf, list) or not all(isinstance(a, str) for a in aufruf):
+        return ["Migrationssuite nennt ihren Aufruf nicht — ein Beleg, den niemand "
+                "nachrechnen kann, bezeugt keine Pruefung; die Suite neu ausfuehren "
+                "(gates.migrationssuite_lauf)"]
+    argv = ["--fall", str(fall), "--repo-root", str(repo_root)]
+    for i, wert in enumerate(aufruf):
+        if (i and aufruf[i - 1] in migrationssuite_lauf.PFAD_OPTIONEN
+                and not Path(wert).is_absolute()):
+            wert = str(fall / wert)
+        argv.append(wert)
+    meldungen = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(meldungen), contextlib.redirect_stdout(io.StringIO()):
+            _code, neu = migrationssuite_lauf.fuehre_suite(
+                migrationssuite_lauf.parser().parse_args(argv))
+    except (Exception, SystemExit) as exc:  # noqa: BLE001 — jede Form zaehlt
+        return [f"Migrationssuite ist mit ihrem eigenen Aufruf nicht nachrechenbar "
+                f"({type(exc).__name__}: {exc}) {meldungen.getvalue()[:200]}".strip()]
+    if neu is None:
+        return ["Migrationssuite ist mit ihrem eigenen Aufruf nicht nachrechenbar: "
+                + meldungen.getvalue()[:300]]
+
+    def norm(wert: Any) -> Any:
+        return json.loads(json.dumps(wert, sort_keys=True, default=str))
+
+    def kanonisch(wert: Any) -> str:
+        # JSON unterscheidet true, 1 und 1.0. Python-== wuerde sie als
+        # gleich behandeln und damit einen anderen Beleg durchlassen.
+        return json.dumps(wert, sort_keys=True, ensure_ascii=False)
+
+    beleg, gerechnet = norm(suite), norm(neu)
+    abweichend = sorted(k for k in set(beleg) | set(gerechnet)
+                        if (k not in beleg or k not in gerechnet
+                            or kanonisch(beleg[k]) != kanonisch(gerechnet[k])))
+    if not abweichend:
+        return []
+    policen = sorted(
+        str(u.get("police_id")) for u, v in zip(beleg.get("vertraege") or [],
+                                               gerechnet.get("vertraege") or [])
+        if isinstance(u, dict) and u != v)
+    return [f"Migrationssuite: der Beleg weicht von der nachgerechneten Suite desselben "
+            f"Aufrufs ab in {abweichend[:8]}"
+            + (f" (Policen {policen[:5]})" if policen else "")
+            + " — er bezeugt nicht die Pruefung, die er nennt"]
 
 
 def _suite_auskunft_fehler(suite: Dict[str, Any]) -> List[str]:
@@ -2870,6 +2949,7 @@ def main(argv: Optional[List[str]] = None):
             stichtag_2=args.stichtag_2,
             erwartetes_system=gemeinsame_bindung["system"],
             fall=fall,
+            repo_root=repo_root,
         ) + _suite_auskunft_fehler(suite)
         if suite_scope_fehler:
             return _contract_fehler(

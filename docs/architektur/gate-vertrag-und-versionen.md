@@ -36,8 +36,8 @@ startet keinen Gate-Lauf.
 | P-B1 (Version `4.0.0`) | `gates.bestand_validate` | den geführten Bestand |
 | A-K2-Vorlage (Version `2.0.0`) | `gates.kernstand_belegen` | die Änderung des Kernstands (Rechenkern, Referenzwerte, Grundsatzdokumentation) gegenüber dem zuletzt abgenommenen Stand; legt Beleg und lesbare Sicht als Vorlage für A-K2 vor |
 | A-T1-Vorlage (Version `2.0.0`) | `gates.tarifwerk_belegen` | die Änderung des Tarifwerks (Tarifpläne und Parametrierung der eigenen Generationen) gegenüber dem zuletzt abgenommenen Stand; legt Beleg und lesbare Sicht als Vorlage für A-T1 vor |
-| A-M-Vorlagen | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
-| A-M4-Vorlage (Version `10.1.0`) | `gates.abnahmebericht` | die Migrationssuite und die Pflichtbelege des Migrationscontrollings; rendert die Entscheidungsvorlage für A-M4 |
+| A-M-Vorlagen (Version `4.0.0`) | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
+| A-M4-Vorlage (Version `13.0.0`) | `gates.abnahmebericht` | die Migrationssuite und die Pflichtbelege des Migrationscontrollings; rendert die Entscheidungsvorlage für A-M4 |
 
 Was ein versioniertes Gate im Einzelnen prüft und wie seine Version
 gewachsen ist, steht in den Abschnitten darunter.
@@ -78,6 +78,8 @@ Versionen:
 - `4.0.0`: A-M4 verlangt zusätzlich das Tarifwerk der PLV (A-T1, Rolle `tarifwerkstand`, `gates.tarifwerk_belegen`). Die Basislinie der T-Box fällt weg (Erstabnahme im Linienbereich, Verweis `stand_belegen verweisen --linie`). Mit `--linie` wird nur unter der Spitze der Versionslinie der Zeichnungsordnung gezeichnet, und jede Vorbedingung wird gegen die Ordnung gelesen, unter der sie gezeichnet wurde. P9-Schema 9 mit Scope `linie` und `zeichnung.ordnungsglied_sha256` (ADR-025).
 - `5.0.0`: Jede Annahme eines Falls außer dem Auftrag selbst verlangt den geltenden, vom Vorstand gezeichneten Fallauftrag `A-M6` auf der heutigen Lieferung (`eingang.json`, `fall.json`) und nennt ihn signiert (`fallauftrag`). Simulierte Rollen zeichnen nur unter dem Mandat, das der Auftrag ihnen nennt. Neu ist der Fallabbruch `A-M5`, gezeichnet von der Programmleitung mit dem Recht aus dem Auftrag; danach ist im Fall nichts mehr zeichenbar. P9-Schema 10 mit `auftrag`, `abbruch` und `fallauftrag` (ADR-026). Eine Annahme gründet nur auf Annahmen des Falls unter dem geltenden Auftrag, die Linie des Aufrufs ist die Linie des Auftrags, und A-M5 geht auch bei verletztem Eingang, mit dem Befund im Abbruch (ADR-026, Nachtrag Runde G). Zugleich ist die Linie Pflicht: Ohne `--linie` wird nicht entschieden, und keine Vorbedingung wird ohne sie gelesen (ADR-025, Nachtrag 2026-10-01).
 
+Prüfrunde T28-03: Beim Erzeugen von A-M6 stammen der Lieferungsvergleich und der gebundene Hash von `eingang.json` aus derselben Lesung; das P9-Schema verlangt ihre Gleichheit. Vor dem Schreiben vergleicht der Erzeuger außerdem die Hashes der registrierten Quellen mit seinem Dateiinventar. P9 bleibt `5.0.0`: Ein Auftrag mit zwei verschiedenen Eingangshashes war bereits beim Gebrauch ungültig; ältere signierte Aufträge ohne Quelleninventar bleiben lesbar.
+
 ### P-B1: der geführte Bestand
 
 P-B1 prüft:
@@ -112,6 +114,18 @@ Versionen:
 - `2.0.0`: Ein Vergleichsstand, dem der Gegenstand an den heutigen Pfaden fehlt, wird verweigert. Vorher schrieb ein solcher Lauf einen Beleg: Gegen einen Stand vor dem Umzug nach `plv/` belegte A-T1 das Tarifwerk „vorher“ als leer und jeden Tarifplan und jede Generation als neu (ADR-028, Nachtrag). Im selben Sprung zählen beide nur noch die Dateien ihres Gegenstands: im Kern Code und Rechnungsgrundlagen, bei den Referenzwerten die JSON-Dateien, bei den Tarifplänen die Markdown-Dateien. Eine fremde Datei daneben (eine PDF der Doku-Engine, eine `.DS_Store`) machte den Stand vorher still „anders“. P9 und `stand_belegen` lesen diese Fingerabdrücke nur; ihre Versionen folgen ihren eigenen Regeln.
 
 
+### A-M-Vorlagen: der aktuarielle Test
+
+Die Vorlage rechnet das Ergebnis von innen nach außen nach: jeden
+Einzelvergleich gegen die Toleranz des Profils, jedes Vertragsurteil,
+Zähler und Stichprobe, alle Verteilungsgrößen und Abnahmegrenzen.
+
+Versionen:
+
+- `2.0.0`: der aktuarielle Test in drei Abnahmen (A-M1, A-M2, A-M3) mit eigenen Profilen und Prüfpunkten.
+- `3.0.0`: Im Bestands-Scope nennt das Ergebnis seinen Aufruf (`aufruf`), und Vorlage wie Entscheid fahren den Test damit auf den gebundenen Eingaben neu und halten das ganze Ergebnis dagegen. Komponentenzahl je Vertrag und Kriterien des Profils sind damit die des Erzeugers und nicht die des Ergebnisses. Ein Ergebnis ohne Aufruf, mit einer behaupteten Komponentenzahl oder mit eigenen Kriterien war vorher gültig (Prüfrunde T28, Befund 01).
+- `4.0.0`: Der abgeleitete Schichtbeleg wird mit dem Aufruf seines Erzeugers auf den gebundenen Eingaben vollständig nachgerechnet. Die Pflichtbindungen und Schichtwerte folgen damit aus dem Erzeugerlauf; ein Beleg ohne Aufruf oder mit ausgelassener Verankerungsbindung war vorher gültig (Prüfrunde T28, Befund 02).
+
 ### A-M4-Vorlage: Migrationssuite und Migrationscontrolling
 
 Die Vorlage berechnet Residuen, Einzel-, Vertrags- und Suiteurteile neu.
@@ -134,6 +148,9 @@ Versionen:
 - `9.0.0`: Die Führungsprobe trägt Fassung 5, Tarifwerk und Quellverfahren aus der Spez statt aus Schaltern; ihr Aufruf nennt keine Tarifschalter mehr. Ein Beleg der Fassung 4 war gültig und ist mit seinem Aufruf nicht mehr nachrechenbar (ADR-024, Nachtrag).
 - `10.0.0`: Der Führungswert der Suite wird auf den gebundenen Bytes (Bestand, Nebentabellen, Config, Tarifwerk der Spez) über denselben Weg wie die Suite nachgerechnet und in der Vorlage ausgewiesen (Summary `fuehrungswert`, HTML je Vertrag). A-M4 bindet die Spez der Generation (Summary `tarifregeln`), und jeder Beleg der Bestandsstrecke (Übernahme, Schicht, aktuarieller Test, Suite, Führungsprobe) muss genau ihre Regeln nennen und sie gelesen haben. Ein verfälschter Führungswert oder ein Beleg mit anderer Regelangabe war vorher gültig (Prüfrunde G, ADR-024, vierter Nachtrag).
 - `10.1.0`: Die Erzeugung des Berichts kann seinen Ort im Fall nennen (`bericht_ort`); dann verweist der Bericht relativ zu sich selbst auf die Bestandsberichte. Vorher zeigten die Verweise fallrelativ ins Leere (zwei tote Verweise im gezeichneten Bericht von Fall 3). Das Feld ist optional: Ein Beleg ohne es bleibt gültig und wird wie bisher gerendert, damit ein gezeichneter Bericht bytegleich reproduzierbar bleibt.
+- `11.0.0`: Im Bestands-Scope nennt die Suite ihren Aufruf (`aufruf`), und die Vorlage fährt sie damit auf den gebundenen Eingaben neu und hält den ganzen Beleg dagegen. Die Komponentenzahl, um die ein Vergleich seine Toleranz weitet, ist damit die des Erzeugers und nicht die des Belegs. Eine Suite ohne Aufruf oder mit einem abweichenden Feld war vorher ein gültiger Beleg; der Prüfer hatte mit 200.001 behaupteten Komponenten eine um 1.000 EUR falsche Prüfaussage bis zur gezeichneten Annahme gebracht (Prüfrunde T28, Befund 01).
+- `12.0.0`: Die Suite kann eine abgeleitete Korrekturschicht nur aus einem vollständig nachgerechneten Schichtbeleg übernehmen. Fehlt eine Pflichtbindung oder weicht ein Schichtwert vom Erzeugerlauf ab, wird die Vorlage verweigert; vorher konnte der Schichtbeleg seine Pflichtbindungen selbst auswählen (Prüfrunde T28, Befund 02).
+- `13.0.0`: Die Rechnungsgrundlagen der Config werden je Police gegen die vollständige wirksame Spez-Zelle geprüft, einschließlich der Kern-Defaults für ausgelassene optionale Felder. Eine Config mit anderem `zillmer_dauer`, Stornoabschlag oder Ratenzuschlag konnte vorher trotz einer Spez ohne dieses Feld einen anderen Führungswert erzeugen (Prüfrunde T28, Befund 04).
 
 ## Die Versionsregel
 

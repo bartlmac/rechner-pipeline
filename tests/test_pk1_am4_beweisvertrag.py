@@ -29,8 +29,10 @@ from rechner_pipeline.gates import (
     fuehrungsprobe,
     abnahmebericht,
     aktuartest,
+    aktuartest_lauf,
     bestand_validate,
     gate_entscheid,
+    migrationssuite_lauf,
 )
 from rechner_pipeline.gates._provenienz import (
     pruefe_pk1_beleg,
@@ -53,7 +55,7 @@ from rechner_pipeline.qa.aktuarieller_test import (
     Vertragspruefung,
     pruefe_stichprobe,
 )
-from rechner_pipeline.qa.migrationssuite import VertragsPruefung, pruefe_bestand
+from rechner_pipeline.qa.migrationssuite import VertragsPruefung
 from rechner_pipeline.qa.stichprobe import ziehe
 from tests.e2e_fixture import (
     O3_GENERATION,
@@ -115,6 +117,7 @@ def _bereite_fall(
             encoding="utf-8",
         )
         registrieren(fall, bestandsquelle)
+        _registriere_pruefstrecke(fall, tmp_path)
     assert pq3([
         "--fall", str(fall), "--repo-root", str(REPO_ROOT),
     ]).exit_code == 0
@@ -244,6 +247,119 @@ def pb1_vollprofil_argv(lauf: Path, config: Path, bis: str = "2020-01-01") -> li
     return argv
 
 
+#: Die Lieferung der Pruefstrecke des Ein-Policen-Bestandsfalls: die Abzuege
+#: zu beiden Stichtagen und ein Geschaeftsvorfall-Protokoll ohne Vorfall.
+ABZUG_1 = "abzug-2026-01-01.csv"
+ABZUG_2 = "abzug-2027-01-01.csv"
+GEVO_PROTOKOLL = "gevo-protokoll-2026.csv"
+#: Der Pruefpunkt je aktuarieller Abnahme: A-M1 am Migrationsstichtag (Beginn
+#: 2015-01-01, elf Jahre), A-M2 und A-M3 fuenf Jahre danach.
+AT_PUNKTE = {"A-M1": (132, ANLASS_UEBERNAHME), "A-M2": (192, "verlauf"),
+             "A-M3": (192, "verlauf")}
+#: Die Verschiebungen der gelieferten Werte: keine und eine, die den Test rot macht.
+AT_DRIFTS = (0.0, 25.0)
+AT_STICHPROBE = "stichprobe-aktuartest.json"
+
+
+def _at_lieferung(abnahme: str, drift: float) -> str:
+    return f"erwartung-{abnahme}-{int(drift)}.json"
+
+
+def _registriere_pruefstrecke(fall: Path, tmp_path: Path) -> None:
+    """Die Abzuege und das Protokoll registrieren, auf denen die Suite rechnet.
+
+    Ihre Werte sind die des Kerns fuer die eine Police auf der Spez des Falls,
+    auf den Cent gerundet: dieselbe Rechnung (``qa.migrationssuite.
+    pruefe_vertrag``) auf dem Modellpunkt, den der Erzeuger aus Stamm und
+    Zelle bildet. Registriert wird vor A-Q1, denn jede Annahme steht auf der
+    Lieferung ihres Auftrags (ADR-026); eine spaete Registrierung entwertete
+    den Auftrag und mit ihm A-Q1.
+    """
+    from rechner_pipeline.gates.migrationssuite_lauf import _zelle, tarifregeln_des_falls
+    from rechner_pipeline.models.bestand import model_point_kwargs
+    from rechner_pipeline.qa.migrationssuite import pruefe_vertrag
+    from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
+
+    spez = lade_spez_aus_bytes(spez_pfad(fall, O3_GENERATION).read_bytes())
+    regeln = tarifregeln_des_falls(fall, spez)
+    stamm = {"entry_age": 35, "sex": "M", "duration": 20, "premium_duration": 15,
+             "sum_insured": 100000.0, "zahlweise": 12}
+    urteil = pruefe_vertrag(VertragsPruefung(
+        police_id="7000001",
+        model_point=model_point_kwargs(stamm, dict(_zelle(spez, {}).model_point)),
+        # Beginn 2015-01-01: elf und zwoelf Jahre bis zu den Stichtagen.
+        monate_stichtag_1=132, monate_stichtag_2=144,
+        dk_erwartet_1=0.0, bjb_erwartet_1=0.0, dk_erwartet_2=0.0,
+        scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
+        stoab_je_baustein=regeln.stoab_je_baustein, tku_umfang=regeln.tku_umfang,
+        dk_am_jahrestag=(regeln.dk_stichtag == "jahrestag"),
+    ), red_verfahren=regeln.quell_red_verfahren)
+    wert = {p["groesse"]: round(p["system"], 2) for p in urteil["pruefungen"]}
+    lieferung = tmp_path / "pruefstrecke"
+    lieferung.mkdir()
+    # Die Lieferungen des aktuariellen Tests (gates.aktuartest_lauf): je
+    # Abnahme ein Pruefpunkt, ihr Wert der des Kerns, auf den Cent gerundet,
+    # und eine um 25 EUR verschobene Fassung fuer den roten Test.
+    from rechner_pipeline.qa.aktuarieller_test import ANLASS_VERLAUF
+    from rechner_pipeline.qa.aktuarieller_test import pruefe_vertrag as at_pruefe_vertrag
+    from rechner_pipeline.qa.testprofil import vorlage
+
+    for abnahme, (monate, anlass) in AT_PUNKTE.items():
+        at_urteil = at_pruefe_vertrag(Vertragspruefung(
+            police_id="7000001",
+            model_point=model_point_kwargs(stamm, dict(_zelle(spez, {}).model_point)),
+            historientyp="ohne_gevo",
+            punkte=(Pruefpunkt(monate, {"kVx_MRV": 0.0}, anlass),),
+            scheiben_mit_gamma1=regeln.scheiben_mit_gamma1,
+            stoab_je_baustein=regeln.stoab_je_baustein, tku_umfang=regeln.tku_umfang,
+        ), vorlage(abnahme, weite="vollbestand"), red_verfahren=regeln.quell_red_verfahren)
+        [kvx] = [p["system"] for p in at_urteil["pruefungen"]]
+        for drift in AT_DRIFTS:
+            (lieferung / _at_lieferung(abnahme, drift)).write_text(json.dumps({
+                "test": abnahme, "vertraege": [{
+                    "police_id": "7000001", "historientyp": "ohne_gevo",
+                    "punkte": [{"monate": monate, "anlass": anlass,
+                                "erwartet": {"kVx_MRV": round(kvx + drift, 2)}}]}]},
+                sort_keys=True), encoding="utf-8")
+            registrieren(fall, lieferung / _at_lieferung(abnahme, drift))
+    beleg = ziehe("vollbestand", ["7000001"]).als_beleg()
+    (lieferung / AT_STICHPROBE).write_text(
+        json.dumps({"A-M1_A-M2": beleg, "A-M3": beleg}, sort_keys=True), encoding="utf-8")
+    registrieren(fall, lieferung / AT_STICHPROBE)
+    assert ANLASS_VERLAUF in {a for _, a in AT_PUNKTE.values()}
+    for name, text in (
+            (ABZUG_1, "POLNR;DECKKAP;JBRUTTO;BEGINN\n"
+                      f"7000001;{wert['dk_stichtag_1']:.2f};{wert['bjb_stichtag_1']:.2f};"
+                      "2015-01-01\n"),
+            (ABZUG_2, "POLNR;DECKKAP;JBRUTTO;BEGINN\n"
+                      f"7000001;{wert['dk_stichtag_2']:.2f};;2015-01-01\n"),
+            (GEVO_PROTOKOLL, "POLNR;GEVO;DATUM;BETRAG;PARAM\n")):
+        (lieferung / name).write_text(text, encoding="utf-8")
+        registrieren(fall, lieferung / name)
+
+
+def _uebernimm_einpolice(fall: Path):
+    """Die eine Police uebernehmen (transformierte Zeile, Uebernahme mit
+    Beleg); ``(zeilen, uebernahme)``. Liegt die Uebernahme schon, bleibt sie."""
+    zeilen = fall / "abgeleitet" / "transformation" / "zeilen.json"
+    uebernahme = fall / "abgeleitet" / "bestand"
+    if (uebernahme / "bestand.parquet").is_file():
+        return zeilen, uebernahme
+    zeilen.parent.mkdir(parents=True, exist_ok=True)
+    zeilen.write_text(json.dumps([{
+        "police_id": 7000001, "beginn": "2015-01-01", "entry_age": 35,
+        "sex": "M", "duration": 20, "premium_duration": 15,
+        "sum_insured": 100000.0, "zahlweise": 12,
+    }]), encoding="utf-8")
+    assert bestand_uebernehmen.main([
+        "--fall", str(fall), "--zeilen", str(zeilen),
+        "--tarif-generation", TARIF_GENERATION, "--stichtag", "2026-01-01",
+        "--generation-spez", O3_GENERATION,
+        "--out-dir", str(uebernahme),
+    ]) == 0
+    return zeilen, uebernahme
+
+
 def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
     """Echte P-Q3/P-K1/P-B1-/Suite-/Berichtsbelege fuer einen Bestandsfall."""
     fall = _bereite_fall(tmp_path, ("klv/tg2012",), scope="bestand")
@@ -259,20 +375,7 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
     # Zeile, Uebernahme mit Beleg, Config aus der abgenommenen Spez,
     # Fortschreibung darauf — nur so kann die Fuehrungsprobe, die A-M4 im
     # Bestands-Scope verlangt, ueberhaupt etwas pruefen.
-    zeilen = fall / "abgeleitet" / "transformation" / "zeilen.json"
-    zeilen.parent.mkdir(parents=True, exist_ok=True)
-    zeilen.write_text(json.dumps([{
-        "police_id": 7000001, "beginn": "2015-01-01", "entry_age": 35,
-        "sex": "M", "duration": 20, "premium_duration": 15,
-        "sum_insured": 100000.0, "zahlweise": 12,
-    }]), encoding="utf-8")
-    uebernahme = fall / "abgeleitet" / "bestand"
-    assert bestand_uebernehmen.main([
-        "--fall", str(fall), "--zeilen", str(zeilen),
-        "--tarif-generation", TARIF_GENERATION, "--stichtag", "2026-01-01",
-        "--generation-spez", O3_GENERATION,
-        "--out-dir", str(uebernahme),
-    ]) == 0
+    zeilen, uebernahme = _uebernimm_einpolice(fall)
     # Seit Review T23-04 liegt jede P-B1-Rolle im Fall — auch die Config.
     config = einpolicen_config(fall / "abgeleitet", uebernahme=uebernahme)
     assert cli_fortschreibung.main([
@@ -294,62 +397,20 @@ def _bereite_bestandsfall(tmp_path: Path, ohne_abnahmen=()) -> Path:
 
     ziel_hash = sha256(ziel.read_bytes()).hexdigest()
 
-    kern = Rechenkern(KLV_DEFAULT)
-    s1, s2 = 12 * 9 + 5, 12 * 10 + 5
-    # Der Fuehrungswert (abnahmebericht 8.0.0): was der Abschluss fuer den
-    # Vertrag fuehrt, ueber die Strecke des Abschlusses aus dem Bestand, den
-    # die Suite bindet, mit der Config der Fuehrung.
-    # Seit Pruefrunde G rechnet A-M4 ihn auf den gebundenen Bytes nach und
-    # haelt die Regelangabe gegen die Spez: Die Suite dieses Tests entsteht
-    # deshalb wie bei der Produzentin (gates.migrationssuite_lauf) — dieselbe
-    # Funktion, jede gelesene Datei gebunden, die Regeln der Spez genannt.
-    import datetime as _dt
-
-    from rechner_pipeline.gates._common import Eingangsbindung
-    from rechner_pipeline.gates.migrationssuite_lauf import (
-        fuehrungswert_rechnen,
-        tarifregeln_des_falls,
-    )
-    from rechner_pipeline.models.fuehrungswert import kopf
-    from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
-
-    bindung = Eingangsbindung(fall)
-    bindung.binde(ziel)
-    regeln = tarifregeln_des_falls(fall, lade_spez_aus_bytes(
-        bindung.binde(spez_pfad(fall, O3_GENERATION)).roh))
-
-    def _neben(name: str):
-        pfad = lauf / name
-        return bindung.binde(pfad).roh if pfad.is_file() else None
-
-    fw_konvention, fw_werte = fuehrungswert_rechnen(
-        read_portfolio(ziel), _neben, bindung.binde(Path(config)).text(),
-        {"stichtag_1": _dt.date(2026, 1, 1), "stichtag_2": _dt.date(2027, 1, 1)},
-        tarifwerk_der_spez={regeln.generation: dict(regeln.tarifwerk)})
-    suite = pruefe_bestand(
-        [VertragsPruefung(
-            police_id="7000001",
-            model_point=asdict(KLV_DEFAULT),
-            monate_stichtag_1=s1,
-            monate_stichtag_2=s2,
-            dk_erwartet_1=round(kern.monatsreserve(s1).vx_mrv, 2),
-            bjb_erwartet_1=round(kern.gross_annual_premium(), 2),
-            dk_erwartet_2=round(kern.monatsreserve(s2).vx_mrv, 2),
-            scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None, dk_am_jahrestag=False,
-        )],
-        erwartete_anzahl=1,
-        stichtag_1="2026-01-01",
-        stichtag_2="2027-01-01",
-        bestand_sha256=ziel_hash,
-        system=gate_entscheid.systemstand(REPO_ROOT),
-        fuehrungswert=kopf(fw_konvention, bestand_sha256=ziel_hash,
-                           config_sha256=sha256(Path(config).read_bytes()).hexdigest()),
-        fuehrungswerte=fw_werte, red_verfahren="prospektiv",
-    )
-    suite["eingaben"] = bindung.als_beleg()
-    suite["tarifregeln"] = regeln.als_beleg()
+    # Die Suite entsteht beim Erzeuger (gates.migrationssuite_lauf) auf den
+    # registrierten Abzuegen: Seit Pruefrunde T28 (Befund 01) faehrt A-M4 sie
+    # mit ihrem Aufruf neu und haelt den ganzen Beleg dagegen. Eine Suite aus
+    # der Bibliothek, wie dieser Test sie vorher baute, nennt keinen Aufruf
+    # und ist kein Beleg mehr.
     suite_pfad = fall / "abgeleitet" / "suite.json"
-    suite_pfad.write_text(json.dumps(suite, sort_keys=True), encoding="utf-8")
+    assert migrationssuite_lauf.main([
+        "--fall", str(fall), "--generation", O3_GENERATION,
+        "--abzug-1", ABZUG_1, "--abzug-2", ABZUG_2, "--gevo-protokoll", GEVO_PROTOKOLL,
+        "--bestand", str(ziel), "--config", str(config),
+        "--stichtag-1", "2026-01-01", "--stichtag-2", "2027-01-01",
+        "--repo-root", str(REPO_ROOT), "--out", str(suite_pfad),
+    ]) == 0, "Migrationssuite des uebernommenen Ein-Policen-Bestands"
+    assert json.loads(suite_pfad.read_text(encoding="utf-8"))["suite_bestanden"] is True
     assert fuehrungsprobe.main([
         "--fall", str(fall), "--repo-root", str(REPO_ROOT),
         "--generation", O3_GENERATION,
@@ -475,9 +536,29 @@ def _aktuartest_belege(
     danach. Der Dateiname folgt dem Gate (``aktuartest`` bzw.
     ``aktuartest-<abnahme>``).
     """
+    from rechner_pipeline import fall as fall_mod
     from rechner_pipeline.qa.aktuarieller_test import ANLASS_VERLAUF
     from rechner_pipeline.qa.testprofil import vorlage
 
+    kennung = "aktuartest" if abnahme == "A-M1" else f"aktuartest-{abnahme}"
+    if fall_mod.lade_scope(fall) == "bestand":
+        # Seit Pruefrunde T28 (Befund 01) rechnen Vorlage und Entscheid das
+        # Ergebnis im Bestands-Scope mit seinem Aufruf nach: Es entsteht beim
+        # Erzeuger, auf den registrierten Lieferungen der Pruefstrecke.
+        _, uebernahme = _uebernimm_einpolice(fall)
+        assert aktuartest_lauf.main([
+            "--fall", str(fall), "--abnahme", abnahme, "--generation", O3_GENERATION,
+            "--erwartungswerte", _at_lieferung(abnahme, drift),
+            "--stichprobe", AT_STICHPROBE,
+            "--bestand", str(uebernahme / "bestand.parquet"),
+            "--repo-root", str(REPO_ROOT),
+        ]) == 0, abnahme
+        ergebnis = aktuartest.main([
+            "--fall", str(fall), "--abnahme", abnahme,
+            "--titel", "Aktuarieller Test E2E", "--repo-root", str(REPO_ROOT),
+        ])
+        assert ergebnis.exit_code == erwarteter_exit, ergebnis.errors
+        return
     kern = Rechenkern(KLV_DEFAULT)
     ta = 12 * 9
     if abnahme == "A-M1":
@@ -486,7 +567,6 @@ def _aktuartest_belege(
         monate = ta + 12 * 5
         anlass = ANLASS_VERLAUF
         profil = vorlage(abnahme, weite="vollbestand")
-    kennung = "aktuartest" if abnahme == "A-M1" else f"aktuartest-{abnahme}"
     test = pruefe_stichprobe(
         [Vertragspruefung(
             police_id="7000001",
@@ -1854,9 +1934,20 @@ def test_am1_rechnet_das_testverdikt_statt_dem_ledger_zu_glauben(
         "--fall", str(fall), "--titel", "Aktuarieller Test E2E",
         "--repo-root", str(REPO_ROOT),
     ])
-    assert ergebnis.exit_code == 0  # das Gate prueft nur Konsistenz ...
+    # Seit Pruefrunde T28 (Befund 01) rechnet schon die Vorlage im
+    # Bestands-Scope nach: Ein Ergebnis ohne Aufruf ist kein Beleg.
+    assert ergebnis.exit_code == 20
+    assert "nennt seinen Aufruf nicht" in ergebnis.errors[0]["message"]
+    # Wer auch das Ledger schreibt, scheitert an der Annahme: Sie bindet den
+    # Stand (und rechnet danach ebenfalls nach).
+    ledger = json.loads(ledger_pfad.read_text(encoding="utf-8"))
+    ledger.setdefault("summary", {})["belege"] = {
+        f"abgeleitet/berichte/{name}": sha256(
+            (fall / "abgeleitet" / "berichte" / name).read_bytes()).hexdigest()
+        for name in ("aktuartest.json", "aktuartest.html")}
+    ledger_pfad.write_text(json.dumps(ledger), encoding="utf-8")
     fremd = _p9_annahme(fall, "A-M1", "auf fremdem Systemstand")
-    assert fremd.exit_code == 20    # ... die Annahme bindet den Stand
+    assert fremd.exit_code == 20
     assert "Systemstand" in fremd.errors[0]["message"]
 
     # Und ein nachtraeglich ausgetauschter Bericht bricht die

@@ -49,7 +49,7 @@ flowchart TD
     betrieb -- 2 --> kern
     betrieb -- 32 --> models
     gates -- 14 --> bestand
-    gates -- 12 --> fall
+    gates -- 13 --> fall
     gates -- 10 --> kern
     gates -- 49 --> models
     gates -- 13 --> ontologie
@@ -90,7 +90,7 @@ flowchart TD
     bu -- 19 --> system_entscheid
     klv -- 9 --> system_assurance
     klv -- 44 --> system_entscheid
-    klv -- 10 --> system_fall
+    klv -- 11 --> system_fall
     system_architektur -- 1 --> bu
     system_architektur -- 2 --> klv
     system_assurance -- 4 --> system_entscheid

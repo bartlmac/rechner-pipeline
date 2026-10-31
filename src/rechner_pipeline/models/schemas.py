@@ -732,6 +732,13 @@ class P9Snapshot:
             for key in pflicht_hashes:
                 if key not in hashes:
                     errors.append(f"artefakt_hashes must contain {key!r}")
+            if gate == AUFTRAG_GATE and isinstance(data.get("auftrag"), dict):
+                lieferung = data["auftrag"].get("lieferung")
+                if (isinstance(lieferung, dict)
+                        and "eingang.json" in hashes
+                        and lieferung.get("eingang_sha256") != hashes["eingang.json"]):
+                    errors.append("auftrag.lieferung.eingang_sha256 must equal "
+                                  "artefakt_hashes['eingang.json']")
 
         system = data.get("system")
         system_fields = {"commit", "branch", "dirty", "quellcode_sha256"}

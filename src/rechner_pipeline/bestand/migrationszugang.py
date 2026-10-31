@@ -2136,6 +2136,7 @@ def fuehrungswerte(
     verankerung: Optional[pd.DataFrame] = None,
     reduktionen: Optional[pd.DataFrame] = None,
     tarifwerk_der_spez: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    grundlagen_der_spez: Optional[Mapping[str, Mapping[str, Any]]] = None,
 ) -> Tuple[str, Dict[str, Dict[str, Optional[Dict[str, Any]]]]]:
     """Der Fuehrungswert des Zugangs: was der Abschluss fuer jeden Vertrag fuehrt.
 
@@ -2143,9 +2144,11 @@ def fuehrungswerte(
     ADR-024, Nachtrag): Jede Generation, die im Bestand vorkommt, aufgeloest
     wie die Bewertung sie aufloest (Name aus ``stamm.tarif_generation``),
     muss unter einem Knoten der Spez stehen und GENAU dessen Tarifwerk
-    fuehren, sonst stuende im Beleg der Suite ein Fuehrungswert nach einer
-    anderen Regel als die Pruefstrecke — verweigert, nicht gerechnet
-    (Pruefrunde G, G20). Die Pruefstrecke und A-M4 uebergeben es immer.
+    fuehren. ``grundlagen_der_spez`` traegt je Police die vollstaendigen
+    wirksamen ModelPoint-Felder der Spez-Zelle, einschliesslich der Defaults
+    ausgelassener Felder. Beides wird vor der Bewertung gegen die Config
+    gehalten; sonst koennte der Fuehrungswert nach anderen Grundlagen als
+    die Pruefstrecke entstehen (Pruefrunde T28, Befund 04).
 
     Entscheid des Maintainers (2026-10-01): Die Migrationsabnahme weist den
     Wert aus, den die Bestandsfuehrung fuehrt — gerechnet ueber DIESELBE
@@ -2169,9 +2172,9 @@ def fuehrungswerte(
     ``models.fuehrungswert.termin`` — ``None``, wo der Vertrag am Termin
     nicht in Kraft ist (ohne Geschaeftsvorfall dazwischen: abgelaufen).
     """
-    from rechner_pipeline.bestand.auswertung import einzelwerte_am
+    from rechner_pipeline.bestand.auswertung import einzelwerte_am, grundlagen_je_police
     from rechner_pipeline.bestand.config import config_aus_text
-    from rechner_pipeline.models.bestand import FUEHRUNGSKONVENTION
+    from rechner_pipeline.models.bestand import FUEHRUNGSKONVENTION, GENERATION_FIELDS
     from rechner_pipeline.models.fuehrungswert import termin
 
     config = config_aus_text(config_text)
@@ -2189,6 +2192,10 @@ def fuehrungswerte(
     # JEDE Generation, die im Bestand vorkommt: Ihr Knoten muss der der Spez
     # sein, ihr Tarifwerk das der Spez.
     if tarifwerk_der_spez is not None:
+        if grundlagen_der_spez is None:
+            raise MigrationszugangFehler(
+                "Fuehrungswert: Rechnungsgrundlagen der Spez fehlen — das "
+                "Tarifwerk allein belegt den wirksamen ModelPoint nicht.")
         je_name = {g.name: g for g in config.generationen}
         for name in sorted({str(n) for n in stamm["tarif_generation"]}):
             gen = je_name.get(name)
@@ -2213,6 +2220,25 @@ def fuehrungswerte(
                     "Regel als die Pruefstrecke. Ausweg: den Generationsblock aus "
                     "generation-zellen.toml der Uebernahme uebernehmen (er traegt "
                     "das Tarifwerk der Spez).")
+    if grundlagen_der_spez is not None:
+        policen = {str(p) for p in stamm["police_id"]}
+        if set(grundlagen_der_spez) != policen:
+            raise MigrationszugangFehler(
+                "Fuehrungswert: Rechnungsgrundlagen der Spez decken die "
+                f"Policen nicht genau ab ({sorted(set(grundlagen_der_spez) ^ policen)[:5]}).")
+        grundlagen = grundlagen_je_police(config, merkmale)
+        for row in stamm.to_dict("records"):
+            police = str(row["police_id"])
+            erwartet = grundlagen_der_spez[police]
+            ist = grundlagen(int(row["police_id"]), str(row["tarif_generation"]))
+            fehlend = sorted(set(GENERATION_FIELDS) - set(erwartet))
+            abweichend = sorted(f for f in GENERATION_FIELDS
+                               if f in erwartet and ist[f] != erwartet[f])
+            if fehlend or abweichend:
+                raise MigrationszugangFehler(
+                    f"Fuehrungswert: Police {police}, Rechnungsgrundlagen der "
+                    f"Config weichen von der wirksamen Spez-Zelle ab "
+                    f"(fehlend {fehlend}, abweichend {abweichend}).")
     policen = [str(p) for p in stamm["police_id"]]
     werte: Dict[str, Dict[str, Optional[Dict[str, Any]]]] = {
         p: {name: None for name in stichtage} for p in policen}

@@ -183,7 +183,7 @@ def test_a_m4_nimmt_im_bestands_scope_keine_suite_ohne_fuehrungswert_ab(tmp_path
     # Der Fall (Pruefrunde G): ohne ihn ist der Fuehrungswert nicht nachzurechnen;
     # diese synthetische Suite scheitert an der Form, bevor nachgerechnet wird.
     kw = dict(stichtag_1=S1.isoformat(), stichtag_2=S2.isoformat(), erwartetes_system=system,
-              fall=tmp_path)
+              fall=tmp_path, repo_root=tmp_path)
     assert not [f for f in abnahmebericht._bestands_suite_fehler(mit, **kw) if "uehrungswert" in f]
     assert any("Fuehrungswert" in f for f in abnahmebericht._bestands_suite_fehler(ohne, **kw))
     # Eingefuehrt mit 8.0.0; spaetere Majors (9.0.0: Tarifregeln aus der

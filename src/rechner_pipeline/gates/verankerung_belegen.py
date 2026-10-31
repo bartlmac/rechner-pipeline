@@ -282,7 +282,16 @@ def baue_schichtbeleg(
     return {"schichten": schichten, "befunde": befunde, "summary": summary}
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+#: Die Optionen, deren Wert ein Pfad ist (relativ zum Arbeitsverzeichnis des
+#: Aufrufs). Im Aufruf des Belegs stehen sie relativ zum Fall, wo sie darin
+#: liegen; der Konsument loest sie gegen seinen Fall auf. Die uebrigen Werte
+#: sind Namen registrierter Quellen oder Zahlen.
+PFAD_OPTIONEN = ("--uebernahme", "--zeilen")
+
+
+def parser() -> argparse.ArgumentParser:
+    """Die Kommandozeile des Producers — auch fuer den Konsumenten, der den
+    Aufruf eines Belegs nachrechnet (Pruefrunde T28, Befund 02)."""
     p = argparse.ArgumentParser(
         prog="python -m rechner_pipeline.gates.verankerung_belegen",
         description=(
@@ -344,8 +353,43 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Nachtrag). Vorher war die Formfunktion hier Pflichtschalter und dort
     # ein Schalter mit Vorgabe; die Gleichheit beider hing an Erinnerung.
     verweigere_entfallene_schalter(p)
-    args = p.parse_args(argv)
+    return p
 
+
+def _aufruf(args: argparse.Namespace, ueber: Path, schluessel) -> List[str]:
+    """Der vollstaendige Aufruf des Belegs, normalisiert: ohne ``--fall``,
+    ``--repo-root`` und ``--out``, Pfade relativ zum Fall. Ohne ``--config``
+    und ``--stichtag``: Sie gelten dem Laufmanifest, nicht dem Beleg."""
+    a = ["--generation", str(args.generation), "--uebernahme", schluessel(ueber)]
+    if args.zeilen is not None:
+        a += ["--zeilen", schluessel(Path(args.zeilen))]
+    for option, wert in (("--vorgeschichte", args.vorgeschichte),
+                         ("--red-anteile-datei", args.red_anteile_datei),
+                         ("--anker-erwartungswerte", args.anker_quelle)):
+        if wert is not None:
+            a += [option, str(wert)]
+    for wert in args.red_anteil_kandidaten:
+        a += ["--red-anteil-kandidat", repr(float(wert))]
+    return a
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = parser().parse_args(argv)
+    code, beleg = fuehre_verankerung(args)
+    if beleg is None:
+        return code
+    fall = Path(args.fall)
+    ueber = Path(args.uebernahme) if args.uebernahme else (
+        fall / "abgeleitet" / "bestand")
+    return _schreibe_lauf(args, beleg, ueber, fall)
+
+
+def fuehre_verankerung(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]]]:
+    """Den Schichtbeleg ohne Schreiben: ``(Exit-Code, Beleg)``; bei einem
+    Bedienfehler ``(2, None)`` mit Meldung auf stderr. Jeder Leser des Belegs
+    (``aktuartest_lauf._schichten``) ruft genau diese Funktion mit dem Aufruf
+    des Belegs (Pruefrunde T28, Befund 02): Welche Eingaben eine Schicht
+    braucht, sagt dann der Erzeuger und nicht der Beleg."""
     import io
 
     import pandas as pd
@@ -365,7 +409,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not pfad.is_file():
             print(f"verankerung_belegen: {name}-Tabelle fehlt: {pfad}",
                   file=sys.stderr)
-            return 2
+            return 2, None
     # Jede Eingabe GENAU EINMAL lesen: der Beleg (provenienz.eingaben)
     # traegt den Hash der Bytes, die hier verarbeitet werden (Review
     # T23-01) — vorher lasen Engine und _sha256 die Tabellen getrennt.
@@ -391,7 +435,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         regeln = tarifregeln_des_falls(fall, spez)
     except ValueError as exc:
         print(f"verankerung_belegen: {exc}", file=sys.stderr)
-        return 2
+        return 2, None
     bestand_gelesen = bindung.binde(pfade["bestand"])
     bestand = read_portfolio_aus_bytes(bestand_gelesen.roh)
     verankerung_gelesen = bindung.binde(pfade["verankerung"])
@@ -406,7 +450,7 @@ def main(argv: Optional[List[str]] = None) -> int:
               "--vorgeschichte (die Anteile gehoeren zu den Ereignissen der "
               "Vorgeschichte) — ohne sie wuerde die Auskunft weder gelesen "
               "noch gebunden", file=sys.stderr)
-        return 2
+        return 2, None
     if args.vorgeschichte is not None:
         # Dieselbe Zustandsbau-Maschinerie wie in den Pruefstrecken —
         # die Verankerung MUSS auf derselben Welt stehen, auf der
@@ -431,7 +475,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif len(spez.zellen) > 1:
             print("verankerung_belegen: mehrzellige Spez mit "
                   "Vorgeschichte verlangt --zeilen", file=sys.stderr)
-            return 2
+            return 2, None
         else:
             zeilen = []
             auspraegungen = {
@@ -497,7 +541,106 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
     except MigrationszugangFehler as exc:
         print(f"verankerung_belegen: {exc}", file=sys.stderr)
-        return 2
+        return 2, None
+
+    # Der Beleg nennt JEDE gelesene Eingabe — nicht eine ausgewaehlte
+    # Liste, die beim naechsten neuen Parameter still unvollstaendig wird.
+    eingaben = bindung.als_beleg()
+    beleg["provenienz"] = {
+        "systemstand": systemstand(Path(args.repo_root)),
+        "eingaben": eingaben,
+        "parameter": {
+            "generation": args.generation,
+            "formfunktion": regeln.formfunktion,
+            "fenster": regeln.fenster,
+            "vorgeschichte": args.vorgeschichte,
+            "red_anteile_datei": red_anteile_datei,
+            "red_anteil_kandidaten": sorted(args.red_anteil_kandidaten),
+            "anker_erwartungswerte": args.anker_quelle,
+            # Die Regeln, mit denen verankert wurde — aus der Spez, deren
+            # Bytes unter ``eingaben`` gebunden sind.
+            "tarifregeln": regeln.als_beleg(),
+        },
+        # Der vollstaendige Aufruf (Pruefrunde T28, Befund 02): Mit ihm
+        # rechnet jeder Leser des Belegs die Schicht nach, statt ihr zu
+        # glauben.
+        "aufruf": _aufruf(args, ueber, bindung.schluessel),
+    }
+    return 0, beleg
+
+
+def schichtbeleg_nachgerechnet(beleg: Dict[str, Any], fall: Path, repo_root: Path) -> List[str]:
+    """Den Schichtbeleg mit seinem Aufruf neu erzeugen und Feld fuer Feld gegen
+    den Beleg halten (Pruefrunde T28, Befund 02); leer = derselbe Beleg.
+
+    Der Leser pruefte vorher nur die Eingaben, die der Beleg selbst aufzaehlt,
+    und hielt die Zahl der Schichten gegen die eigenen Zaehler des Belegs. Ein
+    Beleg ohne Verankerungsbindung und mit einer Verankerung, die inzwischen
+    30.000 statt 40.000 EUR traegt, blieb gruen, und die Schichtparameter
+    wurden uebernommen. Welche Eingaben eine Schicht braucht und welche Werte
+    sie traegt, sagt jetzt der Erzeuger auf den gebundenen Eingaben (dieselbe
+    Figur wie bei Fuehrungsprobe, Suite und aktuariellem Test). Der Erzeuger
+    schreibt dabei nichts.
+    """
+    import contextlib
+    import io
+
+    prov = beleg.get("provenienz") if isinstance(beleg.get("provenienz"), dict) else {}
+    aufruf = prov.get("aufruf")
+    if not isinstance(aufruf, list) or not all(isinstance(a, str) for a in aufruf):
+        return ["der Beleg nennt seinen Aufruf nicht — ein Beleg, den niemand "
+                "nachrechnen kann, bezeugt keine Schicht; neu erzeugen "
+                "(gates.verankerung_belegen)"]
+    argv = ["--fall", str(fall), "--repo-root", str(repo_root)]
+    for i, wert in enumerate(aufruf):
+        if i and aufruf[i - 1] in PFAD_OPTIONEN and not Path(wert).is_absolute():
+            wert = str(Path(fall) / wert)
+        argv.append(wert)
+    meldungen = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(meldungen), contextlib.redirect_stdout(io.StringIO()):
+            _code, neu = fuehre_verankerung(parser().parse_args(argv))
+    except (Exception, SystemExit) as exc:  # noqa: BLE001 — jede Form zaehlt
+        return [f"der Beleg ist mit seinem eigenen Aufruf nicht nachrechenbar "
+                f"({type(exc).__name__}: {exc}) {meldungen.getvalue()[:200]}".strip()]
+    if neu is None:
+        return ["der Beleg ist mit seinem eigenen Aufruf nicht nachrechenbar: "
+                + meldungen.getvalue()[:300]]
+
+    def norm(wert: Any) -> Any:
+        return json.loads(json.dumps(wert, sort_keys=True, default=str))
+
+    def kanonisch(wert: Any) -> str:
+        # JSON-Typen gehoeren zur Belegidentitaet; Python setzt False == 0.
+        return json.dumps(wert, sort_keys=True, ensure_ascii=False)
+
+    alt, gerechnet = norm(beleg), norm(neu)
+    abweichend = sorted(
+        k for k in set(alt) | set(gerechnet)
+        if (k not in alt or k not in gerechnet
+            or kanonisch(alt[k]) != kanonisch(gerechnet[k])))
+    if not abweichend:
+        return []
+    teile = []
+    for k in ("provenienz", "schichten"):
+        a, g = alt.get(k) or {}, gerechnet.get(k) or {}
+        if isinstance(a, dict) and isinstance(g, dict) and kanonisch(a) != kanonisch(g):
+            teile.append(f"{k}: " + ", ".join(sorted(
+                x for x in set(a) | set(g)
+                if (x not in a or x not in g
+                    or kanonisch(a[x]) != kanonisch(g[x])))[:5]))
+    return [f"der Beleg weicht vom nachgerechneten Beleg desselben Aufrufs ab in "
+            f"{abweichend[:8]}" + (f" ({'; '.join(teile)})" if teile else "")
+            + " — er bezeugt nicht die Schicht, die er nennt; neu erzeugen "
+            "(gates.verankerung_belegen)"]
+
+
+def _schreibe_lauf(args: argparse.Namespace, beleg: Dict[str, Any], ueber: Path,
+                   fall: Path) -> int:
+    """Was nur der Producer schreibt: die Schichttabelle der Fuehrung, das
+    Laufmanifest und den Beleg. Der Konsument, der nachrechnet, ruft nur
+    :func:`fuehre_verankerung` und schreibt nichts."""
+    import pandas as pd
 
     # Die Schicht als Vertragsattribut des Bestands (Freischaltung, Schritt
     # 5): schichten.parquet neben verankerung.parquet im Uebernahme-
@@ -581,26 +724,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
             print(f"  laufmanifest.json: {len(ausgaben)} Tabellen des "
                   f"Migrationszugangs gebunden ({ueber})")
-
-    # Der Beleg nennt JEDE gelesene Eingabe — nicht eine ausgewaehlte
-    # Liste, die beim naechsten neuen Parameter still unvollstaendig wird.
-    eingaben = bindung.als_beleg()
-    beleg["provenienz"] = {
-        "systemstand": systemstand(Path(args.repo_root)),
-        "eingaben": eingaben,
-        "parameter": {
-            "generation": args.generation,
-            "formfunktion": regeln.formfunktion,
-            "fenster": regeln.fenster,
-            "vorgeschichte": args.vorgeschichte,
-            "red_anteile_datei": red_anteile_datei,
-            "red_anteil_kandidaten": sorted(args.red_anteil_kandidaten),
-            "anker_erwartungswerte": args.anker_quelle,
-            # Die Regeln, mit denen verankert wurde — aus der Spez, deren
-            # Bytes unter ``eingaben`` gebunden sind.
-            "tarifregeln": regeln.als_beleg(),
-        },
-    }
 
     out = Path(args.out) if args.out else (
         fall / "abgeleitet" / "schichten" / "verankerung_schichten.json")
