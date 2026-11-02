@@ -8,9 +8,10 @@ einer Stelle, ``anbieter.py``.
 
 Stufe 0 (Geruest): Versionskennung, der Katalog der fuenf Faehigkeiten,
 das Wurzelprotokoll ``Zielsystem`` und die Konformitaetspruefung. Stufe 1:
-das Protokoll ``Rechnungsgrundlagen`` (``rechnungsgrundlagen.py``). Die
-uebrigen Protokolle kommen mit ihren Stufen, damit der Vertrag nichts
-beschreibt, was niemand erfuellt.
+das Protokoll ``Rechnungsgrundlagen`` (``rechnungsgrundlagen.py``).
+Stufe 2: das Protokoll ``Bewertung`` (``bewertung.py``). Die uebrigen
+Protokolle kommen mit ihren Stufen, damit der Vertrag nichts beschreibt,
+was niemand erfuellt.
 
 Knoten: system/zielsystem
 """

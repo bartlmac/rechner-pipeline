@@ -192,7 +192,7 @@ ZIELSYSTEM_ANBIETER = "rechner_pipeline/zielsystem/anbieter.py"
 #: ``zielsystem``, und nur ``ZIELSYSTEM_ANBIETER`` darf die Vorzeige
 #: kennen. Die 36 Kanten vom Stand 9986830 bleiben als Altlast in dieser
 #: Menge und schrumpfen je Stufe; ``ALTLAST_KANTEN`` zaehlt sie, und ein
-#: Test haelt die Zahl fest (Stufe 0: 36, Stufe 1: 31).
+#: Test haelt die Zahl fest (Stufe 0: 36, Stufe 1: 31, Stufe 2a: 24).
 TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # ADR-030, Stufe 0: die Kante des Vertrags auf die PLV.
     (ZIELSYSTEM_ANBIETER, "rechner_pipeline/plv/zielsystem.py"),
@@ -251,13 +251,11 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # -> kern/produkte (hole), quellen/tafel_import -> kern/tafeln
     # (_parse_tables, validiere_alterstafel), spez/erzeugen -> kern/tafeln
     # (verfuegbare_tafeln). Die Module lesen jetzt ueber zielsystem/anbieter.
-    ("rechner_pipeline/qa/abzugsabgleich.py", "rechner_pipeline/kern/__init__.py"),
-    ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/__init__.py"),
-    ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/beitragsreduktion.py"),
-    ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/korrekturschicht.py"),
-    ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/rechenkern.py"),
-    ("rechner_pipeline/qa/migrationssuite.py", "rechner_pipeline/kern/__init__.py"),
-    ("rechner_pipeline/qa/migrationssuite.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+    # ADR-030, Stufe 2a (2026-11-02): sieben Kanten der Bewertung abgeloest —
+    # qa/abzugsabgleich -> kern/__init__ (berechne), qa/aktuarieller_test
+    # -> kern/__init__, kern/beitragsreduktion, kern/korrekturschicht,
+    # kern/rechenkern, qa/migrationssuite -> kern/__init__,
+    # kern/beitragsreduktion. Die Pruefstrecke liest ueber zielsystem/anbieter.
 }
 
 

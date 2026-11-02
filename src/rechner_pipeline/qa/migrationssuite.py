@@ -75,22 +75,24 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from rechner_pipeline.kern import (
-    VORGANG_RANG,
-    MissingMortalityTableError,
-    ModelPoint,
-    Rechenkern,
-    Vertragsstand,
-    Vorgangsfolge,
-    VorgangsfolgeFehler,
-    erhoehungs_scheibe,
-    tku_umfang_fuer,
-    vertrags_monatsreserve,
-    vorgang,
-)
-from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
 from rechner_pipeline.models.bestand import zielverfahren
 from rechner_pipeline.qa.abzugsabgleich import ABS_TOL, REL_TOL
+from rechner_pipeline.zielsystem import anbieter
+from rechner_pipeline.zielsystem.bewertung import (
+    Bewertung,
+    Datenfehler,
+    Stand,
+    Vertragswerte,
+    Vorgangsfehler,
+)
+
+
+def _bewertung() -> Bewertung:
+    """Die Bewertung des Zielsystems (ADR-030, Stufe 2): Werte, Vorgangsfolge,
+    Korrekturschicht und die Regeln der Vorgaenge kommen ueber den Vertrag."""
+    # Das Modul, nicht der Name: So gilt, was der Anbieter zur Laufzeit sagt
+    # (und ein Test kann ihn austauschen).
+    return anbieter.zielsystem().faehigkeit("bewertung")
 
 GEVO_ARTEN = ("ERH", "STO", "TOD", "PEX", "ABL", "RED", "TKU")
 #: Die GeVo-Arten, die ein Vorgang der Vorgangsfolge sind (Herabsetzung,
@@ -113,8 +115,9 @@ TERMINAL = ("STO", "TOD", "ABL")
 #: Modellpunkt, der den Feld-Contract des Kerns verletzt (``TypeError``
 #: bei unbekanntem/fehlendem Feld, ``KeyError`` bei fehlendem Schlüssel),
 #: entartete Parameter (``ArithmeticError``: Division durch Null,
-#: Overflow) und eine gelieferte, im Zielsystem nicht hinterlegte
-#: Sterbetafel (``MissingMortalityTableError``).
+#: Overflow) und alles, was das Zielsystem benannt verweigert, etwa eine
+#: gelieferte, dort nicht hinterlegte Sterbetafel (``Datenfehler`` des
+#: Zielvertrags, ADR-030).
 #: NICHT gefangen wird alles Übrige — ``AttributeError``, ``NameError``,
 #: ``IndexError``, ``AssertionError``, ``RecursionError``: diese Fehler
 #: kann kein Lieferdatum erzeugen, sie sind Defekte der Suite oder des
@@ -125,7 +128,7 @@ DATEN_AUSNAHMEN: Tuple[type, ...] = (
     TypeError,
     KeyError,
     ArithmeticError,
-    MissingMortalityTableError,
+    Datenfehler,
 )
 
 
@@ -252,27 +255,22 @@ class VertragsPruefung:
     quell_komponenten: Optional[int] = None
 
 
-def _schichtsumme(
-    v: "VertragsPruefung", grund_mp: ModelPoint, monate: int
-) -> float:
+def _schichtsumme(v: "VertragsPruefung", monate: int) -> float:
     """Wert der Korrekturschicht(en) am Vertragsmonat (0.0 ohne Schicht).
 
     Dieselbe Bewertung wie im aktuariellen Test — die Schicht ist EIN
-    Vertragsattribut, das beide Engines identisch lesen muessen. Der
-    Import ist spaet, weil aktuarieller_test seinerseits aus diesem
-    Modul importiert (DATEN_AUSNAHMEN) — auf Modulebene waere das ein
-    Zirkel.
+    Vertragsattribut, das beide Engines identisch lesen muessen: der
+    Schichtwert des Zielsystems (``Bewertung.schichtwert``).
     """
     if v.schicht is None and v.schicht_conv is None:
         return 0.0
-    from rechner_pipeline.qa.aktuarieller_test import schichtwert_bei
-
+    bewertung = _bewertung()
     summe = 0.0
     if v.schicht is not None:
-        summe += schichtwert_bei(v.schicht, v.monate_ta, grund_mp, monate)
+        summe += bewertung.schichtwert(v.schicht, v.monate_ta, v.model_point, monate)
     if v.schicht_conv is not None:
-        summe += schichtwert_bei(
-            v.schicht_conv, v.monate_t0, grund_mp, monate)
+        summe += bewertung.schichtwert(
+            v.schicht_conv, v.monate_t0, v.model_point, monate)
     return summe
 
 
@@ -309,40 +307,7 @@ def _vergleich(
     }
 
 
-def _vs_gesamt(
-    grund_mp: ModelPoint, scheiben: List[Tuple[int, Rechenkern]]
-) -> float:
-    """Gesamt-Versicherungssumme des Vertrags (Grundvertrag + Scheiben).
-
-    Die Leistung von TOD und ABL des beitragspflichtigen Tracks
-    (Tarifplan klv.md, GeVo-Katalog: ``S^ges``).
-    """
-    return float(grund_mp.sum_insured) + sum(
-        k.mp.sum_insured for _, k in scheiben)
-
-
-def _bfr_gesamtsumme(
-    kern: Rechenkern, scheiben: List[Tuple[int, Rechenkern]], pex_jahr: int
-) -> float:
-    """Summe der beitragsfreien Summen über Grundvertrag und Scheiben.
-
-    Die bei der Beitragsfreistellung im Jahr ``pex_jahr`` fixierte
-    Vertragsleistung (Tarifplan klv.md, GeVo-Katalog: ``sum S^bfr_a``);
-    jede Erhöhungsscheibe zählt ab ihrem eigenen Jahrestag, daher der
-    Versatz ``pex_jahr - erh_jahr``. Sie ist ab der Beitragsfreistellung
-    konstant und damit zugleich die Ablauf-/Todesfallleistung des
-    beitragsfreien Tracks.
-    """
-    return kern.beitragsfreie_summe(pex_jahr) + sum(
-        k.beitragsfreie_summe(pex_jahr - erh_jahr)
-        for erh_jahr, k in scheiben)
-
-
-def _terminale_leistung(
-    kern: Rechenkern,
-    scheiben: List[Tuple[int, Rechenkern]],
-    pex_jahr: Optional[int],
-) -> float:
+def _terminale_leistung(vertrag: Vertragswerte, pex_jahr: Optional[int]) -> float:
     """Leistung eines terminalen Todes- oder Ablauffalls (TOD, ABL).
 
     Der Tarifplan (klv.md, GeVo-Katalog) gibt beiden dieselbe Regel:
@@ -358,42 +323,14 @@ def _terminale_leistung(
     machte aus jeder korrekten Lieferung mit Beitragsfreistellung und
     anschließendem Todesfall einen Fehlschlag — ein falsches Rot, das
     wie ein Fund aussieht.
+
+    Beide Summen liefert das Zielsystem: die beitragsfreie Gesamtsumme
+    (jede Scheibe ab ihrem eigenen Jahrestag, ``sum S^bfr_a``) und die
+    Gesamt-Versicherungssumme (``S^ges``).
     """
     if pex_jahr is not None:
-        return _bfr_gesamtsumme(kern, scheiben, pex_jahr)
-    return _vs_gesamt(kern.mp, scheiben)
-
-
-def _bjb_system(
-    kern: Rechenkern,
-    monate: int,
-    pex_jahr: Optional[int],
-    *,
-    scheiben: Sequence[Tuple[int, Rechenkern]] = (),
-) -> float:
-    """Bruttojahresbeitrag des Vertrags am Monats-Stichtag.
-
-    Nach dem Ende der Beitragszahlungsdauer (``monate >= 12 * t``) und
-    ab einer Beitragsfreistellung wird kein Beitrag mehr gezahlt: der
-    Systemwert ist dann ``0.0``, so wie die Bestandsabzüge das Feld
-    führen. Sonst der Jahresbeitrag des Grundvertrags (``VS * Bxt``)
-    (einen Vertrag mit Vorgängen rechnet :func:`_bjb_folge`). Jede
-    Erhöhungsscheibe der Vorgeschichte ist ein eigener Modellpunkt mit
-    eigenem Beitrag bis zu IHRER Beitragszahlungsdauer (dieselbe Regel
-    wie ``bestand.auswertung.beitraege``): ohne sie wäre das
-    Beitragsvolumen so zu niedrig wie das Deckungskapital ohne
-    Scheiben.
-    """
-    if pex_jahr is not None:
-        return 0.0
-    if monate >= 12 * kern.mp.t:
-        gesamt = 0.0
-    else:
-        gesamt = kern.gross_annual_premium()
-    for erh_jahr, k in scheiben:
-        if monate - 12 * erh_jahr < 12 * k.mp.t:
-            gesamt += k.gross_annual_premium()
-    return gesamt
+        return vertrag.beitragsfreie_summe(pex_jahr)
+    return vertrag.gesamtsumme()
 
 
 def _mit_vorgangsfolge(v: VertragsPruefung) -> bool:
@@ -417,41 +354,28 @@ def _mit_vorgangsfolge(v: VertragsPruefung) -> bool:
         g.art == "STO" and g.monate >= min(pex_ab) for g in v.gevos)
 
 
-def _dk_folge(stand: Vertragsstand, monate: int) -> float:
+def _dk_folge(stand: Stand, monate: int) -> float:
     """Das Deckungskapital, das die Suite vergleicht, aus dem Zustand: der
     Rueckkaufs-Track (beitragsfrei: die beitragsfreie Rueckstellung)
     EINSCHLIESSLICH einer getragenen oder ueberfuehrten Korrekturschicht —
     dieselbe Groesse wie im Weg ohne Vorgang (Reserve plus Schicht)."""
     w = stand.werte(monate)
-    if w["status"] == "PEX":
-        return w["deckungskapital"]
-    return w["vx_mrv"] + w["korrekturschicht"]
+    if w.status == "PEX":
+        return w.deckungskapital
+    return w.vx_mrv + w.korrekturschicht
 
 
-def _bfr_quelle(stand: Vertragsstand) -> float:
+def _bfr_quelle(stand: Stand) -> float:
     """Die beitragsfreie Gesamtsumme, wie die QUELLE sie liefert: ohne den
     Zuschlag, mit dem das Zielsystem eine Korrekturschicht bei der
     Beitragsfreistellung wertstetig ueberfuehrt (die Suite vergleicht gegen
     die Lieferung, vgl. ``qa.aktuarieller_test.SCHICHT_GROESSEN``)."""
-    return stand.vs_bfr() - sum(b.zuschlag for b in stand.bausteine)
-
-
-def _bjb_folge(stand: Vertragsstand, monate: int) -> float:
-    """Der Jahresbeitrag des Zustands: je Baustein der Beitrag seines
-    fortgefuehrten Teils bis zu seiner Beitragszahlungsdauer
-    (``Vertragsstand.beitragskerne``, dieselbe Regel wie die Bewertung,
-    ``bestand.auswertung.beitraege_nach_vorgaengen``); 0 nach der
-    Beitragsfreistellung."""
-    return sum(
-        k.gross_annual_premium() for erh_jahr, k in stand.beitragskerne(monate)
-        if monate - 12 * erh_jahr < 12 * k.mp.t)
+    return stand.vs_bfr_ohne_zuschlag()
 
 
 def _pruefe_ueber_vorgangsfolge(
     v: VertragsPruefung,
-    grund_mp: ModelPoint,
-    kern: Rechenkern,
-    scheiben: List[Tuple[int, Rechenkern]],
+    vertrag: Vertragswerte,
     pex_jahr: Optional[int],
     dk_monat_1: int,
     dk_monat_2: int,
@@ -460,7 +384,7 @@ def _pruefe_ueber_vorgangsfolge(
 ) -> Dict[str, Any]:
     """Das Zwei-Stichtags-Urteil eines Vertrags mit Vorgaengen.
 
-    Der Zustand ist die Vorgangsfolge des Kerns (``kern.Vorgangsfolge``,
+    Der Zustand ist die Vorgangsfolge des Zielsystems (``Vertragswerte.folge``,
     Tarifplan KLV 7.3): die Vorgaenge der Vorgeschichte als Anfangszustand,
     jeder Geschaeftsvorfall des Pruefzeitraums als naechster Schritt auf dem
     Zustand, den der Vertrag gerade hat — beliebig viele, in jeder
@@ -494,37 +418,39 @@ def _pruefe_ueber_vorgangsfolge(
             f"{v.police_id}: Korrekturschicht ohne monate_ta — die "
             "Schicht rechnet ab dem Verankerungszeitpunkt, nicht ab "
             "Vertragsbeginn")
-    umfang = tku_umfang_fuer(red_verfahren, v.tku_umfang)
-    t = grund_mp.t
+    bewertung = _bewertung()
+    regeln = bewertung.vorgangsregeln()
+    umfang = bewertung.tku_umfang(red_verfahren, v.tku_umfang)
+    t = int(vertrag.felder["t"])
 
     def _uebersetzt(jahr: int, geliefert_tku: bool, beitragsfrei_ab: Optional[int]) -> str:
         # Ein geliefertes TKU ist die Teilkuendigung; ein geliefertes RED
         # liest die Uebersetzungsregel.
-        return zielverfahren(TEILKUENDIGUNG if geliefert_tku else red_verfahren,
+        return zielverfahren(regeln.teilkuendigung if geliefert_tku else red_verfahren,
                              jahr, t, beitragsfrei_ab=beitragsfrei_ab)
 
-    anfang_vorgaenge = []
+    anfang_vorgaenge: List[Tuple[int, float, str]] = []
     if v.reduktion is not None:
         jahr_r, anteil_r = v.reduktion
-        anfang_vorgaenge.append(vorgang(int(jahr_r), float(anteil_r), _uebersetzt(
+        anfang_vorgaenge.append((int(jahr_r), float(anteil_r), _uebersetzt(
             int(jahr_r), False, v.beitragsfrei_seit_jahr)))
     for jahr_r, anteil_r, verfahren_r in v.vorgaenge:
-        anfang_vorgaenge.append(vorgang(int(jahr_r), float(anteil_r), str(verfahren_r)))
+        anfang_vorgaenge.append((int(jahr_r), float(anteil_r), str(verfahren_r)))
     schicht = (None if v.schicht is None else (v.schicht, int(v.monate_ta)))
-    anfang = Vorgangsfolge(
-        kern, scheiben, anfang_vorgaenge, pex_jahr=v.beitragsfrei_seit_jahr,
-        schicht=schicht, stoab_je_baustein=v.stoab_je_baustein, tku_umfang=umfang)
+    anfang = vertrag.folge(
+        anfang_vorgaenge, pex_jahr=v.beitragsfrei_seit_jahr, schicht=schicht,
+        tku_umfang=umfang)
     stand = anfang.stand_am(v.monate_stichtag_1)
 
     def _komponenten(monate: int) -> int:
-        return max(len(stand.bestehend(monate)), v.quell_komponenten or 1)
+        return max(stand.komponenten(monate), v.quell_komponenten or 1)
 
     pruefungen.append(_vergleich(
         "dk_stichtag_1", _dk_folge(stand, dk_monat_1), v.dk_erwartet_1,
         komponenten=_komponenten(dk_monat_1)))
     if v.bjb_erwartet_1 is not None:
         pruefungen.append(_vergleich(
-            "bjb_stichtag_1", _bjb_folge(stand, v.monate_stichtag_1),
+            "bjb_stichtag_1", stand.jahresbeitrag(v.monate_stichtag_1),
             v.bjb_erwartet_1, komponenten=_komponenten(v.monate_stichtag_1)))
     else:
         nicht_geprueft.append("bjb_stichtag_1")
@@ -535,7 +461,7 @@ def _pruefe_ueber_vorgangsfolge(
     unbestimmt_ab: Optional[int] = None
     # Reihenfolge der Engine: am selben Jahrestag erst Rueckkauf, Tod und
     # Ablauf (sie sehen den Zustand davor), dann PEX, RED, TKU, ERH.
-    for g in sorted(v.gevos, key=lambda g: (g.monate, VORGANG_RANG.get(g.art, -1))):
+    for g in sorted(v.gevos, key=lambda g: (g.monate, regeln.rang.get(g.art, -1))):
         if g.art not in GEVO_ARTEN:
             befunde.append(f"unbekannte GeVo-Art {g.art!r}")
             continue
@@ -554,7 +480,7 @@ def _pruefe_ueber_vorgangsfolge(
                 f"GeVo {g.art} bei Monat {g.monate} nach terminalem GeVo "
                 f"(Monat {terminal_monat}) — Lieferung inkonsistent")
             continue
-        if g.art in VORGANG_RANG and g.monate % 12:
+        if g.art in regeln.rang and g.monate % 12:
             befunde.append(
                 f"{g.art} bei Monat {g.monate}: der Vorgang wirkt am "
                 "Vertragsjahrestag (Vielfaches von 12)")
@@ -577,10 +503,7 @@ def _pruefe_ueber_vorgangsfolge(
                 # Die Scheibe der Erhoehung zwischen den Stichtagen nach der
                 # belegten Regel des Auftrags — wie die Alt-Scheiben (Pruefrunde
                 # I, I14; vorher immer die Regel des eigenen Geschaefts).
-                scheibe = Rechenkern(erhoehungs_scheibe(
-                    grund_mp, jahr, g.betrag_erwartet,
-                    gamma1_uebernehmen=v.scheiben_mit_gamma1))
-                stand = stand.nach_erhoehung(jahr, scheibe)
+                stand = stand.nach_erhoehung(jahr, g.betrag_erwartet)
             except ValueError as exc:
                 befunde.append(f"ERH bei Monat {g.monate}: {exc}")
                 continue
@@ -588,14 +511,14 @@ def _pruefe_ueber_vorgangsfolge(
             if g.betrag_erwartet is not None:
                 pruefungen.append(_vergleich(
                     f"gevo_sto_monat_{g.monate}",
-                    stand.werte(g.monate)["rueckkaufswert"], g.betrag_erwartet))
+                    stand.werte(g.monate).rueckkaufswert, g.betrag_erwartet))
         elif g.art in ("TOD", "ABL"):
-            ablauf_monat = 12 * grund_mp.n
+            ablauf_monat = 12 * int(vertrag.felder["n"])
             if g.art == "ABL" and g.monate != ablauf_monat:
                 befunde.append(
                     f"ABL bei Monat {g.monate}: Ablauf wird am Ende der "
                     f"Versicherungsdauer fällig (Monat {ablauf_monat}, "
-                    f"n = {grund_mp.n} Jahre)")
+                    f"n = {int(vertrag.felder['n'])} Jahre)")
                 continue
             if g.betrag_erwartet is not None:
                 leistung = _bfr_quelle(stand) if stand.beitragsfrei else stand.gesamt_vs()
@@ -605,7 +528,7 @@ def _pruefe_ueber_vorgangsfolge(
         elif g.art == "PEX":
             try:
                 stand = stand.nach_pex(jahr)
-            except VorgangsfolgeFehler as exc:
+            except Vorgangsfehler as exc:
                 befunde.append(f"PEX bei Monat {g.monate}: {exc}")
                 continue
             if g.betrag_erwartet is not None:
@@ -624,8 +547,8 @@ def _pruefe_ueber_vorgangsfolge(
                 continue
             verfahren = _uebersetzt(jahr, g.art == "TKU", stand.pex_jahr)
             try:
-                stand, _ = stand.nach_vorgang(vorgang(jahr, float(g.anteil), verfahren))
-            except VorgangsfolgeFehler as exc:
+                stand = stand.nach_vorgang(jahr, float(g.anteil), verfahren)
+            except Vorgangsfehler as exc:
                 befunde.append(f"{g.art} bei Monat {g.monate}: {exc}")
                 continue
         if g.art in TERMINAL:
@@ -709,15 +632,13 @@ def pruefe_vertrag(
             f"{v.police_id}: Folgestichtag ({v.monate_stichtag_2}) liegt "
             f"nicht nach dem Migrationsstichtag ({v.monate_stichtag_1})"
         )
-    grund_mp = ModelPoint(**v.model_point)
-    kern = Rechenkern(grund_mp)
     befunde: List[str] = []
     pruefungen: List[Dict[str, Any]] = []
     nicht_geprueft: List[str] = []
 
     # Ein Vertrag mit Vorgaengen (Herabsetzung, Teilkuendigung — in der
     # Vorgeschichte oder im Pruefzeitraum) und jeder Rueckkauf eines
-    # beitragsfreien Vertrags rechnet ueber die Vorgangsfolge des Kerns
+    # beitragsfreien Vertrags rechnet ueber die Vorgangsfolge des Zielsystems
     # (:func:`_pruefe_ueber_vorgangsfolge`): EIN Zustand, den Fuehrung,
     # Bewertung und diese Suite gleich lesen. Ohne Vorgang bleibt der Weg
     # unten unveraendert.
@@ -763,18 +684,19 @@ def pruefe_vertrag(
             )
 
     # Anfangszustand: dynamische Erhoehungen der Vorgeschichte.
-    scheiben: List[Tuple[int, Rechenkern]] = []
-    for erh_jahr, erh_summe in v.scheiben:
+    for erh_jahr, _erh_summe in v.scheiben:
         if 12 * erh_jahr > v.monate_stichtag_1:
             raise ValueError(
                 f"{v.police_id}: Erhoehungsscheibe aus Jahr {erh_jahr} liegt "
                 "nach dem Migrationsstichtag — als ERH-GeVo liefern, nicht "
                 "als Anfangszustand"
             )
-        scheiben.append(
-            (erh_jahr, Rechenkern(erhoehungs_scheibe(
-                grund_mp, erh_jahr, erh_summe,
-                gamma1_uebernehmen=v.scheiben_mit_gamma1))))
+    # Der Vertrag, wie das Zielsystem ihn bewertet (ADR-030): Grundvertrag
+    # und Scheiben nach der belegten Regel des Auftrags.
+    vertrag = _bewertung().vertrag(
+        v.model_point, v.scheiben,
+        gamma1_uebernehmen=v.scheiben_mit_gamma1,
+        stoab_je_baustein=v.stoab_je_baustein)
 
     # Der dk-Vergleichszeitpunkt je Stichtag: kalendertaeglich (unsere
     # Monatskonvention) oder der letzte Vertragsjahrestag davor
@@ -788,7 +710,7 @@ def pruefe_vertrag(
 
     if ueber_folge:
         return _pruefe_ueber_vorgangsfolge(
-            v, grund_mp, kern, scheiben, pex_jahr, dk_monat_1, dk_monat_2,
+            v, vertrag, pex_jahr, dk_monat_1, dk_monat_2,
             red_verfahren=red_verfahren)
 
     if (v.schicht is not None or v.schicht_conv is not None):
@@ -805,19 +727,19 @@ def pruefe_vertrag(
             )
 
     if pex_jahr is not None:
-        dk_1 = kern.monatsreserve_beitragsfrei(pex_jahr, dk_monat_1)
-    elif scheiben:
-        dk_1 = vertrags_monatsreserve(
-            kern, scheiben, dk_monat_1, stoab_je_baustein=v.stoab_je_baustein).vx_mrv
+        # Je Baustein vom Zielsystem, hier summiert (Grund plus die Summe
+        # der Scheiben): die Reihenfolge dieser Summe ist die dieser Suite.
+        teile = vertrag.reserven_beitragsfrei(pex_jahr, dk_monat_1)
+        dk_1 = teile[0] + sum(teile[1:])
     else:
-        dk_1 = kern.monatsreserve(dk_monat_1).vx_mrv
+        dk_1 = vertrag.reserve(dk_monat_1).vx_mrv
     # Die Korrekturschicht traegt das Verankerungs-Residuum — der
     # gefuehrte Stichtagswert ist Basis PLUS Schicht (Nachzug des
     # zweiten Laufs; ohne sie zeigte jeder Vertrag sein rohes R).
-    dk_1 += _schichtsumme(v, grund_mp, dk_monat_1)
+    dk_1 += _schichtsumme(v, dk_monat_1)
     # Jede Erhoehungsscheibe (bzw. jeder kollabierte Quell-Baustein)
     # ist eine eigene, fuer sich gerundete Komponente des Lieferwerts.
-    komponenten_1 = max(1 + len(scheiben), v.quell_komponenten or 1)
+    komponenten_1 = max(vertrag.komponenten(), v.quell_komponenten or 1)
     pruefungen.append(_vergleich(
         "dk_stichtag_1", dk_1, v.dk_erwartet_1,
         komponenten=komponenten_1))
@@ -825,8 +747,7 @@ def pruefe_vertrag(
     if v.bjb_erwartet_1 is not None:
         pruefungen.append(_vergleich(
             "bjb_stichtag_1",
-            _bjb_system(kern, v.monate_stichtag_1, pex_jahr,
-                        scheiben=scheiben),
+            vertrag.jahresbeitrag(v.monate_stichtag_1, pex_jahr),
             v.bjb_erwartet_1,
             komponenten=komponenten_1,
         ))
@@ -875,27 +796,22 @@ def pruefe_vertrag(
                 )
                 continue
             try:
-                scheiben_mp = erhoehungs_scheibe(
-                    grund_mp, g.monate // 12, g.betrag_erwartet,
-                    gamma1_uebernehmen=v.scheiben_mit_gamma1)
+                vertrag = vertrag.mit_scheibe(g.monate // 12, g.betrag_erwartet)
             except ValueError as exc:
                 befunde.append(f"ERH bei Monat {g.monate}: {exc}")
                 continue
-            scheiben.append((g.monate // 12, Rechenkern(scheiben_mp)))
         elif g.art == "STO":
             # Ein Rueckkauf nach der Beitragsfreistellung nimmt den Weg ueber
             # die Vorgangsfolge (B3, :func:`_mit_vorgangsfolge`) — hier
             # kommt nur der beitragspflichtige an.
             if g.betrag_erwartet is not None:
-                rkw = vertrags_monatsreserve(
-                    kern, scheiben, g.monate,
-                    stoab_je_baustein=v.stoab_je_baustein).rkw
+                rkw = vertrag.reserve(g.monate).rkw
                 pruefungen.append(_vergleich(
                     f"gevo_sto_monat_{g.monate}", rkw, g.betrag_erwartet,
                 ))
         elif g.art == "TOD":
             if g.betrag_erwartet is not None:
-                leistung = _terminale_leistung(kern, scheiben, pex_jahr)
+                leistung = _terminale_leistung(vertrag, pex_jahr)
                 pruefungen.append(_vergleich(
                     f"gevo_tod_monat_{g.monate}", leistung,
                     g.betrag_erwartet,
@@ -905,16 +821,16 @@ def pruefe_vertrag(
             # Versicherungsdauer (Tarifplan klv.md, GeVo-Katalog:
             # "terminal bei a = n"). Ein ABL an einem anderen Monat ist
             # kein Ablauf, sondern eine Lieferungs-Inkonsistenz.
-            ablauf_monat = 12 * grund_mp.n
+            ablauf_monat = 12 * int(vertrag.felder["n"])
             if g.monate != ablauf_monat:
                 befunde.append(
                     f"ABL bei Monat {g.monate}: Ablauf wird am Ende der "
                     f"Versicherungsdauer fällig (Monat {ablauf_monat}, "
-                    f"n = {grund_mp.n} Jahre)"
+                    f"n = {int(vertrag.felder['n'])} Jahre)"
                 )
                 continue
             if g.betrag_erwartet is not None:
-                leistung = _terminale_leistung(kern, scheiben, pex_jahr)
+                leistung = _terminale_leistung(vertrag, pex_jahr)
                 pruefungen.append(_vergleich(
                     f"gevo_abl_monat_{g.monate}", leistung,
                     g.betrag_erwartet,
@@ -935,7 +851,7 @@ def pruefe_vertrag(
                 continue
             pex_jahr = g.monate // 12
             if g.betrag_erwartet is not None:
-                summe = _bfr_gesamtsumme(kern, scheiben, pex_jahr)
+                summe = vertrag.beitragsfreie_summe(pex_jahr)
                 pruefungen.append(_vergleich(
                     f"gevo_pex_monat_{g.monate}", summe,
                     g.betrag_erwartet,
@@ -963,20 +879,14 @@ def pruefe_vertrag(
         )
     else:
         if pex_jahr is not None:
-            dk2 = kern.monatsreserve_beitragsfrei(
-                pex_jahr, dk_monat_2) + sum(
-                k.monatsreserve_beitragsfrei(
-                    pex_jahr - erh_jahr,
-                    dk_monat_2 - 12 * erh_jahr)
-                for erh_jahr, k in scheiben)
+            teile = vertrag.reserven_beitragsfrei(pex_jahr, dk_monat_2)
+            dk2 = teile[0] + sum(teile[1:])
         else:
-            dk2 = vertrags_monatsreserve(
-                kern, scheiben, dk_monat_2,
-                stoab_je_baustein=v.stoab_je_baustein).vx_mrv
-        dk2 += _schichtsumme(v, grund_mp, dk_monat_2)
+            dk2 = vertrag.reserve(dk_monat_2).vx_mrv
+        dk2 += _schichtsumme(v, dk_monat_2)
         pruefungen.append(_vergleich(
             "dk_stichtag_2", dk2, v.dk_erwartet_2,
-            komponenten=max(1 + len(scheiben),
+            komponenten=max(vertrag.komponenten(),
                             v.quell_komponenten or 1)))
 
     return {

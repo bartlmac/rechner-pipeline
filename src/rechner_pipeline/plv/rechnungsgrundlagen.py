@@ -53,9 +53,6 @@ class PLVRechnungsgrundlagen:
     def parametersatz(self, produkt: str) -> Parametersatz:
         return _parametersatz(produkt)
 
-    def modellpunkt(self, produkt: str, felder: Mapping[str, Any]) -> object:
-        return hole(produkt).model_point_cls(**felder)
-
     def verfuegbare_tafeln(self) -> FrozenSet[str]:
         return frozenset(tafeln.verfuegbare_tafeln())
 

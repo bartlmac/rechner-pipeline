@@ -3,8 +3,9 @@
 Was das Tool vom Zielsystem braucht, ohne dessen Kern zu kennen: welche
 Produkte es fuehrt, den Parametersatz je Produkt (die Felder seines
 Modellpunkts und die Defaults der Felder, die eine Generation auslassen
-darf), den Modellpunkt aus den wirksamen Feldern, und seine Tafeln (die
-Namen, die Pruefung einer Alterstafel, das Lesen seines Tafelspeichers).
+darf), und seine Tafeln (die Namen, die Pruefung einer Alterstafel, das
+Lesen seines Tafelspeichers). Den Modellpunkt selbst baut das Tool seit
+Stufe 2 nicht mehr: Die Bewertung nimmt die wirksamen Felder entgegen.
 
 Der Parametersatz ist die Wurzel von T28-04: Ein ausgelassenes optionales
 Feld einer Spez-Zelle ist im Kern wirksam, mit dem Default des Kerns.
@@ -54,12 +55,6 @@ class Rechnungsgrundlagen(Protocol):
 
     def parametersatz(self, produkt: str) -> Parametersatz:
         """Der Parametersatz des Produkts; ``KeyError`` fuer ein unbekanntes."""
-        ...
-
-    def modellpunkt(self, produkt: str, felder: Mapping[str, Any]) -> object:
-        """Der Modellpunkt des Zielsystems aus den wirksamen Feldern (alle
-        ``felder`` des Parametersatzes, Defaults schon aufgeloest). Das
-        Tool reicht ihn nur weiter; ``TypeError`` bei falschen Feldern."""
         ...
 
     def verfuegbare_tafeln(self) -> FrozenSet[str]:

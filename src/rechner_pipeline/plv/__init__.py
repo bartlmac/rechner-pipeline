@@ -8,8 +8,9 @@ abgenommene Kernstand das Paket ``kern`` bindet (A-K2).
 
 Stufe 0: die PLV nennt sich und die Vertragsversion. Stufe 1: sie
 bietet die Rechnungsgrundlagen an (``rechnungsgrundlagen.py``: Produkte,
-Parametersatz mit Defaults, Modellpunkt, Tafeln). Stufe 2 bringt die
-Bewertung.
+Parametersatz mit Defaults, Modellpunkt, Tafeln). Stufe 2: die Bewertung
+(``bewertung.py``: Werte eines Vertrags, Vorgangsfolge, Korrekturschicht,
+Vorgangsregeln, Praemien, Verlauf, Rechenlauf).
 
 Knoten: system/zielsystem
 """

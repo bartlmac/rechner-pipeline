@@ -22,8 +22,9 @@ from __future__ import annotations
 from typing import Tuple
 
 #: Die Version des Vertrags, den dieses Paket beschreibt. 0.1.0 war das
-#: Geruest (Stufe 0); 0.2.0 beschreibt die Rechnungsgrundlagen (Stufe 1).
-VERTRAG_VERSION = "0.2.0"
+#: Geruest (Stufe 0), 0.2.0 beschrieb die Rechnungsgrundlagen (Stufe 1),
+#: 0.3.0 beschreibt die Bewertung (Stufe 2).
+VERTRAG_VERSION = "0.3.0"
 
 
 def zerlege(version: str) -> Tuple[int, int, int]:

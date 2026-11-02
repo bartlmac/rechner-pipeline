@@ -87,13 +87,10 @@ def _nah(ist: float, soll: float) -> bool:
 
 
 def _rechne(model_point: Dict[str, Any], vertragsjahr: int) -> Dict[str, float]:
-    from rechner_pipeline.kern import berechne
-    from rechner_pipeline.zielsystem.anbieter import zielsystem
+    from rechner_pipeline.zielsystem import anbieter
 
-    # Der Modellpunkt kommt ueber den Zielvertrag (ADR-030, Stufe 1); die
-    # Bewertung selbst (``berechne``) folgt mit Stufe 2.
-    mp = zielsystem().faehigkeit("rechnungsgrundlagen").modellpunkt("klv", model_point)
-    ergebnis = berechne(mp)
+    # Der Rechenlauf des Zielsystems ueber den Zielvertrag (ADR-030, Stufe 2).
+    ergebnis = anbieter.zielsystem().faehigkeit("bewertung").rechne("klv", model_point)
     werte: Dict[str, float] = dict(ergebnis["scalars"]["Kalkulation"])
     zeilen = ergebnis["tables"]["Kalkulation"]
     if 0 <= vertragsjahr < len(zeilen):

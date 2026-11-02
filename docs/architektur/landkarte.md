@@ -39,11 +39,11 @@ flowchart TD
     kern["kern<br/>13 Module"]
     models["models<br/>18 Module"]
     ontologie["ontologie<br/>16 Module"]
-    plv["plv<br/>3 Module"]
+    plv["plv<br/>4 Module"]
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
     spez["spez<br/>6 Module"]
-    zielsystem["zielsystem<br/>6 Module"]
+    zielsystem["zielsystem<br/>7 Module"]
     bestand -- 37 --> kern
     bestand -- 20 --> models
     bestand -- 1 --> qa
@@ -62,11 +62,10 @@ flowchart TD
     models -- 1 --> zielsystem
     ontologie -- 6 --> models
     ontologie -- 1 --> zielsystem
-    plv -- 2 --> kern
-    plv -- 1 --> zielsystem
-    qa -- 7 --> kern
+    plv -- 8 --> kern
+    plv -- 2 --> zielsystem
     qa -- 4 --> models
-    qa -- 1 --> zielsystem
+    qa -- 5 --> zielsystem
     quellen -- 7 --> models
     quellen -- 4 --> ontologie
     quellen -- 1 --> spez
@@ -92,14 +91,14 @@ flowchart TD
     system_assurance["system/assurance<br/>15 Module"]
     system_entscheid["system/entscheid<br/>17 Module"]
     system_fall["system/fall<br/>1 Module"]
-    system_zielsystem["system/zielsystem<br/>9 Module"]
+    system_zielsystem["system/zielsystem<br/>11 Module"]
     bu -- 3 --> system_assurance
     bu -- 19 --> system_entscheid
     bu -- 1 --> system_zielsystem
     klv -- 9 --> system_assurance
     klv -- 44 --> system_entscheid
     klv -- 11 --> system_fall
-    klv -- 4 --> system_zielsystem
+    klv -- 8 --> system_zielsystem
     system_architektur -- 1 --> klv
     system_architektur -- 1 --> system_zielsystem
     system_assurance -- 4 --> system_entscheid
@@ -108,8 +107,8 @@ flowchart TD
     system_entscheid -- 12 --> klv
     system_entscheid -- 11 --> system_assurance
     system_entscheid -- 2 --> system_fall
-    system_zielsystem -- 2 --> bu
-    system_zielsystem -- 2 --> klv
+    system_zielsystem -- 6 --> bu
+    system_zielsystem -- 8 --> klv
 ```
 
 ## 3 Der Zielrechenkern von innen

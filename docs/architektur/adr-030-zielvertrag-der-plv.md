@@ -3,8 +3,9 @@
 **Status:** angenommen am 29.10.2026 (Entscheid des Maintainers, E-007:
 Option B für die Stufen 0 bis 2; die Stufen 3 bis 5 sind nicht beauftragt).
 Ort der Implementierung entschieden am 02.11.2026 (eigenes Paket `plv/`).
-Stufe 0 und Stufe 1 umgesetzt am 02.11.2026. Entwurf vom 22.10.2026 aus
-Auftrag A-020, Befund A29-01 der externen Prüfrunde vom 14.10.2026.
+Stufe 0 und Stufe 1 umgesetzt am 02.11.2026, Stufe 2 in drei Commits ab
+dem 02.11.2026 (2a: die Prüfstrecke). Entwurf vom 22.10.2026 aus Auftrag
+A-020, Befund A29-01 der externen Prüfrunde vom 14.10.2026.
 
 ## Kontext
 
@@ -167,7 +168,7 @@ Reihenfolge der Stufen, nach Nutzen und Größe:
 |---|---|---|
 | 0 | Gerüst: Paket `zielsystem/` mit Version 0.1.0, Katalog der Fähigkeiten, Wurzelprotokoll, Konformität, Anbieter; Paket `plv/` mit der PLV, die noch keine Fähigkeit anbietet; Regel und Zähltest in der Schichtenkarte; Skill, ADR-017, ADR-028, README | umgesetzt 02.11.2026 |
 | 1 | Rechnungsgrundlagen (11 Namen): Der Vertrag liefert den wirksamen Parametersatz einer Generation bzw. einer Police vollständig, einschließlich der Defaults. Führungsprobe, Prüfstrecke und `models/bestand.py` lesen ihn von dort. Das schließt die Klasse von T28-04, nicht nur den einen Befund. | umgesetzt 02.11.2026 (unten) |
-| 2 | Bewertung (23 Namen): Werte, Verlauf und Vorgänge je Vertrag für `qa/aktuarieller_test`, `qa/migrationssuite` und `qa/abzugsabgleich`. Hier gehört die Komponentenzahl eines gelieferten Werts hin (T28-01). Spiegelt der Vertrag die Kern-Schnittstellen 1:1, ist er die Fassade aus Option C; er muss schmaler sein und dieselben Werte liefern. | beauftragt |
+| 2 | Bewertung (23 Namen): Werte, Verlauf und Vorgänge je Vertrag für `qa/aktuarieller_test`, `qa/migrationssuite` und `qa/abzugsabgleich`. Hier gehört die Komponentenzahl eines gelieferten Werts hin (T28-01). Spiegelt der Vertrag die Kern-Schnittstellen 1:1, ist er die Fassade aus Option C; er muss schmaler sein und dieselben Werte liefern. | 2a (Vertrag, PLV, Prüfstrecke) umgesetzt 02.11.2026; 2b (die Gates) und 2c (Schichtbeleg an den Bestand binden) im Bau |
 | 3 | Bestandsdaten (10 Namen) | nicht beauftragt |
 | 4 | Bestandsprüfung (6 Namen) | nicht beauftragt |
 | 5 | Zugang (16 Namen), zuletzt. Er ist am stärksten PLV-eigen. Vorher ist zu klären, welcher Teil der Ableitung Prüfstrecke (Tool) und welcher Führung (PLV) ist. | nicht beauftragt |
@@ -182,9 +183,11 @@ niemand erfüllt.
 Das Protokoll `zielsystem/rechnungsgrundlagen.py` sagt, was das Tool vom
 Zielsystem braucht, ohne dessen Kern zu kennen: die Produkte, je Produkt
 den `Parametersatz` (Felder mit Typ und die Defaults der Felder, die eine
-Generation auslassen darf), den Modellpunkt aus den wirksamen Feldern,
-und die Tafeln (Namen, Prüfung einer Alterstafel, Lesen des
-Tafelspeichers). Die PLV erfüllt es in `plv/rechnungsgrundlagen.py` als
+Generation auslassen darf) und die Tafeln (Namen, Prüfung einer
+Alterstafel, Lesen des Tafelspeichers). Den Modellpunkt aus den wirksamen
+Feldern lieferte Stufe 1 ebenfalls; mit Stufe 2 nimmt die Bewertung die
+Felder selbst entgegen, und die Methode ist entfallen. Die PLV erfüllt
+das Protokoll in `plv/rechnungsgrundlagen.py` als
 Weitergabe dessen, was `kern.produkte`, die Modellpunkt-Klassen und
 `kern.tafeln` sagen; sie nennt die Version 0.2.0 selbst. Die
 Konformitätsprüfung prüft über die Form hinaus, was das Protokoll in
@@ -215,6 +218,47 @@ die Config der Führung als Ganzes (`BestandConfig`, `config_aus_text`,
 Rechnungsgrundlage und was Bestandsdaten ist, entscheidet Stufe 2 mit
 der Bewertung oder Stufe 3.
 
+### Stufe 2a: Bewertung (Vertrag 0.3.0), die Prüfstrecke
+
+Das Protokoll `zielsystem/bewertung.py` nimmt Vertragsdaten entgegen und
+liefert Werte; es nennt keinen Rechenkern, keinen Baustein und keinen
+Scheiben-Modellpunkt. Ein `Vertragswerte`-Objekt (aus den wirksamen
+Feldern, den Scheiben als Jahr und Summe und den Tarifwerk-Schaltern)
+liefert die Reserve des beitragspflichtigen Vertrags, die beitragsfreie
+Summe, die Gesamtsumme, den Jahresbeitrag, die Komponentenzahl und seine
+Vorgangsfolge (`Folge` mit `Stand`: Werte am Monat, Komponenten, Stand
+vor und nach einem Vorgang, Jahresbeitrag, beitragsfreie Summe ohne
+Zuschlag). Dazu die Korrekturschicht (aus dem Beleg lesen, Wert am Monat,
+Zuschlag bei Beitragsfreistellung, trägt sie), die Vorgangsregeln (Rang
+je Art, Verfahren, Umfänge, Umfang einer Teilkündigung), die
+Prämiensätze, die Verlaufszeile und der volle Rechenlauf. Die Ausnahmen
+des Zielsystems sind `Datenfehler` (`Vorgangsfehler`, `Schichtfehler`);
+die PLV übersetzt ihre Kernausnahmen dorthin, mit dem Text des Kerns, und
+die Prüfstrecke fängt nur noch diese. Die PLV erfüllt das Protokoll in
+`plv/bewertung.py` als Weitergabe an `kern.rechenkern`,
+`kern.vorgangsfolge`, `kern.korrekturschicht` und `kern.beitragsreduktion`.
+
+Eine Grenze ist bewusst gezogen: Die beitragsfreie Reserve eines
+Vertrags mit Erhöhungsscheiben kommt je Baustein
+(`reserven_beitragsfrei`), nicht als Summe. Die beiden Prüfstrecken
+summieren sie in verschiedener Reihenfolge, und Gleitkommasummen hängen
+von ihr ab (auf Fall 3 gemessen: 2391 von 5517 Fällen verschieden in der
+letzten Stelle). Der Vergleich kennt seine Komponenten ohnehin, weil
+seine Toleranz mit ihnen wächst; die Summe bleibt deshalb beim Vergleich,
+jeder in seiner Reihenfolge, und kein Beleg ändert ein Byte. Wo die
+Prüfstrecken gleich summierten (beitragsfreie Summe, Jahresbeitrag),
+summiert jetzt die PLV; wo der Kern summiert (Reserve mit Scheiben,
+Werte eines Stands), tat er es schon vorher.
+
+Konsumenten in 2a: `qa/migrationssuite`, `qa/aktuarieller_test` und
+`qa/abzugsabgleich` lesen über den Anbieter; sieben Kanten der Altlast
+sind gelöst (31 auf 24). Je Modul hält ein Test mit einer fremden
+Bewertung fest, dass es vom Vertrag liest. Die Werte des Vertrags sind in
+`tests/test_zielsystem.py` gegen den Kern als Kontrollrechnung gehalten,
+bitgleich. Die Gates (`fuehrungsprobe`, `generation_golden`,
+`verankerung_belegen`, `bestand_uebernehmen`, `aktuartest_lauf`,
+`migrationssuite_lauf`) folgen in 2b.
+
 ## Nachweis je Stufe
 
 - volle Suite grün;
@@ -234,6 +278,10 @@ der Bewertung oder Stufe 3.
   Schichten `models`, `ontologie`, `spez`, `quellen` und `qa` dürfen seit
   Stufe 1 `zielsystem` importieren; `models/bestand.py` tut es erst beim
   Aufruf, weil die Vorzeige dieses Modul beim Laden importiert.
+- **Ausnahmen:** Seit Stufe 2 kennt die Prüfstrecke die Ausnahmetypen des
+  Kerns nicht mehr; eine Verweigerung des Zielsystems ist ein
+  `Datenfehler` des Vertrags. Die Befundtexte tragen weiter den Text des
+  Kerns; nur der Typname in einem Abbruchtext ist der des Vertrags.
 - **Gezeichnete Gegenstände:** Der Kern wird nicht geändert. Referenzwerte,
   `plv/mathematik`, `plv/tarifplaene` und `plv/configs` bleiben unberührt.
 - **Systemstand:** Jede Stufe ändert den Code und damit den Systemstand.
