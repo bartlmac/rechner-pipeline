@@ -42,7 +42,8 @@ def pruefe_rechnungsgrundlagen(umsetzung: object) -> List[str]:
     """Was das Protokoll ``Rechnungsgrundlagen`` in Worten verlangt: ein
     Produkt mindestens, je Produkt ein Parametersatz mit eindeutigen
     Feldern, dessen Defaults Felder sind, ``KeyError`` fuer ein unbekanntes
-    Produkt, und Tafelnamen als frozenset von str."""
+    Produkt, Tafelnamen als frozenset von str, ``ValueError`` fuer eine
+    leere Alterstafel und fuer einen leeren Tafelspeicher (A-054, H1)."""
     befunde: List[str] = []
     produkte: frozenset = frozenset()
     try:
@@ -88,6 +89,17 @@ def pruefe_rechnungsgrundlagen(umsetzung: object) -> List[str]:
         if not isinstance(tafeln, frozenset) or not all(isinstance(t, str) for t in tafeln):
             befunde.append(
                 f"verfuegbare_tafeln() liefert {type(tafeln).__name__}, erwartet frozenset von str")
+    for aufruf, text in (
+            (lambda: umsetzung.pruefe_alterstafel("leer", {}), "pruefe_alterstafel('leer', {})"),  # type: ignore[attr-defined]
+            (lambda: umsetzung.tafeln_lesen(""), "tafeln_lesen('')")):  # type: ignore[attr-defined]
+        try:
+            aufruf()
+        except ValueError:
+            pass
+        except Exception as exc:  # noqa: BLE001
+            befunde.append(f"{text} wirft {_ausnahme(exc)}, erwartet ValueError")
+        else:
+            befunde.append(f"{text} geht durch, erwartet ValueError")
     return befunde
 
 

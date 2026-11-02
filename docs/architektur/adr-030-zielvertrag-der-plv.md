@@ -265,16 +265,17 @@ Die sechs Gates (`fuehrungsprobe`, `generation_golden`, `verankerung_belegen`,
 `bestand_uebernehmen`, `aktuartest_lauf`, `migrationssuite_lauf`) lesen
 über den Anbieter; zehn Kanten der Altlast sind gelöst (24 auf 14). Die
 14 verbleibenden gehen alle nach `bestand/` (Stufen 3 bis 5). Dafür
-sagt der Vertrag vier Dinge mehr, die nur die Gates brauchen: den Stand
+sagt der Vertrag acht Dinge mehr, die nur die Gates brauchen: den Stand
 eines Vertrags vor jedem Vorgang (`Vertragswerte.stand`), einen Baustein
 aus eigenen Feldern, wie die Führung eine gebuchte Erhöhung führt
 (`mit_baustein`), was ein Vorgang gebucht hat (`Folge.ergebnis`,
-`Vorgangsergebnis`), die Ordnung der Vorgänge (`Vorgangsregeln.schluessel`),
-die Felder einer Schicht (`schichtfelder`) und die Felder einer
-Erhöhungsscheibe, wie das Zielsystem sie aus dem Grundvertrag ableitet
-(`Bewertung.scheibe`): Die Übernahme schreibt sie in die Scheibentabelle
-der Führung. Die Scheibe bleibt damit als Datensatz sichtbar, nicht als
-Modellpunkt des Kerns.
+`Vorgangsergebnis`), die Leistung eines terminalen Falls
+(`Stand.leistung`), die Art und die Ordnung der Vorgänge
+(`Vorgangsregeln.art`, `Vorgangsregeln.schluessel`), die Felder einer
+Schicht (`schichtfelder`) und die Felder einer Erhöhungsscheibe, wie das
+Zielsystem sie aus dem Grundvertrag ableitet (`Bewertung.scheibe`): Die
+Übernahme schreibt sie in die Scheibentabelle der Führung. Die Scheibe
+bleibt damit als Datensatz sichtbar, nicht als Modellpunkt des Kerns.
 
 Die zwei Stellen aus A-054 (B2) lösen ausgelassene Felder jetzt über den
 wirksamen Satz: `generation_golden` mit den Defaults des Parametersatzes,
@@ -300,6 +301,27 @@ der des eigenen Bestands); das neue Feld ist der einzige Unterschied in
 `aktuartest*.json` gegenüber der Stufe-1-Probe. Führungsprobe und
 Migrationssuite bleiben unberührt; ob der Schichtbeleg im Bestands-Scope
 Pflicht sein soll (H2), ist ein eigener Auftrag.
+
+### Stufe 2d: Nachzüge aus den Prüfungen A-054 und A-056
+
+Die PLV baut auch den Grundvertrag innerhalb ihrer Übersetzung: Eine
+Lieferung mit einer Tafel, die das Zielsystem nicht führt, ist ein
+`Datenfehler` des Vertrags und damit ein Befund des Vertrags in
+Prüfstrecke und aktuariellem Test, kein Absturz (A-056, B1). `felder`
+eines Vertrags sind die wirksamen Felder, wie das Zielsystem sie führt,
+nicht die gelieferten (B2). Die Konformität der Rechnungsgrundlagen
+verlangt `ValueError` für eine leere Alterstafel und einen leeren
+Tafelspeicher (A-054, H1); die PLV übersetzt dafür den Parserfehler
+ihres Tafelspeichers. Die sechs Bedingungen der PLV-Umsetzung, die A-056
+(B4) ohne Kontrollrechnung fand, sind jetzt gegen den Kern gehalten:
+Beitragsdauer-Filter des Jahresbeitrags, Zuschlag bei der beitragsfreien
+Summe, bestehende Bausteine in der Komponentenzahl, Schicht und Umfang
+der Teilkündigung im Stand, und der Baustein aus eigenen Feldern mit
+Feldern, die keine abgeleitete Scheibe sind. Nicht nachgezogen, weil
+Hinweise ohne Bedingung: die drei Anbieterbindungen beim Import
+(A-056 H1), die Übersetzung von `KorrekturschichtFehler` an den
+Werte-Pfaden (H3), die Wache der Summationsreihenfolge jenseits der
+Fall-3-Probe (H6).
 
 ## Nachweis je Stufe
 

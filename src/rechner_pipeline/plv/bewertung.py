@@ -175,27 +175,34 @@ class _Vertragswerte:
         *, gamma1_uebernehmen: bool, stoab_je_baustein: bool,
         bausteine: Sequence[Tuple[int, Mapping[str, Any]]] = (),
     ):
-        self.felder = MappingProxyType(dict(felder))
         self.scheiben = tuple((int(j), float(s)) for j, s in scheiben)
         self._bausteine = tuple((int(j), MappingProxyType(dict(f))) for j, f in bausteine)
         self._gamma1 = bool(gamma1_uebernehmen)
         self._stoab = bool(stoab_je_baustein)
-        self._mp = ModelPoint(**self.felder)
-        self._kern = Rechenkern(self._mp)
         try:
+            # Auch der Grundvertrag selbst (A-056, B1): Eine Tafel, die das
+            # Zielsystem nicht fuehrt, ist ein Datenfehler des Vertrags.
+            self._mp = ModelPoint(**felder)
+            self._kern = Rechenkern(self._mp)
             self._kerne: List[Tuple[int, Rechenkern]] = [
                 (j, Rechenkern(erhoehungs_scheibe(self._mp, j, s, gamma1_uebernehmen=self._gamma1)))
                 for j, s in self.scheiben] + [
                 (j, Rechenkern(ModelPoint(**f))) for j, f in self._bausteine]
         except (VorgangsfolgeFehler, KorrekturschichtFehler, MissingMortalityTableError) as exc:
             raise _uebersetzt(exc) from exc
+        # Die WIRKSAMEN Felder, wie das Zielsystem sie fuehrt (A-056, B2):
+        # ausgelassene optionale Felder mit ihrem Default.
+        self.felder = MappingProxyType(dataclasses.asdict(self._mp))
 
     def komponenten(self) -> int:
         return 1 + len(self._kerne)
 
     def mit_scheibe(self, jahr: int, summe: float) -> "_Vertragswerte":
         if self._bausteine:
-            raise ValueError("nach einem Baustein aus eigenen Feldern kommt keine Scheibe mehr")
+            raise ValueError(
+                "nach einem Baustein aus eigenen Feldern kommt keine Scheibe mehr: die "
+                "Bausteine stehen in der Reihenfolge ihrer Jahre, eine Scheibe gehoert "
+                "vor die eigenen Felder der Fuehrung")
         return _Vertragswerte(
             self.felder, (*self.scheiben, (jahr, summe)),
             gamma1_uebernehmen=self._gamma1, stoab_je_baustein=self._stoab)

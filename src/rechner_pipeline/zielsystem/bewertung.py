@@ -189,7 +189,12 @@ class Folge(Protocol):
 @runtime_checkable
 class Vertragswerte(Protocol):
     """Ein Vertrag (Grundversicherung und Erhoehungsscheiben) im
-    beitragspflichtigen oder beitragsfreien Zustand, ohne Vorgaenge."""
+    beitragspflichtigen oder beitragsfreien Zustand, ohne Vorgaenge.
+
+    ``felder`` sind die WIRKSAMEN Felder des Grundvertrags, wie das
+    Zielsystem sie fuehrt: die gelieferten plus die Defaults der
+    ausgelassenen; ``scheiben`` die Erhoehungsscheiben als (Jahr, Summe).
+    """
 
     felder: Mapping[str, Any]
     scheiben: Tuple[Tuple[int, float], ...]
@@ -203,7 +208,10 @@ class Vertragswerte(Protocol):
 
     def mit_baustein(self, jahr: int, felder: Mapping[str, Any]) -> "Vertragswerte":
         """Der Vertrag mit einem weiteren Baustein aus eigenen Feldern, wie
-        die Fuehrung ihn fuehrt (eine gebuchte Erhoehungsscheibe)."""
+        die Fuehrung ihn fuehrt (eine gebuchte Erhoehungsscheibe). Nach einem
+        solchen Baustein kommt keine Scheibe mehr (``mit_scheibe`` ist dann
+        ein ``ValueError``): Die Bausteine stehen in der Reihenfolge ihrer
+        Jahre."""
         ...
 
     def reserve(self, monate: int) -> Reserve: ...

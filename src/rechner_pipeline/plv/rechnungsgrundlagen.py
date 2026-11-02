@@ -13,6 +13,7 @@ Knoten: system/zielsystem
 from __future__ import annotations
 
 import dataclasses
+import xml.etree.ElementTree as ET
 from functools import lru_cache
 from types import MappingProxyType
 from typing import Any, FrozenSet, Mapping, Tuple
@@ -62,5 +63,8 @@ class PLVRechnungsgrundlagen:
     def tafeln_lesen(
         self, text: str
     ) -> Tuple[Mapping[str, Mapping[int, float]], FrozenSet[str]]:
-        alterstafeln, select_tafeln = tafeln._parse_tables(text)
+        try:
+            alterstafeln, select_tafeln = tafeln._parse_tables(text)
+        except ET.ParseError as exc:
+            raise ValueError(f"Tafelspeicher ist kein XML: {exc}") from exc
         return alterstafeln, frozenset(alterstafeln) | frozenset(select_tafeln)

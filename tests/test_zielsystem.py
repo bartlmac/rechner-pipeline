@@ -319,9 +319,12 @@ class _RG:
         return frozenset({"T"})
 
     def pruefe_alterstafel(self, name, werte):
-        return None
+        if not werte:
+            raise ValueError("leer")
 
     def tafeln_lesen(self, text):
+        if not text:
+            raise ValueError("leer")
         return {}, frozenset()
 
 
@@ -538,7 +541,9 @@ def test_bausteine_stand_ergebnis_und_schichtfelder_sind_die_des_kerns():
     assert dict(sch) == dataclasses.asdict(erhoehungs_scheibe(mp, 4, 800.0, gamma1_uebernehmen=True))
     with pytest.raises(ValueError):
         _bw().scheibe(felder, 0, 800.0, gamma1_uebernehmen=True)
-    eigener = {**felder, "x": 50, "n": 25, "t": 15, "sum_insured": 600.0, "gamma1": 0.0}
+    # Felder, die KEINE abgeleitete Scheibe sind (A-056, B4/G3): anderes
+    # Alter, andere Dauern, andere Zahlweise als x+5, n-5, t-5 des Grundvertrags.
+    eigener = {**felder, "x": 47, "n": 22, "t": 12, "sum_insured": 600.0, "gamma1": 0.0007, "zw": 1}
     v = _bw().vertrag(felder, [(3, 1000.0)], gamma1_uebernehmen=False, stoab_je_baustein=True)
     w = v.mit_baustein(5, eigener)
     assert w.komponenten() == 3 and v.komponenten() == 2
@@ -581,7 +586,10 @@ def test_die_beitragsfreie_reserve_kommt_je_baustein():
     for t in teile[1:]:
         b += t
     assert abs(a - b) < 1e-9       # dieselbe Groesse ...
-    assert isinstance(a, float)    # ... je Strecke in ihrer eigenen Reihenfolge summiert
+    # ... und auf dem Fall-3-Vertrag 7000003 (A-056, H4) in der letzten Stelle
+    # verschieden: Grund plus Summe der Scheiben gegen die Kette.
+    probe = (9370.967788640286, 0.0057843616210938, 0.0057843616210938, 0.0057843616210938)
+    assert probe[0] + sum(probe[1:]) != (((probe[0] + probe[1]) + probe[2]) + probe[3])
 
 
 def test_die_ausnahmen_des_kerns_werden_in_die_des_vertrags_uebersetzt():
@@ -787,3 +795,100 @@ def test_abzugsabgleich_rechnet_ueber_den_vertrag(fremde_bewertung):
 
     with pytest.raises(LookupError, match="markiert: rechne klv"):
         _rechne(_klv_felder(), 0)
+
+
+# --------------------------------------------------------------------------- #
+# Stufe 2d: Nachzuege aus A-054 (H1) und A-056 (B1, B2, B4)
+# --------------------------------------------------------------------------- #
+
+def test_eine_fremde_tafel_ist_ein_datenfehler_des_vertrags():
+    """A-056, B1: auch beim Bau des Grundvertrags uebersetzt die PLV; die
+    Pruefstrecke weist den Vertrag mit Befund ab, statt abzustuerzen."""
+    from rechner_pipeline.kern.tafeln import MissingMortalityTableError
+    from rechner_pipeline.qa import aktuarieller_test as at
+    from rechner_pipeline.qa.migrationssuite import DATEN_AUSNAHMEN, VertragsPruefung, pruefe_vertrag
+
+    fremd = {**_klv_felder(), "tafel": "GIBT_ES_NICHT"}
+    with pytest.raises(bewertung.Datenfehler) as info:
+        _bw().vertrag(fremd, gamma1_uebernehmen=False, stoab_je_baustein=False)
+    assert isinstance(info.value.__cause__, MissingMortalityTableError)
+    assert isinstance(info.value, DATEN_AUSNAHMEN)
+    v = VertragsPruefung(
+        police_id="P", model_point=fremd, monate_stichtag_1=113, monate_stichtag_2=125,
+        dk_erwartet_1=1.0, dk_erwartet_2=1.0, scheiben_mit_gamma1=False, stoab_je_baustein=False,
+        tku_umfang=None, dk_am_jahrestag=False)
+    with pytest.raises(bewertung.Datenfehler):
+        pruefe_vertrag(v, red_verfahren="prospektiv")
+    auftrag = at.Vertragspruefung(
+        police_id="P", model_point=fremd, historientyp="ohne_gevo",
+        punkte=(at.Pruefpunkt(monate=120, erwartet={"kVx_MRV": 1.0}, anlass=at.ANLASS_UEBERNAHME),),
+        scheiben_mit_gamma1=False, stoab_je_baustein=False, tku_umfang=None)
+    with pytest.raises(bewertung.Datenfehler):
+        at._pruefe_auftrag(auftrag)
+
+
+def test_die_felder_des_vertrags_sind_die_wirksamen():
+    """A-056, B2: ausgelassene optionale Felder stehen mit ihrem Default im
+    Vertrag; die Pruefstrecke liest den Stornoabzug von dort."""
+    felder = {k: v for k, v in _klv_felder().items() if k not in ("stoab_max", "zillmer_dauer")}
+    v = _bw().vertrag(felder, gamma1_uebernehmen=False, stoab_je_baustein=False)
+    assert v.felder["stoab_max"] == 150.0 and v.felder["zillmer_dauer"] == 5
+    assert dict(v.felder) == _klv_felder()
+    assert dict(v.mit_scheibe(3, 100.0).felder) == _klv_felder()
+
+
+def test_die_sechs_bedingungen_der_plv_gegen_den_kern():
+    """A-056, B4: Beitragsdauer-Filter, Zuschlag, bestehende Bausteine,
+    Schicht und Umfang im Stand, je gegen den Kern als Kontrollrechnung."""
+    from rechner_pipeline.kern import ModelPoint, Rechenkern, Vertragsstand, erhoehungs_scheibe, vorgang
+
+    felder = _klv_felder()                       # t = 20 < n = 30
+    mp = ModelPoint(**felder)
+
+    def kerne(scheiben):
+        return [(j, Rechenkern(erhoehungs_scheibe(mp, j, s, gamma1_uebernehmen=False))) for j, s in scheiben]
+
+    # S10 und S7: eine spaete Scheibe (Jahr 12) besteht am Monat 100 noch nicht;
+    # nach der Beitragszahlungsdauer jedes Bausteins kein Beitrag mehr.
+    spaet = _bw().vertrag(felder, [(3, 1000.0), (12, 500.0)], gamma1_uebernehmen=False, stoab_je_baustein=False)
+    st = spaet.stand(schicht=None, tku_umfang="alle_bausteine")
+    kst = Vertragsstand.anfang(Rechenkern(mp), kerne(spaet.scheiben), stoab_je_baustein=False,
+                               tku_umfang="alle_bausteine")
+    assert st.komponenten(100) == 2 and st.komponenten(150) == 3 == len(kst.bausteine)
+    assert st.jahresbeitrag(230) > 0.0
+    assert st.jahresbeitrag(384) == 0.0 == sum(
+        k.gross_annual_premium() for j, k in kst.beitragskerne(384) if 384 - 12 * j < 12 * k.mp.t)
+    assert sum(k.gross_annual_premium() for _, k in kst.beitragskerne(384)) > 0.0
+    # S8 und G2: eine Schicht, die bei der Freistellung einen Zuschlag traegt
+    v = _bw().vertrag(felder, [(3, 1000.0)], gamma1_uebernehmen=False, stoab_je_baustein=False)
+    schicht = _bw().schicht_aus_beleg(_schichtbeleg())
+    mit = v.stand(schicht=(schicht, 60), tku_umfang="alle_bausteine").nach_pex(8)
+    ohne = v.stand(schicht=None, tku_umfang="alle_bausteine").nach_pex(8)
+    kmit = Vertragsstand.anfang(Rechenkern(mp), kerne(v.scheiben), stoab_je_baustein=False,
+                                tku_umfang="alle_bausteine", schicht=(schicht, 60)).nach_pex(8)
+    assert sum(b.zuschlag for b in kmit.bausteine) > 0.0
+    assert mit.vs_bfr_ohne_zuschlag() == kmit.vs_bfr() - sum(b.zuschlag for b in kmit.bausteine)
+    assert mit.werte(100).vs_bfr == kmit.vs_bfr() != mit.vs_bfr_ohne_zuschlag()
+    assert mit.werte(100).vs_bfr != ohne.werte(100).vs_bfr
+    # G1: der Umfang der Teilkuendigung wirkt im Stand
+    grund = v.stand(schicht=None, tku_umfang="grundversicherung").nach_vorgang(8, 0.5, "teilkuendigung")
+    alle = v.stand(schicht=None, tku_umfang="alle_bausteine").nach_vorgang(8, 0.5, "teilkuendigung")
+    kgrund = Vertragsstand.anfang(Rechenkern(mp), kerne(v.scheiben), stoab_je_baustein=False,
+                                  tku_umfang="grundversicherung").nach_vorgang(vorgang(8, 0.5, "teilkuendigung"))[0]
+    assert grund.werte(120).vx_mrv == kgrund.werte(120)["vx_mrv"] != alle.werte(120).vx_mrv
+
+
+def test_konformitaet_verlangt_valueerror_fuer_leere_tafeln():
+    """A-054, H1: zwei Regeln mehr, je mit Positivkontrolle."""
+    assert konformitaet.pruefe_rechnungsgrundlagen(_rg()) == []
+    with pytest.raises(ValueError):
+        _rg().tafeln_lesen("")
+    with pytest.raises(ValueError):
+        _rg().pruefe_alterstafel("leer", {})
+    still = konformitaet.pruefe_rechnungsgrundlagen(_rg_abart(tafeln_lesen=lambda self, t: ({}, frozenset())))
+    assert any("tafeln_lesen('') geht durch" in b for b in still), still
+    still = konformitaet.pruefe_rechnungsgrundlagen(_rg_abart(pruefe_alterstafel=lambda self, n, w: None))
+    assert any("pruefe_alterstafel('leer', {}) geht durch" in b for b in still), still
+    anders = konformitaet.pruefe_rechnungsgrundlagen(
+        _rg_abart(tafeln_lesen=lambda self, t: (_ for _ in ()).throw(KeyError(t))))
+    assert any("erwartet ValueError" in b for b in anders), anders
