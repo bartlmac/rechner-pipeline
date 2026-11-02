@@ -15,6 +15,11 @@ deklarative Regeln:
   die Zielsystem-Schnittstelle — die heute gemessene Menge dieser Kanten
   ist als Ratsche festgeschrieben (``TOOL_NACH_VORZEIGE_ERLAUBT``); jede
   neue Kante Tool -> Vorzeige ist ein Befund, bis ein ADR sie aufnimmt.
+  Seit ADR-030 ist die Schnittstelle ein Paket (``zielsystem/``), und
+  das Tool kennt die Implementierung nur in ``zielsystem/anbieter.py``:
+  Die uebrigen Kanten der Ratsche sind Altlast und schrumpfen je Stufe
+  (``ALTLAST_KANTEN``); aus keinem anderen Modul der Schicht
+  ``zielsystem`` fuehrt eine Kante in die Vorzeige.
 * **SDK-Verbot**: kein openai/anthropic/langgraph/langchain in src.
 
 Dynamische Importe sind mitgeprueft, soweit sie sich aus EINER Datei
@@ -91,6 +96,14 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
               "spez", "bestand", "fall"},            # Pruef-CLIs lesen alles;
     #                                                  fall: Gates operieren
     #                                                  auf Faellen (ADR-002)
+    # zielsystem seit 2026-11-02 (ADR-030): der Zielvertrag des Tools —
+    # Protokolle, Version, Konformitaet. Importiert models und, in genau
+    # einem Modul (anbieter.py), die Implementierung der Vorzeige.
+    "zielsystem": {"zielsystem", "models", "plv"},
+    # plv seit 2026-11-02 (ADR-030): die PLV als Zielsystem, erfuellt den
+    # Vertrag mit Kern und Bestandsfuehrung; ausserhalb von kern/, weil
+    # der abgenommene Kernstand das Paket kern bindet (A-K2).
+    "plv": {"plv", "kern", "bestand", "models", "zielsystem"},
     "fall": set(),
     "__init__": set(),                               # Paketwurzel
 }
@@ -107,9 +120,10 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
 #: innerhalb des Pakets (Review T22-08).
 EBENE_JE_SCHICHT: Dict[str, str] = {
     "ontologie": "tool", "spez": "tool", "gates": "tool", "models": "tool",
-    "qa": "tool", "quellen": "tool", "fall": "tool",
+    "qa": "tool", "quellen": "tool", "fall": "tool", "zielsystem": "tool",
     "__init__": "tool",
     "kern": "vorzeige", "bestand": "vorzeige", "betrieb": "vorzeige",
+    "plv": "vorzeige",
 }
 
 #: Module der Ebene 4 innerhalb von src: Sie erzeugen synthetische
@@ -158,13 +172,25 @@ VORZEIGE_NACH_WERKZEUG_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/betrieb/tagesjournal.py", "rechner_pipeline/bestand/zufallsstroeme.py"),
 }
 
+#: Das eine Modul des Tools, das die Implementierung des Zielsystems
+#: kennt (ADR-030): Jede andere Kante aus dem Tool in die Vorzeige ist
+#: Altlast.
+ZIELSYSTEM_ANBIETER = "rechner_pipeline/zielsystem/anbieter.py"
+
 #: Die Zielsystem-Schnittstelle, wie sie heute benutzt wird: alle Kanten
 #: aus dem Tool in die Vorzeige, auf Modulebene, gemessen am Stand von
 #: ADR-017 (29 Kanten). Das ist eine RATSCHE: bestehende Kanten sind
 #: erlaubt, jede neue ist ein Befund. Ob daraus ein explizites
 #: Schnittstellen-Modul und eine Paketteilung folgen, entscheidet ein
 #: ADR nach der Messung — nicht ein Import nebenbei.
+#: ADR-030 (2026-11-02) hat entschieden: Die Schnittstelle ist das Paket
+#: ``zielsystem``, und nur ``ZIELSYSTEM_ANBIETER`` darf die Vorzeige
+#: kennen. Die 36 Kanten vom Stand 9986830 bleiben als Altlast in dieser
+#: Menge und schrumpfen je Stufe; ``ALTLAST_KANTEN`` zaehlt sie, und ein
+#: Test haelt die Zahl fest (Stufe 0: 36).
 TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
+    # ADR-030, Stufe 0: die Kante des Vertrags auf die PLV.
+    (ZIELSYSTEM_ANBIETER, "rechner_pipeline/plv/zielsystem.py"),
     ("rechner_pipeline/gates/abnahmebericht.py", "rechner_pipeline/bestand/vorbedingungen.py"),
     ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/bestand/parquet_io.py"),
     ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/kern/korrekturschicht.py"),
@@ -226,6 +252,14 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/qa/migrationssuite.py", "rechner_pipeline/kern/beitragsreduktion.py"),
     ("rechner_pipeline/quellen/tafel_import.py", "rechner_pipeline/kern/tafeln.py"),
     ("rechner_pipeline/spez/erzeugen.py", "rechner_pipeline/kern/tafeln.py"),
+}
+
+
+#: Die Altlast der Ratsche: alle Kanten aus dem Tool in die Vorzeige,
+#: die nicht ueber den Anbieter des Zielvertrags gehen (ADR-030). Sie
+#: schrumpft je Stufe und waechst nie.
+ALTLAST_KANTEN: Set[tuple] = {
+    k for k in TOOL_NACH_VORZEIGE_ERLAUBT if k[0] != ZIELSYSTEM_ANBIETER
 }
 
 
@@ -607,6 +641,8 @@ def validate(karte: Dict[str, object]) -> List[str]:
                 "ADR-017); eine neue Kante ist eine Architektur-Entscheidung"
             )
     # Ratsche: keine neue Kante aus dem Tool in die Vorzeige ohne ADR.
+    # Seit ADR-030 kennt nur der Anbieter des Zielvertrags die Vorzeige;
+    # die uebrigen Kanten der Menge sind Altlast (ALTLAST_KANTEN).
     for kante in karte.get("tool_nach_vorzeige", []):
         paar = (kante["von"], kante["nach"])
         if paar not in TOOL_NACH_VORZEIGE_ERLAUBT:
@@ -614,7 +650,13 @@ def validate(karte: Dict[str, object]) -> List[str]:
                 f"{paar[0]} -> {paar[1]}: neue Kante aus dem KI-Tool in die "
                 "Vorzeige — das Tool spricht das Zielsystem nur ueber die "
                 "gemessene Schnittstelle an (TOOL_NACH_VORZEIGE_ERLAUBT, "
-                "ADR-017); eine neue Kante ist eine Architektur-Entscheidung"
+                "ADR-017); seit ADR-030 geht ein neuer Zugriff nur ueber "
+                f"{ZIELSYSTEM_ANBIETER}, alles andere ist Altlast und waechst nicht"
+            )
+        elif _schicht(paar[0]) == "zielsystem" and paar[0] != ZIELSYSTEM_ANBIETER:
+            befunde.append(
+                f"{paar[0]} -> {paar[1]}: der Zielvertrag kennt die Vorzeige "
+                f"nur in {ZIELSYSTEM_ANBIETER} (ADR-030)"
             )
     # Jede vorkommende Schicht braucht einen Regel-Eintrag — auch eine
     # ohne jede Kante (ein neues Paket, das nur nach aussen telefoniert,

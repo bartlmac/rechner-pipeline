@@ -39,6 +39,8 @@ ist ihre Lesefassung und muss mit ihr uebereinstimmen.
 | `models/` | paketuebergreifende Datenvertraege | Verhaltenslogik |
 | `qa/` | deterministische Vergleichs-Engines (Golden Master, aktuarieller Test, Migrationssuite, Abzugsabgleich) | LLM-Pfade |
 | `fall.py` | Fall-Arbeitsbereich (Eingang unantastbar, ADR-002) | Aufraeumlogik fuer `eingang/` oder `entscheide/` |
+| `zielsystem/` | der Zielvertrag (ADR-030): Protokolle je Faehigkeit, Version, Konformitaet; `anbieter.py` ist die EINE Stelle, die die Implementierung kennt | Import aus der Vorzeige ausserhalb `anbieter.py`; Fachlogik |
+| `plv/` | die PLV als Zielsystem: erfuellt den Vertrag mit Kern und Bestandsfuehrung (Ebene 3, Objekt PLV) | Aenderungen an `kern/` (A-K2); Import aus `gates/` |
 
 Neuer Code, der in keine Schicht passt, ist ein Architekturbefund —
 STOPP, Vorschlag formulieren, Mensch entscheidet.

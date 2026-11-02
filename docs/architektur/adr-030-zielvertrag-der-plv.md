@@ -1,0 +1,219 @@
+# ADR-030: Der Zielvertrag zwischen Migrationssystem und PLV
+
+**Status:** angenommen am 29.10.2026 (Entscheid des Maintainers, E-007:
+Option B für die Stufen 0 bis 2; die Stufen 3 bis 5 sind nicht beauftragt).
+Ort der Implementierung entschieden am 02.11.2026 (eigenes Paket `plv/`).
+Stufe 0 umgesetzt am 02.11.2026. Entwurf vom 22.10.2026 aus Auftrag A-020,
+Befund A29-01 der externen Prüfrunde vom 14.10.2026.
+
+## Kontext
+
+ADR-017 hat entschieden: „Das Tool definiert die Schnittstelle, die es von
+einem Zielsystem braucht (Parametrierung entgegennehmen, Werte liefern,
+Verlauf liefern), und diese Schnittstelle ist Tool." Ob daraus ein eigenes
+Modul oder eine Paketteilung folgt, sollte „ein ADR nach der Messung"
+entscheiden. Bis zu diesem ADR gab es die Schnittstelle nur als Liste der
+erlaubten Importe: `TOOL_NACH_VORZEIGE_ERLAUBT` in
+`ontologie/code_karte.py`, eine Ratsche, in der jede neue Kante ein Befund
+ist.
+
+Der externe Prüfer (ToDo 29, A29-01) urteilt: Die Ratsche verhindert neue
+unbemerkte Kanten, aber sie beschreibt die vorhandene Integration, statt
+einen fachlichen Vertrag umzusetzen. Für Quellen gibt es mit `InputAdapter`
+(`quellen/adapters/base.py`) eine austauschbare Abstraktion, für das
+Zielsystem nicht. Ein anderes Zielsystem müsste viele Prüfer im Tool
+anpassen.
+
+**Die Messung (Stand 0b6470c, 22.10.2026; am Stand 9986830 vom 02.11.2026
+nachgemessen: 36 Kanten, 62 verschiedene Namen):**
+
+- 36 erlaubte Kanten aus 15 Modulen des Tools in 13 Module der PLV.
+- Über diese Kanten gehen 66 Namen (AST-Messung über alle 36 Kanten),
+  62 verschiedene: `ModelPoint`, `Rechenkern`, `erhoehungs_scheibe` und
+  `vertrags_monatsreserve` kommen je über zwei Module.
+- Am meisten importieren `gates/fuehrungsprobe` (6 Kanten),
+  `gates/verankerung_belegen` (5), `gates/bestand_uebernehmen` (4) und
+  `qa/aktuarieller_test` (4).
+- Am häufigsten importiert werden `kern/__init__` (7 Kanten),
+  `bestand/parquet_io` (5), `kern/beitragsreduktion` (4) und
+  `kern/korrekturschicht` (4). Die meisten Namen liefert
+  `bestand/migrationszugang` (16).
+
+Nach dem, was sie tun, fallen die Namen in fünf Fähigkeiten:
+
+| Fähigkeit | Was das Tool vom Zielsystem braucht | Heutige Namen (Auswahl) | Anzahl |
+|---|---|---|---|
+| 1 Rechnungsgrundlagen | den wirksamen Parametersatz je Vertrag, Tafeln, Produkte | `ModelPoint`, `BestandConfig`, `config_aus_text`, `grundlagen_je_police`, `PRODUKTE`, `hole`, `verfuegbare_tafeln`, `validiere_alterstafel`, `_parse_tables` | 11 |
+| 2 Bestandsdaten | Bestand lesen und schreiben, Manifest | `read_portfolio`, `write_portfolio`, `lies_manifest_bytes`, `schreibe_manifest`, `ROLLEN_DATEIEN` | 10 |
+| 3 Bewertung | Werte und Verlauf je Vertrag, Vorgänge, Korrekturschicht | `berechne`, `Rechenkern`, `vertrags_monatsreserve`, `Vorgangsfolge`, `vorgang`, `Korrekturschicht`, `schichtwert_bei`, `zuschlag_bei_pex`, `TEILKUENDIGUNG` | 23 |
+| 4 Zugang | aus gelieferten Werten den Anfangszustand im Zielsystem ableiten | `uebernehmen`, `fuehrungswerte`, `leite_*` (9 Ableitungen), `bestimme_serie_mit_kandidaten` | 16 |
+| 5 Bestandsprüfung | P-B1 auf einem Bestand fahren | `lies_und_pruefe_pb1`, `fortschreibung_pruefen`, `bestandszeilen`, `PB1_ROLLEN` | 6 |
+
+Zwei Befunde der Prüfrunde ToDo 28 zeigen, was ein fehlender Vertrag kostet.
+Bei T28-04 verglich die Führungsprobe nur die gesetzten Felder einer
+Spez-Zelle, weil niemand den wirksamen Parametersatz einschließlich der
+Defaults liefert. Den Default kennt nur `kern/model_point.py`, und
+`models/bestand.py` importiert ihn von dort. Bei T28-01 war die
+Komponentenzahl eines Vergleichs keine Aussage des Zielsystems, sondern
+eine Behauptung im Bericht. Beide sind mit T28 repariert; der Vertrag
+verschiebt die Reparaturen an ihren Ort, ohne sie zu ändern.
+
+ADR-017 hat eine eigene Hülle bewusst abgelehnt: Eine Hülle hätte die
+Nutzung versteckt, statt sie in der Liste zu messen. Jede Option unten muss
+sich daran messen lassen.
+
+## Optionen
+
+### A: Die Ratsche bleibt, die gemessenen Namen werden der Vertrag
+
+Die Namen kommen als zweite Ratsche neben die Kantenliste, mit einem
+Zähltest: Jeder neue Name ist ein Befund. Dazu ein Dokument, das die fünf
+Fähigkeiten beschreibt.
+
+- Für: billig, nichts wandert, kein Wert ändert sich.
+- Gegen: Der Vertrag bleibt die Summe dessen, was die PLV zufällig anbietet.
+  Ein zweites Zielsystem müsste dieselben Namen mit derselben Semantik
+  liefern, auch interne wie `_parse_tables`. T28-04 bleibt eine Frage an
+  jeden einzelnen Prüfer.
+- Aufwand: 1 Tag.
+
+### B: Ein versionierter Zielvertrag im Tool, die PLV erfüllt ihn
+
+Ein neues Tool-Paket `zielsystem/` (Ebene 2) beschreibt die Fähigkeiten als
+Protokolle mit eigenen Datentypen, nach dem Muster von `InputAdapter`. Dazu
+eine Versionskennung. Die PLV liefert eine Implementierung in Ebene 3,
+außerhalb von `kern/`. Das Tool importiert aus der PLV nur noch an einer
+Stelle, wo die Implementierung bekannt gemacht wird. Die Ratsche schrumpft
+Fähigkeit für Fähigkeit, bis nur diese eine Kante übrig ist.
+
+- Für: Das ist die Schnittstelle, die ADR-017 beschreibt. Der Vertrag
+  versteckt nichts, er ist selbst die gemessene Fläche: versioniert, mit
+  eigenen Konformitätstests, die jede Implementierung bestehen muss. Er
+  kann den wirksamen Parametersatz einmal festlegen (die Wurzel von
+  T28-04) und Aussagen wie die Komponentenzahl als Leistung des
+  Zielsystems führen statt als Behauptung im Beleg (die Wurzel von
+  T28-01).
+- Gegen: mehrere Tage Arbeit ohne neue Fachfunktion. Die Grenze zwischen
+  Fähigkeit 4 (Zugang) und dem Tool muss fachlich gezogen werden, weil die
+  Ableitung des Anfangszustands heute halb Prüfstrecke und halb Führung
+  ist.
+- Aufwand: 7 bis 10 Arbeitstage, in fünf Stufen, je eine Fähigkeit.
+
+### C: Eine Fassade in der PLV
+
+Ein Modul in Ebene 3 reicht die Namen weiter, das Tool importiert nur noch
+dieses Modul.
+
+- Für: in einem Tag erledigt, die Ratsche fällt auf eine Kante.
+- Gegen: Genau das hat ADR-017 abgelehnt. Die Kopplung bleibt dieselbe und
+  wird nur unsichtbar. Austauschbar wird nichts.
+- Aufwand: 1 Tag.
+
+### D: Paketteilung oder eigenes Repository für die PLV
+
+- Gegen: ADR-017 schließt das ausdrücklich aus („das Drift-Prinzip lebt
+  von der Ko-Lokation"). Der Prüfer rät ebenfalls davon ab, solange kein
+  Bedarf an unabhängiger Veröffentlichung belegt ist.
+- Nicht weiter verfolgt.
+
+## Entscheidung
+
+**Option B, stufenweise.** Jede Stufe ist ein eigener Commit nach voller
+Suite. Keine Stufe darf einen Wert ändern: Die Suite und die Referenzwerte
+bleiben unverändert grün, und das Nachfahren des dritten Falls liefert
+dieselben Bytes. Beauftragt sind die Stufen 0 bis 2; die Stufen 3 bis 5
+werden danach neu entschieden.
+
+**Der Vertrag** liegt im Paket `src/rechner_pipeline/zielsystem/` (Ebene 2,
+Tool): `version.py` (die Versionskennung, drei Zahlen wie beim
+Gate-Vertrag), `vertrag.py` (der Katalog der fünf Fähigkeiten, das
+Wurzelprotokoll `Zielsystem`, je Stufe ein Protokoll je Fähigkeit),
+`konformitaet.py` (die Prüfungen, die jede Implementierung bestehen muss)
+und `anbieter.py` (die eine Stelle, die die Implementierung kennt, als
+statischer Import). Das Paket importiert aus dem Tool nur `models`. Die
+Protokolle sind strukturell (`typing.Protocol`): Eine Implementierung
+importiert nichts aus dem Tool, sie hat nur die verlangte Form.
+
+**Die Implementierung** liegt im neuen Paket `src/rechner_pipeline/plv/`
+(Ebene 3, Objekt PLV nach ADR-028, neben `kern`, `bestand` und `betrieb`).
+Es erfüllt den Vertrag mit dem, was Kern und Bestandsführung heute können,
+und darf `kern`, `bestand`, `models` und `zielsystem` importieren. Die
+Alternative, ein Modul in `bestand/`, ist verworfen: `bestand` ist Bestand
+und Führung; Rechnungsgrundlagen und Bewertung sind Adapter des Kerns,
+nicht der Führung. Beide Orte liegen außerhalb von `kern/`: Der Kernstand
+A-K2 bindet das Paket `kern` (`models/kernabnahme.KERNSTAND`), die
+Referenzwerte und die Grundsatzdokumentation; keine neue Kernabnahme ist
+nötig.
+
+**Die Versionskennung** nennt die PLV als eigene Aussage (Literal in
+`plv/zielsystem.py`), nicht als Import der Konstante des Vertrags: Erst dann
+ist die Verträglichkeitsprüfung eine Prüfung. Verträglich heißt gleiche
+Haupt- und Nebenversion. In den Stufen 0 bis 2 kommt die Vertragsversion
+nicht in die Belege der Gates: Das wäre ein Patch-Sprung je Gate und bräche
+die Bytegleichheit des Nachfahrens. Ob sie später in die Belege gehört, ist
+ein eigener Entscheid.
+
+**Die Regel in der Schichtenkarte:** Das Tool kennt die Implementierung des
+Zielsystems nur in `zielsystem/anbieter.py`. Die 36 Kanten vom Stand
+9986830 bleiben als Altlast in `TOOL_NACH_VORZEIGE_ERLAUBT`
+(`ALTLAST_KANTEN`), ein Test hält ihre Zahl mit Gleichheit fest, und jede
+Stufe senkt sie. Eine neue Kante aus dem Tool in die Vorzeige bleibt ein
+Befund; aus einem anderen Modul der Schicht `zielsystem` als dem Anbieter
+ist sie ein Befund, auch wenn sie in der Ratsche stünde.
+
+Reihenfolge der Stufen, nach Nutzen und Größe:
+
+| Stufe | Inhalt | Stand |
+|---|---|---|
+| 0 | Gerüst: Paket `zielsystem/` mit Version 0.1.0, Katalog der Fähigkeiten, Wurzelprotokoll, Konformität, Anbieter; Paket `plv/` mit der PLV, die noch keine Fähigkeit anbietet; Regel und Zähltest in der Schichtenkarte; Skill, ADR-017, ADR-028, README | umgesetzt 02.11.2026 |
+| 1 | Rechnungsgrundlagen (11 Namen): Der Vertrag liefert den wirksamen Parametersatz einer Generation bzw. einer Police vollständig, einschließlich der Defaults. Führungsprobe, Prüfstrecke und `models/bestand.py` lesen ihn von dort. Das schließt die Klasse von T28-04, nicht nur den einen Befund. | beauftragt |
+| 2 | Bewertung (23 Namen): Werte, Verlauf und Vorgänge je Vertrag für `qa/aktuarieller_test`, `qa/migrationssuite` und `qa/abzugsabgleich`. Hier gehört die Komponentenzahl eines gelieferten Werts hin (T28-01). Spiegelt der Vertrag die Kern-Schnittstellen 1:1, ist er die Fassade aus Option C; er muss schmaler sein und dieselben Werte liefern. | beauftragt |
+| 3 | Bestandsdaten (10 Namen) | nicht beauftragt |
+| 4 | Bestandsprüfung (6 Namen) | nicht beauftragt |
+| 5 | Zugang (16 Namen), zuletzt. Er ist am stärksten PLV-eigen. Vorher ist zu klären, welcher Teil der Ableitung Prüfstrecke (Tool) und welcher Führung (PLV) ist. | nicht beauftragt |
+
+Je Fähigkeit trägt die Stufe ihr Protokoll in `PROTOKOLL_JE_FAEHIGKEIT`
+ein. Bis dahin darf kein Zielsystem die Fähigkeit anbieten, weil der
+Vertrag nicht sagt, was sie ist; so beschreibt der Vertrag nichts, was
+niemand erfüllt.
+
+## Nachweis je Stufe
+
+- volle Suite grün;
+- das Nachfahren des dritten Falls in einer Wegwerfwelt mit Testschlüsseln,
+  die 16 Dateien der `ERWARTUNG` bytegleich;
+- die Zahl der Altlast-Kanten gesenkt, die Ratsche gleich der Messung;
+  `landkarte.md`, Code-Index und Code-Karte nachgezogen;
+- keine Gate-Version geändert, weil sich kein Beleg-Byte ändert.
+
+## Konsequenzen
+
+- **Ebenen und Wache:** Die Code-Karte kennt die Schichten `zielsystem`
+  (Tool) und `plv` (Vorzeige) und die Regel „das Tool kennt die
+  Implementierung nur im Anbieter". `TOOL_NACH_VORZEIGE_ERLAUBT` schrumpft
+  je Stufe. Kommt eine Kante neu hinzu, bleibt das ein Befund.
+- **Gezeichnete Gegenstände:** Der Kern wird nicht geändert. Referenzwerte,
+  `plv/mathematik`, `plv/tarifplaene` und `plv/configs` bleiben unberührt.
+- **Systemstand:** Jede Stufe ändert den Code und damit den Systemstand.
+  Fall 3 ist auf seinem Stand gezeichnet. Ändert sich keine Gate-Version
+  und kein Ergebnis, bleibt das Nachfahren gleich. Das ist je Stufe zu
+  messen, nicht anzunehmen.
+- **Laufzeit:** Der Tageslauf nutzt das Tool nicht. Die Laufzeit muss
+  deshalb nicht umgestellt werden. Ein neues Image entsteht trotzdem mit
+  jedem Merge.
+- **Plattformanspruch:** Erst mit Stufe 5 ist die Aussage belegt, das Tool
+  lasse sich an ein anderes Zielsystem anschließen. Bis dahin ist sie
+  Absicht, nicht Stand. Texte für Dritte sollten das so sagen.
+- **Doku:** ADR-017 und ADR-028 tragen einen Nachtrag mit Verweis auf dieses
+  ADR. Der Skill `entwickle-im-zielsystem` nennt `zielsystem/` und `plv/`
+  in der Schichtenkarte; das README nennt beide Pakete bei ihrer Ebene.
+
+## Bewusst nicht Bestandteil
+
+- ein zweites Zielsystem; der Vertrag wird an der PLV gebaut und an ihr
+  geprüft;
+- die Trennung von Simulation und Führung (ADR-031, A29-03);
+- A29-02 (der Zyklus zwischen `models.schemas` und `gates._common`), nach
+  Entscheid vom 22.10.2026 nicht in diesem Umfang;
+- eine Änderung am Rechenkern oder an seinen Referenzwerten;
+- die Vertragsversion in den Belegen der Gates (eigener Entscheid).

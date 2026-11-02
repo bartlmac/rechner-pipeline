@@ -34,8 +34,8 @@ Reihenfolge der Tabellen ist keine Nummerierung.
 
 | Ebene | Was | Ordner |
 |---|---|---|
-| System | das Migrationssystem, die gemeinsamen Datenverträge, die Rollen der Agenten, die Werkzeuge für den Live-Lauf eines Falls und die Vorlage des Migrationskonzepts | `src/rechner_pipeline` (gates, ontologie, spez, quellen, qa, models, fall.py), `.claude/`, `.agents/`, `system/` |
-| Objekt PLV | die übernehmende Gesellschaft: Rechenkern, Bestandsführung, Tagesbetrieb, ihre Parametrierung und Fachdokumente, das Image ihrer Laufzeit und ihr Auftritt | `src/rechner_pipeline` (kern, bestand, betrieb), `plv/` |
+| System | das Migrationssystem, die gemeinsamen Datenverträge, die Rollen der Agenten, die Werkzeuge für den Live-Lauf eines Falls und die Vorlage des Migrationskonzepts | `src/rechner_pipeline` (gates, ontologie, spez, quellen, qa, models, zielsystem, fall.py), `.claude/`, `.agents/`, `system/` |
+| Objekt PLV | die übernehmende Gesellschaft: Rechenkern, Bestandsführung, Tagesbetrieb, ihre Parametrierung und Fachdokumente, das Image ihrer Laufzeit und ihr Auftritt | `src/rechner_pipeline` (kern, bestand, betrieb, plv), `plv/` |
 | Objekt Baldrian bzw. Migration | die abgebende Gesellschaft: ihre Lieferungen, die Falldatei der Vorführung, die Berichte zu den Fällen | `migrationen/baldrian/` |
 | Simulation | Modell und Betrieb der Simulation. Modell: Verteilungen, das Erzeugen von Geschäftsvorfällen und Neugeschäft (die Module, die die Schichtenkarte der Simulation zuordnet: `bestand/generator.py`, `stochastik.py`, `ereignisse.py`, `cli_fortschreibung.py`, `betrieb/neugeschaeft.py`), das Quellsystem der Baldrian. Betrieb: eine Welt aufstellen, einen Fall nachfahren, die Seite bauen. | `werkzeuge/`, die genannten Module in `src/rechner_pipeline` |
 | Laufzeit-Artefakte | was beim Laufen entsteht; im Repository nur, was das Nachfahren eines Falls braucht | `pakete/` |
@@ -156,3 +156,12 @@ die Simulation stellen `bestand/generator.py`, `stochastik.py`,
 `zufallsstroeme.py`, `ziehung.py`, `cli_fortschreibung.py`,
 `betrieb/neugeschaeft.py` und `betrieb/ziehung.py`. Maßgeblich bleibt
 `EBENE_JE_MODUL` in `ontologie/code_karte.py`.
+
+## Nachtrag 2026-11-02 (ADR-030)
+
+Zwei Pakete sind hinzugekommen: `src/rechner_pipeline/zielsystem` gehört
+zum System (der Vertrag, den das Tool von einem Zielsystem verlangt),
+`src/rechner_pipeline/plv` zum Objekt PLV (die PLV erfüllt ihn). Die
+Tabelle oben nennt beide. Der Satz „Die Schichtenkarte und die
+Importregeln im Paket ändern sich nicht" galt für den Umzug von 2026-10-08;
+ADR-030 ergänzt die Schichtenkarte um die beiden Schichten.

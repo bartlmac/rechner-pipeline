@@ -39,9 +39,11 @@ flowchart TD
     kern["kern<br/>13 Module"]
     models["models<br/>18 Module"]
     ontologie["ontologie<br/>16 Module"]
+    plv["plv<br/>2 Module"]
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
     spez["spez<br/>6 Module"]
+    zielsystem["zielsystem<br/>5 Module"]
     bestand -- 36 --> kern
     bestand -- 20 --> models
     bestand -- 1 --> qa
@@ -68,6 +70,7 @@ flowchart TD
     quellen -- 1 --> spez
     spez -- 1 --> kern
     spez -- 13 --> ontologie
+    zielsystem -- 1 --> plv
 ```
 
 ## 2 Fachknoten — die Sicht der Ontologie
@@ -86,6 +89,7 @@ flowchart TD
     system_assurance["system/assurance<br/>15 Module"]
     system_entscheid["system/entscheid<br/>17 Module"]
     system_fall["system/fall<br/>1 Module"]
+    system_zielsystem["system/zielsystem<br/>7 Module"]
     bu -- 3 --> system_assurance
     bu -- 19 --> system_entscheid
     klv -- 9 --> system_assurance
