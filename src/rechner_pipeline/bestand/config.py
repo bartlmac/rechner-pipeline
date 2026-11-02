@@ -37,15 +37,22 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 from rechner_pipeline.kern.beitragsreduktion import (
     PRODUKTIV_AUSFUEHRBAR, PROSPEKTIV, VERFAHREN,
 )
+from rechner_pipeline.kern.model_point import ModelPoint as _KernModelPoint
 from rechner_pipeline.kern.vorgangsfolge import TKU_UMFAENGE, tku_umfang_fuer
 from rechner_pipeline.models.bestand import (
     BU_GENERATION_FIELDS,
-    GENERATION_FIELD_DEFAULTS,
     GENERATION_FIELDS,
     PRODUKT_VALUES,
 )
 
-_D = GENERATION_FIELD_DEFAULTS  # Kernel-Defaults der Tarif-Stellschrauben
+#: Kernel-Defaults der Tarif-Stellschrauben, aus dem eigenen Kern gelesen
+#: (ADR-030, Stufe 1: das Tool liest sie ueber den Zielvertrag, die
+#: Fuehrung direkt aus ihrem Kern).
+_D: Dict[str, Any] = {
+    f.name: f.default
+    for f in _dc.fields(_KernModelPoint)
+    if f.default is not _dc.MISSING
+}
 
 #: Attributes every generation must configure a distribution for — je Produkt
 #: (BU zieht die Jahresrente statt Versicherungssumme; Beitragsdauer und

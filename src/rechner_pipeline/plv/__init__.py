@@ -6,8 +6,9 @@ Objekt PLV (ADR-028), Ebene 3 (ADR-017), neben ``kern``, ``bestand`` und
 heute schon koennen; es liegt ausserhalb von ``kern/``, weil der
 abgenommene Kernstand das Paket ``kern`` bindet (A-K2).
 
-Stufe 0: die PLV nennt sich und die Vertragsversion, bietet noch keine
-Faehigkeit an. Stufe 1 bringt die Rechnungsgrundlagen, Stufe 2 die
+Stufe 0: die PLV nennt sich und die Vertragsversion. Stufe 1: sie
+bietet die Rechnungsgrundlagen an (``rechnungsgrundlagen.py``: Produkte,
+Parametersatz mit Defaults, Modellpunkt, Tafeln). Stufe 2 bringt die
 Bewertung.
 
 Knoten: system/zielsystem

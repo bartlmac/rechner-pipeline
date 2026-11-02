@@ -3,8 +3,8 @@
 **Status:** angenommen am 29.10.2026 (Entscheid des Maintainers, E-007:
 Option B für die Stufen 0 bis 2; die Stufen 3 bis 5 sind nicht beauftragt).
 Ort der Implementierung entschieden am 02.11.2026 (eigenes Paket `plv/`).
-Stufe 0 umgesetzt am 02.11.2026. Entwurf vom 22.10.2026 aus Auftrag A-020,
-Befund A29-01 der externen Prüfrunde vom 14.10.2026.
+Stufe 0 und Stufe 1 umgesetzt am 02.11.2026. Entwurf vom 22.10.2026 aus
+Auftrag A-020, Befund A29-01 der externen Prüfrunde vom 14.10.2026.
 
 ## Kontext
 
@@ -166,7 +166,7 @@ Reihenfolge der Stufen, nach Nutzen und Größe:
 | Stufe | Inhalt | Stand |
 |---|---|---|
 | 0 | Gerüst: Paket `zielsystem/` mit Version 0.1.0, Katalog der Fähigkeiten, Wurzelprotokoll, Konformität, Anbieter; Paket `plv/` mit der PLV, die noch keine Fähigkeit anbietet; Regel und Zähltest in der Schichtenkarte; Skill, ADR-017, ADR-028, README | umgesetzt 02.11.2026 |
-| 1 | Rechnungsgrundlagen (11 Namen): Der Vertrag liefert den wirksamen Parametersatz einer Generation bzw. einer Police vollständig, einschließlich der Defaults. Führungsprobe, Prüfstrecke und `models/bestand.py` lesen ihn von dort. Das schließt die Klasse von T28-04, nicht nur den einen Befund. | beauftragt |
+| 1 | Rechnungsgrundlagen (11 Namen): Der Vertrag liefert den wirksamen Parametersatz einer Generation bzw. einer Police vollständig, einschließlich der Defaults. Führungsprobe, Prüfstrecke und `models/bestand.py` lesen ihn von dort. Das schließt die Klasse von T28-04, nicht nur den einen Befund. | umgesetzt 02.11.2026 (unten) |
 | 2 | Bewertung (23 Namen): Werte, Verlauf und Vorgänge je Vertrag für `qa/aktuarieller_test`, `qa/migrationssuite` und `qa/abzugsabgleich`. Hier gehört die Komponentenzahl eines gelieferten Werts hin (T28-01). Spiegelt der Vertrag die Kern-Schnittstellen 1:1, ist er die Fassade aus Option C; er muss schmaler sein und dieselben Werte liefern. | beauftragt |
 | 3 | Bestandsdaten (10 Namen) | nicht beauftragt |
 | 4 | Bestandsprüfung (6 Namen) | nicht beauftragt |
@@ -177,13 +177,52 @@ ein. Bis dahin darf kein Zielsystem die Fähigkeit anbieten, weil der
 Vertrag nicht sagt, was sie ist; so beschreibt der Vertrag nichts, was
 niemand erfüllt.
 
+### Stufe 1: Rechnungsgrundlagen (Vertrag 0.2.0)
+
+Das Protokoll `zielsystem/rechnungsgrundlagen.py` sagt, was das Tool vom
+Zielsystem braucht, ohne dessen Kern zu kennen: die Produkte, je Produkt
+den `Parametersatz` (Felder mit Typ und die Defaults der Felder, die eine
+Generation auslassen darf), den Modellpunkt aus den wirksamen Feldern,
+und die Tafeln (Namen, Prüfung einer Alterstafel, Lesen des
+Tafelspeichers). Die PLV erfüllt es in `plv/rechnungsgrundlagen.py` als
+Weitergabe dessen, was `kern.produkte`, die Modellpunkt-Klassen und
+`kern.tafeln` sagen; sie nennt die Version 0.2.0 selbst. Die
+Konformitätsprüfung prüft über die Form hinaus, was das Protokoll in
+Worten verlangt (`konformitaet.PRUEFUNG_JE_FAEHIGKEIT`).
+
+Der wirksame Parametersatz hat damit einen Ort: `models.bestand.
+model_point_kwargs`, der eine Weg des Tools zum vollständigen
+Modellpunkt, liest die Defaults über den Vertrag
+(`generation_field_defaults`), nicht mehr aus `kern/model_point.py`;
+Führungsprobe und Prüfstrecke gehen diesen Weg (T28-04). Die Führung
+liest dieselben Defaults direkt aus ihrem Kern (`bestand/config.py`).
+
+Fünf Kanten der Altlast sind gelöst (36 auf 31): `models/bestand` und
+`ontologie/code_index`, `qa/abzugsabgleich`, `quellen/tafel_import`,
+`spez/erzeugen` lesen über `zielsystem/anbieter.py`. Ein Test hält je
+Konsument mit einer fremden Umsetzung fest, dass er vom Vertrag liest
+und nicht vom Kern.
+
+Nicht in Stufe 1, mit Begründung: Die sechs Bewertungskonsumenten
+(`fuehrungsprobe`, `generation_golden`, `verankerung_belegen`,
+`bestand_uebernehmen`, `qa/aktuarieller_test`, `qa/migrationssuite`)
+bauen den Modellpunkt weiter selbst, weil sie ihn an den Rechenkern
+geben; ihre Kanten löst Stufe 2 zusammen mit der Bewertung.
+`MissingMortalityTableError` (`qa/migrationssuite`) ist die Ausnahme der
+Bewertung bei fehlender Tafel und geht mit ihr. Die Führungsprobe liest
+die Config der Führung als Ganzes (`BestandConfig`, `config_aus_text`,
+`grundlagen_je_police`: Generationen, Tarifwerk, Annahmen); was davon
+Rechnungsgrundlage und was Bestandsdaten ist, entscheidet Stufe 2 mit
+der Bewertung oder Stufe 3.
+
 ## Nachweis je Stufe
 
 - volle Suite grün;
 - das Nachfahren des dritten Falls in einer Wegwerfwelt mit Testschlüsseln,
   die 16 Dateien der `ERWARTUNG` bytegleich;
-- die Zahl der Altlast-Kanten gesenkt, die Ratsche gleich der Messung;
-  `landkarte.md`, Code-Index und Code-Karte nachgezogen;
+- ab Stufe 1 die Zahl der Altlast-Kanten gesenkt (Stufe 0 ist Gerüst und
+  lässt sie bei 36), die Ratsche gleich der Messung; `landkarte.md`,
+  Code-Index und Code-Karte nachgezogen;
 - keine Gate-Version geändert, weil sich kein Beleg-Byte ändert.
 
 ## Konsequenzen
@@ -191,7 +230,10 @@ niemand erfüllt.
 - **Ebenen und Wache:** Die Code-Karte kennt die Schichten `zielsystem`
   (Tool) und `plv` (Vorzeige) und die Regel „das Tool kennt die
   Implementierung nur im Anbieter". `TOOL_NACH_VORZEIGE_ERLAUBT` schrumpft
-  je Stufe. Kommt eine Kante neu hinzu, bleibt das ein Befund.
+  je Stufe. Kommt eine Kante neu hinzu, bleibt das ein Befund. Die
+  Schichten `models`, `ontologie`, `spez`, `quellen` und `qa` dürfen seit
+  Stufe 1 `zielsystem` importieren; `models/bestand.py` tut es erst beim
+  Aufruf, weil die Vorzeige dieses Modul beim Laden importiert.
 - **Gezeichnete Gegenstände:** Der Kern wird nicht geändert. Referenzwerte,
   `plv/mathematik`, `plv/tarifplaene` und `plv/configs` bleiben unberührt.
 - **Systemstand:** Jede Stufe ändert den Code und damit den Systemstand.

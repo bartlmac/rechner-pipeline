@@ -76,15 +76,20 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
     # (models.zeichnung) wird von gates UND ontologie.entscheide
     # gelesen (Vier-Rollen-Modell) — paketuebergreifende Vertraege
     # sind genau die models-Zustaendigkeit.
-    "ontologie": {"ontologie", "kern", "models"},    # kern: nur lesende
+    # zielsystem bei ontologie, models, spez, quellen, qa seit 2026-11-02
+    # (ADR-030, Stufe 1): Produkte, Parametersatz, Modellpunkt und Tafeln
+    # kommen ueber den Zielvertrag statt aus kern.
+    "ontologie": {"ontologie", "kern", "models", "zielsystem"},
+    #                                                  kern: nur lesende
     #                                                  Registry-Introspektion
-    #                                                  (erlaubte_wurzeln)
-    "models": {"models", "kern", "gates"},           # gates: Altlast
+    "models": {"models", "kern", "gates", "zielsystem"},
+    #                                                  gates: Altlast
     #                                                  schemas<->Gate-Contract
-    "spez": {"spez", "ontologie", "kern"},           # kern: lesende
+    "spez": {"spez", "ontologie", "kern", "zielsystem"},
+    #                                                  kern: lesende
     #                                                  Introspektion (D2)
-    "quellen": {"quellen", "models", "ontologie", "kern", "spez"},
-    "qa": {"qa", "models", "quellen", "kern"},
+    "quellen": {"quellen", "models", "ontologie", "kern", "spez", "zielsystem"},
+    "qa": {"qa", "models", "quellen", "kern", "zielsystem"},
     "bestand": {"bestand", "kern", "models", "qa"},
     # betrieb seit 2026-09-05: der Tagesbetrieb der Vorzeige
     # (docs/simulation/tagesbetrieb.md, Abschnitt 9) — Neugeschaeft je
@@ -187,7 +192,7 @@ ZIELSYSTEM_ANBIETER = "rechner_pipeline/zielsystem/anbieter.py"
 #: ``zielsystem``, und nur ``ZIELSYSTEM_ANBIETER`` darf die Vorzeige
 #: kennen. Die 36 Kanten vom Stand 9986830 bleiben als Altlast in dieser
 #: Menge und schrumpfen je Stufe; ``ALTLAST_KANTEN`` zaehlt sie, und ein
-#: Test haelt die Zahl fest (Stufe 0: 36).
+#: Test haelt die Zahl fest (Stufe 0: 36, Stufe 1: 31).
 TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # ADR-030, Stufe 0: die Kante des Vertrags auf die PLV.
     (ZIELSYSTEM_ANBIETER, "rechner_pipeline/plv/zielsystem.py"),
@@ -240,18 +245,19 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/parquet_io.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/__init__.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/rechenkern.py"),
-    ("rechner_pipeline/models/bestand.py", "rechner_pipeline/kern/model_point.py"),
-    ("rechner_pipeline/ontologie/code_index.py", "rechner_pipeline/kern/produkte/__init__.py"),
+    # ADR-030, Stufe 1 (2026-11-02): fuenf Kanten der Rechnungsgrundlagen
+    # abgeloest — models/bestand -> kern/model_point (Defaults),
+    # ontologie/code_index -> kern/produkte (PRODUKTE), qa/abzugsabgleich
+    # -> kern/produkte (hole), quellen/tafel_import -> kern/tafeln
+    # (_parse_tables, validiere_alterstafel), spez/erzeugen -> kern/tafeln
+    # (verfuegbare_tafeln). Die Module lesen jetzt ueber zielsystem/anbieter.
     ("rechner_pipeline/qa/abzugsabgleich.py", "rechner_pipeline/kern/__init__.py"),
-    ("rechner_pipeline/qa/abzugsabgleich.py", "rechner_pipeline/kern/produkte/__init__.py"),
     ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/__init__.py"),
     ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/beitragsreduktion.py"),
     ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/korrekturschicht.py"),
     ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/rechenkern.py"),
     ("rechner_pipeline/qa/migrationssuite.py", "rechner_pipeline/kern/__init__.py"),
     ("rechner_pipeline/qa/migrationssuite.py", "rechner_pipeline/kern/beitragsreduktion.py"),
-    ("rechner_pipeline/quellen/tafel_import.py", "rechner_pipeline/kern/tafeln.py"),
-    ("rechner_pipeline/spez/erzeugen.py", "rechner_pipeline/kern/tafeln.py"),
 }
 
 

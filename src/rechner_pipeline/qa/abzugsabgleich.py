@@ -88,9 +88,11 @@ def _nah(ist: float, soll: float) -> bool:
 
 def _rechne(model_point: Dict[str, Any], vertragsjahr: int) -> Dict[str, float]:
     from rechner_pipeline.kern import berechne
-    from rechner_pipeline.kern.produkte import hole
+    from rechner_pipeline.zielsystem.anbieter import zielsystem
 
-    mp = hole("klv").model_point_cls(**model_point)
+    # Der Modellpunkt kommt ueber den Zielvertrag (ADR-030, Stufe 1); die
+    # Bewertung selbst (``berechne``) folgt mit Stufe 2.
+    mp = zielsystem().faehigkeit("rechnungsgrundlagen").modellpunkt("klv", model_point)
     ergebnis = berechne(mp)
     werte: Dict[str, float] = dict(ergebnis["scalars"]["Kalkulation"])
     zeilen = ergebnis["tables"]["Kalkulation"]

@@ -22,7 +22,7 @@ from rechner_pipeline.gates.migrationssuite_lauf import fuehrungswert_rechnen
 from rechner_pipeline.kern import ModelPoint, Rechenkern
 from rechner_pipeline.models.bestand import (
     GENERATION_FIELDS,
-    GENERATION_FIELD_DEFAULTS,
+    generation_field_defaults,
     model_point_kwargs,
 )
 from rechner_pipeline.spez.schema import StrukturUrteil, TarifSpez, ZellSpez
@@ -101,7 +101,7 @@ def _probe(config, spez, zeile, stamm, historie, ledger):
 def test_fuehrungsprobe_vergleicht_fehlenden_default(feld, abweichend):
     """Jedes ausgelassene optionale Feld ist im Kern wirksam; die Config
     mit anderem Wert darf nicht an diesem Vergleich vorbeikommen."""
-    assert feld in GENERATION_FIELD_DEFAULTS
+    assert feld in generation_field_defaults()
     _, config, spez, zeile, stamm, historie, ledger = _welt(feld, abweichend)
     result = _probe(config, spez, zeile, stamm, historie, ledger)
     assert any(feld in str(b) and "grundlagen" in str(b)

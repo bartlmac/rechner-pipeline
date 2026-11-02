@@ -4,6 +4,11 @@ Drei Zahlen wie beim Gate-Vertrag (ADR-012): Die Hauptversion wechselt,
 wenn eine Implementierung, die bisher konform war, es nicht mehr ist; die
 Nebenversion, wenn der Vertrag etwas Neues verlangt oder beschreibt; die
 dritte Zahl bei Berichtigungen ohne Folgen fuer Implementierungen.
+Die Unterscheidung von Haupt- und Nebenversion erklaert heute nur den
+Anlass eines Sprungs; ``vertraeglich`` verlangt beide gleich, weil in
+den Stufen 0 bis 2 jede Erweiterung des Vertrags die PLV nachziehen
+muss. Ob eine aeltere Nebenversion einmal als vertraeglich gelten soll,
+entscheidet erst ein zweites Zielsystem.
 
 Eine Implementierung nennt die Vertragsversion, die sie erfuellt, als
 eigene Aussage (kein Import dieser Konstante): Erst dann ist die
@@ -16,8 +21,9 @@ from __future__ import annotations
 
 from typing import Tuple
 
-#: Die Version des Vertrags, den dieses Paket beschreibt. Stufe 0: Geruest.
-VERTRAG_VERSION = "0.1.0"
+#: Die Version des Vertrags, den dieses Paket beschreibt. 0.1.0 war das
+#: Geruest (Stufe 0); 0.2.0 beschreibt die Rechnungsgrundlagen (Stufe 1).
+VERTRAG_VERSION = "0.2.0"
 
 
 def zerlege(version: str) -> Tuple[int, int, int]:

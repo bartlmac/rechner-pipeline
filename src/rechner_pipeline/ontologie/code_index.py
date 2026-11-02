@@ -118,18 +118,19 @@ def erlaubte_wurzeln() -> List[str]:
     """Fachliche Wurzeln: T-Box-Familien + Kern-Produkt-Registry + system.
 
     Ein Fachknoten ist entweder eine migrierte Produktfamilie (T-Box)
-    oder ein registriertes Kern-Produkt (das noch keinen Migrationsfall
-    hat, wie BU). Lesende Registry-Introspektion, keine Fachformel.
+    oder ein Produkt des Zielsystems (das noch keinen Migrationsfall
+    hat, wie BU), gelesen ueber den Zielvertrag (ADR-030, Stufe 1).
     """
     import typing
 
-    from rechner_pipeline.kern.produkte import PRODUKTE
     from rechner_pipeline.ontologie.tbox import Tarifgeneration
+    from rechner_pipeline.zielsystem.anbieter import zielsystem
 
     familien = list(typing.get_args(
         Tarifgeneration.model_fields["familie"].annotation
     ))
-    return sorted({*familien, *PRODUKTE, *SYSTEM_WURZELN})
+    produkte = zielsystem().faehigkeit("rechnungsgrundlagen").produkte()
+    return sorted({*familien, *produkte, *SYSTEM_WURZELN})
 
 
 def drift_report(
