@@ -98,7 +98,7 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
     # bestand.vorbedingungen, nicht ueber gates (keine Kante betrieb -> gates).
     "betrieb": {"betrieb", "bestand", "kern", "models", "qa"},
     "gates": {"gates", "ontologie", "quellen", "kern", "models", "qa",
-              "spez", "bestand", "fall"},            # Pruef-CLIs lesen alles;
+              "spez", "bestand", "fall", "zielsystem"},  # Pruef-CLIs lesen alles;
     #                                                  fall: Gates operieren
     #                                                  auf Faellen (ADR-002)
     # zielsystem seit 2026-11-02 (ADR-030): der Zielvertrag des Tools —
@@ -192,13 +192,13 @@ ZIELSYSTEM_ANBIETER = "rechner_pipeline/zielsystem/anbieter.py"
 #: ``zielsystem``, und nur ``ZIELSYSTEM_ANBIETER`` darf die Vorzeige
 #: kennen. Die 36 Kanten vom Stand 9986830 bleiben als Altlast in dieser
 #: Menge und schrumpfen je Stufe; ``ALTLAST_KANTEN`` zaehlt sie, und ein
-#: Test haelt die Zahl fest (Stufe 0: 36, Stufe 1: 31, Stufe 2a: 24).
+#: Test haelt die Zahl fest (Stufe 0: 36, Stufe 1: 31, Stufe 2a: 24,
+#: Stufe 2b: 14; der Rest sind die Kanten nach bestand/, Stufen 3 bis 5).
 TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # ADR-030, Stufe 0: die Kante des Vertrags auf die PLV.
     (ZIELSYSTEM_ANBIETER, "rechner_pipeline/plv/zielsystem.py"),
     ("rechner_pipeline/gates/abnahmebericht.py", "rechner_pipeline/bestand/vorbedingungen.py"),
     ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/bestand/parquet_io.py"),
-    ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/kern/korrekturschicht.py"),
     # Freischaltung (dev-docs/freischaltung-uebernommener-bestand.md,
     # Schritt 3; ADR-017 Nachtrag 2026-09-07): Die Uebernahme ruft
     # DIESELBE Anfangszustands-Ableitung wie Pruefstrecke und Verankerung
@@ -207,7 +207,6 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # verankerung_belegen laengst haben; ein Ort fuer den Anfangszustand.
     ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/bestand/migrationszugang.py"),
     ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/bestand/parquet_io.py"),
-    ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/kern/__init__.py"),
     # Zuschlag der Korrekturschicht bei Beitragsfreistellung (ADR-017
     # Nachtrag 2026-09-20, Entscheid des Maintainers): Die Uebernahme
     # bucht die PEX-Umbuchung uebernommener Vertraege mit demselben
@@ -216,7 +215,6 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # aktuartest_lauf, fuehrungsprobe und qa.aktuarieller_test schon
     # haben. Ohne diese Kante haette die Uebernahme die Regel
     # abgeschrieben; genau das Abtippen war Befund T25-06.
-    ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/kern/korrekturschicht.py"),
     ("rechner_pipeline/gates/bestand_validate.py", "rechner_pipeline/bestand/manifest.py"),
     # Freischaltung, Schritt 6 (ADR-017 Nachtrag 2026-09-07): Die
     # Fuehrungsprobe stellt den gefuehrten Bestand gegen die Pruefstrecke
@@ -227,14 +225,9 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/bestand/auswertung.py"),
     ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/bestand/config.py"),
     ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/bestand/parquet_io.py"),
-    ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/kern/__init__.py"),
-    ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/kern/beitragsreduktion.py"),
-    ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/kern/korrekturschicht.py"),
     ("rechner_pipeline/gates/bestand_validate.py", "rechner_pipeline/bestand/vorbedingungen.py"),
-    ("rechner_pipeline/gates/generation_golden.py", "rechner_pipeline/kern/__init__.py"),
     ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/bestand/migrationszugang.py"),
     ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/bestand/parquet_io.py"),
-    ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/kern/beitragsreduktion.py"),
     # Laufmanifest des Migrationszugangs (ADR-017 Nachtrag 2026-09-20,
     # Entscheid des Maintainers): Ein Migrationslauf hat zwei
     # Produzenten; der zweite kennt Schicht UND Config und schreibt
@@ -243,14 +236,16 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/manifest.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/migrationszugang.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/parquet_io.py"),
-    ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/__init__.py"),
-    ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/rechenkern.py"),
     # ADR-030, Stufe 1 (2026-11-02): fuenf Kanten der Rechnungsgrundlagen
     # abgeloest — models/bestand -> kern/model_point (Defaults),
     # ontologie/code_index -> kern/produkte (PRODUKTE), qa/abzugsabgleich
     # -> kern/produkte (hole), quellen/tafel_import -> kern/tafeln
     # (_parse_tables, validiere_alterstafel), spez/erzeugen -> kern/tafeln
     # (verfuegbare_tafeln). Die Module lesen jetzt ueber zielsystem/anbieter.
+    # ADR-030, Stufe 2b (2026-11-02): zehn Kanten der Gates abgeloest —
+    # aktuartest_lauf, bestand_uebernehmen, fuehrungsprobe, generation_golden,
+    # migrationssuite_lauf, verankerung_belegen nach kern/*. Es bleiben die
+    # 14 Kanten nach bestand/ (Stufen 3 bis 5).
     # ADR-030, Stufe 2a (2026-11-02): sieben Kanten der Bewertung abgeloest —
     # qa/abzugsabgleich -> kern/__init__ (berechne), qa/aktuarieller_test
     # -> kern/__init__, kern/beitragsreduktion, kern/korrekturschicht,

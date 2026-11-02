@@ -1000,12 +1000,14 @@ def test_die_altlast_der_ratsche_schrumpft_nur():
     """ADR-030: Die Ratsche besteht aus der einen Kante des Anbieters und
     der Altlast, die je Stufe schrumpft und nie waechst. Stufe 0: 36
     Kanten vom Stand 9986830; Stufe 1 (Rechnungsgrundlagen): 31; Stufe 2a
-    (Bewertung, die Pruefstrecke): 24. Die Zahl steht hier mit == (nicht
-    <=), damit eine Stufe, die Kanten loest, die Zahl bewusst senkt — und
-    eine, die welche hinzufuegt, rot wird."""
+    (Bewertung, die Pruefstrecke): 24; Stufe 2b (die Gates): 14. Die Zahl
+    steht hier mit == (nicht <=), damit eine Stufe, die Kanten loest, die
+    Zahl bewusst senkt — und eine, die welche hinzufuegt, rot wird. Die 14
+    gehen alle nach bestand/ (Stufen 3 bis 5)."""
     from rechner_pipeline.ontologie.code_karte import ALTLAST_KANTEN, ZIELSYSTEM_ANBIETER
 
-    assert len(ALTLAST_KANTEN) == 24
+    assert len(ALTLAST_KANTEN) == 14
+    assert all(nach.startswith("rechner_pipeline/bestand/") for _von, nach in ALTLAST_KANTEN)
     geloest = {
         # Stufe 1
         ("rechner_pipeline/models/bestand.py", "rechner_pipeline/kern/model_point.py"),
@@ -1021,6 +1023,17 @@ def test_die_altlast_der_ratsche_schrumpft_nur():
         ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/rechenkern.py"),
         ("rechner_pipeline/qa/migrationssuite.py", "rechner_pipeline/kern/__init__.py"),
         ("rechner_pipeline/qa/migrationssuite.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+        # Stufe 2b
+        ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/kern/korrekturschicht.py"),
+        ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/kern/korrekturschicht.py"),
+        ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+        ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/kern/korrekturschicht.py"),
+        ("rechner_pipeline/gates/generation_golden.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+        ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/rechenkern.py"),
     }
     assert not (geloest & ALTLAST_KANTEN)
     assert ALTLAST_KANTEN == {k for k in TOOL_NACH_VORZEIGE_ERLAUBT if k[0] != ZIELSYSTEM_ANBIETER}

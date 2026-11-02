@@ -168,7 +168,7 @@ Reihenfolge der Stufen, nach Nutzen und Größe:
 |---|---|---|
 | 0 | Gerüst: Paket `zielsystem/` mit Version 0.1.0, Katalog der Fähigkeiten, Wurzelprotokoll, Konformität, Anbieter; Paket `plv/` mit der PLV, die noch keine Fähigkeit anbietet; Regel und Zähltest in der Schichtenkarte; Skill, ADR-017, ADR-028, README | umgesetzt 02.11.2026 |
 | 1 | Rechnungsgrundlagen (11 Namen): Der Vertrag liefert den wirksamen Parametersatz einer Generation bzw. einer Police vollständig, einschließlich der Defaults. Führungsprobe, Prüfstrecke und `models/bestand.py` lesen ihn von dort. Das schließt die Klasse von T28-04, nicht nur den einen Befund. | umgesetzt 02.11.2026 (unten) |
-| 2 | Bewertung (23 Namen): Werte, Verlauf und Vorgänge je Vertrag für `qa/aktuarieller_test`, `qa/migrationssuite` und `qa/abzugsabgleich`. Hier gehört die Komponentenzahl eines gelieferten Werts hin (T28-01). Spiegelt der Vertrag die Kern-Schnittstellen 1:1, ist er die Fassade aus Option C; er muss schmaler sein und dieselben Werte liefern. | 2a (Vertrag, PLV, Prüfstrecke) umgesetzt 02.11.2026; 2b (die Gates) und 2c (Schichtbeleg an den Bestand binden) im Bau |
+| 2 | Bewertung (23 Namen): Werte, Verlauf und Vorgänge je Vertrag für `qa/aktuarieller_test`, `qa/migrationssuite` und `qa/abzugsabgleich`. Hier gehört die Komponentenzahl eines gelieferten Werts hin (T28-01). Spiegelt der Vertrag die Kern-Schnittstellen 1:1, ist er die Fassade aus Option C; er muss schmaler sein und dieselben Werte liefern. | 2a (Vertrag, PLV, Prüfstrecke) und 2b (die Gates) umgesetzt 02.11.2026; 2c (Schichtbeleg an den Bestand binden) im Bau |
 | 3 | Bestandsdaten (10 Namen) | nicht beauftragt |
 | 4 | Bestandsprüfung (6 Namen) | nicht beauftragt |
 | 5 | Zugang (16 Namen), zuletzt. Er ist am stärksten PLV-eigen. Vorher ist zu klären, welcher Teil der Ableitung Prüfstrecke (Tool) und welcher Führung (PLV) ist. | nicht beauftragt |
@@ -259,6 +259,32 @@ bitgleich. Die Gates (`fuehrungsprobe`, `generation_golden`,
 `verankerung_belegen`, `bestand_uebernehmen`, `aktuartest_lauf`,
 `migrationssuite_lauf`) folgen in 2b.
 
+### Stufe 2b: die Gates
+
+Die sechs Gates (`fuehrungsprobe`, `generation_golden`, `verankerung_belegen`,
+`bestand_uebernehmen`, `aktuartest_lauf`, `migrationssuite_lauf`) lesen
+über den Anbieter; zehn Kanten der Altlast sind gelöst (24 auf 14). Die
+14 verbleibenden gehen alle nach `bestand/` (Stufen 3 bis 5). Dafür
+sagt der Vertrag vier Dinge mehr, die nur die Gates brauchen: den Stand
+eines Vertrags vor jedem Vorgang (`Vertragswerte.stand`), einen Baustein
+aus eigenen Feldern, wie die Führung eine gebuchte Erhöhung führt
+(`mit_baustein`), was ein Vorgang gebucht hat (`Folge.ergebnis`,
+`Vorgangsergebnis`), die Ordnung der Vorgänge (`Vorgangsregeln.schluessel`),
+die Felder einer Schicht (`schichtfelder`) und die Felder einer
+Erhöhungsscheibe, wie das Zielsystem sie aus dem Grundvertrag ableitet
+(`Bewertung.scheibe`): Die Übernahme schreibt sie in die Scheibentabelle
+der Führung. Die Scheibe bleibt damit als Datensatz sichtbar, nicht als
+Modellpunkt des Kerns.
+
+Die zwei Stellen aus A-054 (B2) lösen ausgelassene Felder jetzt über den
+wirksamen Satz: `generation_golden` mit den Defaults des Parametersatzes,
+`bestand_uebernehmen` über `model_point_kwargs`. Die Nachzüge B1 (zwei
+Positivkontrollen) und B3 sind drin: Jeder Konsument bindet das Modul des
+Anbieters, nicht den Namen, und importiert es früh; was der Anbieter zur
+Laufzeit sagt, gilt, und ein Test kann ihn austauschen. Die beitragsfreie
+Gesamtsumme zählt nur die Bausteine, die im Jahr der Freistellung
+bestehen (vorher stand dieser Filter an einer von vier Stellen).
+
 ## Nachweis je Stufe
 
 - volle Suite grün;
@@ -278,10 +304,12 @@ bitgleich. Die Gates (`fuehrungsprobe`, `generation_golden`,
   Schichten `models`, `ontologie`, `spez`, `quellen` und `qa` dürfen seit
   Stufe 1 `zielsystem` importieren; `models/bestand.py` tut es erst beim
   Aufruf, weil die Vorzeige dieses Modul beim Laden importiert.
-- **Ausnahmen:** Seit Stufe 2 kennt die Prüfstrecke die Ausnahmetypen des
-  Kerns nicht mehr; eine Verweigerung des Zielsystems ist ein
-  `Datenfehler` des Vertrags. Die Befundtexte tragen weiter den Text des
-  Kerns; nur der Typname in einem Abbruchtext ist der des Vertrags.
+- **Ausnahmen:** Seit Stufe 2 kennen Prüfstrecke und Gates die
+  Ausnahmetypen des Kerns nicht mehr; eine Verweigerung des Zielsystems
+  ist ein `Datenfehler` des Vertrags. Die Befundtexte tragen weiter den
+  Text des Kerns; nur der Typname in einem Abbruchtext ist der des Vertrags.
+- **Die Gates kennen den Kern nicht mehr:** Aus `gates/` führt keine Kante
+  mehr nach `kern/`; die Schicht `gates` darf `zielsystem` importieren.
 - **Gezeichnete Gegenstände:** Der Kern wird nicht geändert. Referenzwerte,
   `plv/mathematik`, `plv/tarifplaene` und `plv/configs` bleiben unberührt.
 - **Systemstand:** Jede Stufe ändert den Code und damit den Systemstand.

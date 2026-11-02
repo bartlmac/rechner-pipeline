@@ -52,7 +52,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from rechner_pipeline.models.manifest import ExportManifest, file_sha256
-from rechner_pipeline.zielsystem.anbieter import zielsystem
+from rechner_pipeline.zielsystem import anbieter
 
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -60,7 +60,7 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 def _rechnungsgrundlagen():
     """Die Rechnungsgrundlagen des Zielsystems (Tafelregeln, Tafelspeicher)."""
-    return zielsystem().faehigkeit("rechnungsgrundlagen")
+    return anbieter.zielsystem().faehigkeit("rechnungsgrundlagen")
 
 
 class TafelImportFehler(ValueError):

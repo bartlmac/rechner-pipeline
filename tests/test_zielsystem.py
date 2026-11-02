@@ -335,6 +335,7 @@ def test_eine_fremde_konforme_umsetzung_besteht():
 
 @pytest.mark.parametrize("aenderung, erwartet", [
     ({"produkte": lambda self: frozenset()}, "erwartet ein nicht leeres frozenset"),
+    ({"produkte": lambda self: frozenset({1})}, "erwartet ein nicht leeres frozenset von str"),
     ({"produkte": lambda self: {"p"}}, "erwartet ein nicht leeres frozenset"),
     ({"produkte": lambda self: (_ for _ in ()).throw(RuntimeError("x"))}, "produkte() wirft RuntimeError"),
     ({"parametersatz": lambda self, p: {"felder": ()}}, "erwartet Parametersatz"),
@@ -349,6 +350,7 @@ def test_eine_fremde_konforme_umsetzung_besteht():
     ({"parametersatz": lambda self, p: (_ for _ in ()).throw(ValueError(p))},
      "parametersatz('p') wirft ValueError"),
     ({"verfuegbare_tafeln": lambda self: {"T"}}, "erwartet frozenset von str"),
+    ({"verfuegbare_tafeln": lambda self: frozenset({1})}, "erwartet frozenset von str"),
     ({"verfuegbare_tafeln": lambda self: (_ for _ in ()).throw(OSError("weg"))}, "verfuegbare_tafeln() wirft OSError"),
 ])
 def test_jede_regel_der_rechnungsgrundlagen_hat_eine_positivkontrolle(aenderung, erwartet):
@@ -434,7 +436,6 @@ def test_spez_erzeugen_liest_die_tafeln_vom_vertrag(fremdes_zielsystem):
 def test_tafel_import_liest_und_prueft_ueber_den_vertrag(fremdes_zielsystem, monkeypatch, tmp_path):
     from rechner_pipeline.quellen import tafel_import
 
-    monkeypatch.setattr(tafel_import, "zielsystem", anbieter.zielsystem)
     xml = tmp_path / "tafeln.xml"
     xml.write_text("<tafeln/>", encoding="utf-8")
     assert tafel_import._lade_bestehende(xml) == ({"PROBE": {0: 0.5}}, {"PROBE", "PROBE_SELECT"})
@@ -522,6 +523,48 @@ def test_die_werte_des_vertrags_sind_die_des_kerns():
     assert danach.vs_bfr_ohne_zuschlag() == kerndanach.vs_bfr() - sum(b.zuschlag for b in kerndanach.bausteine)
     neu = vor.nach_vorgang(10, 0.5, "teilkuendigung")
     assert neu.werte(130).vx_mrv == w.vx_mrv
+
+
+def test_bausteine_stand_ergebnis_und_schichtfelder_sind_die_des_kerns():
+    """Stufe 2b: was die Gates brauchen, gegen den Kern als Kontrollrechnung."""
+    import dataclasses
+
+    from rechner_pipeline.kern import ModelPoint, Rechenkern, Vertragsstand, Vorgangsfolge, erhoehungs_scheibe, vorgang
+    from rechner_pipeline.kern.korrekturschicht import Schichtparameter
+
+    felder = _klv_felder()
+    mp = ModelPoint(**felder)
+    sch = _bw().scheibe(felder, 4, 800.0, gamma1_uebernehmen=True)
+    assert dict(sch) == dataclasses.asdict(erhoehungs_scheibe(mp, 4, 800.0, gamma1_uebernehmen=True))
+    with pytest.raises(ValueError):
+        _bw().scheibe(felder, 0, 800.0, gamma1_uebernehmen=True)
+    eigener = {**felder, "x": 50, "n": 25, "t": 15, "sum_insured": 600.0, "gamma1": 0.0}
+    v = _bw().vertrag(felder, [(3, 1000.0)], gamma1_uebernehmen=False, stoab_je_baustein=True)
+    w = v.mit_baustein(5, eigener)
+    assert w.komponenten() == 3 and v.komponenten() == 2
+    kerne = [(3, Rechenkern(erhoehungs_scheibe(mp, 3, 1000.0, gamma1_uebernehmen=False))),
+             (5, Rechenkern(ModelPoint(**eigener)))]
+    stand = w.stand(schicht=None, tku_umfang="grundversicherung")
+    kernstand = Vertragsstand.anfang(Rechenkern(mp), kerne, stoab_je_baustein=True,
+                                     tku_umfang="grundversicherung", schicht=None)
+    assert stand.werte(100).rueckkaufswert == kernstand.werte(100)["rueckkaufswert"]
+    assert stand.leistung() == kernstand.leistung() == 101600.0
+    assert stand.nach_pex(9).leistung() == kernstand.nach_pex(9).leistung()
+    folge = w.folge([(8, 0.6, "teilkuendigung")], pex_jahr=None, schicht=None, tku_umfang="alle_bausteine")
+    kernfolge = Vorgangsfolge(Rechenkern(mp), kerne, [vorgang(8, 0.6, "teilkuendigung")], pex_jahr=None,
+                              schicht=None, stoab_je_baustein=True, tku_umfang="alle_bausteine")
+    e, ke = folge.ergebnis(8, "TKU"), kernfolge.ergebnis(8, "TKU")
+    assert (e.vs_neu, e.absorbiert, e.auszahlung) == (ke.vs_neu, ke.absorbiert, ke.auszahlung)
+    assert folge.ergebnis(8, "RED") is None
+    regeln = _bw().vorgangsregeln()
+    assert regeln.art("teilkuendigung") == "TKU" and regeln.art("prospektiv") == "RED"
+    assert regeln.schluessel(8, "teilkuendigung") == vorgang(8, 0.6, "teilkuendigung").schluessel
+    assert regeln.schluessel(8, "mit_abzug") == vorgang(8, 0.6, "mit_abzug").schluessel
+    assert _bw().schichtfelder() == tuple(f.name for f in dataclasses.fields(Schichtparameter))
+    # beitragsfreie Summe: nur die Bausteine, die im Jahr der Freistellung bestehen
+    spaet = _bw().vertrag(felder, [(3, 1000.0), (12, 500.0)], gamma1_uebernehmen=False, stoab_je_baustein=False)
+    k3 = Rechenkern(erhoehungs_scheibe(mp, 3, 1000.0, gamma1_uebernehmen=False))
+    assert spaet.beitragsfreie_summe(10) == Rechenkern(mp).beitragsfreie_summe(10) + sum([k3.beitragsfreie_summe(7)])
 
 
 def test_die_beitragsfreie_reserve_kommt_je_baustein():
@@ -619,6 +662,12 @@ class _BW:
         if not felder:
             raise TypeError("keine Felder")
         return object()
+
+    def schichtfelder(self):
+        return ("rho",)
+
+    def scheibe(self, felder, jahr, summe, *, gamma1_uebernehmen):
+        return dict(felder)
 
     def schicht_aus_beleg(self, beleg):
         return object()

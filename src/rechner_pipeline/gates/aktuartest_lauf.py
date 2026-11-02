@@ -62,10 +62,8 @@ from rechner_pipeline.qa.aktuarieller_test import (
     Vertragspruefung,
     pruefe_stichprobe,
 )
-from rechner_pipeline.kern.korrekturschicht import (
-    KorrekturschichtFehler,
-    Schichtparameter,
-)
+from rechner_pipeline.zielsystem import anbieter
+from rechner_pipeline.zielsystem.bewertung import Schicht, Schichtfehler
 from rechner_pipeline.qa.stichprobe import Stichprobe
 from rechner_pipeline.qa.testprofil import vorlage
 from rechner_pipeline.spez.tarifregeln import (
@@ -321,7 +319,7 @@ def _schicht_felder(eintrag: Any) -> Dict[str, Any]:
     """
     if eintrag is None:
         return {}
-    if isinstance(eintrag, Schichtparameter):
+    if isinstance(eintrag, Schicht):
         return {"schicht": eintrag}
     aus: Dict[str, Any] = {}
     if "hist" in eintrag:
@@ -562,12 +560,11 @@ def _schichten(
             f"Schichtdatei {name!r} traegt kein Objekt "
             "police_id -> Schichtparameter")
 
-    def _parameter(police: str, felder: Dict[str, Any]) -> Schichtparameter:
+    def _parameter(police: str, felder: Dict[str, Any]) -> Schicht:
+        # Die Schicht liest das Zielsystem aus dem Beleg (ADR-030, Stufe 2b).
         try:
-            return Schichtparameter(
-                **{k: (tuple(tuple(x) for x in v) if k == "vererbend" else v)
-                   for k, v in felder.items()})
-        except (TypeError, KorrekturschichtFehler) as exc:
+            return anbieter.zielsystem().faehigkeit("bewertung").schicht_aus_beleg(felder)
+        except (TypeError, Schichtfehler) as exc:
             raise SystemExit(
                 f"Schicht fuer Police {police} unbrauchbar: {exc}") from exc
 

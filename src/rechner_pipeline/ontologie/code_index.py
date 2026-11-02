@@ -124,12 +124,12 @@ def erlaubte_wurzeln() -> List[str]:
     import typing
 
     from rechner_pipeline.ontologie.tbox import Tarifgeneration
-    from rechner_pipeline.zielsystem.anbieter import zielsystem
+    from rechner_pipeline.zielsystem import anbieter
 
     familien = list(typing.get_args(
         Tarifgeneration.model_fields["familie"].annotation
     ))
-    produkte = zielsystem().faehigkeit("rechnungsgrundlagen").produkte()
+    produkte = anbieter.zielsystem().faehigkeit("rechnungsgrundlagen").produkte()
     return sorted({*familien, *produkte, *SYSTEM_WURZELN})
 
 

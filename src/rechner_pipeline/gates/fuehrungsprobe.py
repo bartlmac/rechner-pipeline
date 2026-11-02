@@ -90,7 +90,6 @@ Knoten: klv
 from __future__ import annotations
 
 import argparse
-import dataclasses as _dataclasses
 import datetime as dt
 import json
 import sys
@@ -116,14 +115,8 @@ from rechner_pipeline.gates.migrationssuite_lauf import (
     lies_auskuenfte,
     tarifregeln_des_falls,
 )
-from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe, vertrags_monatsreserve
-from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
-from rechner_pipeline.kern import (
-    VORGANG_RANG as RANG,
-    Vertragsstand,
-    Vorgangsfolge,
-    vorgang,
-)
+from rechner_pipeline.zielsystem import anbieter
+from rechner_pipeline.zielsystem.bewertung import Bewertung, Folge, Schicht
 from rechner_pipeline.ontologie.tbox import TARIFWERK_MERKMALE
 from rechner_pipeline.spez.tarifregeln import (
     TarifregelnFehler,
@@ -133,12 +126,18 @@ from rechner_pipeline.spez.tarifregeln import (
 #: Die Codes der Reihenfolge eines Jahrestags (kern.vorgangsfolge.RANG).
 PEX_CODE = "PEX"
 RED_CODE = "RED"
-from rechner_pipeline.kern.korrekturschicht import (
-    Schichtparameter,
-    schicht_traegt,
-    schichtwert_bei,
-    zuschlag_bei_pex,
-)
+
+
+def _bewertung() -> Bewertung:
+    """Die Bewertung des Zielsystems (ADR-030, Stufe 2b): Werte, Vorgangsfolge,
+    Korrekturschicht und Vorgangsregeln kommen ueber den Vertrag."""
+    return anbieter.zielsystem().faehigkeit("bewertung")
+
+
+#: Die Vorgangsregeln des Zielsystems: Rang je Art, Verfahren Teilkuendigung.
+_REGELN = _bewertung().vorgangsregeln()
+RANG = _REGELN.rang
+TEILKUENDIGUNG = _REGELN.teilkuendigung
 from rechner_pipeline.models.bestand import (
     EREIGNIS_ZUSTAND,
     GENERATION_FIELDS,
@@ -228,8 +227,7 @@ def _zelle(spez, auspraegungen: Dict[str, str]):
 #: Verglichen wurde bisher nur ``rho`` — elf weitere Spalten standen
 #: unbezeugt daneben (Review T25-03). Aus der Datenklasse abgeleitet, nicht
 #: abgetippt: Wer ein Feld ergaenzt, ergaenzt den Vergleich mit.
-SCHICHT_FELDER: Tuple[str, ...] = tuple(
-    f.name for f in _dataclasses.fields(Schichtparameter))
+SCHICHT_FELDER: Tuple[str, ...] = tuple(_bewertung().schichtfelder())
 
 
 def _schichtwert(wert: Any) -> Any:
@@ -337,7 +335,7 @@ def _nebentabelle_gleich(befund, rolle: str, art: str, schluessel: Tuple[str, ..
 
 
 def _schicht_gegen_beleg(befund, tabelle: pd.DataFrame,
-                         schicht_je_police: Dict[int, Tuple[Schichtparameter, int]],
+                         schicht_je_police: Dict[int, Tuple[Schicht, int]],
                          herkunft: str) -> None:
     """Jedes Feld jeder Schicht einer Tabelle gegen den Schichtbeleg — fuer
     die Tabelle der Uebernahme und ebenso fuer die der Fortschreibung
@@ -655,6 +653,7 @@ def pruefe_fuehrung(
 
     from rechner_pipeline.bestand.auswertung import grundlagen_je_police
     grundlagen = grundlagen_je_police(config, merkmale)
+    bewertung = _bewertung()
 
     welten: Dict[int, Dict[str, Any]] = {}
     zahlen = {"vertraege": int(len(stamm)), "mit_anfangszustand": 0,
@@ -693,7 +692,6 @@ def pruefe_fuehrung(
                    f"Stammsumme {float(row['sum_insured']):.2f} statt "
                    f"{erwartete_summe:.2f} (Grund-/Ursprungssumme der Pruefstrecke)")
         kw["sum_insured"] = erwartete_summe
-        grund_mp = ModelPoint(**kw)
         # Bausteine
         erwartet_scheiben = sorted((int(j), float(s)) for j, s in z.get("scheiben", ()))
         vorhanden = sorted(
@@ -712,10 +710,12 @@ def pruefe_fuehrung(
                        f"Scheibe {int(s['scheiben_id'])} traegt gamma1 "
                        f"{float(s['gamma1'])!r} statt {gamma1_soll!r}")
         zahlen["scheiben"] += len(erwartet_scheiben)
-        teile = [(j, Rechenkern(erhoehungs_scheibe(
-            grund_mp, j, s, gamma1_uebernehmen=bool(tarifwerk["scheiben_mit_gamma1"]))))
-            for j, s in erwartet_scheiben]
-        grund = Rechenkern(grund_mp)
+        # Der Vertrag, wie das Zielsystem ihn bewertet: Grund und Bausteine der
+        # Pruefstrecke nach der belegten Regel (ADR-030).
+        vertrag = bewertung.vertrag(
+            kw, erwartet_scheiben,
+            gamma1_uebernehmen=bool(tarifwerk["scheiben_mit_gamma1"]),
+            stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]))
         # Beitragsfreistellung
         pex_jahr = z.get("beitragsfrei_seit_jahr")
         beginn = pd.Timestamp(row["insurance_start"])
@@ -741,18 +741,18 @@ def pruefe_fuehrung(
                 befund(pid, "umbuchung", "keine PEX-Umbuchung im Uebernahme-Ledger")
             # Der BETRAG wird erst nach Abschnitt 3 geprueft: Er traegt
             # die Korrekturschicht, und die steht hier noch nicht.
-        gesamt = grund_mp.sum_insured + sum(k.mp.sum_insured for _, k in teile)
+        gesamt = vertrag.gesamtsumme()
         if pid not in ledger_zug.index:
             befund(pid, "zugang", "keine Zugangsbuchung im Uebernahme-Ledger")
         elif weicht_ab(ledger_zug.loc[pid], gesamt, TOLERANZ):
             befund(pid, "zugang",
                    f"Zugang {float(ledger_zug.loc[pid]):.2f} statt {gesamt:.2f} "
                    "(Gesamtsumme der Bausteine)")
-        welten[pid] = {"grund": grund, "grund_mp": grund_mp, "teile": teile,
+        welten[pid] = {"vertrag": vertrag, "felder": kw, "scheiben": erwartet_scheiben,
                        "pex_jahr": pex_jahr, "gesamt": gesamt, "beginn": beginn}
 
     # 3. Schicht ------------------------------------------------------------
-    schicht_je_police: Dict[int, Tuple[Schichtparameter, int]] = {}
+    schicht_je_police: Dict[int, Tuple[Schicht, int]] = {}
     if schichtbeleg:
         if verankerung is None or len(verankerung) == 0:
             befund(None, "schicht", "Schichtbeleg ohne verankerung.parquet")
@@ -767,10 +767,7 @@ def pruefe_fuehrung(
                     befund(pid, "schicht", "Schicht ohne Verankerungszeitpunkt")
                     continue
                 schicht_je_police[pid] = (
-                    Schichtparameter(**{
-                        **eintrag["hist"],
-                        "vererbend": tuple(tuple(p) for p in eintrag["hist"]["vererbend"]),
-                    }),
+                    bewertung.schicht_aus_beleg(eintrag["hist"]),
                     int(anker_ta.loc[pid]),
                 )
     # Die Tabelle wird IMMER angesehen, nicht nur wenn ein Beleg vorliegt
@@ -820,11 +817,10 @@ def pruefe_fuehrung(
         pex_jahr = welt["pex_jahr"]
         if pex_jahr is None or pid not in ledger_pex.index:
             continue
-        grund, teile = welt["grund"], welt["teile"]
         vs_bfr = (
-            grund.beitragsfreie_summe(int(pex_jahr))
-            + sum(k.beitragsfreie_summe(int(pex_jahr) - j) for j, k in teile)
-            + zuschlag_bei_pex(schicht_je_police.get(pid), grund, int(pex_jahr))
+            welt["vertrag"].beitragsfreie_summe(int(pex_jahr))
+            + bewertung.zuschlag_bei_pex(
+                schicht_je_police.get(pid), welt["felder"], int(pex_jahr))
         )
         if weicht_ab(ledger_pex.loc[pid], vs_bfr, TOLERANZ):
             befund(pid, "umbuchung",
@@ -1132,18 +1128,28 @@ def pruefe_fuehrung(
             befund(None, "zuordnung", text)
         nach = nach.drop(index=list(ausserhalb_idx & set(nach.index)))
 
-        def teile_bei(pid: int, welt: Dict[str, Any], jahr: int):
-            teile = list(welt["teile"])
-            for s in neue_je_police.get(pid, []):
-                if int(s["erhoehung_jahr"]) < jahr:
-                    row = {"entry_age": s["entry_age"], "sex": haupt.loc[pid, "sex"],
-                           "duration": s["duration"], "premium_duration": s["premium_duration"],
-                           "sum_insured": s["sum_insured"], "zahlweise": haupt.loc[pid, "zahlweise"]}
-                    kw = model_point_kwargs(row, dict(_zelle(
-                        spez, auspraegungen.get(str(pid), {})).model_point))
-                    kw["gamma1"] = float(s["gamma1"])
-                    teile.append((int(s["erhoehung_jahr"]), Rechenkern(ModelPoint(**kw))))
-            return [(j, k) for j, k in teile if j < jahr]
+        vertraege_bei: Dict[Tuple[int, int], Any] = {}
+
+        def vertrag_bei(pid: int, welt: Dict[str, Any], jahr: int):
+            """Der Vertrag mit den Bausteinen, die vor dem Jahrestag ``jahr``
+            bestehen: die Alt-Scheiben der Pruefstrecke und die neuen Scheiben
+            der Fuehrung mit ihren eigenen Feldern."""
+            if (pid, jahr) not in vertraege_bei:
+                vertrag = bewertung.vertrag(
+                    welt["felder"], [(j, s) for j, s in welt["scheiben"] if j < jahr],
+                    gamma1_uebernehmen=bool(tarifwerk["scheiben_mit_gamma1"]),
+                    stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]))
+                for s in neue_je_police.get(pid, []):
+                    if int(s["erhoehung_jahr"]) < jahr:
+                        row = {"entry_age": s["entry_age"], "sex": haupt.loc[pid, "sex"],
+                               "duration": s["duration"], "premium_duration": s["premium_duration"],
+                               "sum_insured": s["sum_insured"], "zahlweise": haupt.loc[pid, "zahlweise"]}
+                        kw = model_point_kwargs(row, dict(_zelle(
+                            spez, auspraegungen.get(str(pid), {})).model_point))
+                        kw["gamma1"] = float(s["gamma1"])
+                        vertrag = vertrag.mit_baustein(int(s["erhoehung_jahr"]), kw)
+                vertraege_bei[(pid, jahr)] = vertrag
+            return vertraege_bei[(pid, jahr)]
 
         def red_soll(pid: int, welt: Dict[str, Any], jahr: int, code: str) -> Dict[str, float]:
             """Die Soll-Buchungen des Vorgangs ``code`` am Jahrestag ``jahr`` —
@@ -1156,9 +1162,9 @@ def pruefe_fuehrung(
             return red_sollbuchungen(ergebnis.vs_neu, ergebnis.absorbiert,
                                      ergebnis.auszahlung)
 
-        folgen: Dict[int, Optional[Vorgangsfolge]] = {}
+        folgen: Dict[int, Optional[Folge]] = {}
 
-        def folge_fuer(pid: int, welt: Dict[str, Any]) -> Optional[Vorgangsfolge]:
+        def folge_fuer(pid: int, welt: Dict[str, Any]) -> Optional[Folge]:
             """Die Vorgangsfolge der Police auf dem Weg der Pruefstrecke: Grund
             und Bausteine der Pruefstrecke, die neuen Scheiben der Fuehrung, die
             registrierten Vorgaenge, die Beitragsfreistellung, die Schicht — und
@@ -1172,12 +1178,10 @@ def pruefe_fuehrung(
                     folgen[pid] = None
                 else:
                     try:
-                        folgen[pid] = Vorgangsfolge(
-                            welt["grund"], teile_bei(pid, welt, 10 ** 6),
-                            [vorgang(j, a, v) for j, a, v, _ in vorgaenge],
+                        folgen[pid] = vertrag_bei(pid, welt, 10 ** 6).folge(
+                            [(j, a, v) for j, a, v, _ in vorgaenge],
                             pex_jahr=pex_je_police.get(pid),
                             schicht=schicht_je_police.get(pid),
-                            stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]),
                             tku_umfang=str(tarifwerk["tku_umfang"]))
                     except ValueError as exc:
                         befund(pid, "herabsetzung",
@@ -1189,7 +1193,7 @@ def pruefe_fuehrung(
             """Ob vor einer Buchung ``art`` am Jahrestag ``jahr`` schon ein
             registrierter Vorgang liegt (Reihenfolge des Tages)."""
             grenze = (int(jahr), RANG[art if art in RANG else PEX_CODE])
-            return any(vorgang(j, a, v).schluessel < grenze
+            return any(_REGELN.schluessel(j, v) < grenze
                        for j, a, v, _ in vorgaenge_je_police.get(pid, ()))
 
         # Jeder registrierte Vorgang traegt seine Soll-Buchungen genau einmal am
@@ -1238,8 +1242,7 @@ def pruefe_fuehrung(
                            + " — keine Buchung, die die Tabelle erzeugt; sie wird nicht "
                            "nachgerechnet und nicht als geprueft gezaehlt")
                     continue
-            teile = teile_bei(pid, welt, jahr)
-            grund, grund_mp = welt["grund"], welt["grund_mp"]
+            vertrag = vertrag_bei(pid, welt, jahr)
             pex_jahr = welt["pex_jahr"]
             folge = folge_fuer(pid, welt) if pid in vorgaenge_je_police else None
             if folge is not None and (art in REDUKTION_EREIGNISSE
@@ -1255,11 +1258,11 @@ def pruefe_fuehrung(
                         buchungen[art] += 1
                         continue
                 elif art == "STO":
-                    erwartet = folge.stand_vor(jahr, PEX_CODE).rkw(jahr)
+                    erwartet = folge.stand_vor(jahr, PEX_CODE).werte(12 * jahr).rueckkaufswert
                 elif art == "PEX":
                     # Unmittelbar nach der Freistellung, vor einer
                     # Teilkuendigung desselben Tages.
-                    erwartet = folge.stand_vor(jahr, RED_CODE).vs_bfr()
+                    erwartet = folge.stand_vor(jahr, RED_CODE).werte(12 * jahr).vs_bfr
                 else:
                     erwartet = folge.stand_vor(jahr, PEX_CODE).leistung()
                 buchungen[art] += 1
@@ -1274,27 +1277,25 @@ def pruefe_fuehrung(
                 # Storno eines beitragsfreien Vertrags: DERSELBE Rueckkaufswert
                 # wie bei der Teilkuendigung nach der Beitragsfreistellung
                 # (Entscheid B3 vom 2026-10-01; ein Rueckkaufswert, zwei Leser — P-B1 ebenso).
-                erwartet = Vertragsstand.anfang(
-                    grund, teile, stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]),
-                    tku_umfang=str(tarifwerk["tku_umfang"]),
+                erwartet = vertrag.stand(
                     schicht=schicht_je_police.get(pid),
-                ).nach_pex(pex_je_police[pid]).rkw(jahr)
+                    tku_umfang=str(tarifwerk["tku_umfang"]),
+                ).nach_pex(pex_je_police[pid]).werte(12 * jahr).rueckkaufswert
             elif art == "STO":
-                erwartet = vertrags_monatsreserve(
-                    grund, teile, 12 * jahr,
-                    stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"])).rkw
+                erwartet = vertrag.reserve(12 * jahr).rkw
                 schicht = schicht_je_police.get(pid)
-                if schicht_traegt(schicht, 12 * jahr):
-                    erwartet += schichtwert_bei(schicht[0], schicht[1], grund_mp, 12 * jahr)
+                if bewertung.schicht_traegt(schicht, 12 * jahr):
+                    erwartet += bewertung.schichtwert(
+                        schicht[0], schicht[1], welt["felder"], 12 * jahr)
             elif art == "PEX":
                 # Liegt die Freistellung nach der Verankerung, hat sie die
                 # Korrekturschicht wertstetig in die beitragsfreie Summe
                 # ueberfuehrt — die Probe rechnet dieselbe Regel nach, sonst
                 # bestaetigt sie den alten, unvollstaendigen Betrag.
                 erwartet = (
-                    grund.beitragsfreie_summe(jahr)
-                    + sum(k.beitragsfreie_summe(jahr - j) for j, k in teile)
-                    + zuschlag_bei_pex(schicht_je_police.get(pid), grund, jahr)
+                    vertrag.beitragsfreie_summe(jahr)
+                    + bewertung.zuschlag_bei_pex(
+                        schicht_je_police.get(pid), welt["felder"], jahr)
                 )
             else:
                 pex_f = pex_jahr
@@ -1305,14 +1306,12 @@ def pruefe_fuehrung(
                         pex_f = int(eigene_pex["vertragsjahr"].iloc[0])
                 if pex_f is not None:
                     erwartet = (
-                        grund.beitragsfreie_summe(int(pex_f))
-                        + sum(k.beitragsfreie_summe(int(pex_f) - j)
-                              for j, k in teile if int(pex_f) - j > 0)
-                        + zuschlag_bei_pex(
-                            schicht_je_police.get(pid), grund, int(pex_f))
+                        vertrag.beitragsfreie_summe(int(pex_f))
+                        + bewertung.zuschlag_bei_pex(
+                            schicht_je_police.get(pid), welt["felder"], int(pex_f))
                     )
                 else:
-                    erwartet = grund_mp.sum_insured + sum(k.mp.sum_insured for _, k in teile)
+                    erwartet = vertrag.gesamtsumme()
             buchungen[art] += 1
             if weicht_ab(z["betrag"], erwartet, TOLERANZ):
                 abweichungen += 1

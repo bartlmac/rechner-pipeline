@@ -17,6 +17,7 @@ Knoten: system/zielsystem
 from __future__ import annotations
 
 from types import MappingProxyType
+import dataclasses
 from typing import Any, List, Mapping, Optional, Sequence, Tuple
 
 from rechner_pipeline.kern import (
@@ -49,6 +50,7 @@ from rechner_pipeline.zielsystem.bewertung import (
     Praemien,
     Reserve,
     Schichtfehler,
+    Vorgangsergebnis,
     Vorgangsfehler,
     Vorgangsregeln,
     Werte,
@@ -115,6 +117,9 @@ class _Stand:
             k.gross_annual_premium() for erh_jahr, k in self._stand.beitragskerne(monate)
             if monate - 12 * erh_jahr < 12 * k.mp.t)
 
+    def leistung(self) -> float:
+        return self._stand.leistung()
+
     def _neu(self, stand: Vertragsstand) -> "_Stand":
         return _Stand(stand, self._grund_mp, self._gamma1)
 
@@ -155,6 +160,12 @@ class _Folge:
     def hat_vorgang(self, jahr: int, art: str) -> bool:
         return self._folge.ergebnis(jahr, art) is not None
 
+    def ergebnis(self, jahr: int, art: str) -> Optional[Vorgangsergebnis]:
+        e = self._folge.ergebnis(jahr, art)
+        if e is None:
+            return None
+        return Vorgangsergebnis(vs_neu=e.vs_neu, absorbiert=e.absorbiert, auszahlung=e.auszahlung)
+
 
 class _Vertragswerte:
     """Grundversicherung und Scheiben als Kerne, einmal gebaut."""
@@ -162,9 +173,11 @@ class _Vertragswerte:
     def __init__(
         self, felder: Mapping[str, Any], scheiben: Sequence[Tuple[int, float]],
         *, gamma1_uebernehmen: bool, stoab_je_baustein: bool,
+        bausteine: Sequence[Tuple[int, Mapping[str, Any]]] = (),
     ):
         self.felder = MappingProxyType(dict(felder))
         self.scheiben = tuple((int(j), float(s)) for j, s in scheiben)
+        self._bausteine = tuple((int(j), MappingProxyType(dict(f))) for j, f in bausteine)
         self._gamma1 = bool(gamma1_uebernehmen)
         self._stoab = bool(stoab_je_baustein)
         self._mp = ModelPoint(**self.felder)
@@ -172,7 +185,8 @@ class _Vertragswerte:
         try:
             self._kerne: List[Tuple[int, Rechenkern]] = [
                 (j, Rechenkern(erhoehungs_scheibe(self._mp, j, s, gamma1_uebernehmen=self._gamma1)))
-                for j, s in self.scheiben]
+                for j, s in self.scheiben] + [
+                (j, Rechenkern(ModelPoint(**f))) for j, f in self._bausteine]
         except (VorgangsfolgeFehler, KorrekturschichtFehler, MissingMortalityTableError) as exc:
             raise _uebersetzt(exc) from exc
 
@@ -180,9 +194,16 @@ class _Vertragswerte:
         return 1 + len(self._kerne)
 
     def mit_scheibe(self, jahr: int, summe: float) -> "_Vertragswerte":
+        if self._bausteine:
+            raise ValueError("nach einem Baustein aus eigenen Feldern kommt keine Scheibe mehr")
         return _Vertragswerte(
             self.felder, (*self.scheiben, (jahr, summe)),
             gamma1_uebernehmen=self._gamma1, stoab_je_baustein=self._stoab)
+
+    def mit_baustein(self, jahr: int, felder: Mapping[str, Any]) -> "_Vertragswerte":
+        return _Vertragswerte(
+            self.felder, self.scheiben, gamma1_uebernehmen=self._gamma1,
+            stoab_je_baustein=self._stoab, bausteine=(*self._bausteine, (jahr, felder)))
 
     def reserve(self, monate: int) -> Reserve:
         if self._kerne:
@@ -202,7 +223,7 @@ class _Vertragswerte:
 
     def beitragsfreie_summe(self, pex_jahr: int) -> float:
         return self._kern.beitragsfreie_summe(pex_jahr) + sum(
-            k.beitragsfreie_summe(pex_jahr - j) for j, k in self._kerne)
+            k.beitragsfreie_summe(pex_jahr - j) for j, k in self._kerne if pex_jahr - j > 0)
 
     def gesamtsumme(self) -> float:
         return float(self._mp.sum_insured) + sum(k.mp.sum_insured for _, k in self._kerne)
@@ -218,6 +239,14 @@ class _Vertragswerte:
             if monate - 12 * j < 12 * k.mp.t:
                 gesamt += k.gross_annual_premium()
         return gesamt
+
+    def stand(self, *, schicht: Optional[Tuple[Any, int]], tku_umfang: str) -> _Stand:
+        try:
+            return _Stand(Vertragsstand.anfang(
+                self._kern, self._kerne, stoab_je_baustein=self._stoab,
+                tku_umfang=tku_umfang, schicht=schicht), self._mp, self._gamma1)
+        except (VorgangsfolgeFehler, KorrekturschichtFehler, MissingMortalityTableError) as exc:
+            raise _uebersetzt(exc) from exc
 
     def folge(
         self, vorgaenge: Sequence[Tuple[int, float, str]], *,
@@ -256,6 +285,15 @@ class PLVBewertung:
         return _Vertragswerte(
             felder, scheiben, gamma1_uebernehmen=gamma1_uebernehmen,
             stoab_je_baustein=stoab_je_baustein)
+
+    def scheibe(
+        self, felder: Mapping[str, Any], jahr: int, summe: float, *, gamma1_uebernehmen: bool,
+    ) -> Mapping[str, Any]:
+        return MappingProxyType(dataclasses.asdict(erhoehungs_scheibe(
+            ModelPoint(**felder), int(jahr), float(summe), gamma1_uebernehmen=gamma1_uebernehmen)))
+
+    def schichtfelder(self) -> Tuple[str, ...]:
+        return tuple(f.name for f in dataclasses.fields(Schichtparameter))
 
     def schicht_aus_beleg(self, beleg: Mapping[str, Any]) -> Schichtparameter:
         try:

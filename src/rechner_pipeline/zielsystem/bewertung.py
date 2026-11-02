@@ -37,8 +37,8 @@ from typing import Any, Mapping, Optional, Protocol, Sequence, Tuple, runtime_ch
 
 __all__ = [
     "Bewertung", "Datenfehler", "Folge", "Praemien", "Reserve", "Schicht",
-    "Schichtfehler", "Stand", "Vertragswerte", "Vorgangsfehler", "Vorgangsregeln",
-    "Werte",
+    "Schichtfehler", "Stand", "Vertragswerte", "Vorgangsergebnis", "Vorgangsfehler",
+    "Vorgangsregeln", "Werte",
 ]
 
 
@@ -92,16 +92,37 @@ class Praemien:
 
 
 @dataclass(frozen=True)
+class Vorgangsergebnis:
+    """Was ein Vorgang gebucht hat: die neue Gesamtsumme, die dabei
+    aufgenommene Korrekturschicht und bei der Teilkuendigung die
+    rechnerische Auszahlung (sonst None)."""
+
+    vs_neu: float
+    absorbiert: float
+    auszahlung: Optional[float]
+
+
+@dataclass(frozen=True)
 class Vorgangsregeln:
     """Die Regeln der Vorgaenge, wie das Zielsystem sie fuehrt: der Rang
     je Vorgangsart an einem Jahrestag, der Name des Verfahrens
     Teilkuendigung, die Verfahren der Herabsetzung und die Umfaenge der
-    Teilkuendigung."""
+    Teilkuendigung. Die Arten sind die Ereigniscodes des Ledgers (PEX,
+    RED, TKU, ERH)."""
 
     rang: Mapping[str, int]
     teilkuendigung: str
     verfahren: Tuple[str, ...]
     umfaenge: Tuple[str, ...]
+
+    def art(self, verfahren: str) -> str:
+        """Die Vorgangsart einer Tabellenzeile: ``TKU`` fuer das Verfahren
+        Teilkuendigung, sonst ``RED``."""
+        return "TKU" if str(verfahren) == self.teilkuendigung else "RED"
+
+    def schluessel(self, jahr: int, verfahren: str) -> Tuple[int, int]:
+        """Die Ordnung eines Vorgangs: Jahrestag, dann Rang."""
+        return (int(jahr), self.rang[self.art(verfahren)])
 
 
 @runtime_checkable
@@ -137,6 +158,11 @@ class Stand(Protocol):
 
     def jahresbeitrag(self, monate: int) -> float: ...
 
+    def leistung(self) -> float:
+        """Die Leistung eines terminalen Falls (Tod, Ablauf): beitragsfrei
+        die beitragsfreie Gesamtsumme, sonst die gefuehrte Summe."""
+        ...
+
     def nach_erhoehung(self, jahr: int, summe: float) -> "Stand": ...
 
     def nach_pex(self, jahr: int) -> "Stand": ...
@@ -154,6 +180,11 @@ class Folge(Protocol):
 
     def hat_vorgang(self, jahr: int, art: str) -> bool: ...
 
+    def ergebnis(self, jahr: int, art: str) -> Optional[Vorgangsergebnis]:
+        """Was der Vorgang ``art`` am Jahrestag ``jahr`` gebucht hat; None,
+        wenn die Folge keinen solchen kennt."""
+        ...
+
 
 @runtime_checkable
 class Vertragswerte(Protocol):
@@ -165,7 +196,15 @@ class Vertragswerte(Protocol):
 
     def komponenten(self) -> int: ...
 
-    def mit_scheibe(self, jahr: int, summe: float) -> "Vertragswerte": ...
+    def mit_scheibe(self, jahr: int, summe: float) -> "Vertragswerte":
+        """Der Vertrag mit einer weiteren Erhoehungsscheibe nach der Regel
+        des Zielsystems (Jahr und Summe)."""
+        ...
+
+    def mit_baustein(self, jahr: int, felder: Mapping[str, Any]) -> "Vertragswerte":
+        """Der Vertrag mit einem weiteren Baustein aus eigenen Feldern, wie
+        die Fuehrung ihn fuehrt (eine gebuchte Erhoehungsscheibe)."""
+        ...
 
     def reserve(self, monate: int) -> Reserve: ...
 
@@ -174,11 +213,18 @@ class Vertragswerte(Protocol):
         ihrer Reihenfolge), jede ab ihrem eigenen Jahrestag."""
         ...
 
-    def beitragsfreie_summe(self, pex_jahr: int) -> float: ...
+    def beitragsfreie_summe(self, pex_jahr: int) -> float:
+        """Die beitragsfreie Gesamtsumme ueber die Bausteine, die im Jahr
+        der Freistellung bestehen (Grund, Scheiben vor diesem Jahr)."""
+        ...
 
     def gesamtsumme(self) -> float: ...
 
     def jahresbeitrag(self, monate: int, pex_jahr: Optional[int]) -> float: ...
+
+    def stand(self, *, schicht: Optional[Tuple[Schicht, int]], tku_umfang: str) -> Stand:
+        """Der Vertrag vor jedem Vorgang, mit allen Scheiben als Bausteine."""
+        ...
 
     def folge(
         self,
@@ -209,6 +255,20 @@ class Bewertung(Protocol):
         gamma1_uebernehmen: bool,
         stoab_je_baustein: bool,
     ) -> Vertragswerte: ...
+
+    def scheibe(
+        self, felder: Mapping[str, Any], jahr: int, summe: float, *, gamma1_uebernehmen: bool,
+    ) -> Mapping[str, Any]:
+        """Die Felder einer Erhoehungsscheibe als eigener Baustein, wie das
+        Zielsystem sie aus dem Grundvertrag ableitet (die Fuehrung
+        schreibt sie in ihre Scheibentabelle); ``ValueError``, wenn das
+        Jahr keine Scheibe traegt."""
+        ...
+
+    def schichtfelder(self) -> Tuple[str, ...]:
+        """Die Felder, die eine Schicht traegt: dieselben in Tabelle und
+        Beleg, damit ein Vergleich keines auslaesst."""
+        ...
 
     def schicht_aus_beleg(self, beleg: Mapping[str, Any]) -> Schicht:
         """Die Schicht aus den Feldern eines Schichtbelegs; ``Schichtfehler``

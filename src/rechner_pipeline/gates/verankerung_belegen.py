@@ -120,14 +120,9 @@ def _zustands_dk_prosp(
     vorgaenge = tuple(zustand.get("vorgaenge", ()))
     if not scheiben and pex is None and reduktion is None and not vorgaenge:
         return None
-    from rechner_pipeline.kern import ModelPoint, Rechenkern
-    from rechner_pipeline.kern.rechenkern import (
-        erhoehungs_scheibe,
-        vertrags_monatsreserve,
-    )
+    from rechner_pipeline.zielsystem import anbieter
 
-    grund_mp = ModelPoint(**mp_kwargs)
-    kern = Rechenkern(grund_mp)
+    bewertung = anbieter.zielsystem().faehigkeit("bewertung")
     if reduktion is not None or vorgaenge or (pex is not None and scheiben):
         # Beitragsfrei uebernommen MIT Bausteinen (Pruefrunde J, J04): jeder
         # Baustein mit seiner eigenen beitragsfreien Summe — die Folge des
@@ -138,8 +133,6 @@ def _zustands_dk_prosp(
         # Herabsetzung immer prospektiv, gleich welches Verfahren der Fall
         # fuehrte. Das Verfahren ist Eigenschaft des Falls — ohne Tarifwerk
         # wird nicht geraten.
-        from rechner_pipeline.kern import Vorgangsfolge, vorgang
-
         if tarifwerk is None or any(
                 tarifwerk.get(k) is None
                 for k in ("red_verfahren", "stoab_je_baustein", "tku_umfang")):
@@ -149,32 +142,25 @@ def _zustands_dk_prosp(
                 "(quellverfahren.red_verfahren, tarifwerk.stoab_je_baustein, "
                 "tarifwerk.tku_umfang); keine Vorgabe ergaenzt sie")
         verfahren = str(tarifwerk["red_verfahren"])
-        folge_vorgaenge = [vorgang(int(j), float(a), str(v)) for j, a, v in vorgaenge]
+        folge_vorgaenge = [(int(j), float(a), str(v)) for j, a, v in vorgaenge]
         if reduktion is not None:
-            folge_vorgaenge.append(vorgang(int(reduktion[0]), float(reduktion[1]), verfahren))
-        kerne = [
-            (int(j), Rechenkern(erhoehungs_scheibe(
-                grund_mp, int(j), float(s),
-                gamma1_uebernehmen=scheiben_mit_gamma1)))
-            for j, s in scheiben
-        ]
-        stand = Vorgangsfolge(
-            kern, kerne, folge_vorgaenge, pex_jahr=pex,
-            stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]),
+            folge_vorgaenge.append((int(reduktion[0]), float(reduktion[1]), verfahren))
+        vertrag = bewertung.vertrag(
+            mp_kwargs, [(int(j), float(s)) for j, s in scheiben],
+            gamma1_uebernehmen=scheiben_mit_gamma1,
+            stoab_je_baustein=bool(tarifwerk["stoab_je_baustein"]))
+        w = vertrag.folge(
+            folge_vorgaenge, pex_jahr=pex, schicht=None,
             tku_umfang=str(tarifwerk["tku_umfang"]),
-        ).stand_am(monate_ta)
-        w = stand.werte(monate_ta)
-        return w["deckungskapital"] if w["status"] == "PEX" else w["vx_mrv"]
+        ).stand_am(monate_ta).werte(monate_ta)
+        return w.deckungskapital if w.status == "PEX" else w.vx_mrv
+    vertrag = bewertung.vertrag(
+        mp_kwargs, [(int(j), float(s)) for j, s in scheiben],
+        gamma1_uebernehmen=scheiben_mit_gamma1, stoab_je_baustein=False)
     if pex is not None:
-        # Die beitragsfreie Reserve kennt im Kern nur einen Begriff.
-        return kern.monatsreserve_beitragsfrei(int(pex), monate_ta)
-    kerne = [
-        (int(j), Rechenkern(erhoehungs_scheibe(
-            grund_mp, int(j), float(s),
-            gamma1_uebernehmen=scheiben_mit_gamma1)))
-        for j, s in scheiben
-    ]
-    return vertrags_monatsreserve(kern, kerne, monate_ta).vx_mrv
+        # Ohne Scheiben (sonst oben): die beitragsfreie Reserve des Grundbausteins.
+        return vertrag.reserven_beitragsfrei(int(pex), monate_ta)[0]
+    return vertrag.reserve(monate_ta).vx_mrv
 
 
 def baue_schichtbeleg(

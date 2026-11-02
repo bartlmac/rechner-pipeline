@@ -451,8 +451,12 @@ def main(argv: Optional[List[str]] = None):
     except ValueError as exc:
         return _usage(str(exc))
 
-    from rechner_pipeline.kern import ModelPoint, Rechenkern
+    from rechner_pipeline.zielsystem import anbieter
 
+    zielsystem = anbieter.zielsystem()
+    rechnungsgrundlagen = zielsystem.faehigkeit("rechnungsgrundlagen")
+    bewertung = zielsystem.faehigkeit("bewertung")
+    parametersatz = rechnungsgrundlagen.parametersatz("klv")
     mp_felder: Dict[str, Any] = dict(zelle.model_point)
     # Felder, in denen die Spez den Rechner bewusst verlaesst (A-Q1):
     # dort wird gegen SEINE Lesart geprueft, siehe gegenprobe_felder.
@@ -468,9 +472,7 @@ def main(argv: Optional[List[str]] = None):
     for feld, eintrag in gegenprobe.items():
         mp_felder[feld] = eintrag["rechner_wert"]
     # 21: unbekannte Spez-Felder sind ein Contract-Befund, kein Crash.
-    import dataclasses
-
-    bekannte_mp_felder = {f.name for f in dataclasses.fields(ModelPoint)}
+    bekannte_mp_felder = set(parametersatz.feldnamen())
     fest = {"x", "sex", "n", "t", "sum_insured", "zw"}
     unbekannt = sorted(set(mp_felder) - (bekannte_mp_felder - fest))
     if unbekannt:
@@ -486,18 +488,21 @@ def main(argv: Optional[List[str]] = None):
         # Kern-Aufloesung) — das Geschlecht ist fuer die Sterblichkeit
         # dann bedeutungslos. Kanonisierung VBA-treu: nicht-"M" -> "F".
         sex = "F"
-    mp = ModelPoint(
-        x=eingaben["x"], sex=sex, n=eingaben["n"], t=eingaben["t"],
-        sum_insured=eingaben["sum_insured"], zw=eingaben["zw"],
+    # Der wirksame Satz: ausgelassene optionale Felder mit den Defaults des
+    # Zielsystems (ADR-030, A-054 B2), nicht still ueber eine Dataclass.
+    felder = {
+        **parametersatz.defaults,
+        "x": eingaben["x"], "sex": sex, "n": eingaben["n"], "t": eingaben["t"],
+        "sum_insured": eingaben["sum_insured"], "zw": eingaben["zw"],
         **{k: v for k, v in mp_felder.items()},
-    )
+    }
     try:
-        kern = Rechenkern(mp)
+        praemien = bewertung.praemien(felder)
         berechnete_skalare = {
-            "Bxt": kern.gross_premium_rate(),
-            "BJB": kern.gross_annual_premium(),
-            "BZB": kern.gross_payable_premium(),
-            "Pxt": kern.net_premium_rate(),
+            "Bxt": praemien.bxt,
+            "BJB": praemien.bjb,
+            "BZB": praemien.bzb,
+            "Pxt": praemien.pxt,
         }
     except Exception as exc:  # Kern-Fehler ist ein GM-Befund MIT Ledger
         return _contract_fehler("kern", f"Kern-Rechnung scheitert: {exc}")
@@ -583,7 +588,7 @@ def main(argv: Optional[List[str]] = None):
         )
     try:
         berechnete_tabelle = [
-            kern.verlaufszeile(k).als_blattzeile() for k in range(anzahl_zeilen)
+            dict(bewertung.verlauf(felder, k)) for k in range(anzahl_zeilen)
         ]
     except Exception as exc:
         return _contract_fehler("kern", f"Verlaufswerte scheitern: {exc}")
@@ -658,7 +663,7 @@ def main(argv: Optional[List[str]] = None):
         "zellen_ohne_erwartungswerte": andere_zellen,
         "modellpunkt": {k: eingaben[k] for k in
                         ("x", "n", "t", "sum_insured", "zw")}
-        | {"sex": eingaben["sex_roh"], "tafel": mp.tafel}
+        | {"sex": eingaben["sex_roh"], "tafel": felder["tafel"]}
         | {dim: wert for dim, wert in sorted(auspraegungen.items())},
         # Wo die Spez den Rechner bewusst verlaesst, steht es HIER —
         # ein gruener Beleg ohne diesen Ausweis waere die stillschweigende

@@ -36,6 +36,8 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 import numpy as _np
 
+from rechner_pipeline.zielsystem import anbieter
+
 # --------------------------------------------------------------------------- #
 # Kernel ModelPoint contract
 # --------------------------------------------------------------------------- #
@@ -89,11 +91,9 @@ def generation_field_defaults() -> Mapping[str, Any]:
     """Defaults of the kernel's defaulted (tariff-knob) fields, so a generation
     config or a Spez-Zelle may omit them (sheet behaviour): the statement of
     the target system, read through the Zielvertrag (ADR-030, Stufe 1,
-    capability ``rechnungsgrundlagen``). Imported lazily because the
-    Vorzeige imports this module at load time."""
-    from rechner_pipeline.zielsystem.anbieter import zielsystem
-
-    return zielsystem().faehigkeit("rechnungsgrundlagen").parametersatz("klv").defaults
+    capability ``rechnungsgrundlagen``). The provider module is bound, not
+    the name: what the provider says at call time counts (A-054, B3)."""
+    return anbieter.zielsystem().faehigkeit("rechnungsgrundlagen").parametersatz("klv").defaults
 
 #: Allowed values for enum-like columns (module tuples, repo idiom).
 SEX_VALUES: Tuple[str, ...] = ("M", "F")
