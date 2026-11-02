@@ -330,9 +330,39 @@ def _schicht_felder(eintrag: Any) -> Dict[str, Any]:
     return aus
 
 
+def schichtbeleg_art(fall: Path, name: Optional[str]) -> Optional[str]:
+    """Woher der Schichtbeleg kommt: ``abgeleitet`` (Artefakt des Producers
+    unter ``<fall>/abgeleitet/``, mit Provenienzblock) oder ``registriert``
+    (eine registrierte Quelle des Falls); None ohne Schichtbeleg."""
+    if not name:
+        return None
+    kandidat = Path(name) if Path(name).is_absolute() else fall / name
+    abgeleitet = (fall / "abgeleitet").resolve()
+    if kandidat.is_file() and kandidat.resolve().is_relative_to(abgeleitet):
+        return "abgeleitet"
+    return "registriert"
+
+
+def _pruefe_bestandsbindung(name: str, prov: Dict[str, Any], bestand_sha256: str) -> None:
+    """Der abgeleitete Schichtbeleg gehoert zum Bestand DIESES Laufs (A-020,
+    H3; ADR-030 Stufe 2c): Der Bestand, den der Lauf gebunden hat, muss mit
+    seinem SHA-256 unter den gebundenen Eingaben des Belegs stehen. Vorher
+    durfte der Aufruf des Belegs auf ein anderes Uebernahmeverzeichnis
+    zeigen, und eine falsche Verankerung fiel erst im Vergleich auf."""
+    eingaben = prov.get("eingaben") or {}
+    if bestand_sha256 not in set(eingaben.values()):
+        raise SystemExit(
+            f"Schichtbeleg {name!r} gehoert zu einem anderen Bestand: der "
+            f"Bestand dieses Laufs (SHA-256 {bestand_sha256[:12]}...) steht "
+            "nicht unter seinen gebundenen Eingaben — den Schichtbeleg auf "
+            "diesem Bestand neu erzeugen (gates.verankerung_belegen), nicht "
+            "weiterverwenden")
+
+
 def _schichten(
     fall: Path, name: Optional[str], repo_root: Optional[Path] = None,
     bindung=None, auskunft: Optional[Dict[str, Any]] = None,
+    bestand_sha256: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Die Korrekturschicht je Police aus einer BINDBAREN Quelle.
 
@@ -382,8 +412,7 @@ def _schichten(
     if not name:
         return {}
     kandidat = Path(name) if Path(name).is_absolute() else fall / name
-    abgeleitet = (fall / "abgeleitet").resolve()
-    if kandidat.is_file() and kandidat.resolve().is_relative_to(abgeleitet):
+    if schichtbeleg_art(fall, name) == "abgeleitet":
         gelesen = (bindung.binde(kandidat) if bindung is not None
                    else lies_gehasht(kandidat))
         roh = gelesen.json()
@@ -422,6 +451,8 @@ def _schichten(
                     f"Schichtbeleg-Eingabe {rel} wurde veraendert "
                     "(SHA-256 weicht ab) — Beleg neu erzeugen, nicht "
                     "weiterverwenden")
+        if bestand_sha256 is not None:
+            _pruefe_bestandsbindung(name, prov, bestand_sha256)
         # Die Auskunft zu den Herabsetzungsanteilen (Entscheid des
         # Maintainers 2026-09-30): Sie ist eine registrierte Datei, und der
         # Beleg nennt sie mit Name und Hash. Dieser Lauf rechnet die
@@ -811,7 +842,8 @@ def fuehre_test(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]]
     except ValueError as exc:
         print(f"aktuartest_lauf: {exc}", file=sys.stderr)
         return 2, None
-    bestand = read_portfolio_aus_bytes(bindung.binde(Path(args.bestand)).roh)
+    bestand_gelesen = bindung.binde(Path(args.bestand))
+    bestand = read_portfolio_aus_bytes(bestand_gelesen.roh)
 
     gemeldet = lieferung.get("test")
     if gemeldet and gemeldet != args.abnahme:
@@ -956,7 +988,8 @@ def fuehre_test(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]]
 
     schichten = _schichten(fall, args.schicht, bindung=bindung,
                            repo_root=Path(args.repo_root).resolve(),
-                           auskunft=auskunft_beleg)
+                           auskunft=auskunft_beleg,
+                           bestand_sha256=bestand_gelesen.sha256)
     # Pruefer-Befund B1: ein Vertrag ohne ableitbaren Anfangszustand wird
     # verweigert — NACH der Bindung des Schichtbelegs, damit ein Lauf mit
     # fremder Auskunft deren eigenen Befund behaelt.
@@ -999,6 +1032,14 @@ def fuehre_test(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]]
     )
     # Der Beleg nennt, worueber geurteilt wurde — und mit welchen Regeln.
     ergebnis["eingaben"] = bindung.als_beleg()
+    # Der Schichtbeleg gehoert zum Bestand dieses Laufs (A-020, H3; ADR-030
+    # Stufe 2c): Name, Art und der gebundene Bestand stehen im Ergebnis,
+    # damit die Vorlage A-M1 die Bindung verlangen kann (5.0.0).
+    ergebnis["schichtbeleg"] = None if not args.schicht else {
+        "name": str(args.schicht),
+        "art": schichtbeleg_art(fall, args.schicht),
+        "bestand_sha256": bestand_gelesen.sha256,
+    }
     ergebnis["tarifregeln"] = regeln.als_beleg()
     # Block F, Nachbesserung: die Auskunft, auf deren Anfangslage gerechnet
     # wurde, mit Name, SHA-256 und Bezug je Police (``null``, wenn keine).

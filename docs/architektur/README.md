@@ -86,7 +86,7 @@ Stelle arbeitet, die sie regeln.
 | [019](adr-019-parallele-testsuite.md) | Die Testsuite läuft parallel | gilt |
 | [027](adr-027-fuenf-gegenstaende-keine-infrastruktur.md) | Das Repository trägt fünf Gegenstände und keine Infrastruktur | gilt, die Tabelle der Gegenstände ist abgelöst durch ADR-028 |
 | [028](adr-028-ordnung-nach-ebenen.md) | Das Repository ist nach Ebenen geordnet: System, Objekt PLV, Objekt Baldrian bzw. Migration, Simulation, Laufzeit-Artefakte | gilt; die abgenommenen Gegenstände ziehen später um |
-| [030](adr-030-zielvertrag-der-plv.md) | Das Tool spricht das Zielsystem über einen versionierten Vertrag an (`zielsystem/`); die PLV erfüllt ihn außerhalb des Kerns (`plv/`), die alten Kanten schrumpfen je Stufe | gilt für die Stufen 0 bis 2; Stufen 0 und 1 umgesetzt, Stufe 2 im Bau (2a und 2b umgesetzt) |
+| [030](adr-030-zielvertrag-der-plv.md) | Das Tool spricht das Zielsystem über einen versionierten Vertrag an (`zielsystem/`); die PLV erfüllt ihn außerhalb des Kerns (`plv/`), die alten Kanten schrumpfen je Stufe | gilt für die Stufen 0 bis 2; Stufen 0 und 1 umgesetzt, Stufen 0 bis 2 umgesetzt |
 
 Ältere Dokumente und Belege nennen Gates teils noch mit früheren Kennungen
 (`G-2` statt `A-M4`, `O3` statt `P-K1`). Die Zuordnung steht im Register in

@@ -94,7 +94,13 @@ GATE = GATES["A-M1"]
 #: (:func:`test_nachgerechnet`). Komponentenzahl und Profil eines Vergleichs
 #: sind damit die des Erzeugers. Ein Ergebnis ohne Aufruf, mit einer
 #: behaupteten Komponentenzahl oder mit eigenen Kriterien war vorher gueltig.
-GATE_VERSION = "4.0.0"
+#: 5.0.0 (A-020, H3; ADR-030 Stufe 2c): Ein Ergebnis mit Schichtbeleg nennt
+#: den Bestand, zu dem der Beleg gehoert (``schichtbeleg``: Name, Art,
+#: SHA-256 des gebundenen Bestands), und der Erzeuger verweigert einen
+#: abgeleiteten Schichtbeleg, der diesen Bestand nicht unter seinen
+#: gebundenen Eingaben fuehrt (:func:`schichtbeleg_gebunden`). Vorher durfte
+#: der Aufruf des Belegs auf ein anderes Uebernahmeverzeichnis zeigen.
+GATE_VERSION = "5.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -152,6 +158,34 @@ def _ok(ist: float, soll: float, k: Kriterium, komponenten: int = 1) -> bool:
     unschaerfe = _CENT_UNSCHAERFE * max(0, komponenten - 1)
     return math.isclose(
         ist, soll, rel_tol=k.rel_tol, abs_tol=k.abs_tol + unschaerfe)
+
+
+def schichtbeleg_gebunden(test: Dict[str, Any]) -> List[str]:
+    """Ein Ergebnis mit Schichtbeleg nennt den Bestand, zu dem der Beleg
+    gehoert (5.0.0; A-020, H3): ``schichtbeleg`` mit Name, Art und dem
+    SHA-256 des Bestands, der unter den gebundenen Eingaben des Ergebnisses
+    steht. Ohne diese Bindung bezeugt das Ergebnis nicht, dass Schicht und
+    Bestand zusammengehoeren; leer = gebunden oder ohne Schichtbeleg."""
+    if not isinstance(test, dict):
+        return []
+    aufruf = test.get("aufruf")
+    mit_schicht = isinstance(aufruf, list) and "--schicht" in aufruf
+    block = test.get("schichtbeleg")
+    if not mit_schicht and block is None:
+        return []
+    if not isinstance(block, dict):
+        return ["Ergebnis mit Schichtbeleg nennt keine Bestandsbindung "
+                "(schichtbeleg: Name, Art, bestand_sha256) — den Test neu "
+                "fahren (gates.aktuartest_lauf)"]
+    if block.get("art") not in ("abgeleitet", "registriert") or not block.get("name"):
+        return [f"Bestandsbindung des Schichtbelegs ist unvollstaendig: {block!r}"]
+    sha = block.get("bestand_sha256")
+    eingaben = test.get("eingaben") if isinstance(test.get("eingaben"), dict) else {}
+    if not isinstance(sha, str) or sha not in set(eingaben.values()):
+        return ["Bestandsbindung des Schichtbelegs nennt keinen Bestand, den "
+                "dieses Ergebnis gebunden hat — Schicht und Bestand gehoeren "
+                "nicht nachweislich zusammen; den Test neu fahren"]
+    return []
 
 
 def test_nachgerechnet(test: Dict[str, Any], fall: Path, repo_root: Path) -> List[str]:
@@ -1117,6 +1151,8 @@ def main(argv: Optional[List[str]] = None):
         if fall is not None and (fall / "fall.json").is_file() else []
     )
     input_hashes = hashes_von([test_gelesen, *fall_json], base=fall)
+    if not fehler:
+        fehler = schichtbeleg_gebunden(test)
     if not fehler and fall_json:
         # Im Bestands-Scope pinnen A-M1 bis A-M3 das Ergebnis; die Vorlage
         # rechnet es dann nach (3.0.0), statt seinen Massstab zu glauben. Der

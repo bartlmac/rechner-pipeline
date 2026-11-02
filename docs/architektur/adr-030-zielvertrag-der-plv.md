@@ -168,7 +168,7 @@ Reihenfolge der Stufen, nach Nutzen und Größe:
 |---|---|---|
 | 0 | Gerüst: Paket `zielsystem/` mit Version 0.1.0, Katalog der Fähigkeiten, Wurzelprotokoll, Konformität, Anbieter; Paket `plv/` mit der PLV, die noch keine Fähigkeit anbietet; Regel und Zähltest in der Schichtenkarte; Skill, ADR-017, ADR-028, README | umgesetzt 02.11.2026 |
 | 1 | Rechnungsgrundlagen (11 Namen): Der Vertrag liefert den wirksamen Parametersatz einer Generation bzw. einer Police vollständig, einschließlich der Defaults. Führungsprobe, Prüfstrecke und `models/bestand.py` lesen ihn von dort. Das schließt die Klasse von T28-04, nicht nur den einen Befund. | umgesetzt 02.11.2026 (unten) |
-| 2 | Bewertung (23 Namen): Werte, Verlauf und Vorgänge je Vertrag für `qa/aktuarieller_test`, `qa/migrationssuite` und `qa/abzugsabgleich`. Hier gehört die Komponentenzahl eines gelieferten Werts hin (T28-01). Spiegelt der Vertrag die Kern-Schnittstellen 1:1, ist er die Fassade aus Option C; er muss schmaler sein und dieselben Werte liefern. | 2a (Vertrag, PLV, Prüfstrecke) und 2b (die Gates) umgesetzt 02.11.2026; 2c (Schichtbeleg an den Bestand binden) im Bau |
+| 2 | Bewertung (23 Namen): Werte, Verlauf und Vorgänge je Vertrag für `qa/aktuarieller_test`, `qa/migrationssuite` und `qa/abzugsabgleich`. Hier gehört die Komponentenzahl eines gelieferten Werts hin (T28-01). Spiegelt der Vertrag die Kern-Schnittstellen 1:1, ist er die Fassade aus Option C; er muss schmaler sein und dieselben Werte liefern. | 2a (Vertrag, PLV, Prüfstrecke), 2b (die Gates) und 2c (Schichtbeleg an den Bestand binden) umgesetzt 02.11.2026 |
 | 3 | Bestandsdaten (10 Namen) | nicht beauftragt |
 | 4 | Bestandsprüfung (6 Namen) | nicht beauftragt |
 | 5 | Zugang (16 Namen), zuletzt. Er ist am stärksten PLV-eigen. Vorher ist zu klären, welcher Teil der Ableitung Prüfstrecke (Tool) und welcher Führung (PLV) ist. | nicht beauftragt |
@@ -284,6 +284,22 @@ Anbieters, nicht den Namen, und importiert es früh; was der Anbieter zur
 Laufzeit sagt, gilt, und ein Test kann ihn austauschen. Die beitragsfreie
 Gesamtsumme zählt nur die Bausteine, die im Jahr der Freistellung
 bestehen (vorher stand dieser Filter an einer von vier Stellen).
+
+### Stufe 2c: der Schichtbeleg gehört zum Bestand (A-020, H3)
+
+Mit der Bewertung geht die Korrekturschicht ausdrücklich "für diesen
+Bestand" über den Vertrag an das Zielsystem; die Prüfstation
+(`gates/aktuartest_lauf`) hält den abgeleiteten Schichtbeleg deshalb an
+den Bestand des Laufs: Der mit `--bestand` gebundene Bestand muss mit
+seinem SHA-256 unter den gebundenen Eingaben des Belegs stehen, sonst
+verweigert der Lauf ("Schichtbeleg gehört zu einem anderen Bestand").
+Das Ergebnis nennt die Bindung (`schichtbeleg`: Name, Art, SHA-256), und
+die Vorlage A-M1 verlangt sie dort: `gates/aktuartest.py` 4.0.0 auf
+5.0.0, Grund im Gate-Vertrag. Fall 3 läuft weiter (sein Schichtbeleg ist
+der des eigenen Bestands); das neue Feld ist der einzige Unterschied in
+`aktuartest*.json` gegenüber der Stufe-1-Probe. Führungsprobe und
+Migrationssuite bleiben unberührt; ob der Schichtbeleg im Bestands-Scope
+Pflicht sein soll (H2), ist ein eigener Auftrag.
 
 ## Nachweis je Stufe
 
