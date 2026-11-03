@@ -54,7 +54,7 @@ from rechner_pipeline.models.bestand import (
     alt_absetzung_ist_teilkuendigung,
     model_point_kwargs,
 )
-from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
+from rechner_pipeline.zielsystem import anbieter
 from rechner_pipeline.qa.migrationssuite import (
     GeVoErwartung,
     VertragsPruefung,
@@ -409,7 +409,7 @@ def _serienzustand(
     red_anteil_kandidaten: Tuple[float, ...] = (),
     scheiben_mit_gamma1: bool = False,
     anker_wert: Optional[Tuple[int, float]] = None,
-    red_verfahren: str = TEILKUENDIGUNG,
+    red_verfahren: str = anbieter.zielsystem().faehigkeit("bewertung").vorgangsregeln().teilkuendigung,
     tku_umfang: Optional[str] = None,
     stoab_je_baustein: bool = False,
 ) -> Dict[str, Any]:

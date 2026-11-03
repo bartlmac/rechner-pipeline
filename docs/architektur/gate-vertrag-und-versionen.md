@@ -36,7 +36,7 @@ startet keinen Gate-Lauf.
 | P-B1 (Version `4.0.0`) | `gates.bestand_validate` | den geführten Bestand |
 | A-K2-Vorlage (Version `2.0.0`) | `gates.kernstand_belegen` | die Änderung des Kernstands (Rechenkern, Referenzwerte, Grundsatzdokumentation) gegenüber dem zuletzt abgenommenen Stand; legt Beleg und lesbare Sicht als Vorlage für A-K2 vor |
 | A-T1-Vorlage (Version `2.0.0`) | `gates.tarifwerk_belegen` | die Änderung des Tarifwerks (Tarifpläne und Parametrierung der eigenen Generationen) gegenüber dem zuletzt abgenommenen Stand; legt Beleg und lesbare Sicht als Vorlage für A-T1 vor |
-| A-M-Vorlagen (Version `4.0.0`) | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
+| A-M-Vorlagen (Version `5.0.0`) | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
 | A-M4-Vorlage (Version `13.0.0`) | `gates.abnahmebericht` | die Migrationssuite und die Pflichtbelege des Migrationscontrollings; rendert die Entscheidungsvorlage für A-M4 |
 
 Was ein versioniertes Gate im Einzelnen prüft und wie seine Version
@@ -125,6 +125,8 @@ Versionen:
 - `2.0.0`: der aktuarielle Test in drei Abnahmen (A-M1, A-M2, A-M3) mit eigenen Profilen und Prüfpunkten.
 - `3.0.0`: Im Bestands-Scope nennt das Ergebnis seinen Aufruf (`aufruf`), und Vorlage wie Entscheid fahren den Test damit auf den gebundenen Eingaben neu und halten das ganze Ergebnis dagegen. Komponentenzahl je Vertrag und Kriterien des Profils sind damit die des Erzeugers und nicht die des Ergebnisses. Ein Ergebnis ohne Aufruf, mit einer behaupteten Komponentenzahl oder mit eigenen Kriterien war vorher gültig (Prüfrunde T28, Befund 01).
 - `4.0.0`: Der abgeleitete Schichtbeleg wird mit dem Aufruf seines Erzeugers auf den gebundenen Eingaben vollständig nachgerechnet. Die Pflichtbindungen und Schichtwerte folgen damit aus dem Erzeugerlauf; ein Beleg ohne Aufruf oder mit ausgelassener Verankerungsbindung war vorher gültig (Prüfrunde T28, Befund 02).
+
+- `5.0.0`: Ein Ergebnis mit Schichtbeleg nennt den Bestand, zu dem der Beleg gehört (`schichtbeleg`: Name, Art, SHA-256 des gebundenen Bestands), und der Erzeuger verweigert einen abgeleiteten Schichtbeleg, der den Bestand des Laufs nicht unter seinen gebundenen Eingaben führt. Vorher durfte der Aufruf des Belegs auf ein anderes Übernahmeverzeichnis zeigen, und eine falsche Verankerung fiel erst im Vergleich auf (A-020, H3; ADR-030 Stufe 2c).
 
 ### A-M4-Vorlage: Migrationssuite und Migrationscontrolling
 

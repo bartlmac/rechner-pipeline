@@ -996,6 +996,81 @@ def test_die_ratsche_deckt_genau_die_gemessenen_kanten():
     assert all(karte["module"][k["von"]]["ebene"] == "tool" for k in karte["tool_nach_vorzeige"])
 
 
+def test_die_altlast_der_ratsche_schrumpft_nur():
+    """ADR-030: Die Ratsche besteht aus der einen Kante des Anbieters und
+    der Altlast, die je Stufe schrumpft und nie waechst. Stufe 0: 36
+    Kanten vom Stand 9986830; Stufe 1 (Rechnungsgrundlagen): 31; Stufe 2a
+    (Bewertung, die Pruefstrecke): 24; Stufe 2b (die Gates): 14. Die Zahl
+    steht hier mit == (nicht <=), damit eine Stufe, die Kanten loest, die
+    Zahl bewusst senkt — und eine, die welche hinzufuegt, rot wird. Die 14
+    gehen alle nach bestand/ (Stufen 3 bis 5)."""
+    from rechner_pipeline.ontologie.code_karte import ALTLAST_KANTEN, ZIELSYSTEM_ANBIETER
+
+    assert len(ALTLAST_KANTEN) == 14
+    assert all(nach.startswith("rechner_pipeline/bestand/") for _von, nach in ALTLAST_KANTEN)
+    geloest = {
+        # Stufe 1
+        ("rechner_pipeline/models/bestand.py", "rechner_pipeline/kern/model_point.py"),
+        ("rechner_pipeline/ontologie/code_index.py", "rechner_pipeline/kern/produkte/__init__.py"),
+        ("rechner_pipeline/qa/abzugsabgleich.py", "rechner_pipeline/kern/produkte/__init__.py"),
+        ("rechner_pipeline/quellen/tafel_import.py", "rechner_pipeline/kern/tafeln.py"),
+        ("rechner_pipeline/spez/erzeugen.py", "rechner_pipeline/kern/tafeln.py"),
+        # Stufe 2a
+        ("rechner_pipeline/qa/abzugsabgleich.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+        ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/korrekturschicht.py"),
+        ("rechner_pipeline/qa/aktuarieller_test.py", "rechner_pipeline/kern/rechenkern.py"),
+        ("rechner_pipeline/qa/migrationssuite.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/qa/migrationssuite.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+        # Stufe 2b
+        ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/kern/korrekturschicht.py"),
+        ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/kern/korrekturschicht.py"),
+        ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+        ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/kern/korrekturschicht.py"),
+        ("rechner_pipeline/gates/generation_golden.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+        ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/rechenkern.py"),
+    }
+    assert not (geloest & ALTLAST_KANTEN)
+    assert ALTLAST_KANTEN == {k for k in TOOL_NACH_VORZEIGE_ERLAUBT if k[0] != ZIELSYSTEM_ANBIETER}
+    anbieter_kanten = TOOL_NACH_VORZEIGE_ERLAUBT - ALTLAST_KANTEN
+    assert anbieter_kanten == {(ZIELSYSTEM_ANBIETER, "rechner_pipeline/plv/zielsystem.py")}
+    # ... und die Kante des Anbieters ist gemessen, nicht nur erlaubt:
+    gemessen = {(k["von"], k["nach"]) for k in baue_karte(SRC)["tool_nach_vorzeige"]}
+    assert anbieter_kanten <= gemessen
+
+
+def test_nur_der_anbieter_des_zielvertrags_kennt_die_vorzeige(tmp_path: Path, monkeypatch):
+    """ADR-030: Ein zweites Modul der Schicht zielsystem, das die Vorzeige
+    importiert, ist ein Befund — auch wenn seine Kante in der Ratsche
+    stuende (Mutationsprobe: die Regel in validate entfernen -> rot)."""
+    from rechner_pipeline.ontologie import code_karte
+
+    src = tmp_path / "rechner_pipeline"
+    (src / "zielsystem").mkdir(parents=True)
+    (src / "plv").mkdir()
+    for d in ("", "zielsystem", "plv"):
+        (src / d / "__init__.py").write_text("", encoding="utf-8")
+    (src / "plv" / "zielsystem.py").write_text("class PLV: pass\n", encoding="utf-8")
+    (src / "zielsystem" / "anbieter.py").write_text(
+        "from rechner_pipeline.plv.zielsystem import PLV\n", encoding="utf-8")
+    assert validate(baue_karte(src)) == []
+    (src / "zielsystem" / "vertrag.py").write_text(
+        "from rechner_pipeline.plv.zielsystem import PLV\n", encoding="utf-8")
+    befunde = validate(baue_karte(src))
+    assert any("neue Kante aus dem KI-Tool in die Vorzeige" in b for b in befunde), befunde
+    monkeypatch.setattr(code_karte, "TOOL_NACH_VORZEIGE_ERLAUBT", {
+        *code_karte.TOOL_NACH_VORZEIGE_ERLAUBT,
+        ("rechner_pipeline/zielsystem/vertrag.py", "rechner_pipeline/plv/zielsystem.py")})
+    befunde = validate(baue_karte(src))
+    assert any("kennt die Vorzeige nur in rechner_pipeline/zielsystem/anbieter.py" in b
+               for b in befunde), befunde
+
+
 def test_neue_kante_aus_dem_tool_in_die_vorzeige_ist_ein_befund(tmp_path: Path):
     src = tmp_path / "rechner_pipeline"
     (src / "gates").mkdir(parents=True)

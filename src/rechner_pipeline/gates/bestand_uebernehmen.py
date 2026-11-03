@@ -87,7 +87,7 @@ from rechner_pipeline.bestand.migrationszugang import (
 )
 from rechner_pipeline.bestand.parquet_io import write_portfolio
 from rechner_pipeline.gates._common import Eingangsbindung
-from rechner_pipeline.kern import ModelPoint, Rechenkern, erhoehungs_scheibe
+from rechner_pipeline.zielsystem import anbieter
 from rechner_pipeline.spez.tarifregeln import (
     TarifregelnFehler,
     verweigere_entfallene_schalter,
@@ -631,12 +631,10 @@ def _beitragsfreie_uebernahme(
     Ursprungssumme die gelieferte Summe auf den Cent reproduziert, ist
     hier Bedingung, kein Vertrauen.
     """
-    felder = {
-        "x": int(zeile["entry_age"]), "sex": str(zeile["sex"]),
-        "n": int(zeile["duration"]), "t": int(zeile["premium_duration"]),
-        "zw": int(zeile["zahlweise"]),
-        **{k: v for k, v in generationsfelder.items()},
-    }
+    # Der wirksame Satz ueber den einen Weg des Tools (ADR-030, A-054 B2):
+    # ausgelassene optionale Felder mit den Defaults des Zielsystems.
+    felder = {k: v for k, v in model_point_kwargs(zeile, generationsfelder).items()
+              if k != "sum_insured"}
     geliefert = float(zeile["sum_insured"])
     police = zeile.get("police_id")
     try:
@@ -648,10 +646,10 @@ def _beitragsfreie_uebernahme(
             f"Police {police}: beitragsfrei uebernommen, aber die "
             f"Ursprungssumme ist nicht ableitbar — {exc}"
         ) from exc
-    vs_bfr = float(
-        Rechenkern(ModelPoint(**felder, sum_insured=ursprung))
-        .beitragsfreie_summe(pex_jahr)
-    )
+    vs_bfr = float(anbieter.zielsystem().faehigkeit("bewertung").vertrag(
+        {**felder, "sum_insured": ursprung},
+        gamma1_uebernehmen=False, stoab_je_baustein=False,
+    ).beitragsfreie_summe(pex_jahr))
     if abs(vs_bfr - geliefert) > 0.005:
         raise SystemExit(
             f"Police {police}: der Kern bildet aus der Ursprungssumme "
@@ -730,11 +728,8 @@ def pex_zuschlag_nachtragen(
     die Differenz ist eine AUSGEWIESENE Position, keine stille.
     """
     from rechner_pipeline.gates.verankerung_belegen import baue_schichtbeleg
-    from rechner_pipeline.kern.korrekturschicht import (
-        Schichtparameter,
-        ab_verankerung,
-        zuschlag_bei_pex,
-    )
+
+    bewertung = anbieter.zielsystem().faehigkeit("bewertung")
 
     if not len(ledger) or not len(verankerung):
         return []
@@ -763,7 +758,7 @@ def pex_zuschlag_nachtragen(
     for i in pex_zeilen:
         pid = int(ledger.at[i, "police_id"])
         jahr = pex_jahr.get(pid, int(ledger.at[i, "vertragsjahr"]))
-        if pid in anker.index and ab_verankerung(
+        if pid in anker.index and bewertung.ab_verankerung(
                 int(anker.loc[pid, "monate_ta"]), 12 * jahr):
             betroffen[pid] = jahr
     if not betroffen:
@@ -806,10 +801,7 @@ def pex_zuschlag_nachtragen(
         # ``als_beleg()`` gibt formparameter als Objekt zurueck, die
         # Tabelle als JSON-Text. Dieselbe Konstruktion wie in der
         # Fuehrungsprobe.
-        parameter = Schichtparameter(**{
-            **zeile["hist"],
-            "vererbend": tuple(tuple(x) for x in zeile["hist"]["vererbend"]),
-        })
+        parameter = bewertung.schicht_aus_beleg(zeile["hist"])
         h = haupt.loc[pid]
         felder = _felder_fuer(generationsfelder, str(pid))
         if not felder:
@@ -817,10 +809,9 @@ def pex_zuschlag_nachtragen(
                 f"Police {pid}: beitragsfrei uebernommen und von der "
                 "Korrekturschicht betroffen, aber ohne Rechnungsgrundlagen "
                 "— der Zuschlag ist nicht berechenbar (--generation-spez)")
-        kern = Rechenkern(ModelPoint(**model_point_kwargs(h, felder)))
         jahr = betroffen[pid]
-        zuschlag = float(zuschlag_bei_pex(
-            (parameter, int(anker.loc[pid, "monate_ta"])), kern, jahr))
+        zuschlag = float(bewertung.zuschlag_bei_pex(
+            (parameter, int(anker.loc[pid, "monate_ta"])), model_point_kwargs(h, felder), jahr))
         if not zuschlag:
             continue
         geliefert = float(ledger.at[i, "betrag"])
@@ -895,12 +886,15 @@ def materialisiere_anfangszustand(
                 f"Police {police}: Alt-Erhoehungen ohne Rechnungsgrundlagen "
                 "— --generation-spez mitgeben")
         row = stamm.loc[i]
-        grund_mp = ModelPoint(**model_point_kwargs(row, felder))
+        grund_felder = model_point_kwargs(row, felder)
+        bewertung = anbieter.zielsystem().faehigkeit("bewertung")
         start = pd.Timestamp(row["insurance_start"])
         for nr, (jahr, vs) in enumerate(sorted(scheiben), start=1):
             try:
-                sch = erhoehungs_scheibe(
-                    grund_mp, int(jahr), float(vs),
+                # Die Scheibe, wie das Zielsystem sie aus dem Grundvertrag
+                # ableitet (ADR-030, Stufe 2b).
+                sch = bewertung.scheibe(
+                    grund_felder, int(jahr), float(vs),
                     gamma1_uebernehmen=scheiben_mit_gamma1)
             except ValueError as exc:
                 raise SystemExit(
@@ -912,17 +906,17 @@ def materialisiere_anfangszustand(
                 "erhoehung_jahr": int(jahr),
                 "erhoehung_datum": pd.Timestamp(
                     dt.date(start.year + int(jahr), start.month, 1)),
-                "entry_age": sch.x,
-                "duration": sch.n,
-                "premium_duration": sch.t,
-                "sum_insured": sch.sum_insured,
-                "gamma1": sch.gamma1,
+                "entry_age": sch["x"],
+                "duration": sch["n"],
+                "premium_duration": sch["t"],
+                "sum_insured": sch["sum_insured"],
+                "gamma1": sch["gamma1"],
             })
         zahlen["mit_scheiben"] += 1
         zahlen["scheiben"] += len(scheiben)
         # Der Zugang bucht die VERSICHERUNGSSUMME des Vertrags — mit
         # seinen Bausteinen; die Bewegungsrechnung fuehrt die Gesamtsumme.
-        gesamt = grund_mp.sum_insured + sum(float(s) for _, s in scheiben)
+        gesamt = grund_felder["sum_insured"] + sum(float(s) for _, s in scheiben)
         zug = (ledger["police_id"] == pid) & (ledger["ereignis"] == "ZUG")
         ledger.loc[zug, "betrag"] = gesamt
     if gesperrt:

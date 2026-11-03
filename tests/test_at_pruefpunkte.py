@@ -1213,7 +1213,7 @@ class TestScheibenGamma1Regel:
         from rechner_pipeline.qa.aktuarieller_test import (
             Pruefpunkt,
             Vertragspruefung,
-            _kerne,
+            _system_werte,
         )
 
         mp = KLV_DEFAULT
@@ -1227,10 +1227,11 @@ class TestScheibenGamma1Regel:
         regeln = dict(stoab_je_baustein=False, tku_umfang=None)
         ohne = Vertragspruefung(**basis, **regeln, scheiben_mit_gamma1=False)
         mit = Vertragspruefung(**basis, **regeln, scheiben_mit_gamma1=True)
-        g0, s0 = _kerne(ohne, mp)
-        g1, s1 = _kerne(mit, mp)
-        bjb_ohne = g0.gross_annual_premium() + s0[0][1].gross_annual_premium()
-        bjb_mit = g1.gross_annual_premium() + s1[0][1].gross_annual_premium()
+        p = basis["punkte"][0]
+        # Der Systemwert kommt ueber den Zielvertrag (ADR-030, Stufe 2); die
+        # Kontrollrechnung unten rechnet den Kern direkt.
+        bjb_ohne = _system_werte(ohne, mp, p, red_verfahren="prospektiv")["BJB"]
+        bjb_mit = _system_werte(mit, mp, p, red_verfahren="prospektiv")["BJB"]
         erwartete_differenz = (
             Rechenkern(dataclasses.replace(
                 mp, x=mp.x + 5, n=mp.n - 5, t=mp.t - 5, sum_insured=4000.0)

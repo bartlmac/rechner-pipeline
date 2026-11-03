@@ -7,7 +7,11 @@ kernel input). Since the kernel promotion (stable, versioned software in
 ``rechner_pipeline.kern``), the kernel's ``ModelPoint`` is the contract SSOT;
 :data:`MODEL_POINT_FIELDS` is the Bestand-side mirror, kept identical by a
 consistency test (``tests/test_kern.py``). Transient, agent-generated kernels
-(``generated/``, migration path) must satisfy the same field list.
+(``generated/``, migration path) must satisfy the same field list. The
+defaults of the tariff knobs are NOT mirrored: the target system states them
+through the Zielvertrag (ADR-030, Stufe 1), see
+:func:`generation_field_defaults`; this module imports nothing from the
+kernel.
 
 Design rules (project decisions):
 
@@ -32,7 +36,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 import numpy as _np
 
-from rechner_pipeline.kern.model_point import ModelPoint as _KernModelPoint
+from rechner_pipeline.zielsystem import anbieter
 
 # --------------------------------------------------------------------------- #
 # Kernel ModelPoint contract
@@ -81,13 +85,15 @@ GENERATION_FIELDS: Tuple[str, ...] = (
     "ratzu_zw2", "ratzu_zw4", "ratzu_zw12",
 )
 
-#: Defaults of the kernel's defaulted (tariff-knob) fields — sourced from the
-#: ModelPoint SSOT so a generation config may omit them (sheet behaviour).
-GENERATION_FIELD_DEFAULTS: Dict[str, Any] = {
-    f.name: f.default
-    for f in _dc.fields(_KernModelPoint)
-    if f.default is not _dc.MISSING
-}
+
+
+def generation_field_defaults() -> Mapping[str, Any]:
+    """Defaults of the kernel's defaulted (tariff-knob) fields, so a generation
+    config or a Spez-Zelle may omit them (sheet behaviour): the statement of
+    the target system, read through the Zielvertrag (ADR-030, Stufe 1,
+    capability ``rechnungsgrundlagen``). The provider module is bound, not
+    the name: what the provider says at call time counts (A-054, B3)."""
+    return anbieter.zielsystem().faehigkeit("rechnungsgrundlagen").parametersatz("klv").defaults
 
 #: Allowed values for enum-like columns (module tuples, repo idiom).
 SEX_VALUES: Tuple[str, ...] = ("M", "F")
@@ -2479,9 +2485,10 @@ def model_point_kwargs(row: Mapping[str, Any], generation: Mapping[str, Any]) ->
 
     ``generation`` must provide the :data:`GENERATION_FIELDS`; the row provides
     the :data:`CONTRACT_FIELDS` (with portfolio column names). Tariff knobs
-    absent from ``generation`` fall back to the kernel defaults
-    (:data:`GENERATION_FIELD_DEFAULTS`) — the result always covers the full
-    contract.
+    absent from ``generation`` fall back to the defaults the target system
+    states (:func:`generation_field_defaults`) — the result always covers
+    the full contract. This is the ONE way of the tool to the effective
+    parameter set (T28-04).
     """
     kwargs: Dict[str, Any] = {
         "x": int(row["entry_age"]),
@@ -2491,11 +2498,12 @@ def model_point_kwargs(row: Mapping[str, Any], generation: Mapping[str, Any]) ->
         "sum_insured": float(row["sum_insured"]),
         "zw": int(row["zahlweise"]),
     }
+    defaults = generation_field_defaults()
     for name in GENERATION_FIELDS:
         if name in generation:
             kwargs[name] = generation[name]
-        elif name in GENERATION_FIELD_DEFAULTS:
-            kwargs[name] = GENERATION_FIELD_DEFAULTS[name]
+        elif name in defaults:
+            kwargs[name] = defaults[name]
         else:
             raise KeyError(f"Generation-Feld fehlt ohne Default: {name}")
     return kwargs

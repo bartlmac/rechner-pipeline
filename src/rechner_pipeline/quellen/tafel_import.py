@@ -51,11 +51,16 @@ from io import StringIO
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from rechner_pipeline.kern.tafeln import _parse_tables, validiere_alterstafel
 from rechner_pipeline.models.manifest import ExportManifest, file_sha256
+from rechner_pipeline.zielsystem import anbieter
 
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _rechnungsgrundlagen():
+    """Die Rechnungsgrundlagen des Zielsystems (Tafelregeln, Tafelspeicher)."""
+    return anbieter.zielsystem().faehigkeit("rechnungsgrundlagen")
 
 
 class TafelImportFehler(ValueError):
@@ -164,7 +169,7 @@ def _pruefe_alterstafel(
     name: str, werte: Dict[int, float], quelle: Optional[str] = None
 ) -> None:
     try:
-        validiere_alterstafel(name, werte)
+        _rechnungsgrundlagen().pruefe_alterstafel(name, werte)
     except ValueError as exc:
         praefix = f"{quelle}: " if quelle else ""
         raise TafelImportFehler(f"{praefix}{exc}") from exc
@@ -417,17 +422,18 @@ def _lade_bestehende(
 
     Die Namensmenge enthaelt auch Select-Tafeln: eine neue Alterstafel
     unter dem Namen einer bestehenden Select-Tafel waere sonst ein
-    unbemerktes Namens-Duplikat im XML.
+    unbemerktes Namens-Duplikat im XML. Gelesen vom Zielsystem selbst,
+    ueber den Zielvertrag (ADR-030, Stufe 1).
     """
     try:
-        bestehende, select_tafeln = _parse_tables(
+        bestehende, namen = _rechnungsgrundlagen().tafeln_lesen(
             tafeln_xml.read_text(encoding="utf-8")
         )
     except (OSError, ValueError) as exc:
         raise TafelImportFehler(
             f"Kern-XML {tafeln_xml} ist ungueltig: {exc}"
         ) from exc
-    return bestehende, set(bestehende) | set(select_tafeln)
+    return dict(bestehende), set(namen)
 
 
 def _pruefe_wertgleich(

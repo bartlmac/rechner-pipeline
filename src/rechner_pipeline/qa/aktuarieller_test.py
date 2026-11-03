@@ -74,33 +74,22 @@ Knoten: klv
 from __future__ import annotations
 
 import math
+import dataclasses
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from rechner_pipeline.kern import (
-    VORGANG_RANG,
-    ModelPoint,
-    Vorgangsfolge,
-    VorgangsfolgeFehler,
-    tku_umfang_fuer,
-    vorgang,
-)
 from rechner_pipeline.models.bestand import zielverfahren
-from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
-from rechner_pipeline.kern.rechenkern import (
-    Rechenkern,
-    erhoehungs_scheibe,
-    vertrags_monatsreserve,
-)
-from rechner_pipeline.kern.korrekturschicht import (
-    Korrekturschicht,
-    schichtwert_bei as _schichtwert_bei_kern,
-    Schichtparameter,
-    form_konstantes_fenster,
-    form_proportional_zur_basis,
-)
 from rechner_pipeline.qa.migrationssuite import DATEN_AUSNAHMEN
+from rechner_pipeline.zielsystem import anbieter
+from rechner_pipeline.zielsystem.bewertung import (
+    Bewertung,
+    Folge,
+    Schicht,
+    Stand,
+    Vertragswerte,
+    Vorgangsfehler,
+)
 from rechner_pipeline.qa.stichprobe import Stichprobe
 from rechner_pipeline.qa.testprofil import Kriterium, Testprofil
 
@@ -127,8 +116,28 @@ KRITERIUM_VERGLEICH = "wertvergleich"
 KRITERIUM_PLAUSIBILITAET = "plausibilitaet"
 
 
+def _bewertung() -> Bewertung:
+    """Die Bewertung des Zielsystems (ADR-030, Stufe 2): Werte, Vorgangsfolge,
+    Korrekturschicht und die Regeln der Vorgaenge kommen ueber den Vertrag."""
+    # Das Modul, nicht der Name: So gilt, was der Anbieter zur Laufzeit sagt
+    # (und ein Test kann ihn austauschen).
+    return anbieter.zielsystem().faehigkeit("bewertung")
+
+
+def _vertragswerte(v: "Vertragspruefung", mp: Any) -> Vertragswerte:
+    """Der Vertrag des Auftrags, wie das Zielsystem ihn bewertet: aus den
+    Modellpunkt-Feldern (Mapping oder Dataclass) und den Scheiben nach der
+    belegten Regel des Auftrags; ein schon gebauter Vertrag bleibt."""
+    if isinstance(mp, Vertragswerte):
+        return mp
+    felder = mp if isinstance(mp, Mapping) else dataclasses.asdict(mp)
+    return _bewertung().vertrag(
+        felder, v.scheiben, gamma1_uebernehmen=v.scheiben_mit_gamma1,
+        stoab_je_baustein=v.stoab_je_baustein)
+
+
 def _kandidaten_rechnung(
-    groesse: str, v: "Vertragspruefung", mp: ModelPoint,
+    groesse: str, v: "Vertragspruefung", mp: Vertragswerte,
     p: "Pruefpunkt", red_verfahren: str,
 ) -> Tuple[float, float]:
     """Korridor aus der Tarifformel ueber die BELEGTE Kandidatenmenge.
@@ -155,7 +164,7 @@ def _kandidaten_rechnung(
 
 
 def _korridor_rkw(
-    v: "Vertragspruefung", mp: ModelPoint, p: "Pruefpunkt",
+    v: "Vertragspruefung", mp: Vertragswerte, p: "Pruefpunkt",
     werte: Mapping[str, float], red_verfahren: str,
 ) -> Tuple[float, float]:
     """Zulaessiger Rueckkaufswert — zwei getrennte Ausnahme-Tatbestaende.
@@ -180,7 +189,7 @@ def _korridor_rkw(
             "Korridor nicht bestimmt"
         )
     dk = float(werte["kVx_MRV"])
-    return (max(0.0, dk - float(mp.stoab_max)), dk)
+    return (max(0.0, dk - float(mp.felder["stoab_max"])), dk)
 
 
 def _korridor_kandidaten(groesse: str):
@@ -191,7 +200,7 @@ def _korridor_kandidaten(groesse: str):
     bleibt im Wertvergleich (Wache in ``_pruefe_auftrag``).
     """
     def korridor(
-        v: "Vertragspruefung", mp: ModelPoint, p: "Pruefpunkt",
+        v: "Vertragspruefung", mp: Vertragswerte, p: "Pruefpunkt",
         werte: Mapping[str, float], red_verfahren: str,
     ) -> Tuple[float, float]:
         return _kandidaten_rechnung(groesse, v, mp, p, red_verfahren)
@@ -359,7 +368,7 @@ class Vertragspruefung:
     #:
     #: Ohne sie bleibt der rohe Wertvergleich — der ist weiter gueltig,
     #: solange ein Fall keine Schicht fuehrt.
-    schicht: Optional[Schichtparameter] = None
+    schicht: Optional[Schicht] = None
     #: Zweitverankerung fuer das Konventionsresiduum (9.13, Entscheidung
     #: E2 2026-08-31: getrennt erfassen). Eine EIGENE Schicht mit
     #: eigenem Verankerungszeitpunkt: R_hist verankert bei t_a und
@@ -368,7 +377,7 @@ class Vertragspruefung:
     #: -- getrennt persistiert, getrennt gerechnet; die Engine addiert
     #: nur ihre WERTE am Pruefpunkt, denn beide sind dieselbe Rekursion
     #: mit anderen Zahlungen.
-    schicht_conv: Optional[Schichtparameter] = None
+    schicht_conv: Optional[Schicht] = None
     #: Verankerungszeitpunkt der conv-Schicht in vollen Vertragsmonaten
     #: (t_0). Pflicht, wenn schicht_conv gesetzt ist.
     monate_t0: Optional[int] = None
@@ -437,7 +446,7 @@ def verankerungspunkt(monate: int, erwartet: Dict[str, float]) -> Pruefpunkt:
 # --------------------------------------------------------------------------- #
 
 
-def _pruefe_punkt(v: Vertragspruefung, p: Pruefpunkt, mp: ModelPoint) -> None:
+def _pruefe_punkt(v: Vertragspruefung, p: Pruefpunkt, mp: Vertragswerte) -> None:
     if p.anlass not in ALLE_ANLAESSE:
         raise AktuartestFehler(
             f"police {v.police_id}: unbekannter Anlass {p.anlass!r} — "
@@ -456,10 +465,10 @@ def _pruefe_punkt(v: Vertragspruefung, p: Pruefpunkt, mp: ModelPoint) -> None:
             "(ADR-010). Unterjaehrig ist nur ein Geschaeftsvorfall, weil "
             "dort die Konvention selbst den ausgezahlten Betrag bestimmt"
         )
-    if p.monate > 12 * mp.n:
+    if p.monate > 12 * int(mp.felder["n"]):
         raise AktuartestFehler(
             f"police {v.police_id}: monate={p.monate} liegt hinter dem "
-            f"Vertragsende (n={mp.n} Jahre)"
+            f"Vertragsende (n={int(mp.felder['n'])} Jahre)"
         )
     if not p.erwartet:
         raise AktuartestFehler(
@@ -537,7 +546,7 @@ def _pruefe_punkt(v: Vertragspruefung, p: Pruefpunkt, mp: ModelPoint) -> None:
         )
 
 
-def _pruefe_auftrag(v: Vertragspruefung) -> ModelPoint:
+def _pruefe_auftrag(v: Vertragspruefung) -> Vertragswerte:
     """Engine-Vertrag des Auftrags — Verletzungen sind harte Fehler."""
     if not v.punkte:
         raise AktuartestFehler(
@@ -703,7 +712,7 @@ def _pruefe_auftrag(v: Vertragspruefung) -> ModelPoint:
             "derselbe Zeitpunkt mit demselben Anlass zaehlte doppelt in "
             "die Verteilung"
         )
-    mp = ModelPoint(**v.model_point)
+    mp = _vertragswerte(v, v.model_point)
     for p in v.punkte:
         _pruefe_punkt(v, p, mp)
     return mp
@@ -721,21 +730,9 @@ def _doppelte_punkte(punkte: Tuple[Pruefpunkt, ...]) -> List[Tuple[int, str]]:
 # --------------------------------------------------------------------------- #
 
 
-def _kerne(v: Vertragspruefung, mp: ModelPoint):
-    grund = Rechenkern(mp)
-    scheiben = [
-        (jahr_s, Rechenkern(erhoehungs_scheibe(
-            mp, jahr_s, vs, gamma1_uebernehmen=v.scheiben_mit_gamma1)))
-        for jahr_s, vs in v.scheiben
-    ]
-    return grund, scheiben
-
-
 def _deckungskapital(
     v: Vertragspruefung,
-    mp: ModelPoint,
-    kern: Rechenkern,
-    scheiben,
+    mp: Vertragswerte,
     monate: int,
     zustand: str,
     parameter: Mapping[str, float] = MappingProxyType({}),
@@ -771,27 +768,19 @@ def _deckungskapital(
         # EIGENEN Jahresversatz beitragsfrei weiter (dieselbe Regel wie
         # in qa.migrationssuite). Ohne sie faellt der Scheibenwert bei
         # einem PEX-Vorfall aus dem Vertrag heraus, und dDK meldet einen
-        # Verlust, den es nicht gibt.
-        def _bfr(k, a0_k: int, m_k: int) -> float:
-            if m_k % 12:
-                return k.monatsreserve_beitragsfrei(a0_k, m_k)
-            return k.reserve_beitragsfrei(a0_k, m_k // 12)
-
-        gesamt = _bfr(kern, a0, monate)
-        for erh_jahr, scheibe in scheiben:
-            gesamt += _bfr(scheibe, a0 - erh_jahr, monate - 12 * erh_jahr)
+        # Verlust, den es nicht gibt. Je Baustein vom Zielsystem, hier in
+        # der Reihenfolge dieses Tests summiert.
+        teile = mp.reserven_beitragsfrei(a0, monate)
+        gesamt = teile[0]
+        for teil in teile[1:]:
+            gesamt += teil
         return gesamt
     # "bestand" und "beitragspflichtig" sind derselbe gefuehrte Wert; die
     # Unterscheidung benennt nur, worauf sich der Vergleich bezieht.
-    if scheiben:
-        return vertrags_monatsreserve(
-            kern, scheiben, monate, stoab_je_baustein=v.stoab_je_baustein).vx_mrv
-    if monate % 12:
-        return kern.monatsreserve(monate).vx_mrv
-    return kern.zustand_am(monate).vx_mrv
+    return mp.reserve(monate).vx_mrv
 
 
-def _schichtwert(v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt) -> float:
+def _schichtwert(v: Vertragspruefung, mp: Vertragswerte, p: Pruefpunkt) -> float:
     """Der Gesamtwert der Korrekturschichten am Pruefpunkt (0.0 ohne).
 
     R_hist (verankert bei t_a) und R_conv (verankert bei t_0) sind
@@ -807,26 +796,28 @@ def _schichtwert(v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt) -> float:
 
 
 def _eine_schicht(
-    parameter: Schichtparameter, monate_anker: int, mp: ModelPoint,
-    p: Pruefpunkt,
+    parameter: Schicht, monate_anker: int, mp: Vertragswerte, p: Pruefpunkt,
 ) -> float:
     return schichtwert_bei(parameter, monate_anker, mp, p.monate)
 
 
 def schichtwert_bei(
-    parameter: Schichtparameter, monate_anker: int, mp: ModelPoint,
-    monate: int,
+    parameter: Schicht, monate_anker: int, mp: Any, monate: int,
 ) -> float:
     """Der Wert EINER Schicht zu einem Vertragsmonat.
 
-    Seit der Freischaltung (Schritt 5) lebt die Bewertung im Kern
-    (:func:`rechner_pipeline.kern.korrekturschicht.schichtwert_bei`),
-    weil auch die Bestandsfuehrung sie braucht; hier bleibt der Name,
-    unter dem die beiden Vergleichs-Engines (A-M1..A-M3 hier, A-M4 in
+    Die Bewertung ist die des Zielsystems (``Bewertung.schichtwert``, ADR-030),
+    weil auch die Bestandsfuehrung sie braucht; hier bleibt der Name, unter
+    dem die beiden Vergleichs-Engines (A-M1..A-M3 hier, A-M4 in
     qa.migrationssuite) sie rufen. Dieselbe Funktion, kein zweiter
-    Rechenweg.
+    Rechenweg. ``mp`` sind die Modellpunkt-Felder (Mapping oder Dataclass)
+    oder der Vertrag des Zielsystems.
     """
-    return _schichtwert_bei_kern(parameter, monate_anker, mp, monate)
+    if isinstance(mp, Vertragswerte):
+        felder = mp.felder
+    else:
+        felder = mp if isinstance(mp, Mapping) else dataclasses.asdict(mp)
+    return _bewertung().schichtwert(parameter, monate_anker, felder, monate)
 
 
 def _mit_folge(v: Vertragspruefung) -> bool:
@@ -852,8 +843,8 @@ def _mit_folge(v: Vertragspruefung) -> bool:
 
 
 def _folge_des_auftrags(
-    v: Vertragspruefung, mp: ModelPoint, red_verfahren: str,
-) -> Vorgangsfolge:
+    v: Vertragspruefung, mp: Vertragswerte, red_verfahren: str,
+) -> Folge:
     """Die Vorgangsfolge eines Pruefauftrags: Anfangszustand (Scheiben,
     Vorgaenge der Vorgeschichte, Beitragsfreistellung) plus jeder
     Pruefpunkt, der selbst ein Vorgang ist (PEX, RED, TKU mit Anteil) —
@@ -869,23 +860,25 @@ def _folge_des_auftrags(
             "oder Teilkuendigung ist nicht definiert — wie ein Vorgang die am "
             "Migrationsstichtag verankerte zweite Schicht aufnimmt, legt der "
             "Tarifplan nicht fest")
-    kern, scheiben = _kerne(v, mp)
+    bewertung = _bewertung()
+    regeln = bewertung.vorgangsregeln()
     pex_punkte = sorted(q.monate // 12 for q in v.punkte if q.anlass == "PEX")
     pex_jahr = (v.beitragsfrei_seit_jahr if v.beitragsfrei_seit_jahr is not None
                 else (pex_punkte[0] if pex_punkte else None))
+    t = int(mp.felder["t"])
 
     def verfahren_fuer(jahr: int, geliefert_tku: bool) -> str:
         # Ein gelieferter TKU-Punkt ist die Teilkuendigung; ein RED-Punkt
         # liest die Uebersetzungsregel.
-        return zielverfahren(TEILKUENDIGUNG if geliefert_tku else red_verfahren,
-                             jahr, mp.t, beitragsfrei_ab=pex_jahr)
+        return zielverfahren(regeln.teilkuendigung if geliefert_tku else red_verfahren,
+                             jahr, t, beitragsfrei_ab=pex_jahr)
 
-    vorgaenge = []
+    vorgaenge: List[Tuple[int, float, str]] = []
     if v.reduktion is not None:
-        vorgaenge.append(vorgang(int(v.reduktion[0]), float(v.reduktion[1]),
-                                 verfahren_fuer(int(v.reduktion[0]), False)))
+        vorgaenge.append((int(v.reduktion[0]), float(v.reduktion[1]),
+                          verfahren_fuer(int(v.reduktion[0]), False)))
     for jahr_r, anteil_r, verfahren_r in v.vorgaenge:
-        vorgaenge.append(vorgang(int(jahr_r), float(anteil_r), str(verfahren_r)))
+        vorgaenge.append((int(jahr_r), float(anteil_r), str(verfahren_r)))
     for q in sorted(v.punkte, key=lambda q: q.monate):
         if q.anlass not in VORGANG_ANLAESSE:
             continue
@@ -898,26 +891,26 @@ def _folge_des_auftrags(
                     "parameter['anteil'] — der Zustand danach ist nicht bestimmt, "
                     f"die Pruefpunkte {spaeter[:3]} haetten keinen Vertrag")
             continue
-        vorgaenge.append(vorgang(q.jahr, float(anteil), verfahren_fuer(
+        vorgaenge.append((q.jahr, float(anteil), verfahren_fuer(
             q.jahr, q.anlass == "TKU")))
     schicht = None if v.schicht is None else (v.schicht, int(v.monate_ta))
     try:
-        return Vorgangsfolge(
-            kern, scheiben, vorgaenge, pex_jahr=pex_jahr, schicht=schicht,
-            stoab_je_baustein=v.stoab_je_baustein,
-            tku_umfang=tku_umfang_fuer(red_verfahren, v.tku_umfang))
-    except VorgangsfolgeFehler as exc:
+        return mp.folge(
+            vorgaenge, pex_jahr=pex_jahr, schicht=schicht,
+            tku_umfang=bewertung.tku_umfang(red_verfahren, v.tku_umfang))
+    except Vorgangsfehler as exc:
         raise AktuartestFehler(f"police {v.police_id}: {exc}") from exc
 
 
-#: Die Reihenfolge der Vorgaenge an einem Jahrestag (kern.Vorgangsfolge):
-#: der Vorgang des naechsten Rangs — den Zustand unmittelbar NACH einem
-#: Vorgang liest man als den vor dem naechsten.
-_NACH_RANG = {rang: art for art, rang in VORGANG_RANG.items()}
+def _nach_rang(rang: Mapping[str, int]) -> Dict[int, str]:
+    """Die Reihenfolge der Vorgaenge an einem Jahrestag (Vorgangsregeln des
+    Zielsystems): der Vorgang des naechsten Rangs — den Zustand unmittelbar
+    NACH einem Vorgang liest man als den vor dem naechsten."""
+    return {r: art for art, r in rang.items()}
 
 
 def _system_werte_folge(
-    v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt, *, red_verfahren: str,
+    v: Vertragspruefung, mp: Vertragswerte, p: Pruefpunkt, *, red_verfahren: str,
 ) -> Dict[str, float]:
     """Die Groessen am Pruefpunkt aus dem Zustand der Vorgangsfolge.
 
@@ -929,24 +922,27 @@ def _system_werte_folge(
     einschliesslich der Korrekturschicht, die der Zustand traegt oder
     aufgenommen hat — die Schicht steckt im Zustand, ``_mit_schicht``
     entfaellt hier."""
+    mp = _vertragswerte(v, mp)
     folge = _folge_des_auftrags(v, mp, red_verfahren)
+    rang = _bewertung().vorgangsregeln().rang
+    nach_rang = _nach_rang(rang)
     art = p.anlass
-    if art in VORGANG_ANLAESSE and folge.ergebnis(p.jahr, art) is None:
+    if art in VORGANG_ANLAESSE and not folge.hat_vorgang(p.jahr, art):
         # Ein gelieferter RED-Punkt, den die Uebersetzungsregel als
         # Teilkuendigung liest, steht in der Folge unter dem anderen Code.
-        art = next((a for a in VORGANG_ANLAESSE if folge.ergebnis(p.jahr, a) is not None), art)
-    if p.ist_gevo and art in VORGANG_RANG and not p.unterjaehrig:
+        art = next((a for a in VORGANG_ANLAESSE if folge.hat_vorgang(p.jahr, a)), art)
+    if p.ist_gevo and art in rang and not p.unterjaehrig:
         vor = folge.stand_vor(p.jahr, art)
     elif p.ist_gevo and not p.unterjaehrig:
         vor = folge.stand_vor(p.jahr, "PEX")
     else:
         vor = folge.stand_am(p.monate)
 
-    def dk(stand) -> float:
+    def dk(stand: Stand) -> float:
         w = stand.werte(p.monate)
-        if w["status"] == "PEX":
-            return w["deckungskapital"]
-        return w["vx_mrv"] + w["korrekturschicht"]
+        if w.status == "PEX":
+            return w.deckungskapital
+        return w.vx_mrv + w.korrekturschicht
 
     gefragt = set(p.erwartet)
     werte: Dict[str, float] = {}
@@ -954,8 +950,8 @@ def _system_werte_folge(
         _, nach_zustand = GEVO_WIRKUNG[p.anlass]
         if nach_zustand == "beendet":
             nach_wert = 0.0
-        elif VORGANG_RANG.get(art, -1) + 1 in _NACH_RANG:
-            nach_wert = dk(folge.stand_vor(p.jahr, _NACH_RANG[VORGANG_RANG[art] + 1]))
+        elif rang.get(art, -1) + 1 in nach_rang:
+            nach_wert = dk(folge.stand_vor(p.jahr, nach_rang[rang[art] + 1]))
         else:
             nach_wert = dk(vor)
         werte["dDK"] = nach_wert - dk(vor)
@@ -963,27 +959,28 @@ def _system_werte_folge(
     if "kVx_MRV" in gefragt:
         werte["kVx_MRV"] = dk(vor)
     if "RKW" in gefragt:
-        werte["RKW"] = w["rueckkaufswert"]
+        werte["RKW"] = w.rueckkaufswert
     if "BJB" in gefragt:
-        werte["BJB"] = sum(
-            k.gross_annual_premium() for erh_jahr, k in vor.beitragskerne(p.monate)
-            if p.monate - 12 * erh_jahr < 12 * k.mp.t)
+        werte["BJB"] = vor.jahresbeitrag(p.monate)
     if "VS_bfr" in gefragt:
         # Gegen die GELIEFERTE Summe: ohne den Zuschlag, mit dem das
         # Zielsystem eine Schicht bei der Freistellung ueberfuehrt (siehe
         # SCHICHT_GROESSEN).
-        werte["VS_bfr"] = vor.vs_bfr() - sum(b.zuschlag for b in vor.bausteine)
+        werte["VS_bfr"] = vor.vs_bfr_ohne_zuschlag()
     return werte
 
 
 def _system_werte(
-    v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt,
+    v: Vertragspruefung, mp: Vertragswerte, p: Pruefpunkt,
     *, red_verfahren: str,
 ) -> Dict[str, float]:
-    """Die angeforderten Groessen am Pruefpunkt — ohne Interpolation."""
+    """Die angeforderten Groessen am Pruefpunkt — ohne Interpolation.
+
+    ``mp`` sind die Modellpunkt-Felder (Mapping oder Dataclass) oder der
+    Vertrag, wie das Zielsystem ihn bewertet (:func:`_vertragswerte`)."""
+    mp = _vertragswerte(v, mp)
     if _mit_folge(v):
         return _system_werte_folge(v, mp, p, red_verfahren=red_verfahren)
-    kern, scheiben = _kerne(v, mp)
     werte: Dict[str, float] = {}
     gefragt = set(p.erwartet)
 
@@ -992,18 +989,16 @@ def _system_werte(
         # Ein PEX-Vorfall setzt sein Freistellungsjahr selbst.
         pex_jahr = p.monate // 12 if p.anlass == "PEX" else None
         dk_vor = _deckungskapital(
-            v, mp, kern, scheiben, p.monate, vor, p.parameter,
+            v, mp, p.monate, vor, p.parameter,
             red_verfahren=red_verfahren, pex_jahr=pex_jahr)
         dk_nach = _deckungskapital(
-            v, mp, kern, scheiben, p.monate, nach, p.parameter,
+            v, mp, p.monate, nach, p.parameter,
             red_verfahren=red_verfahren, pex_jahr=pex_jahr)
         werte["dDK"] = dk_nach - dk_vor
 
-    if scheiben:
+    if mp.scheiben:
         if gefragt & {"kVx_MRV", "RKW"}:
-            m = vertrags_monatsreserve(
-                kern, scheiben, p.monate,
-                stoab_je_baustein=v.stoab_je_baustein)
+            m = mp.reserve(p.monate)
             if "kVx_MRV" in gefragt:
                 werte["kVx_MRV"] = m.vx_mrv
             if "RKW" in gefragt:
@@ -1011,48 +1006,33 @@ def _system_werte(
         if "BJB" in gefragt:
             # Jede Scheibe ist ein eigener Modellpunkt mit eigenem
             # Beitrag bis zu IHRER Beitragszahlungsdauer — dieselbe
-            # Regel wie in der Bestandsfuehrung
-            # (bestand.auswertung.beitraege); der gelieferte
+            # Regel wie in der Bestandsfuehrung; der gelieferte
             # Jahresbeitrag eines Dynamik-Vertrags enthaelt die
-            # Scheibenbeitraege.
-            gesamt = (0.0 if p.monate >= 12 * mp.t
-                      else kern.gross_annual_premium())
-            for erh_jahr, k in scheiben:
-                if p.monate - 12 * erh_jahr < 12 * k.mp.t:
-                    gesamt += k.gross_annual_premium()
-            werte["BJB"] = gesamt
+            # Scheibenbeitraege. Die Summe ist die des Zielsystems.
+            werte["BJB"] = mp.jahresbeitrag(p.monate, None)
         return werte
 
     if v.beitragsfrei_seit_jahr is not None:
         a0 = v.beitragsfrei_seit_jahr
         if "kVx_MRV" in gefragt:
             werte["kVx_MRV"] = _deckungskapital(
-                v, mp, kern, scheiben, p.monate, "beitragsfrei",
+                v, mp, p.monate, "beitragsfrei",
                 red_verfahren=red_verfahren)
         if "VS_bfr" in gefragt:
-            werte["VS_bfr"] = kern.beitragsfreie_summe(a0) + sum(
-                s.beitragsfreie_summe(a0 - erh_jahr)
-                for erh_jahr, s in scheiben)
+            werte["VS_bfr"] = mp.beitragsfreie_summe(a0)
         if "BJB" in gefragt:
             werte["BJB"] = 0.0
         return werte
 
-    if p.unterjaehrig:
-        m = kern.monatsreserve(p.monate)
-        if "kVx_MRV" in gefragt:
-            werte["kVx_MRV"] = m.vx_mrv
-        if "RKW" in gefragt:
-            werte["RKW"] = m.rkw
-    else:
-        zeile = kern.zustand_am(p.monate)
-        if "kVx_MRV" in gefragt:
-            werte["kVx_MRV"] = zeile.vx_mrv
-        if "RKW" in gefragt:
-            werte["RKW"] = zeile.rkw
+    # Ohne Interpolation: auf dem Jahresgitter der Jahreswert, dazwischen
+    # der Monatswert — beides die Reserve des Zielsystems.
+    r = mp.reserve(p.monate)
+    if "kVx_MRV" in gefragt:
+        werte["kVx_MRV"] = r.vx_mrv
+    if "RKW" in gefragt:
+        werte["RKW"] = r.rkw
     if "BJB" in gefragt:
-        werte["BJB"] = (
-            0.0 if p.jahr >= mp.t else kern.gross_annual_premium()
-        )
+        werte["BJB"] = mp.jahresbeitrag(p.monate, None)
     return _mit_schicht(v, mp, p, werte)
 
 
@@ -1083,7 +1063,7 @@ SCHICHT_GROESSEN = ("kVx_MRV", "RKW", "dDK")
 
 
 def _mit_schicht(
-    v: Vertragspruefung, mp: ModelPoint, p: Pruefpunkt, werte: Dict[str, float]
+    v: Vertragspruefung, mp: Vertragswerte, p: Pruefpunkt, werte: Dict[str, float]
 ) -> Dict[str, float]:
     """Die Korrekturschicht auf die betroffenen Groessen legen.
 

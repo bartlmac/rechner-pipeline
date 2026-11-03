@@ -166,3 +166,15 @@ Eine sofortige Paketteilung; die Herauslösung der Vorzeige in ein
 eigenes Repository (das Drift-Prinzip lebt von der Ko-Lokation); die
 Modellierung simulierter Rückfragen in der Vorzeige (nächste
 Ausbaustufe der Regie, nach Schritt 4).
+
+## Nachtrag 2026-11-02 (ADR-030)
+
+Die Zielsystem-Schnittstelle, die dieses ADR dem Tool zuschreibt, ist
+seit ADR-030 ein Paket: `src/rechner_pipeline/zielsystem/` (Ebene 2) mit
+Version, Protokollen je Fähigkeit und Konformitätsprüfung. Die PLV
+erfüllt sie in `src/rechner_pipeline/plv/` (Ebene 3, außerhalb von
+`kern/`). Das Tool kennt die Implementierung nur in
+`zielsystem/anbieter.py`; die Kanten aus `TOOL_NACH_VORZEIGE_ERLAUBT`
+sind Altlast und schrumpfen je Stufe. Die Frage „ob daraus eine
+Paketteilung folgt" ist damit beantwortet: kein eigenes Repository, ein
+Vertrag im Paket.

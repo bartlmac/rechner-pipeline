@@ -41,10 +41,11 @@ class SpezFehler(ValueError):
 
 
 def kern_tafeln() -> Set[str]:
-    """Die Tafeln (xml-Ebene), die der Kern heute fuehrt."""
-    from rechner_pipeline.kern import tafeln
+    """Die Tafeln (xml-Ebene), die das Zielsystem heute fuehrt, gelesen
+    ueber den Zielvertrag (ADR-030, Stufe 1)."""
+    from rechner_pipeline.zielsystem import anbieter
 
-    return set(tafeln.verfuegbare_tafeln())
+    return set(anbieter.zielsystem().faehigkeit("rechnungsgrundlagen").verfuegbare_tafeln())
 
 
 def _generation(abox: ABox, gen_id: str) -> Tarifgeneration:
