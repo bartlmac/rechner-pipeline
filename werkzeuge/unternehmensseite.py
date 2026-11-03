@@ -98,13 +98,14 @@ UEBERNAHMEN = {
     "baldrian-klv-tg2015-fall3": ("baldrian", "Baldrian KLV TG2015"),
 }
 
-#: Der Film der Startseite, freigegeben vom Maintainer am 11.10.2026: Ort im
-#: Push-Baum und Pruefsumme. Die Bytes (15,7 MB) liegen nicht im Code-
-#: Repository; der Bau nimmt sie aus ``--film`` und haelt an, wenn die Datei
-#: fehlt oder andere Bytes traegt. Das Vorschaubild liegt bei den Quellseiten
-#: (plv/seite/film/).
+#: Der Film der Startseite, freigegeben vom Maintainer am 02.11.2026 (die
+#: Fassung mit unleserlichen Agentenfenstern; die erste vom 11.10.2026 zeigte
+#: lesbare interne Angaben): Ort im Push-Baum und Pruefsumme. Die Bytes
+#: (9,4 MB) liegen nicht im Code-Repository; der Bau nimmt sie aus ``--film``
+#: und haelt an, wenn die Datei fehlt oder andere Bytes traegt. Das
+#: Vorschaubild liegt bei den Quellseiten (plv/seite/film/).
 FILM = ("film/erklaerfilm.mp4",
-        "2a2ffd85a81f7b17df992fa72d2611ec9f202fadf52767a2ff91cf19c79169e4")
+        "dfe854d71acdab2647eb13f8deb64e30c2be6c281f09b93244104b1ad2aa0c43")
 
 GEVO_TITEL = {"ERH": "Erhöhung", "PEX": "Beitragsfreist.",
               "RED": "Absetzung", "STO": "Rückkauf",
