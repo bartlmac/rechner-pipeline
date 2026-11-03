@@ -300,7 +300,10 @@ die Vorlage A-M1 verlangt sie dort: `gates/aktuartest.py` 4.0.0 auf
 der des eigenen Bestands); das neue Feld ist der einzige Unterschied in
 `aktuartest*.json` gegenüber der Stufe-1-Probe. Führungsprobe und
 Migrationssuite bleiben unberührt; ob der Schichtbeleg im Bestands-Scope
-Pflicht sein soll (H2), ist ein eigener Auftrag.
+Pflicht sein soll (H2), ist ein eigener Auftrag. Die drei Haken der
+Stufe (die Bindungsprüfung im Lauf, der Block im Ergebnis, die Prüfung
+in der Vorlage) sind über den gefahrenen Lauf getestet, nicht nur über
+ihre Funktionen (A-057, B2).
 
 ### Stufe 2d: Nachzüge aus den Prüfungen A-054 und A-056
 
