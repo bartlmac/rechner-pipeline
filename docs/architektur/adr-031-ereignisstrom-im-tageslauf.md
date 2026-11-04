@@ -222,34 +222,33 @@ machen jeweils mindestens einen Test rot; die Ziehung selbst pinnt der
 Fingerabdruck-Test gegen die Engine vor diesem ADR
 (`FINGERABDRUCK_VOR_ADR031`, auf c58605e gerechnet).
 
-## Folgepunkte
+## Folgepunkte, umgesetzt am 04.11.2026
 
-Aus den zwei Merge-Prüfungen, heute ohne Folge, weil die Liste im selben
-Lauf aus der Ziehung kommt, in Zugreihenfolge:
+Die Buchung prüft fremde Ereignislisten vor dem ersten Kernaufruf. Je Police
+beginnt `lfd` bei 1 und läuft positiv, eindeutig und ohne Lücke in der
+gegebenen Reihenfolge. Die Vertragsjahre fallen darin nicht. Je Jahr darf
+höchstens eine Beitragsfreistellung, Herabsetzung, Teilkündigung und Erhöhung
+stehen. Ein Verstoß nennt Police, Jahr und Ereignis, soweit die Zeile diese
+Angaben trägt. Die Prüfung weist ab und sortiert nicht. Echte Listen aus der
+Ziehung beider Produkte bleiben gültig.
 
-* **Reihenfolge und Doppelungen in der Liste.** Die Regeln der Buchung
-  laufen in Listenreihenfolge und setzen die Zugreihenfolge voraus; ein
-  späteres Ereignis, das vor der Beitragsfreistellung in der Liste steht,
-  umgeht sie, und eine zweite Erhöhung oder Teilkündigung im selben
-  Vertragsjahr, die die Welt nie zieht, wird gebucht. Eine gültige Liste
-  in anderer Reihenfolge wird mit falscher Begründung abgelehnt. Die
-  Klasse schließt eine Formregel: je Vertrag das Vertragsjahr nicht
-  fallend in der laufenden Nummer, je Jahr höchstens eine
-  Beitragsfreistellung, Herabsetzung, Teilkündigung und Erhöhung.
-* **Ungetestete Zweige der Regeln.** Ohne eigenen Test sind der
-  Wirkungstag innerhalb des Jahres, Erhöhung und Herabsetzung nach dem
-  Beitragsende (die Erhöhung fängt zusätzlich der Kern), die Herabsetzung
-  in einem Tarif ohne Herabsetzung, die Teilkündigung im Ablaufjahr, eine
-  Beitragsfreistellung mit Anteil, die Formregel der BU und der
-  beitragsfrei übernommene Vertrag als Startzustand. Die Gegenrichtung
-  ist gedeckt: Eine Regel, die strenger ist als die Welt, macht die Suite
-  rot.
-* **Der Vertrag der Liste** (Codes, Schema, Fehler und die Zugangslage
-  eines Vertrags) zieht aus dem Modul der Welt in ein Modul der Führung
-  oder nach `models/`; die Ziehung importiert ihn dann von dort. Ein reiner
-  Umzug, bitgleich; danach trägt nur noch die Fassade die zweite Kante.
-* **Die Weitergabe der Meldetage** im Tageslauf bekommt einen Test, der
-  den Rückfallzweig des Tagesjournals während eines Tageslaufs verweigert.
+Die zuvor ungetesteten Zustandszweige haben je einen gezielten Test mit
+zulässiger Nachbarprobe: Wirkungstag, Erhöhung und Herabsetzung nach dem
+Beitragsende, Herabsetzung im Tarif ohne Herabsetzung, Teilkündigung im
+Ablaufjahr, Beitragsfreistellung mit Anteil, BU-Form und beitragsfrei
+übernommener Vertrag. Gezielte Mutationen machen diese Tests rot.
+
+Codes, Schema, Fehlerklasse und Zugangslage liegen jetzt in
+`bestand.ereignisliste`. Ziehung, Buchung und Tagesstrom importieren sie
+direkt; bisherige Importe aus `bestand.ziehung` bleiben als Reexporte
+gültig. Die benannte Kante der Buchungsfassade zur Ziehung bleibt. Die
+fünf Tabellen und die Fingerabdrücke der echten Ziehung bleiben bytegleich.
+
+Ein Tageslauf-Test mit gebuchtem Tod belegt die Weitergabe der Meldetage
+an Buchungssicht und Tagesjournal. Entfernt man eine der beiden Übergaben,
+wird der Test rot. Leser ohne Tagesstrom dürfen den dokumentierten
+Rückfallzweig des Journals weiter nutzen. Die gesonderte Ablage-Probe auf
+einer Kopie des laufenden Stands gehört zur Abnahme dieses Baus.
 
 ## Bewusst nicht Bestandteil
 

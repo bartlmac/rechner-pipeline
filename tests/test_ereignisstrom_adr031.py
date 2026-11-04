@@ -645,6 +645,55 @@ def test_verschiedene_vorgaenge_im_selben_jahr_bleiben_in_zugreihenfolge():
     assert [e["ereignis"] for e in ereignisse._ereignisse_je_police(df)[17]] == ["ERH", "PEX"]
 
 
+@pytest.mark.parametrize("nummer", [float("inf"), "falsch"])
+def test_unlesbare_laufende_nummer_gibt_den_gemeinsamen_formfehler(nummer):
+    df = pd.DataFrame([{
+        "police_id": 17, "lfd": nummer, "vertragsjahr": 1, "ereignis": "ERH",
+        "wirkungstag": pd.Timestamp("2021-01-01"), "anteil": .05, "verfahren": "",
+    }])
+    with pytest.raises(ereignisse.EreignisError, match="police 17: lfd"):
+        ereignisse._ereignisse_je_police(df)
+
+
+def test_spaetere_erhoehung_und_storno_vor_freistellung_kommen_nicht_zum_kern(klv):
+    config, stamm, _ = klv
+    row = stamm[(stamm["premium_duration"] > 3) & (stamm["duration"] > 4)].iloc[0]
+    pid, start = int(row["police_id"]), pd.Timestamp(row["insurance_start"])
+    df = pd.DataFrame([
+        {"police_id": pid, "lfd": lfd, "vertragsjahr": jahr,
+         "ereignis": code, "wirkungstag": start + pd.DateOffset(years=jahr),
+         "anteil": anteil, "verfahren": ""}
+        for lfd, jahr, code, anteil in [
+            (1, 2, "ERH", .05), (2, 3, "STO", float("nan")),
+            (3, 1, "PEX", float("nan")),
+        ]
+    ]).astype(dict(ziehung.EREIGNISLISTE_SPALTEN))
+    with pytest.raises(ereignisse.EreignisError,
+                       match=rf"police {pid}: PEX im Vertragsjahr 1: Vertragsjahr faellt"):
+        ereignisse.buche(stamm, config, BIS, Ereignisliste(leere_zugaenge(), df))
+
+
+def test_gueltige_liste_in_falscher_eingangsfolge_ist_ein_formfehler(klv):
+    config, stamm, _ = klv
+    row = stamm[(stamm["premium_duration"] > 3) & (stamm["duration"] > 4)].iloc[0]
+    pid, start = int(row["police_id"]), pd.Timestamp(row["insurance_start"])
+    eintraege = [
+        {"police_id": pid, "lfd": lfd, "vertragsjahr": jahr,
+         "ereignis": code, "wirkungstag": start + pd.DateOffset(years=jahr),
+         "anteil": anteil, "verfahren": ""}
+        for lfd, jahr, code, anteil in [
+            (1, 1, "ERH", .05), (2, 2, "PEX", float("nan")),
+        ]
+    ]
+    gut = pd.DataFrame(eintraege).astype(dict(ziehung.EREIGNISLISTE_SPALTEN))
+    assert len(ereignisse.buche(stamm, config, BIS,
+                               Ereignisliste(leere_zugaenge(), gut)).ledger) > 0
+    falsch = gut.iloc[[1, 0]].reset_index(drop=True)
+    with pytest.raises(ereignisse.EreignisError,
+                       match=rf"police {pid}: lfd nicht in Zugreihenfolge"):
+        ereignisse.buche(stamm, config, BIS, Ereignisliste(leere_zugaenge(), falsch))
+
+
 def _regelzeile(code, jahr, *, anteil=float("nan"), verfahren="", tag=None):
     return {"vertragsjahr": jahr, "ereignis": code,
             "wirkungstag": pd.Timestamp(tag or dt.date(2020 + jahr, 1, 1)),

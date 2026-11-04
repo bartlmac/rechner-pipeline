@@ -106,6 +106,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as _dt
 import math
+from numbers import Integral
 from typing import Any, Dict, List, Mapping, NamedTuple, Tuple
 
 import numpy as np
@@ -1010,7 +1011,7 @@ def _ereignisse_je_police(ereignisse: pd.DataFrame) -> Dict[int, List[Dict[str, 
         aus.setdefault(int(e["police_id"]), []).append(e)
     for police_id, eigene in aus.items():
         nummern = [e["lfd"] for e in eigene]
-        if any(pd.isna(n) or isinstance(n, bool) or int(n) != n or n <= 0 for n in nummern):
+        if any(not isinstance(n, Integral) or isinstance(n, bool) or n <= 0 for n in nummern):
             raise EreignisError(f"police {police_id}: lfd muss ganzzahlig und positiv sein")
         if len(set(nummern)) != len(nummern):
             raise EreignisError(f"police {police_id}: lfd doppelt")
