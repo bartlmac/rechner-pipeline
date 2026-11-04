@@ -11,9 +11,11 @@ Knoten: klv
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from rechner_pipeline.gates import bestand_validate
+from tests.test_baldrian2_e2e import gefahrener_fall
 from tests.test_pk1_am4_beweisvertrag import (
     einpolicen_config,
     HORIZONT_BESTANDSFALL,
@@ -88,15 +90,10 @@ def test_mit_korrekturschicht_verlangt_das_vollprofil_schicht_und_verankerung(tm
     gelesen hatte — die Abnahme rechnete eine andere Welt als die Fuehrung.
     Bei N-01 gemessen: rund 13.700 EUR Deckungskapital je Vertrag.
 
-    Seit dem Entscheid vom 2026-09-16 trennt das Gate zwei Faelle, die
-    vorher beide unter "Vollprofil" liefen, und dieser Test zeigt den
-    ZWEITEN: Der Fall fuehrt eine Schicht, der BELEGTE LAUF nennt sie
-    nicht unter seinen Ausgaben — er hat an der Korrekturschicht
-    vorbeigerechnet. Frueher entschied ein ``rglob`` ueber das
-    Dateisystem, ob die Rollen Pflicht sind; jetzt entscheidet die
-    Aussage des Produzenten im Laufmanifest, und der ``rglob`` bleibt als
-    Querpruefung. Beide Wege verweigern die Abnahme, aber nur der zweite
-    sagt, WAS schiefgelaufen ist.
+    Der Fall fuehrt materialisierte Schicht und Verankerung, doch die
+    bereits gerechnete Suite nennt beide nicht unter ihren Eingaben.
+    A-M4 verweigert schon an dieser frueheren Bindungspruefung, bevor
+    es das unvollstaendige P-B1-Profil als Abnahmebeleg ansehen kann.
     """
     from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
     from rechner_pipeline.models.bestand import STAMM_NAMES
@@ -105,13 +102,13 @@ def test_mit_korrekturschicht_verlangt_das_vollprofil_schicht_und_verankerung(tm
     fall = _bereite_bestandsfall(tmp_path)
     lauf = fall / "abgeleitet" / "bestand-nach"
     # Der Minimalfall dieses Moduls fuehrt keine Schicht — der Test stellt
-    # seinen Gegenstand selbst her: eine materialisierte Korrekturschicht
-    # im Uebernahme-Verzeichnis, fuer die Police, die der Fall fuehrt.
+    # seinen Gegenstand selbst her: materialisierte Tabellen im geprüften
+    # Lauf ohne passende Ausgaberollen in dessen Manifest. Die echte
+    # Uebernahme bleibt unveraendert, damit ihre Fallrolle weiter stimmt.
     police = int(read_portfolio(lauf / "bestand.parquet",
                                 expected_columns=STAMM_NAMES)["police_id"].iloc[0])
-    ueber = fall / "abgeleitet" / "bestand"
-    write_portfolio(_schichten(police), ueber / "schichten.parquet")
-    write_portfolio(_verankerung(police), ueber / "verankerung.parquet")
+    write_portfolio(_schichten(police), lauf / "schichten.parquet")
+    write_portfolio(_verankerung(police), lauf / "verankerung.parquet")
     assert any((fall / "abgeleitet").rglob("schichten.parquet"))
 
     # Ein sonst VOLLSTAENDIGES Profil, nur ohne Schicht und Verankerung.
@@ -128,5 +125,76 @@ def test_mit_korrekturschicht_verlangt_das_vollprofil_schicht_und_verankerung(tm
     bericht = _abnahmebericht(fall)                # ... aber kein A-M4-Beleg
     assert bericht.exit_code != 0
     meldung = " ".join(e["message"] for e in bericht.errors)
+    assert "von der Suite nicht gelesen" in meldung, meldung
+    assert "schichten.parquet" in meldung and "verankerung.parquet" in meldung
+
+
+def test_querpruefung_findet_eine_schicht_die_der_belegte_lauf_nicht_nennt(tmp_path: Path):
+    """Die Querpruefung von A-M4 (Entscheid 2026-09-16): Fuehrt der Fall
+    eine schichten.parquet, die der belegte P-B1-Lauf nicht unter seinen
+    Ausgaben nennt, hat die Abnahme an der Korrekturschicht vorbeigerechnet,
+    und A-M4 sagt, WAS fehlt.
+
+    Seit der Schichtbeleg-Pflicht (A-058) verweigern die Suite Tabellen
+    neben ihrem Bestand und die Pflicht eine Verankerung im festen
+    Fallbestand schon vorher; der Test oben endet deshalb an der Suite.
+    Damit die Querpruefung selbst geprueft bleibt, liegt die Schicht hier an
+    einem dritten Ort unter abgeleitet/: weder neben dem Bestand der Suite
+    noch im festen Fallbestand. Mutationsprobe: die Querpruefung in
+    abnahmebericht abschalten -> rot (A-061, Befund B1).
+    """
+    from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
+    from rechner_pipeline.models.bestand import STAMM_NAMES
+    from tests.test_betrieb_neuaufsetzen import _schichten
+
+    fall = _bereite_bestandsfall(tmp_path)
+    lauf = fall / "abgeleitet" / "bestand-nach"
+    police = int(read_portfolio(lauf / "bestand.parquet",
+                                expected_columns=STAMM_NAMES)["police_id"].iloc[0])
+    dritter_ort = fall / "abgeleitet" / "schicht-ohne-lauf"
+    dritter_ort.mkdir()
+    write_portfolio(_schichten(police), dritter_ort / "schichten.parquet")
+    # Weder neben dem Bestand der Suite noch im festen Fallbestand.
+    assert not (lauf / "schichten.parquet").exists()
+    assert not (fall / "abgeleitet" / "bestand" / "schichten.parquet").exists()
+    assert not (fall / "abgeleitet" / "bestand" / "verankerung.parquet").exists()
+
+    # Ein sonst VOLLSTAENDIGES Profil, nur ohne Schicht und Verankerung.
+    ohne = _pb1(fall, ["--portfolio", str(lauf / "bestand_gesamt.parquet"),
+                       "--historie", str(lauf / "historie.parquet"),
+                       "--ledger", str(lauf / "ledger.parquet"),
+                       "--scheiben", str(lauf / "scheiben.parquet"),
+                       "--config", str(fall / "abgeleitet" / "einpolice.toml"),
+                       "--manifest", str(lauf / "laufmanifest.json"),
+                       "--bis", HORIZONT_BESTANDSFALL])
+    assert ohne.exit_code == 0, ohne.errors
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code != 0
+    meldung = " ".join(e["message"] for e in bericht.errors)
     assert "nennt sie aber nicht unter seinen Ausgaben" in meldung, meldung
     assert "'schichten'" in meldung and "'verankerung'" in meldung
+    # Die Querpruefung urteilt hier allein, nicht die Suite davor.
+    assert "von der Suite nicht gelesen" not in meldung, meldung
+
+
+def test_echter_verankerter_bestand_hat_abgeleiteten_beleg_und_vollprofil(
+        gefahrener_fall: Path):
+    """Positivkontrolle: die fehlenden Rollen oben sind kein Verbot einer
+    verankerten Uebernahme. Der echte Producer liefert alle Rollen und den
+    abgeleiteten Schichtbeleg fuer die Nachrechnung von A-M4."""
+    fall = gefahrener_fall
+    ueber = fall / "abgeleitet" / "bestand"
+    schicht = fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"
+    manifest = json.loads((ueber / "laufmanifest.json").read_text("utf-8"))
+    assert (ueber / "bestand.parquet").is_file()
+    assert (ueber / "verankerung.parquet").is_file()
+    assert (ueber / "schichten.parquet").is_file()
+    assert schicht.is_file()
+    assert {"bestand.parquet", "verankerung.parquet", "schichten.parquet"} <= set(
+        manifest["ausgaben"])
+    assert json.loads((fall / "abgeleitet" / "diagnostics"
+                       / "bestand_validate.gate.json").read_text("utf-8"))["status"] == "passed"
+    suite = json.loads((fall / "abgeleitet" / "berichte"
+                        / "migrationssuite.json").read_text("utf-8"))
+    assert suite["suite_bestanden"] is True
+    assert "--schicht" in suite["aufruf"]

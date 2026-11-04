@@ -18,6 +18,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import FrozenSet, Mapping, Protocol, runtime_checkable
 
+from rechner_pipeline.zielsystem.bestandsdaten import Bestandsdaten
 from rechner_pipeline.zielsystem.bewertung import Bewertung
 from rechner_pipeline.zielsystem.rechnungsgrundlagen import Rechnungsgrundlagen
 
@@ -34,12 +35,14 @@ FAEHIGKEITEN: Mapping[str, str] = MappingProxyType({
 })
 
 #: Faehigkeit -> Protokoll, das der Vertrag in dieser Version dafuer
-#: beschreibt. Stufe 1: ``rechnungsgrundlagen``; Stufe 2: ``bewertung``.
+#: beschreibt. Stufe 1: ``rechnungsgrundlagen``; Stufe 2: ``bewertung``;
+#: vorgezogenes Stueck von Stufe 3: ``bestandsdaten``.
 #: Eine Faehigkeit ohne Protokoll darf kein Zielsystem anbieten
 #: (Konformitaet).
 PROTOKOLL_JE_FAEHIGKEIT: Mapping[str, type] = MappingProxyType({
     "rechnungsgrundlagen": Rechnungsgrundlagen,
     "bewertung": Bewertung,
+    "bestandsdaten": Bestandsdaten,
 })
 
 

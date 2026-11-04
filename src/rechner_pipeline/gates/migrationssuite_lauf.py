@@ -1405,6 +1405,9 @@ def fuehre_suite(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
     bestand_pfad = Path(args.bestand)
     bestand_gelesen = bindung.binde(bestand_pfad)
     bestand = read_portfolio_aus_bytes(bestand_gelesen.roh)
+    from rechner_pipeline.gates.aktuartest_lauf import _schichtpflicht
+
+    _schichtpflicht(fall, bestand_pfad, args.schicht, bindung)
     # Laden und Regeln in EINEM Fang (Pruefrunde H): Auch der Lader verweigert
     # benannt (Version, Regelwert); ein Traceback waere ein Fehler ohne Ausweg.
     try:

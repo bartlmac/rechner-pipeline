@@ -121,9 +121,14 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    `--zeilen` ist Pflicht, sobald die Spez mehr als eine Zelle trägt;
    `--vorgeschichte` trägt die Anfangszustände (Alt-Scheiben,
    Beitragsfreistellung, Alt-Absetzung), `--red-anteile-datei` die
-   registrierte Auskunft zu den Anteilen; `--schicht` ist der Schichtbeleg
-   aus `gates.verankerung_belegen`, wenn der Fall Schichten führt (sonst
-   zeigt jeder Vertrag sein rohes Verankerungs-Residuum). Weichen die
+   registrierte Auskunft zu den Anteilen. Liegt im festen Fallbestand
+   `abgeleitet/bestand/verankerung.parquet`, ist `--schicht` Pflicht:
+   zuerst `gates.verankerung_belegen` auf genau diesem Bestand fahren,
+   dann seinen abgeleiteten Beleg nennen. Der Beleg muss die gebundenen
+   Bytes von `bestand.parquet` und `verankerung.parquet` führen; ein
+   registrierter Beleg zählt hier nicht. Dieselbe Pflicht gilt für
+   `gates.fuehrungsprobe`. Ohne Verankerung bleibt `--schicht` optional
+   (dann zeigt jeder Vertrag sein rohes Verankerungs-Residuum). Weichen die
    Spaltennamen der Lieferung von den Vorgaben ab: `--spalte-<name>`.
    Was das Kommando dabei zieht und in das JSON schreibt — du lieferst es
    nicht von Hand:

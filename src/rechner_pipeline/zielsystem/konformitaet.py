@@ -19,16 +19,20 @@ Knoten: system/zielsystem
 from __future__ import annotations
 
 import re
+import hashlib
+import json
 from types import MappingProxyType
 from typing import Callable, List, Mapping
 
 from rechner_pipeline.zielsystem.bewertung import Vorgangsregeln
+from rechner_pipeline.zielsystem.bestandsdaten import BestandsdatenFehler, Verankerungsrolle
 from rechner_pipeline.zielsystem.rechnungsgrundlagen import Parametersatz
 from rechner_pipeline.zielsystem.version import VERTRAG_VERSION, vertraeglich, zerlege
 from rechner_pipeline.zielsystem.vertrag import FAEHIGKEITEN, PROTOKOLL_JE_FAEHIGKEIT, Zielsystem
 
 __all__ = [
-    "PRUEFUNG_JE_FAEHIGKEIT", "pruefe", "pruefe_bewertung", "pruefe_rechnungsgrundlagen",
+    "PRUEFUNG_JE_FAEHIGKEIT", "pruefe", "pruefe_bestandsdaten", "pruefe_bewertung",
+    "pruefe_rechnungsgrundlagen",
 ]
 
 _NAME = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -159,10 +163,122 @@ def pruefe_bewertung(umsetzung: object) -> List[str]:
     return befunde
 
 
+def _verankerungsprobe() -> bytes:
+    """Eine echte, leere Parquet-Tabelle im gemeinsamen Bestandsformat."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from rechner_pipeline.models.bestand import VERANKERUNG_SPALTEN
+
+    typen = {"int64": pa.int64(), "float64": pa.float64(), "object": pa.string()}
+    tabelle = pa.Table.from_arrays(
+        [pa.array([], type=typen[dtype]) for _, dtype in VERANKERUNG_SPALTEN],
+        names=[name for name, _ in VERANKERUNG_SPALTEN],
+    )
+    ziel = pa.BufferOutputStream()
+    pq.write_table(tabelle, ziel)
+    return ziel.getvalue().to_pybytes()
+
+
+def pruefe_bestandsdaten(umsetzung: object) -> List[str]:
+    """Die eine Methode gegen gültige und verdrehte gebundene Bytes prüfen."""
+    befunde: List[str] = []
+    bestand = b"konformitaetsprobe-bestand"
+    bestand_sha = hashlib.sha256(bestand).hexdigest()
+    verankerung = _verankerungsprobe()
+    verankerung_sha = hashlib.sha256(verankerung).hexdigest()
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    ziel = pa.BufferOutputStream()
+    pq.write_table(
+        pq.read_table(pa.BufferReader(verankerung)).replace_schema_metadata(
+            {b"probe": b"fremd"}), ziel)
+    andere_verankerung = ziel.getvalue().to_pybytes()
+
+    def parquet(tabelle: pa.Table) -> bytes:
+        ausgabe = pa.BufferOutputStream()
+        pq.write_table(tabelle, ausgabe)
+        return ausgabe.getvalue().to_pybytes()
+
+    nur_police = parquet(pa.table({"police_id": pa.array([1], type=pa.int64())}))
+    keine_spalten = parquet(pa.table({}))
+    manifest = {
+        "schema_version": 1, "erzeuger": "bestand_migrationszugang",
+        "horizont": "2026-01-01", "neuzugang_ab": None,
+        "config": {"datei": "probe.toml", "sha256": "0" * 64},
+        "ausgaben": {"bestand.parquet": bestand_sha,
+                     "verankerung.parquet": verankerung_sha},
+    }
+
+    def roh(daten: dict) -> bytes:
+        return json.dumps(daten, sort_keys=True).encode("utf-8")
+
+    for titel, manifest_bytes, bestand_bytes, verankerung_bytes, erwartet in (
+        ("ohne Manifest und Datei", None, bestand, None,
+         Verankerungsrolle(False, bestand_sha, None)),
+        ("gültige Verankerung", roh(manifest), bestand, verankerung,
+         Verankerungsrolle(True, bestand_sha, verankerung_sha)),
+        ("Manifest ohne Verankerungsrolle", roh({**manifest, "ausgaben":
+         {"bestand.parquet": bestand_sha}}), bestand, None,
+         Verankerungsrolle(False, bestand_sha, None)),
+    ):
+        try:
+            ist = umsetzung.verankerungsrolle(  # type: ignore[attr-defined]
+                manifest_bytes=manifest_bytes, bestand_bytes=bestand_bytes,
+                verankerung_bytes=verankerung_bytes)
+        except Exception as exc:  # noqa: BLE001 - Implementierungsfehler ist ein Befund
+            befunde.append(f"verankerungsrolle({titel}) wirft {_ausnahme(exc)}")
+        else:
+            if type(ist) is not Verankerungsrolle or ist != erwartet:
+                befunde.append(f"verankerungsrolle({titel}) liefert {ist!r}, erwartet {erwartet!r}")
+
+    def ohne_rolle() -> dict:
+        return {**manifest, "ausgaben": {"bestand.parquet": bestand_sha}}
+
+    fehlerfaelle = (
+        ("Rolle ohne Datei", roh(manifest), bestand, None),
+        ("Datei ohne Manifest", None, bestand, verankerung),
+        ("Datei ohne Rolle", roh(ohne_rolle()), bestand, verankerung),
+        ("fremde Bestandsbytes", roh(manifest), b"fremd", verankerung),
+        ("fremde Verankerungsbytes", roh(manifest), bestand, b"fremd"),
+        ("fremdes gültiges Parquet", roh(manifest), bestand, andere_verankerung),
+        ("fehlende Verankerungsspalten", roh({**manifest, "ausgaben":
+         {**manifest["ausgaben"], "verankerung.parquet": hashlib.sha256(nur_police).hexdigest()}}),
+         bestand, nur_police),
+        ("keine Verankerungsspalten", roh({**manifest, "ausgaben":
+         {**manifest["ausgaben"], "verankerung.parquet": hashlib.sha256(keine_spalten).hexdigest()}}),
+         bestand, keine_spalten),
+        ("leere Verankerungsdatei", roh({**manifest, "ausgaben":
+         {**manifest["ausgaben"], "verankerung.parquet": hashlib.sha256(b"").hexdigest()}}),
+         bestand, b""),
+        ("beschädigte Verankerungsdatei", roh({**manifest, "ausgaben":
+         {**manifest["ausgaben"], "verankerung.parquet": hashlib.sha256(b"kein Parquet").hexdigest()}}),
+         bestand, b"kein Parquet"),
+        ("unbekannter Erzeuger", roh({**manifest, "erzeuger": "fremd"}),
+         bestand, verankerung),
+        ("falscher Erzeuger", roh({**manifest, "erzeuger": "bestand_fortschreibung"}),
+         bestand, verankerung),
+    )
+    for titel, manifest_bytes, bestand_bytes, verankerung_bytes in fehlerfaelle:
+        try:
+            umsetzung.verankerungsrolle(  # type: ignore[attr-defined]
+                manifest_bytes=manifest_bytes, bestand_bytes=bestand_bytes,
+                verankerung_bytes=verankerung_bytes)
+        except BestandsdatenFehler:
+            pass
+        except Exception as exc:  # noqa: BLE001
+            befunde.append(f"verankerungsrolle({titel}) wirft {_ausnahme(exc)}, erwartet BestandsdatenFehler")
+        else:
+            befunde.append(f"verankerungsrolle({titel}) geht durch, erwartet BestandsdatenFehler")
+    return befunde
+
+
 #: Faehigkeit -> Pruefung ueber die Form des Protokolls hinaus.
 PRUEFUNG_JE_FAEHIGKEIT: Mapping[str, Callable[[object], List[str]]] = MappingProxyType({
     "rechnungsgrundlagen": pruefe_rechnungsgrundlagen,
     "bewertung": pruefe_bewertung,
+    "bestandsdaten": pruefe_bestandsdaten,
 })
 
 

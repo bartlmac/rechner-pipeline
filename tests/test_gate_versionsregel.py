@@ -46,6 +46,19 @@ def test_jede_gate_version_ist_semver():
             assert re.fullmatch(r"\d+\.\d+\.\d+", m.group(1)), (pfad.name, m.group(1))
 
 
+def test_schichtpflicht_hebt_die_abnahmevorlagen_aber_nicht_p9():
+    """A-058 aendert die Akzeptanzmenge der Vorlagen, nicht die Form des
+    menschlichen Entscheids. Die Dokumenttabelle bleibt die zweite Quelle."""
+    from rechner_pipeline.gates import abnahmebericht, aktuartest, gate_entscheid
+
+    assert aktuartest.GATE_VERSION == "6.0.0"
+    assert abnahmebericht.GATE_VERSION == "14.0.0"
+    assert gate_entscheid.GATE_VERSION == "5.0.0"
+    dokument = GATE_DOKUMENT.read_text(encoding="utf-8")
+    assert "`6.0.0`: Im Bestands-Scope verweigert der Lauf eine vorhandene Verankerung" in dokument
+    assert "`14.0.0`: Im Bestands-Scope verlangen Migrationssuite und Führungsprobe" in dokument
+
+
 def test_die_regel_steht_bei_adr_skill_und_gate_dokument():
     adr = (REPO_ROOT / "docs/architektur/adr-012-gate-namensordnung.md").read_text(encoding="utf-8")
     skill = (REPO_ROOT / ".claude/skills/author-rechner-toolbox-gate/SKILL.md").read_text(encoding="utf-8")

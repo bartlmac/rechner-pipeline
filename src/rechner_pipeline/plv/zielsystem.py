@@ -4,8 +4,8 @@ Die Vertragsversion steht hier als eigene Aussage, nicht als Import aus
 dem Vertrag: Wechselt der Vertrag, muss die PLV ausdruecklich nachziehen,
 und bis dahin ist sie nicht konform (``zielsystem.konformitaet``).
 
-Stufe 1: die PLV bietet die Rechnungsgrundlagen an
-(``plv.rechnungsgrundlagen``); Stufe 2: die Bewertung (``plv.bewertung``).
+Stufe 1: Rechnungsgrundlagen; Stufe 2: Bewertung. Das vorgezogene
+Stueck von Stufe 3 liest die Verankerungsrolle (``plv.bestandsdaten``).
 
 Knoten: system/zielsystem
 """
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import FrozenSet
 
+from rechner_pipeline.plv.bestandsdaten import PLVBestandsdaten
 from rechner_pipeline.plv.bewertung import PLVBewertung
 from rechner_pipeline.plv.rechnungsgrundlagen import PLVRechnungsgrundlagen
 
@@ -22,6 +23,7 @@ __all__ = ["PLV"]
 _FAEHIGKEITEN = {
     "rechnungsgrundlagen": PLVRechnungsgrundlagen,
     "bewertung": PLVBewertung,
+    "bestandsdaten": PLVBestandsdaten,
 }
 
 
@@ -29,7 +31,7 @@ class PLV:
     """Die PLV als Zielsystem."""
 
     name = "plv"
-    vertragsversion = "0.3.0"
+    vertragsversion = "0.4.0"
 
     def faehigkeiten(self) -> FrozenSet[str]:
         return frozenset(_FAEHIGKEITEN)

@@ -36,8 +36,8 @@ startet keinen Gate-Lauf.
 | P-B1 (Version `4.0.0`) | `gates.bestand_validate` | den geführten Bestand |
 | A-K2-Vorlage (Version `2.0.0`) | `gates.kernstand_belegen` | die Änderung des Kernstands (Rechenkern, Referenzwerte, Grundsatzdokumentation) gegenüber dem zuletzt abgenommenen Stand; legt Beleg und lesbare Sicht als Vorlage für A-K2 vor |
 | A-T1-Vorlage (Version `2.0.0`) | `gates.tarifwerk_belegen` | die Änderung des Tarifwerks (Tarifpläne und Parametrierung der eigenen Generationen) gegenüber dem zuletzt abgenommenen Stand; legt Beleg und lesbare Sicht als Vorlage für A-T1 vor |
-| A-M-Vorlagen (Version `5.0.0`) | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
-| A-M4-Vorlage (Version `13.0.0`) | `gates.abnahmebericht` | die Migrationssuite und die Pflichtbelege des Migrationscontrollings; rendert die Entscheidungsvorlage für A-M4 |
+| A-M-Vorlagen (Version `6.0.0`) | `gates.aktuartest --abnahme A-M1\|A-M2\|A-M3` | rechnet das Ergebnis des aktuariellen Tests (`qa.aktuarieller_test`: je Vertrag am eigenen Verankerungszeitpunkt, am Rechenpunkt ohne Interpolation, ohne Summation — nur Verteilungsgrößen der Residuen je Historientyp) von innen nach außen nach und rendert die Entscheidungsvorlage für das jeweilige Gate A-M1, A-M2 oder A-M3 (im Bestands-Scope alle drei Pflichtvorgänger von A-M4, im Tarif-Scope nur A-M1); Transportsicherung wird getrennt ausgewiesen |
+| A-M4-Vorlage (Version `14.0.0`) | `gates.abnahmebericht` | die Migrationssuite und die Pflichtbelege des Migrationscontrollings; rendert die Entscheidungsvorlage für A-M4 |
 
 Was ein versioniertes Gate im Einzelnen prüft und wie seine Version
 gewachsen ist, steht in den Abschnitten darunter.
@@ -127,6 +127,7 @@ Versionen:
 - `4.0.0`: Der abgeleitete Schichtbeleg wird mit dem Aufruf seines Erzeugers auf den gebundenen Eingaben vollständig nachgerechnet. Die Pflichtbindungen und Schichtwerte folgen damit aus dem Erzeugerlauf; ein Beleg ohne Aufruf oder mit ausgelassener Verankerungsbindung war vorher gültig (Prüfrunde T28, Befund 02).
 
 - `5.0.0`: Ein Ergebnis mit Schichtbeleg nennt den Bestand, zu dem der Beleg gehört (`schichtbeleg`: Name, Art, SHA-256 des gebundenen Bestands), und der Erzeuger verweigert einen abgeleiteten Schichtbeleg, der den Bestand des Laufs nicht unter seinen gebundenen Eingaben führt. Vorher durfte der Aufruf des Belegs auf ein anderes Übernahmeverzeichnis zeigen, und eine falsche Verankerung fiel erst im Vergleich auf (A-020, H3; ADR-030 Stufe 2c).
+- `6.0.0`: Im Bestands-Scope verweigert der Lauf eine vorhandene Verankerung ohne abgeleiteten Schichtbeleg, der den festen Fallbestand und die Verankerungsbytes bindet. Die Vorlage prüft diese Pflicht vor der vollständigen Nachrechnung erneut. Ein Ergebnis ohne Schichtbeleg konnte vorher gültig sein (A-058, ADR-030 vorgezogenes Stück Stufe 3).
 
 ### A-M4-Vorlage: Migrationssuite und Migrationscontrolling
 
@@ -153,6 +154,7 @@ Versionen:
 - `11.0.0`: Im Bestands-Scope nennt die Suite ihren Aufruf (`aufruf`), und die Vorlage fährt sie damit auf den gebundenen Eingaben neu und hält den ganzen Beleg dagegen. Die Komponentenzahl, um die ein Vergleich seine Toleranz weitet, ist damit die des Erzeugers und nicht die des Belegs. Eine Suite ohne Aufruf oder mit einem abweichenden Feld war vorher ein gültiger Beleg; der Prüfer hatte mit 200.001 behaupteten Komponenten eine um 1.000 EUR falsche Prüfaussage bis zur gezeichneten Annahme gebracht (Prüfrunde T28, Befund 01).
 - `12.0.0`: Die Suite kann eine abgeleitete Korrekturschicht nur aus einem vollständig nachgerechneten Schichtbeleg übernehmen. Fehlt eine Pflichtbindung oder weicht ein Schichtwert vom Erzeugerlauf ab, wird die Vorlage verweigert; vorher konnte der Schichtbeleg seine Pflichtbindungen selbst auswählen (Prüfrunde T28, Befund 02).
 - `13.0.0`: Die Rechnungsgrundlagen der Config werden je Police gegen die vollständige wirksame Spez-Zelle geprüft, einschließlich der Kern-Defaults für ausgelassene optionale Felder. Eine Config mit anderem `zillmer_dauer`, Stornoabschlag oder Ratenzuschlag konnte vorher trotz einer Spez ohne dieses Feld einen anderen Führungswert erzeugen (Prüfrunde T28, Befund 04).
+- `14.0.0`: Im Bestands-Scope verlangen Migrationssuite und Führungsprobe bei vorhandener Verankerung einen abgeleiteten, an Stamm und Verankerung gebundenen Schichtbeleg. Die Vorlage prüft die Pflicht vor der vollständigen Nachrechnung beider Belege erneut. Ohne Schichtbeleg konnte A-M4 vorher einen solchen Bestand annehmen (A-058, ADR-030 vorgezogenes Stück Stufe 3).
 
 ## Die Versionsregel
 

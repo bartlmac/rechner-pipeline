@@ -991,27 +991,45 @@ def test_die_fuehrungsprobe_nennt_die_auskunft_in_ihrem_aufruf_und_ist_nachreche
     assert meldung, "eine Probe ohne die Auskunft im Aufruf haette auffallen muessen"
 
 
-@pytest.mark.parametrize("kommando", ["aktuartest_lauf",
-                                      "migrationssuite_lauf"])
+@pytest.mark.parametrize("kommando,datei", [
+    ("aktuartest_lauf", "berichte/aktuartest.json"),
+    ("migrationssuite_lauf", "suite.json"),
+])
 def test_ohne_auskunft_fuehrt_das_ergebnis_das_feld_mit_null(
-        kommando, gefahrener_fall):
+        kommando, datei, tmp_path):
     """Das Feld steht IMMER im Ergebnis — ``null``, wenn der Lauf keine
     Auskunft nennt. Der Abnahmebericht verlangt es (ein Ergebnis ohne das
     Feld ist von einem Lauf vor dieser Aenderung), und nur ein immer
     geschriebenes Feld unterscheidet ``keine Auskunft`` von ``Lauf kannte
     das Feld nicht``. Mutationsprobe: das Feld nur bei vorhandener Auskunft
     schreiben -> rot."""
-    fall = gefahrener_fall
-    ziel = fall / "abgeleitet" / "auskunft-null" / kommando
-    argv = _aufruf(kommando, fall, [], ziel)
-    # ohne Schicht und Vorgeschichte: die Welt ohne jede Herabsetzungs-Lage
-    for option in ("--schicht", "--vorgeschichte"):
-        i = argv.index(option)
-        del argv[i:i + 2]
-    MAINS[kommando](argv)
-    ergebnis = _beleg(kommando, ziel)["parameter"]
+    from tests.test_pk1_am4_beweisvertrag import _bereite_bestandsfall
+
+    # Der Baldrian-zwei-Bestand ist verankert und sein abgeleiteter
+    # Schichtbeleg bindet eine Auskunft. Ein Lauf ohne Auskunft darauf
+    # waere eine andere Welt. Die echte Ein-Policen-Welt hier fuehrt
+    # weder Auskunft noch Verankerung und ist der gueltige Null-Fall.
+    fall = _bereite_bestandsfall(tmp_path)
+    assert (fall / "abgeleitet" / "bestand" / "bestand.parquet").is_file()
+    assert not (fall / "abgeleitet" / "bestand" / "verankerung.parquet").exists()
+    ergebnis = json.loads((fall / "abgeleitet" / datei).read_text("utf-8"))
     assert "red_anteile_datei" in ergebnis
     assert ergebnis["red_anteile_datei"] is None
+
+
+def test_mit_auskunft_bleibt_der_abgeleitete_schichtbeleg_des_echten_bestands_gueltig(
+        gefahrener_fall):
+    fall = gefahrener_fall
+    bestand = fall / "abgeleitet" / "bestand"
+    beleg = fall / "abgeleitet" / "schichten" / "verankerung_schichten.json"
+    assert (bestand / "verankerung.parquet").is_file()
+    assert beleg.is_file()
+    for kommando in ("aktuartest_lauf", "migrationssuite_lauf"):
+        ziel = fall / "abgeleitet" / "auskunft-gueltig" / kommando
+        argv = _aufruf(kommando, fall, ["--red-anteile-datei", AUSKUNFT], ziel)
+        assert "--schicht" in argv and str(beleg) in argv
+        assert MAINS[kommando](argv) == 0
+        assert _beleg(kommando, ziel)["parameter"]["red_anteile_datei"] is not None
 
 
 @pytest.mark.parametrize("kommando", ANTEIL_KOMMANDOS)
@@ -1416,11 +1434,12 @@ def test_die_version_des_abnahmeberichts_nennt_den_grund():
     # 10.0.0 (Pruefrunde G: Fuehrungswert nachgerechnet, Belege an der Spez)
     # und 10.1.0 (Ort des Berichts, relative Verweise) und 11.0.0 (Suite
     # nachgerechnet, Pruefrunde T28), 12.0.0 (Schichtbeleg) und 13.0.0
-    # (wirksame Rechnungsgrundlagen) erweitern denselben Abschnitt; der
+    # (wirksame Rechnungsgrundlagen) und 14.0.0 (Schichtpflicht) erweitern denselben Abschnitt; der
     # Grund fuer 6.0.0 steht weiter darin.
     abschnitt = gate_dokument.split("\n### A-M4-Vorlage", 1)[1].split("\n## ", 1)[0]
     versionen = {z.split("`")[1]: z for z in abschnitt.splitlines() if z.startswith("- `")}
-    assert abnahmebericht.GATE_VERSION == "13.0.0"
+    assert abnahmebericht.GATE_VERSION == "14.0.0"
+    assert "Verankerung" in versionen["14.0.0"]
     assert "Rechnungsgrundlagen" in versionen["13.0.0"]
     assert "Schichtbeleg" in versionen["12.0.0"]
     assert "aufruf" in versionen["11.0.0"]

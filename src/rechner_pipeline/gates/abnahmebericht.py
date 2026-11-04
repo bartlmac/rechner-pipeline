@@ -205,7 +205,7 @@ GATE = "A-M4.migrationscontrolling"
 #: die Komponentenzahl, die die Toleranz eines Vergleichs weitet, ist die des
 #: Erzeugers, nicht die des Belegs. Eine Suite ohne Aufruf oder mit einem
 #: abweichenden Feld war vorher ein gueltiger Beleg.
-GATE_VERSION = "13.0.0"
+GATE_VERSION = "14.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -1717,6 +1717,11 @@ def _suite_nachgerechnet(suite: Dict[str, Any], fall: Path, repo_root: Path) -> 
         return ["Migrationssuite nennt ihren Aufruf nicht — ein Beleg, den niemand "
                 "nachrechnen kann, bezeugt keine Pruefung; die Suite neu ausfuehren "
                 "(gates.migrationssuite_lauf)"]
+    from rechner_pipeline.gates.aktuartest_lauf import schichtpflicht_im_aufruf
+
+    pflicht = schichtpflicht_im_aufruf(fall, aufruf)
+    if pflicht:
+        return [f"Migrationssuite ist mit ihrem eigenen Aufruf nicht nachrechenbar: {pflicht[0]}"]
     argv = ["--fall", str(fall), "--repo-root", str(repo_root)]
     for i, wert in enumerate(aufruf):
         if (i and aufruf[i - 1] in migrationssuite_lauf.PFAD_OPTIONEN
@@ -1954,6 +1959,11 @@ def _fuehrungsprobe_nachgerechnet(probe: Dict[str, Any], fall: Path, repo_root: 
     if not isinstance(aufruf, list) or not all(isinstance(a, str) for a in aufruf):
         return ["Fuehrungsprobe nennt ihren Aufruf nicht — ein Beleg, den "
                 "niemand nachrechnen kann, bezeugt keine Pruefung"]
+    from rechner_pipeline.gates.aktuartest_lauf import schichtpflicht_im_aufruf
+
+    pflicht = schichtpflicht_im_aufruf(fall, aufruf, bestand_option="--uebernahme")
+    if pflicht:
+        return [f"Fuehrungsprobe ist mit ihrem eigenen Aufruf nicht nachrechenbar: {pflicht[0]}"]
     argv = ["--fall", str(fall), "--repo-root", str(repo_root)]
     for i, wert in enumerate(aufruf):
         if i and aufruf[i - 1] in fuehrungsprobe.PFAD_OPTIONEN and not Path(wert).is_absolute():

@@ -39,11 +39,11 @@ flowchart TD
     kern["kern<br/>13 Module"]
     models["models<br/>18 Module"]
     ontologie["ontologie<br/>16 Module"]
-    plv["plv<br/>4 Module"]
+    plv["plv<br/>5 Module"]
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
     spez["spez<br/>6 Module"]
-    zielsystem["zielsystem<br/>7 Module"]
+    zielsystem["zielsystem<br/>8 Module"]
     bestand -- 37 --> kern
     bestand -- 21 --> models
     bestand -- 1 --> qa
@@ -57,13 +57,15 @@ flowchart TD
     gates -- 9 --> qa
     gates -- 4 --> quellen
     gates -- 13 --> spez
-    gates -- 8 --> zielsystem
+    gates -- 9 --> zielsystem
     models -- 1 --> gates
     models -- 1 --> zielsystem
     ontologie -- 6 --> models
     ontologie -- 1 --> zielsystem
+    plv -- 2 --> bestand
     plv -- 8 --> kern
-    plv -- 2 --> zielsystem
+    plv -- 1 --> models
+    plv -- 3 --> zielsystem
     qa -- 4 --> models
     qa -- 5 --> zielsystem
     quellen -- 7 --> models
@@ -72,6 +74,7 @@ flowchart TD
     quellen -- 1 --> zielsystem
     spez -- 13 --> ontologie
     spez -- 1 --> zielsystem
+    zielsystem -- 1 --> models
     zielsystem -- 1 --> plv
 ```
 
@@ -86,19 +89,19 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
     bu["bu<br/>46 Module"]
-    klv["klv<br/>95 Module"]
+    klv["klv<br/>96 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>15 Module"]
     system_entscheid["system/entscheid<br/>17 Module"]
     system_fall["system/fall<br/>1 Module"]
-    system_zielsystem["system/zielsystem<br/>11 Module"]
+    system_zielsystem["system/zielsystem<br/>13 Module"]
     bu -- 3 --> system_assurance
     bu -- 19 --> system_entscheid
     bu -- 1 --> system_zielsystem
     klv -- 9 --> system_assurance
     klv -- 44 --> system_entscheid
     klv -- 11 --> system_fall
-    klv -- 16 --> system_zielsystem
+    klv -- 17 --> system_zielsystem
     system_architektur -- 1 --> klv
     system_architektur -- 1 --> system_zielsystem
     system_assurance -- 4 --> system_entscheid
@@ -107,8 +110,8 @@ flowchart TD
     system_entscheid -- 12 --> klv
     system_entscheid -- 11 --> system_assurance
     system_entscheid -- 2 --> system_fall
-    system_zielsystem -- 6 --> bu
-    system_zielsystem -- 8 --> klv
+    system_zielsystem -- 10 --> bu
+    system_zielsystem -- 9 --> klv
 ```
 
 ## 3 Der Zielrechenkern von innen
