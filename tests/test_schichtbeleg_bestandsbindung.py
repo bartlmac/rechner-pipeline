@@ -72,11 +72,12 @@ def test_die_vorlage_verlangt_die_bestandsbindung():
 
 
 def test_die_version_der_vorlage_und_ihr_grund():
-    assert aktuartest.GATE_VERSION == "5.0.0"
+    assert aktuartest.GATE_VERSION == "6.0.0"
     doku = (Path(__file__).resolve().parents[1] / "docs/architektur/gate-vertrag-und-versionen.md"
             ).read_text(encoding="utf-8")
-    assert "| A-M-Vorlagen (Version `5.0.0`) |" in doku
+    assert "| A-M-Vorlagen (Version `6.0.0`) |" in doku
     assert re.search(r"^- `5\.0\.0`: Ein Ergebnis mit Schichtbeleg nennt den Bestand", doku, re.M)
+    assert re.search(r"^- `6\.0\.0`: Im Bestands-Scope verweigert der Lauf", doku, re.M)
 
 
 # --------------------------------------------------------------------------- #

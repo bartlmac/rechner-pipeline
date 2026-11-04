@@ -402,6 +402,42 @@ def _schichtpflicht(
     return True
 
 
+def schichtpflicht_im_aufruf(
+    fall: Path, aufruf: List[str], *, bestand_option: str = "--bestand",
+) -> List[str]:
+    """Die feste Bestandsrolle auch vor der Nachrechnung eines Belegs pruefen.
+
+    Die Vorlagen lesen den behaupteten Aufruf nur, um dessen bereits
+    benannte Eingaben mit einer eigenen Eingangsbindung zu pruefen. Der
+    Erzeugerlauf wird danach weiterhin vollstaendig nachgerechnet.
+    """
+    def wert(option: str) -> Optional[str]:
+        stellen = [i for i, eintrag in enumerate(aufruf) if eintrag == option]
+        if len(stellen) > 1:
+            raise ValueError(f"{option} mehrfach im Aufruf")
+        if not stellen:
+            return None
+        i = stellen[0]
+        if i + 1 >= len(aufruf) or aufruf[i + 1].startswith("--"):
+            raise ValueError(f"{option} ohne Wert im Aufruf")
+        return aufruf[i + 1]
+
+    try:
+        schicht = wert("--schicht")
+        bestand_name = wert(bestand_option)
+        if bestand_name is None:
+            raise ValueError(f"{bestand_option} fehlt im Aufruf")
+        bestand_pfad = Path(bestand_name)
+        if not bestand_pfad.is_absolute():
+            bestand_pfad = Path(fall) / bestand_pfad
+        if bestand_option == "--uebernahme":
+            bestand_pfad = bestand_pfad / "bestand.parquet"
+        _schichtpflicht(fall, bestand_pfad, schicht, Eingangsbindung(fall))
+    except (ValueError, OSError, SystemExit) as exc:
+        return [f"Schichtpflicht des Bestands nicht belegt: {exc}"]
+    return []
+
+
 def _pruefe_bestandsbindung(name: str, prov: Dict[str, Any], bestand_sha256: str) -> None:
     """Der abgeleitete Schichtbeleg gehoert zum Bestand DIESES Laufs (A-020,
     H3; ADR-030 Stufe 2c): Der Bestand, den der Lauf gebunden hat, muss mit

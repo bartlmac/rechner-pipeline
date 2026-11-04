@@ -10,12 +10,16 @@ from __future__ import annotations
 
 import json
 import hashlib
+import copy
 import shutil
 from pathlib import Path
 
 import pytest
 
-from rechner_pipeline.gates import aktuartest_lauf, fuehrungsprobe, migrationssuite_lauf
+from rechner_pipeline.gates import (
+    abnahmebericht, aktuartest, aktuartest_lauf, fuehrungsprobe,
+    migrationssuite_lauf,
+)
 from rechner_pipeline.gates._common import Eingangsbindung
 from tests.test_baldrian2_e2e import gefahrener_fall
 
@@ -135,3 +139,40 @@ def test_beleg_muss_verankerung_und_bestand_binden(fallkopie: Path) -> None:
             _pflicht(fall, str(beleg))
         # Jede Probe beginnt wieder beim echten Producerbeleg.
         beleg.write_bytes(original)
+
+
+@pytest.mark.parametrize("datei", [
+    "aktuartest.json", "aktuartest-A-M2.json", "aktuartest-A-M3.json",
+])
+def test_aktuartest_vorlage_prueft_die_pflicht_vor_der_nachrechnung(
+        gefahrener_fall: Path, monkeypatch, datei: str) -> None:
+    fall = gefahrener_fall
+    original = json.loads((fall / "abgeleitet" / "berichte" / datei).read_text("utf-8"))
+    assert aktuartest.test_nachgerechnet(original, fall, REPO_ROOT) == []
+    kaputt = copy.deepcopy(original)
+    aufruf = kaputt["aufruf"]
+    stelle = aufruf.index("--schicht")
+    del aufruf[stelle:stelle + 2]
+
+    # Diese Gegenprobe schaltet nur die zweite Sicherung aus. Die Vorlage
+    # muss die Fallrolle trotzdem vor dem Rendern erkennen.
+    monkeypatch.setattr(aktuartest_lauf, "fuehre_test", lambda _args: (0, kaputt))
+    assert aktuartest.test_nachgerechnet(kaputt, fall, REPO_ROOT)
+
+
+@pytest.mark.parametrize("datei,pruefer,erzeuger", [
+    ("migrationssuite.json", abnahmebericht._suite_nachgerechnet, migrationssuite_lauf),
+    ("fuehrungsprobe.json", abnahmebericht._fuehrungsprobe_nachgerechnet, fuehrungsprobe),
+])
+def test_am4_vorlage_prueft_die_pflicht_vor_der_nachrechnung(
+        gefahrener_fall: Path, monkeypatch, datei, pruefer, erzeuger) -> None:
+    fall = gefahrener_fall
+    original = json.loads((fall / "abgeleitet" / "berichte" / datei).read_text("utf-8"))
+    assert pruefer(original, fall, REPO_ROOT) == []
+    kaputt = copy.deepcopy(original)
+    aufruf = kaputt["provenienz"]["aufruf"] if erzeuger is fuehrungsprobe else kaputt["aufruf"]
+    stelle = aufruf.index("--schicht")
+    del aufruf[stelle:stelle + 2]
+    methode = "fuehre_probe" if erzeuger is fuehrungsprobe else "fuehre_suite"
+    monkeypatch.setattr(erzeuger, methode, lambda _args: (0, kaputt))
+    assert pruefer(kaputt, fall, REPO_ROOT)

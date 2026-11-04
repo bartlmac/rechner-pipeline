@@ -100,7 +100,10 @@ GATE = GATES["A-M1"]
 #: abgeleiteten Schichtbeleg, der diesen Bestand nicht unter seinen
 #: gebundenen Eingaben fuehrt (:func:`schichtbeleg_gebunden`). Vorher durfte
 #: der Aufruf des Belegs auf ein anderes Uebernahmeverzeichnis zeigen.
-GATE_VERSION = "5.0.0"
+#: 6.0.0 (A-058): Eine vorhandene Verankerung verlangt vor der
+#: Nachrechnung einen abgeleiteten, an Bestand und Verankerung gebundenen
+#: Schichtbeleg. Ein bisher gruener Lauf ohne Beleg kann rot werden.
+GATE_VERSION = "6.0.0"
 CLI_CONTRACT = GateCliContract(
     command=COMMAND,
     gate=GATE,
@@ -212,6 +215,9 @@ def test_nachgerechnet(test: Dict[str, Any], fall: Path, repo_root: Path) -> Lis
         return ["Ergebnis nennt seinen Aufruf nicht — ein Beleg, den niemand "
                 "nachrechnen kann, bezeugt keine Pruefung; den Test neu fahren "
                 "(gates.aktuartest_lauf)"]
+    pflicht = aktuartest_lauf.schichtpflicht_im_aufruf(fall, aufruf)
+    if pflicht:
+        return [f"Ergebnis ist mit seinem eigenen Aufruf nicht nachrechenbar: {pflicht[0]}"]
     argv = ["--fall", str(fall), "--repo-root", str(repo_root)]
     for i, wert in enumerate(aufruf):
         if (i and aufruf[i - 1] in aktuartest_lauf.PFAD_OPTIONEN
