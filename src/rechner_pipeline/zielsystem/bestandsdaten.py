@@ -37,7 +37,8 @@ class Bestandsdaten(Protocol):
         """Rolle aus Manifest und genau den verarbeiteten Datei-Bytes lesen.
 
         ``BestandsdatenFehler`` bei fehlender Rolle/Datei, abweichenden
-        Hashes, unlesbarer Verankerungsdatei oder falschem Erzeuger.
+        Hashes, unlesbarer oder nicht vollstaendig spaltengetreuer
+        Verankerungsdatei oder falschem Erzeuger.
         Fehlen Manifest und Verankerungsdatei beide, ist die Rolle leer.
         """
         ...

@@ -165,7 +165,8 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
        --generation klv/tg2015 \
        --erwartungswerte <registrierte-lieferung>.json \
        --stichprobe <registrierter-ziehungsbeleg>.json \
-       --bestand <bestand>.parquet
+       --bestand <bestand>.parquet \
+       [--schicht <abgeleiteter-schichtbeleg>.json]
    ```
 
    Es baut die `Vertragspruefung`-Auftraege aus den Fall-Artefakten,
@@ -175,6 +176,17 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    (`abgeleitet/berichte/aktuartest.json` fuer A-M1, mit Abnahme-Suffix
    fuer A-M2 und A-M3). Erwartungswerte und Stichprobe sind
    REGISTRIERTE Quellen, keine freien Pfade.
+
+   Im Bestands-Scope ist `--schicht` bei vorhandener Datei
+   `abgeleitet/bestand/verankerung.parquet` Pflicht — für A-M1, A-M2 und
+   A-M3 gleichermaßen. Dafür zuerst `gates.verankerung_belegen` auf dem
+   festen Fallbestand fahren und seinen abgeleiteten Beleg nennen. Er
+   muss die gebundenen Bytes von `bestand.parquet` und
+   `verankerung.parquet` führen; ein registrierter Schichtbeleg genügt
+   nicht. Fehlen Laufmanifest und Verankerungsdatei beide, ist ein Lauf
+   ohne `--schicht` möglich. Widersprechen sich Manifest und Datei oder
+   ist die vorhandene Datei leer oder beschädigt, den Migrationszugang
+   und den Schichtbeleg neu erzeugen, statt die Datei zu umgehen.
 
    Das JSON wird NIE von Hand nachgebessert — das Gate rechnet die
    Zusammenfassung gegen die Einzelurteile nach und bricht sonst mit

@@ -195,6 +195,14 @@ def pruefe_bestandsdaten(umsetzung: object) -> List[str]:
         pq.read_table(pa.BufferReader(verankerung)).replace_schema_metadata(
             {b"probe": b"fremd"}), ziel)
     andere_verankerung = ziel.getvalue().to_pybytes()
+
+    def parquet(tabelle: pa.Table) -> bytes:
+        ausgabe = pa.BufferOutputStream()
+        pq.write_table(tabelle, ausgabe)
+        return ausgabe.getvalue().to_pybytes()
+
+    nur_police = parquet(pa.table({"police_id": pa.array([1], type=pa.int64())}))
+    keine_spalten = parquet(pa.table({}))
     manifest = {
         "schema_version": 1, "erzeuger": "bestand_migrationszugang",
         "horizont": "2026-01-01", "neuzugang_ab": None,
@@ -235,6 +243,12 @@ def pruefe_bestandsdaten(umsetzung: object) -> List[str]:
         ("fremde Bestandsbytes", roh(manifest), b"fremd", verankerung),
         ("fremde Verankerungsbytes", roh(manifest), bestand, b"fremd"),
         ("fremdes gültiges Parquet", roh(manifest), bestand, andere_verankerung),
+        ("fehlende Verankerungsspalten", roh({**manifest, "ausgaben":
+         {**manifest["ausgaben"], "verankerung.parquet": hashlib.sha256(nur_police).hexdigest()}}),
+         bestand, nur_police),
+        ("keine Verankerungsspalten", roh({**manifest, "ausgaben":
+         {**manifest["ausgaben"], "verankerung.parquet": hashlib.sha256(keine_spalten).hexdigest()}}),
+         bestand, keine_spalten),
         ("leere Verankerungsdatei", roh({**manifest, "ausgaben":
          {**manifest["ausgaben"], "verankerung.parquet": hashlib.sha256(b"").hexdigest()}}),
          bestand, b""),

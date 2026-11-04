@@ -333,7 +333,8 @@ Der Zielvertrag 0.4.0 bietet `bestandsdaten` mit genau einer Methode
 `verankerungsrolle` an. Der Aufrufer übergibt bereits gebundene Bytes des
 Laufmanifests, des Bestands und der optionalen Verankerung. Die PLV prüft
 den Erzeuger `bestand_migrationszugang`, die beiden Ausgaberollen und ihre
-SHA-256-Werte sowie die Parquet-Form der Verankerung. Fehler werden als
+SHA-256-Werte sowie die vollständige Spaltenmenge und Parquet-Form der
+Verankerung. Fehler werden als
 `BestandsdatenFehler` gemeldet. Das Tool erhält nur die nachgewiesene
 Rolle und die Hashes. Die drei Laufproduzenten verlangen bei vorhandener
 Verankerung einen abgeleiteten Schichtbeleg, der beide Bytes bindet; ein

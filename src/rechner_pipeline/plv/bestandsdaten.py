@@ -62,8 +62,10 @@ class PLVBestandsdaten:
             raise BestandsdatenFehler(
                 "verankerung.parquet weicht von den im Laufmanifest gebundenen Bytes ab")
         try:
-            read_portfolio_aus_bytes(
+            tabelle = read_portfolio_aus_bytes(
                 verankerung_bytes, expected_columns=VERANKERUNG_NAMES)
+            if tuple(tabelle.columns) != VERANKERUNG_NAMES:
+                raise ValueError("Verankerung hat nicht alle Pflichtspalten")
         except Exception as exc:  # noqa: BLE001 - Parquet-Lader kennt mehrere Formatfehler
             raise BestandsdatenFehler(
                 f"Verankerung hat kein gueltiges Parquet-Format: {exc}") from exc

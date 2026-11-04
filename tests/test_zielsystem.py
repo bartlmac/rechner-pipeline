@@ -321,6 +321,7 @@ def test_bestandsdaten_ist_ein_eigenes_protokoll_mit_gueltiger_rolle(tmp_path):
 @pytest.mark.parametrize("fall", [
     "beides_fehlt", "manifest_ohne_rolle", "rolle_ohne_datei", "datei_ohne_manifest",
     "datei_ohne_rolle", "bestand_hash", "verankerung_hash", "verankerung_hash_gueltiges_parquet", "leere_datei",
+    "fehlende_spalten", "keine_spalten",
     "beschaedigte_datei", "unbekannter_erzeuger", "falscher_erzeuger",
 ])
 def test_bestandsdaten_verweigert_ungebundene_rollen(tmp_path, fall):
@@ -351,6 +352,17 @@ def test_bestandsdaten_verweigert_ungebundene_rollen(tmp_path, fall):
         ziel = pa.BufferOutputStream()
         pq.write_table(tabelle.replace_schema_metadata({b"probe": b"abweichend"}), ziel)
         verankerung = ziel.getvalue().to_pybytes()
+    if fall in ("fehlende_spalten", "keine_spalten"):
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        tabelle = (pa.table({"police_id": pa.array([1], type=pa.int64())})
+                   if fall == "fehlende_spalten" else pa.table({}))
+        ziel = pa.BufferOutputStream()
+        pq.write_table(tabelle, ziel)
+        verankerung = ziel.getvalue().to_pybytes()
+        manifest["ausgaben"]["verankerung.parquet"] = hashlib.sha256(verankerung).hexdigest()
+        manifest_bytes = json.dumps(manifest).encode()
     if fall in ("leere_datei", "beschaedigte_datei"):
         verankerung = b"" if fall == "leere_datei" else b"kein Parquet"
         manifest["ausgaben"]["verankerung.parquet"] = hashlib.sha256(verankerung).hexdigest()
