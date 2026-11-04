@@ -21,12 +21,13 @@ Knoten: system/entscheid
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
-from rechner_pipeline.gates import gate_entscheid
+from rechner_pipeline.gates import _provenienz, gate_entscheid, kernstand_belegen
 from rechner_pipeline.gates.abox_validate import main as pq3
 from rechner_pipeline.models import anker as anker_mod
 from tests.e2e_fixture import bereite_pk1_fall
@@ -133,3 +134,114 @@ def test_eine_momentaufnahme_ist_keine_auslieferung(fall):
     ergebnis = _ab1(fall, anker, satz)
     assert ergebnis.exit_code != 0
     assert list((fall / "entscheide").glob("A-B1-*.json")) == []
+
+
+def _pakethash_unabhaengig() -> str:
+    """Den signierten Paketinhalt ohne Aufruf des Gate-Hashers nachrechnen."""
+    paket = REPO_ROOT / "src" / "rechner_pipeline"
+    digest = hashlib.sha256()
+    for pfad in sorted(p for p in paket.rglob("*")
+                       if p.is_file() and p.suffix in {".py", ".xml"}):
+        name = pfad.relative_to(paket).as_posix().encode("utf-8")
+        inhalt = pfad.read_bytes()
+        digest.update(len(name).to_bytes(8, "big"))
+        digest.update(name)
+        digest.update(len(inhalt).to_bytes(8, "big"))
+        digest.update(inhalt)
+    return digest.hexdigest()
+
+
+def test_ab1_nimmt_ohne_git_die_gueltige_image_revision_signiert_auf(
+        fall, monkeypatch):
+    revision = "c" * 40
+    monkeypatch.setattr(_provenienz, "_git_lesen", lambda *_: None)
+    monkeypatch.setenv("PLV_IMAGE_REVISION", revision)
+    anker, satz = _anker(fall)
+    ergebnis = _ab1(fall, anker, satz)
+    assert ergebnis.exit_code == 0, ergebnis.errors
+    pfad = Path(ergebnis.paths["snapshot"])
+    snapshot = json.loads(pfad.read_text(encoding="utf-8"))
+    assert snapshot["system"] == {
+        "commit": revision, "branch": "unbekannt", "dirty": "unbekannt",
+        "quellcode_sha256": _pakethash_unabhaengig(),
+    }
+    assert ergebnis.summary["system_commit"] == revision[:12]
+    assert ergebnis.summary["system_dirty"] == "unbekannt"
+    assert gate_entscheid.pruefe_snapshot_ohne_schluessel(snapshot, pfad.name) == []
+    key = (fall.parent / "p9-freigabe.key").read_bytes()
+    ring = {hashlib.sha256(key).hexdigest(): key}
+    assert gate_entscheid._pruefe_freigabe(snapshot, ring) == []
+    _kette, _spitzen, fehler = gate_entscheid._lade_snapshot_kette(
+        fall / "entscheide", "A-B1", fall, ring, snapshot["system"])
+    assert fehler == []
+
+    nochmal = _ab1(fall, anker, satz)
+    assert nochmal.exit_code == 0 and nochmal.summary["bereits_vorhanden"] is True
+    assert nochmal.paths["snapshot"] == str(pfad)
+
+    verbogen = dict(snapshot, system={**snapshot["system"], "commit": "d" * 40})
+    assert gate_entscheid._pruefe_freigabe(verbogen, ring)
+    pfad.write_text(json.dumps(verbogen), encoding="utf-8")
+    assert gate_entscheid._lade_snapshot_kette(
+        fall / "entscheide", "A-B1", fall, ring, snapshot["system"])[2]
+
+
+def test_ab1_bevorzugt_den_lesbaren_git_commit(fall, monkeypatch):
+    monkeypatch.setenv("PLV_IMAGE_REVISION", "c" * 40)
+    git_commit = _provenienz.git_stand(REPO_ROOT)["commit"]
+    assert git_commit != "unbekannt"
+    anker, satz = _anker(fall)
+    ergebnis = _ab1(fall, anker, satz)
+    assert ergebnis.exit_code == 0, ergebnis.errors
+    snapshot = json.loads(Path(ergebnis.paths["snapshot"]).read_text("utf-8"))
+    assert snapshot["system"]["commit"] == git_commit
+    assert ergebnis.summary["system_commit"] == git_commit[:12]
+
+
+@pytest.mark.parametrize("revision", [None, "unbekannt", "a" * 12,
+                                             "A" * 40, "g" * 40, "a" * 41])
+def test_ab1_belaesst_ungueltige_image_revision_bei_unbekannt(
+        fall, monkeypatch, revision):
+    monkeypatch.setattr(_provenienz, "_git_lesen", lambda *_: None)
+    if revision is None:
+        monkeypatch.delenv("PLV_IMAGE_REVISION", raising=False)
+    else:
+        monkeypatch.setenv("PLV_IMAGE_REVISION", revision)
+    anker, satz = _anker(fall)
+    ergebnis = _ab1(fall, anker, satz)
+    assert ergebnis.exit_code == 0, ergebnis.errors
+    snapshot = json.loads(Path(ergebnis.paths["snapshot"]).read_text("utf-8"))
+    assert snapshot["system"]["commit"] == "unbekannt"
+    assert ergebnis.summary["system_commit"] == "unbekannt"
+
+
+@pytest.mark.parametrize("gate", ["A-K2", "A-M4"])
+def test_andere_gates_erhellen_ohne_git_den_systemstand_nicht(
+        fall, monkeypatch, gate):
+    monkeypatch.setattr(_provenienz, "_git_lesen", lambda *_: None)
+    monkeypatch.setenv("PLV_IMAGE_REVISION", "c" * 40)
+    ergebnis = gate_entscheid.main([
+        "--fall", str(fall), "--gate", gate, "--entscheid", "abgelehnt",
+        "--rolle", "mensch/rechenkern" if gate == "A-K2" else "mensch/aktuariat",
+        "--entscheider", "Pruefung", "--begruendung", "Beleg fehlt.",
+        "--repo-root", str(REPO_ROOT), *annahme_args(fall, fuer=gate),
+    ])
+    assert ergebnis.exit_code == 0, ergebnis.errors
+    snapshot = json.loads(Path(ergebnis.paths["snapshot"]).read_text("utf-8"))
+    assert snapshot["system"]["commit"] == "unbekannt"
+    assert snapshot["system"]["branch"] == "unbekannt"
+    assert snapshot["system"]["dirty"] == "unbekannt"
+    assert _provenienz.systemstand(REPO_ROOT)["commit"] == "unbekannt"
+
+
+def test_ak2_verweigert_ohne_lesbaren_git_stand_weiter(tmp_path, monkeypatch):
+    aenderung = kernstand_belegen.baue_aenderungsbeleg(
+        REPO_ROOT, "HEAD", "Probe des Git-Belegvertrags")
+    pfad = tmp_path / "aenderung.json"
+    pfad.write_text(json.dumps(aenderung), encoding="utf-8")
+    monkeypatch.setattr(_provenienz, "_git_lesen", lambda *_: None)
+    monkeypatch.setattr(gate_entscheid, "git_stand", lambda *_: {
+        "commit": "unbekannt", "branch": "unbekannt", "dirty": "unbekannt"})
+    monkeypatch.setenv("PLV_IMAGE_REVISION", "c" * 40)
+    fehler = gate_entscheid.pruefe_kernaenderung(pfad, tmp_path, repo_root=REPO_ROOT)
+    assert any("Git-Stand ist nicht lesbar" in meldung for meldung in fehler), fehler

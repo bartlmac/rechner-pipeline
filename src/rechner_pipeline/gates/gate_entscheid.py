@@ -2627,6 +2627,13 @@ def main(argv: Optional[List[str]] = None):
         ))
 
     entscheid_systemstand = systemstand(Path(args.repo_root).resolve())
+    if args.gate == "A-B1" and entscheid_systemstand["commit"] == "unbekannt":
+        # Im Image fehlt der Git-Baum. Die vollstaendige Revision ist dann
+        # eine Behauptung des Image-Baus, die A-B1 signiert; branch und dirty
+        # bleiben ohne Git unbekannt. Andere Gates nutzen nur systemstand().
+        image_revision = os.environ.get("PLV_IMAGE_REVISION", "")
+        if re.fullmatch(r"[0-9a-f]{40}", image_revision):
+            entscheid_systemstand["commit"] = image_revision
     pk1_belege: Dict[str, List[str]] = {}
     pflichtbelege: Dict[str, List[str]] = {}
     # Hashes der in DIESEM Lauf gelesenen Dateien: die Snapshot-Artefakthashes
