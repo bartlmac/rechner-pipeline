@@ -997,7 +997,7 @@ def _vertraege_pruefen(gesamt: pd.DataFrame, config: BestandConfig) -> None:
 
 
 def _ereignisse_je_police(ereignisse: pd.DataFrame) -> Dict[int, List[Dict[str, Any]]]:
-    """police_id -> ihre Eintraege der Ereignisliste in Zugreihenfolge (lfd)."""
+    """Police -> Eintraege in gegebener Zugreihenfolge; ungueltige Form abweisen."""
     from rechner_pipeline.bestand.ziehung import EREIGNISLISTE_NAMES
 
     fehlend = [c for c in EREIGNISLISTE_NAMES if c not in ereignisse.columns]
@@ -1006,9 +1006,30 @@ def _ereignisse_je_police(ereignisse: pd.DataFrame) -> Dict[int, List[Dict[str, 
     aus: Dict[int, List[Dict[str, Any]]] = {}
     if len(ereignisse) == 0:
         return aus
-    geordnet = ereignisse.sort_values(["police_id", "lfd"], kind="stable")
-    for e in geordnet.to_dict("records"):
+    for e in ereignisse.to_dict("records"):
         aus.setdefault(int(e["police_id"]), []).append(e)
+    for police_id, eigene in aus.items():
+        nummern = [e["lfd"] for e in eigene]
+        if any(pd.isna(n) or isinstance(n, bool) or int(n) != n or n <= 0 for n in nummern):
+            raise EreignisError(f"police {police_id}: lfd muss ganzzahlig und positiv sein")
+        if len(set(nummern)) != len(nummern):
+            raise EreignisError(f"police {police_id}: lfd doppelt")
+        if set(nummern) != set(range(1, len(nummern) + 1)):
+            raise EreignisError(f"police {police_id}: lfd nicht fortlaufend ab 1")
+        if nummern != list(range(1, len(nummern) + 1)):
+            raise EreignisError(f"police {police_id}: lfd nicht in Zugreihenfolge")
+        vorjahr: int | None = None
+        gesehen: set[tuple[int, str]] = set()
+        for e in eigene:
+            jahr, code = int(e["vertragsjahr"]), str(e["ereignis"])
+            if vorjahr is not None and jahr < vorjahr:
+                raise EreignisError(
+                    f"police {police_id}: {code} im Vertragsjahr {jahr}: Vertragsjahr faellt")
+            if code in (PEX, RED, TKU, ERH) and (jahr, code) in gesehen:
+                raise EreignisError(
+                    f"police {police_id}: {code} im Vertragsjahr {jahr}: {code} doppelt")
+            gesehen.add((jahr, code))
+            vorjahr = jahr
     return aus
 
 
