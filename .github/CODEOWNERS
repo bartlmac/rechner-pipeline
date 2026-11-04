@@ -1,0 +1,51 @@
+# Wer welches Modul verantwortet (CONTRIBUTING.md, Module).
+#
+# Die Namen traegt das Maintainer Office ein: hinter jedes Muster ein oder
+# mehrere GitHub-Konten oder Teams (@konto, @organisation/team). Ein Muster
+# ohne Namen verlangt kein Review durch Verantwortliche.
+#
+# Es gilt die letzte passende Zeile. Der Rueckfall auf das Maintainer Office
+# steht deshalb oben. Jedes Muster muss auf eine vorhandene Datei oder ein
+# vorhandenes Verzeichnis zeigen (tests/test_codeowners.py).
+
+# Maintainer Office, dazu alles ohne eigenes Modul
+*
+/.github/
+/CONTRIBUTING.md
+/SECURITY.md
+/README.md
+/ONBOARDING.md
+/AGENTS.md
+/CHANGELOG.md
+/pyproject.toml
+/requirements*.txt
+/deploy/
+/docs/architektur/adr-beschlussliste.md
+
+# Agentisches System
+/.claude/
+/.agents/
+/system/
+/src/rechner_pipeline/ontologie/
+/src/rechner_pipeline/spez/
+/src/rechner_pipeline/gates/
+/src/rechner_pipeline/qa/
+/src/rechner_pipeline/models/
+/src/rechner_pipeline/zielsystem/
+/src/rechner_pipeline/fall.py
+
+# Bestandsmigration
+/src/rechner_pipeline/bestand/
+/src/rechner_pipeline/betrieb/
+/migrationen/
+/pakete/
+
+# Cashflow-Modelle
+/src/rechner_pipeline/kern/
+/plv/mathematik/
+/plv/tarifplaene/
+/plv/configs/
+
+# Excel-Landschaften
+/src/rechner_pipeline/quellen/
+/werkzeuge/quellsystem/
