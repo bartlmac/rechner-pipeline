@@ -1005,6 +1005,7 @@ def test_bestandsrolle_laeuft_ueber_den_zielvertrag_ohne_neue_altlast():
     vertrag = "rechner_pipeline/zielsystem/bestandsdaten.py"
     plv = "rechner_pipeline/plv/bestandsdaten.py"
     assert {vertrag, plv} <= set(karte["module"])
+    assert (gate, vertrag) in kanten
     assert ("rechner_pipeline/zielsystem/vertrag.py", vertrag) in kanten
     assert ("rechner_pipeline/plv/zielsystem.py", plv) in kanten
     assert (gate, "rechner_pipeline/bestand/manifest.py") not in kanten

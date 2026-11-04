@@ -63,6 +63,7 @@ from rechner_pipeline.qa.aktuarieller_test import (
     pruefe_stichprobe,
 )
 from rechner_pipeline.zielsystem import anbieter
+from rechner_pipeline.zielsystem.bestandsdaten import BestandsdatenFehler
 from rechner_pipeline.zielsystem.bewertung import Schicht, Schichtfehler
 from rechner_pipeline.qa.stichprobe import Stichprobe
 from rechner_pipeline.qa.testprofil import vorlage
@@ -341,6 +342,64 @@ def schichtbeleg_art(fall: Path, name: Optional[str]) -> Optional[str]:
     if kandidat.is_file() and kandidat.resolve().is_relative_to(abgeleitet):
         return "abgeleitet"
     return "registriert"
+
+
+def _schichtpflicht(
+    fall: Path, bestand_pfad: Path, name: Optional[str], bindung: Eingangsbindung,
+) -> bool:
+    """Eine vorhandene Verankerung verlangt den abgeleiteten Erzeugerbeleg.
+
+    Die Datei im festen Fallbestand ist der Ausloeser, nicht ein frei
+    gewaehlter Aufrufpfad. Manifest und beide Parquet-Dateien werden ueber
+    dieselbe Eingangsbindung gelesen, die der Lauf fuer seine Werte benutzt.
+    Auch eine leere oder beschaedigte Datei ist ein Fehler, kein Bestand
+    ohne Verankerung. Rueckgabe: ob der Lauf eine Verankerung fuehrt.
+    """
+    lauf = Path(fall) / "abgeleitet" / "bestand"
+    verankerung = lauf / "verankerung.parquet"
+    manifest_pfad = lauf / "laufmanifest.json"
+    bestand = lauf / "bestand.parquet"
+    if Path(bestand_pfad).resolve() != bestand.resolve() and (verankerung.is_file() or manifest_pfad.is_file()):
+        raise SystemExit(
+            "Verankerung liegt im festen Fallbestand; --bestand muss dessen "
+            "bestand.parquet nennen — keinen anderen Bestand mit diesem "
+            "Schichtbeleg pruefen")
+    try:
+        manifest_bytes = bindung.binde(manifest_pfad).roh if manifest_pfad.is_file() else None
+        verankerung_bytes = bindung.binde(verankerung).roh if verankerung.is_file() else None
+        rolle = anbieter.zielsystem().faehigkeit("bestandsdaten").verankerungsrolle(
+            manifest_bytes=manifest_bytes,
+            bestand_bytes=bindung.binde(Path(bestand_pfad)).roh,
+            verankerung_bytes=verankerung_bytes,
+        )
+    except (BestandsdatenFehler, OSError) as exc:
+        raise SystemExit(f"Laufmanifest oder Verankerung ungueltig: {exc}") from exc
+    if not rolle.vorhanden:
+        return False
+    if not name:
+        raise SystemExit(
+            "Verankerung liegt im Bestand: der abgeleitete Schichtbeleg "
+            "fehlt (--schicht; gates.verankerung_belegen erneut fahren)")
+    if schichtbeleg_art(fall, name) != "abgeleitet":
+        raise SystemExit(
+            "Verankerung liegt im Bestand: nur ein abgeleiteter Schichtbeleg "
+            "aus gates.verankerung_belegen zaehlt, kein registrierter")
+    beleg_pfad = Path(name) if Path(name).is_absolute() else Path(fall) / name
+    try:
+        beleg = bindung.binde(beleg_pfad).json()
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"Schichtbeleg nicht lesbar: {exc}") from exc
+    prov = beleg.get("provenienz") if isinstance(beleg, dict) else None
+    eingaben = prov.get("eingaben") if isinstance(prov, dict) else None
+    if not isinstance(eingaben, dict):
+        raise SystemExit("Schichtbeleg ohne gebundene Erzeugereingaben — neu erzeugen")
+    for pfad, sha in ((bestand, rolle.bestand_sha256),
+                      (verankerung, rolle.verankerung_sha256)):
+        if eingaben.get(bindung.schluessel(pfad)) != sha:
+            raise SystemExit(
+                f"Schichtbeleg bindet {pfad.name} nicht mit den Bytes dieses "
+                "Laufs — gates.verankerung_belegen erneut fahren")
+    return True
 
 
 def _pruefe_bestandsbindung(name: str, prov: Dict[str, Any], bestand_sha256: str) -> None:
@@ -844,6 +903,7 @@ def fuehre_test(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]]
         return 2, None
     bestand_gelesen = bindung.binde(Path(args.bestand))
     bestand = read_portfolio_aus_bytes(bestand_gelesen.roh)
+    _schichtpflicht(fall, Path(args.bestand), args.schicht, bindung)
 
     gemeldet = lieferung.get("test")
     if gemeldet and gemeldet != args.abnahme:

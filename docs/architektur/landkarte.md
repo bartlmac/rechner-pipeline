@@ -57,7 +57,7 @@ flowchart TD
     gates -- 9 --> qa
     gates -- 4 --> quellen
     gates -- 13 --> spez
-    gates -- 8 --> zielsystem
+    gates -- 9 --> zielsystem
     models -- 1 --> gates
     models -- 1 --> zielsystem
     ontologie -- 6 --> models
@@ -101,7 +101,7 @@ flowchart TD
     klv -- 9 --> system_assurance
     klv -- 44 --> system_entscheid
     klv -- 11 --> system_fall
-    klv -- 16 --> system_zielsystem
+    klv -- 17 --> system_zielsystem
     system_architektur -- 1 --> klv
     system_architektur -- 1 --> system_zielsystem
     system_assurance -- 4 --> system_entscheid

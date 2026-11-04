@@ -1470,6 +1470,9 @@ def fuehre_probe(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
     except SystemExit as exc:
         print(str(exc), file=sys.stderr)
         return 2, None
+    from rechner_pipeline.gates.aktuartest_lauf import _schichtpflicht
+
+    _schichtpflicht(fall, ueber / "bestand.parquet", args.schicht, bindung)
     beleg_pfad = ueber / "uebernahme.json"
     if not beleg_pfad.is_file():
         print(f"fuehrungsprobe: Uebernahmebeleg fehlt: {beleg_pfad} — der Bestand "
