@@ -1,7 +1,8 @@
 """Der Zielvertrag (ADR-030): Version, Katalog, Wurzelprotokoll,
 Konformitaet und der eine Anbieter (Stufe 0); die Rechnungsgrundlagen
 und ihre fuenf Konsumenten (Stufe 1); die Bewertung und die drei
-qa-Module als ihre ersten Konsumenten (Stufe 2a).
+qa-Module als ihre ersten Konsumenten (Stufe 2a); die lesende
+Verankerungsrolle als vorgezogenes Stueck von Stufe 3.
 
 Jede Regel der Konformitaet hat hier eine Positivkontrolle: eine
 absichtlich falsche Implementierung, die genau diesen Befund ausloest.
@@ -16,7 +17,7 @@ import pytest
 
 from rechner_pipeline.plv.zielsystem import PLV
 from rechner_pipeline.zielsystem import (
-    anbieter, bewertung, konformitaet, rechnungsgrundlagen, version, vertrag,
+    anbieter, bestandsdaten, bewertung, konformitaet, rechnungsgrundlagen, version, vertrag,
 )
 
 
@@ -25,7 +26,7 @@ from rechner_pipeline.zielsystem import (
 # --------------------------------------------------------------------------- #
 
 def test_die_vertragsversion_ist_dreistellig():
-    assert version.zerlege(version.VERTRAG_VERSION) == (0, 3, 0)
+    assert version.zerlege(version.VERTRAG_VERSION) == (0, 4, 0)
 
 
 @pytest.mark.parametrize("kaputt", ["1.2", "1.2.3.4", "a.b.c", "", "1.2.x", " 1.2.3"])
@@ -63,12 +64,12 @@ def test_der_katalog_ist_unveraenderlich():
         vertrag.PROTOKOLL_JE_FAEHIGKEIT["neu"] = object  # type: ignore[index]
 
 
-def test_in_stufe_2_beschreibt_der_vertrag_rechnungsgrundlagen_und_bewertung():
-    """Stufe 1 traegt rechnungsgrundlagen ein, Stufe 2 bewertung. Die
-    uebrigen darf niemand anbieten (Konformitaet, unten)."""
+def test_der_vertrag_beschreibt_auch_die_vorgezogene_bestandsrolle():
+    """Die uebrigen Faehigkeiten bleiben ohne Protokoll und Angebot."""
     assert dict(vertrag.PROTOKOLL_JE_FAEHIGKEIT) == {
         "rechnungsgrundlagen": rechnungsgrundlagen.Rechnungsgrundlagen,
         "bewertung": bewertung.Bewertung,
+        "bestandsdaten": bestandsdaten.Bestandsdaten,
     }
     assert set(vertrag.PROTOKOLL_JE_FAEHIGKEIT) <= set(vertrag.FAEHIGKEITEN)
 
@@ -107,6 +108,33 @@ def test_der_anbieter_liefert_die_plv_und_sie_ist_konform():
     assert konformitaet.pruefe(zs) == []
 
 
+def test_fremde_bestandsdaten_umsetzung_wird_am_vertrag_gemessen():
+    """Der Pruefer kennt nur den Vertrag, nicht den Namen der PLV-Klasse."""
+    from rechner_pipeline.plv.bestandsdaten import PLVBestandsdaten
+
+    class Fremd:
+        def verankerungsrolle(self, **eingaben):
+            return PLVBestandsdaten().verankerungsrolle(**eingaben)
+
+    assert isinstance(Fremd(), bestandsdaten.Bestandsdaten)
+    assert konformitaet.pruefe_bestandsdaten(Fremd()) == []
+
+
+def test_falsche_plv_bestandsdaten_methode_faellt_bei_konformitaet_auf():
+    class Falsch:
+        def verankerungsrolle(self, **eingaben):
+            return bestandsdaten.Verankerungsrolle(False, "0" * 64, None)
+
+    def faehigkeit(self, name):
+        if name == "bestandsdaten":
+            return Falsch()
+        return PLV.faehigkeit(self, name)
+
+    befunde = konformitaet.pruefe(_abart(faehigkeit=faehigkeit))
+    assert any("verankerungsrolle(gültige Verankerung) liefert" in b for b in befunde), befunde
+    assert any("verankerungsrolle(Rolle ohne Datei) geht durch" in b for b in befunde), befunde
+
+
 def _abart(**aenderungen):
     """Eine PLV mit absichtlich falschen Zuegen."""
     klasse = type("Abart", (PLV,), aenderungen)
@@ -130,7 +158,7 @@ def test_vertragsversion_muss_eine_version_sein(v):
     assert any("ist keine Vertragsversion" in b for b in befunde), befunde
 
 
-@pytest.mark.parametrize("v", ["0.1.0", "0.2.0", "0.4.0", "1.3.0", "0.0.1"])
+@pytest.mark.parametrize("v", ["0.1.0", "0.2.0", "0.3.0", "1.4.0", "0.0.1"])
 def test_vertragsversion_muss_vertraeglich_sein(v):
     """0.1.0 und 0.2.0 sind dabei: Die PLV der Stufen 0 und 1 waere mit dem
     Vertrag der Stufe 2 nicht mehr konform, sie musste ausdruecklich
@@ -140,7 +168,7 @@ def test_vertragsversion_muss_vertraeglich_sein(v):
 
 
 def test_die_dritte_zahl_der_version_ist_frei():
-    assert konformitaet.pruefe(_abart(vertragsversion="0.3.9")) == []
+    assert konformitaet.pruefe(_abart(vertragsversion="0.4.9")) == []
 
 
 def test_faehigkeiten_muss_ein_frozenset_sein():
@@ -154,17 +182,17 @@ def test_unbekannte_faehigkeit_ist_ein_befund():
 
 
 def test_faehigkeit_ohne_protokoll_darf_niemand_anbieten():
-    """Der Vertrag beschreibt fuer 'bestandsdaten' noch kein Protokoll; ein
+    """Der Vertrag beschreibt fuer 'zugang' noch kein Protokoll; ein
     Zielsystem, das die Faehigkeit trotzdem anbietet, behauptet etwas, das
     der Vertrag nicht prueft."""
-    befunde = konformitaet.pruefe(_abart(faehigkeiten=lambda self: frozenset({"bestandsdaten"})))
+    befunde = konformitaet.pruefe(_abart(faehigkeiten=lambda self: frozenset({"zugang"})))
     assert any("beschreibt dafuer kein Protokoll" in b for b in befunde), befunde
 
 
 def test_eine_nicht_angebotene_faehigkeit_darf_nicht_geliefert_werden():
     befunde = konformitaet.pruefe(_abart(faehigkeit=lambda self, name: object()))
     nicht_angeboten = set(vertrag.FAEHIGKEITEN) - PLV().faehigkeiten()
-    assert len(nicht_angeboten) == 3
+    assert len(nicht_angeboten) == 2
     assert sorted(b for b in befunde if "obwohl es die Faehigkeit nicht anbietet" in b) == [
         f"liefert {n!r}, obwohl es die Faehigkeit nicht anbietet"
         for n in sorted(nicht_angeboten)
@@ -190,7 +218,7 @@ def test_faehigkeit_die_etwas_anderes_als_keyerror_wirft_ist_ein_befund():
         raise ValueError(f"kaputt: {name}")
     befunde = konformitaet.pruefe(_abart(faehigkeit=kaputt))
     assert "faehigkeit('rechnungsgrundlagen') wirft ValueError: kaputt: rechnungsgrundlagen" in befunde
-    assert "faehigkeit('bestandsdaten') wirft ValueError: kaputt: bestandsdaten, erwartet KeyError" in befunde
+    assert "faehigkeit('zugang') wirft ValueError: kaputt: zugang, erwartet KeyError" in befunde
 
 
 def test_angebotene_faehigkeit_wird_gegen_ihr_protokoll_geprueft(monkeypatch):
@@ -228,7 +256,7 @@ def test_die_plv_nennt_ihre_vertragsversion_selbst():
     import rechner_pipeline.plv.zielsystem as modul
 
     quelle = Path(modul.__file__).read_text(encoding="utf-8")
-    assert 'vertragsversion = "0.3.0"' in quelle
+    assert 'vertragsversion = "0.4.0"' in quelle
     assert "VERTRAG_VERSION" not in quelle
 
 
@@ -241,9 +269,110 @@ def _rg():
 
 
 def test_die_plv_bietet_die_rechnungsgrundlagen_an():
-    assert PLV().faehigkeiten() == frozenset({"rechnungsgrundlagen", "bewertung"})
+    assert PLV().faehigkeiten() == frozenset({"rechnungsgrundlagen", "bewertung", "bestandsdaten"})
     assert isinstance(_rg(), rechnungsgrundlagen.Rechnungsgrundlagen)
     assert konformitaet.pruefe_rechnungsgrundlagen(_rg()) == []
+
+
+def _bestandsprobe(tmp_path):
+    import hashlib
+    import json
+
+    import pandas as pd
+
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+    from rechner_pipeline.models.bestand import VERANKERUNG_SPALTEN
+
+    bestand = b"gebundene Bestandbytes"
+    pfad = tmp_path / "verankerung.parquet"
+    write_portfolio(pd.DataFrame({
+        name: pd.Series(dtype=dtype) for name, dtype in VERANKERUNG_SPALTEN
+    }), pfad)
+    verankerung = pfad.read_bytes()
+    manifest = {
+        "schema_version": 1, "erzeuger": "bestand_migrationszugang",
+        "kern_version": "probe", "horizont": "2026-01-01", "neuzugang_ab": None,
+        "config": {"datei": "generation-zellen.toml", "sha256": "0" * 64},
+        "eingaben": {},
+        "ausgaben": {"bestand.parquet": hashlib.sha256(bestand).hexdigest(),
+                     "verankerung.parquet": hashlib.sha256(verankerung).hexdigest()},
+    }
+    return bestand, verankerung, manifest
+
+
+def test_bestandsdaten_ist_ein_eigenes_protokoll_mit_gueltiger_rolle(tmp_path):
+    import hashlib
+    import json
+
+    from rechner_pipeline.zielsystem.bestandsdaten import Bestandsdaten, Verankerungsrolle
+
+    bestand, verankerung, manifest = _bestandsprobe(tmp_path)
+    umsetzung = anbieter.zielsystem().faehigkeit("bestandsdaten")
+    assert isinstance(umsetzung, Bestandsdaten)
+    assert umsetzung.verankerungsrolle(
+        manifest_bytes=json.dumps(manifest).encode(), bestand_bytes=bestand,
+        verankerung_bytes=verankerung,
+    ) == Verankerungsrolle(
+        vorhanden=True, bestand_sha256=hashlib.sha256(bestand).hexdigest(),
+        verankerung_sha256=hashlib.sha256(verankerung).hexdigest(),
+    )
+
+
+@pytest.mark.parametrize("fall", [
+    "beides_fehlt", "manifest_ohne_rolle", "rolle_ohne_datei", "datei_ohne_manifest",
+    "datei_ohne_rolle", "bestand_hash", "verankerung_hash", "verankerung_hash_gueltiges_parquet", "leere_datei",
+    "beschaedigte_datei", "unbekannter_erzeuger", "falscher_erzeuger",
+])
+def test_bestandsdaten_verweigert_ungebundene_rollen(tmp_path, fall):
+    import hashlib
+    import json
+
+    from rechner_pipeline.zielsystem.bestandsdaten import BestandsdatenFehler
+
+    bestand, verankerung, manifest = _bestandsprobe(tmp_path)
+    if fall in ("beides_fehlt", "datei_ohne_manifest"):
+        manifest_bytes = None
+    else:
+        manifest_bytes = json.dumps(manifest).encode()
+    if fall in ("beides_fehlt", "rolle_ohne_datei", "manifest_ohne_rolle"):
+        verankerung = None
+    if fall in ("manifest_ohne_rolle", "datei_ohne_rolle"):
+        del manifest["ausgaben"]["verankerung.parquet"]
+        manifest_bytes = json.dumps(manifest).encode()
+    if fall == "bestand_hash":
+        bestand = b"anderer Bestand"
+    if fall == "verankerung_hash":
+        verankerung = b"anderer Inhalt"
+    if fall == "verankerung_hash_gueltiges_parquet":
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        tabelle = pq.read_table(pa.BufferReader(verankerung))
+        ziel = pa.BufferOutputStream()
+        pq.write_table(tabelle.replace_schema_metadata({b"probe": b"abweichend"}), ziel)
+        verankerung = ziel.getvalue().to_pybytes()
+    if fall in ("leere_datei", "beschaedigte_datei"):
+        verankerung = b"" if fall == "leere_datei" else b"kein Parquet"
+        manifest["ausgaben"]["verankerung.parquet"] = hashlib.sha256(verankerung).hexdigest()
+        manifest_bytes = json.dumps(manifest).encode()
+    if fall == "unbekannter_erzeuger":
+        manifest["erzeuger"] = "fremd"
+        manifest_bytes = json.dumps(manifest).encode()
+    if fall == "falscher_erzeuger":
+        manifest["erzeuger"] = "bestand_fortschreibung"
+        manifest_bytes = json.dumps(manifest).encode()
+    umsetzung = anbieter.zielsystem().faehigkeit("bestandsdaten")
+    if fall in ("beides_fehlt", "manifest_ohne_rolle"):
+        rolle = umsetzung.verankerungsrolle(
+            manifest_bytes=manifest_bytes, bestand_bytes=bestand,
+            verankerung_bytes=verankerung)
+        assert rolle.vorhanden is False
+        assert rolle.verankerung_sha256 is None
+    else:
+        with pytest.raises(BestandsdatenFehler):
+            umsetzung.verankerungsrolle(
+                manifest_bytes=manifest_bytes, bestand_bytes=bestand,
+                verankerung_bytes=verankerung)
 
 
 def test_der_parametersatz_ist_der_modellpunkt_des_kerns():

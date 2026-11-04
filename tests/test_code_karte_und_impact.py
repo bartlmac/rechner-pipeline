@@ -996,6 +996,22 @@ def test_die_ratsche_deckt_genau_die_gemessenen_kanten():
     assert all(karte["module"][k["von"]]["ebene"] == "tool" for k in karte["tool_nach_vorzeige"])
 
 
+def test_bestandsrolle_laeuft_ueber_den_zielvertrag_ohne_neue_altlast():
+    """A-058: Das Gate kennt die PLV nicht und liest deren Manifest nicht
+    direkt. Die beiden neuen Module sind in der Code-Karte erfasst."""
+    karte = baue_karte(SRC)
+    kanten = {(k["von"], k["nach"]) for k in karte["kanten"]}
+    gate = "rechner_pipeline/gates/aktuartest_lauf.py"
+    vertrag = "rechner_pipeline/zielsystem/bestandsdaten.py"
+    plv = "rechner_pipeline/plv/bestandsdaten.py"
+    assert {vertrag, plv} <= set(karte["module"])
+    assert ("rechner_pipeline/zielsystem/vertrag.py", vertrag) in kanten
+    assert ("rechner_pipeline/plv/zielsystem.py", plv) in kanten
+    assert (gate, "rechner_pipeline/bestand/manifest.py") not in kanten
+    assert len(karte["tool_nach_vorzeige"]) == 15  # 14 Altlasten und der Anbieter
+    assert validate(karte) == []
+
+
 def test_die_altlast_der_ratsche_schrumpft_nur():
     """ADR-030: Die Ratsche besteht aus der einen Kante des Anbieters und
     der Altlast, die je Stufe schrumpft und nie waechst. Stufe 0: 36

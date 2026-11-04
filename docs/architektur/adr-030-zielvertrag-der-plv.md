@@ -1,7 +1,8 @@
 # ADR-030: Der Zielvertrag zwischen Migrationssystem und PLV
 
 **Status:** angenommen am 29.10.2026 (Entscheid des Maintainers, E-007:
-Option B für die Stufen 0 bis 2; die Stufen 3 bis 5 sind nicht beauftragt).
+Option B für die Stufen 0 bis 2; die Stufen 3 bis 5 waren zunächst nicht
+beauftragt). Das lesende Stück der Stufe 3 wurde für A-058 vorgezogen.
 Ort der Implementierung entschieden am 02.11.2026 (eigenes Paket `plv/`).
 Stufe 0 und Stufe 1 umgesetzt am 02.11.2026, Stufe 2 in drei Commits ab
 dem 02.11.2026 (2a: die Prüfstrecke). Entwurf vom 22.10.2026 aus Auftrag
@@ -169,7 +170,7 @@ Reihenfolge der Stufen, nach Nutzen und Größe:
 | 0 | Gerüst: Paket `zielsystem/` mit Version 0.1.0, Katalog der Fähigkeiten, Wurzelprotokoll, Konformität, Anbieter; Paket `plv/` mit der PLV, die noch keine Fähigkeit anbietet; Regel und Zähltest in der Schichtenkarte; Skill, ADR-017, ADR-028, README | umgesetzt 02.11.2026 |
 | 1 | Rechnungsgrundlagen (11 Namen): Der Vertrag liefert den wirksamen Parametersatz einer Generation bzw. einer Police vollständig, einschließlich der Defaults. Führungsprobe, Prüfstrecke und `models/bestand.py` lesen ihn von dort. Das schließt die Klasse von T28-04, nicht nur den einen Befund. | umgesetzt 02.11.2026 (unten) |
 | 2 | Bewertung (23 Namen): Werte, Verlauf und Vorgänge je Vertrag für `qa/aktuarieller_test`, `qa/migrationssuite` und `qa/abzugsabgleich`. Hier gehört die Komponentenzahl eines gelieferten Werts hin (T28-01). Spiegelt der Vertrag die Kern-Schnittstellen 1:1, ist er die Fassade aus Option C; er muss schmaler sein und dieselben Werte liefern. | 2a (Vertrag, PLV, Prüfstrecke), 2b (die Gates) und 2c (Schichtbeleg an den Bestand binden) umgesetzt 02.11.2026 |
-| 3 | Bestandsdaten (10 Namen) | nicht beauftragt |
+| 3 | Bestandsdaten (10 Namen) | Die lesende Verankerungsrolle für A-058 vorgezogen; übrige Namen nicht beauftragt |
 | 4 | Bestandsprüfung (6 Namen) | nicht beauftragt |
 | 5 | Zugang (16 Namen), zuletzt. Er ist am stärksten PLV-eigen. Vorher ist zu klären, welcher Teil der Ableitung Prüfstrecke (Tool) und welcher Führung (PLV) ist. | nicht beauftragt |
 
@@ -326,6 +327,27 @@ Hinweise ohne Bedingung: die drei Anbieterbindungen beim Import
 Werte-Pfaden (H3), die Wache der Summationsreihenfolge jenseits der
 Fall-3-Probe (H6).
 
+### Vorgezogenes Stück Stufe 3: lesende Verankerungsrolle für A-058
+
+Der Zielvertrag 0.4.0 bietet `bestandsdaten` mit genau einer Methode
+`verankerungsrolle` an. Der Aufrufer übergibt bereits gebundene Bytes des
+Laufmanifests, des Bestands und der optionalen Verankerung. Die PLV prüft
+den Erzeuger `bestand_migrationszugang`, die beiden Ausgaberollen und ihre
+SHA-256-Werte sowie die Parquet-Form der Verankerung. Fehler werden als
+`BestandsdatenFehler` gemeldet. Das Tool erhält nur die nachgewiesene
+Rolle und die Hashes. Die drei Laufproduzenten verlangen bei vorhandener
+Verankerung einen abgeleiteten Schichtbeleg, der beide Bytes bindet; ein
+registrierter Beleg genügt im Bestands-Scope nicht.
+
+Die Grenze dieses Stücks ist ausdrücklich: Fehlen Laufmanifest und
+Verankerungsdatei beide, gilt der Bestand als ohne Verankerung. Das
+Laufmanifest wird nur bei vollständiger Schicht geschrieben, und ein
+Bestand ohne beide Dateien ist daher auch ein ordentlicher Zustand. Ein
+späterer Anker könnte der Übernahmebeleg aus `bestand_uebernehmen` sein,
+dem Produzenten der `verankerung.parquet`. Dieser Auftrag schließt die
+Grenze nicht. Die übrigen Bestandsdaten-Namen der Stufe 3 und die Stufen
+4 und 5 bleiben unbeauftragt. Die Altlast-Ratsche bleibt bei 14 Kanten.
+
 ## Nachweis je Stufe
 
 - volle Suite grün;
@@ -334,7 +356,9 @@ Fall-3-Probe (H6).
 - ab Stufe 1 die Zahl der Altlast-Kanten gesenkt (Stufe 0 ist Gerüst und
   lässt sie bei 36), die Ratsche gleich der Messung; `landkarte.md`,
   Code-Index und Code-Karte nachgezogen;
-- keine Gate-Version geändert, weil sich kein Beleg-Byte ändert.
+- in Stufen 0 bis 2 keine weitere Gate-Version geändert, sofern sich kein
+  Beleg-Byte ändert; A-058 ändert die Verweigerungsregel der Abnahme und
+  hebt deshalb `aktuartest` auf 6.0.0 und `abnahmebericht` auf 14.0.0.
 
 ## Konsequenzen
 
