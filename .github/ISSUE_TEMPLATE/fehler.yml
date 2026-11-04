@@ -1,0 +1,45 @@
+name: Fehler
+description: Etwas verhält sich anders als erwartet
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Eine Sicherheitslücke bitte nicht hier melden, sondern privat, wie in SECURITY.md beschrieben.
+  - type: dropdown
+    id: modul
+    attributes:
+      label: Modul
+      description: Das Modul, in dem der Fehler auftritt, falls bekannt (siehe CONTRIBUTING.md, Module).
+      options:
+        - Maintainer Office
+        - Agentisches System
+        - Bestandsmigration
+        - Cashflow-Modelle
+        - Excel-Landschaften
+        - unbekannt
+  - type: input
+    id: stand
+    attributes:
+      label: Stand
+      description: Der Commit oder Zweig, auf dem der Fehler auftritt.
+  - type: textarea
+    id: schritte
+    attributes:
+      label: Schritte
+      description: Die Schritte, mit denen sich der Fehler wiederholen lässt, mit den Befehlen wörtlich.
+    validations:
+      required: true
+  - type: textarea
+    id: erwartet
+    attributes:
+      label: Erwartet
+      description: Was hätte passieren sollen?
+    validations:
+      required: true
+  - type: textarea
+    id: beobachtet
+    attributes:
+      label: Beobachtet
+      description: Was ist passiert? Fehlermeldungen wörtlich, ohne Zugangsdaten und ohne echte Daten.
+    validations:
+      required: true
