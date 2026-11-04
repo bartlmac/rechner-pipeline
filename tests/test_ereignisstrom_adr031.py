@@ -328,6 +328,34 @@ def test_die_ratsche_nennt_genau_die_drei_kanten_des_adr():
     }
 
 
+def test_listenvertrag_gehoert_zur_fuehrung_und_alte_importe_bleiben():
+    from rechner_pipeline.bestand import ereignisliste as vertrag
+    from rechner_pipeline.betrieb import ziehung as tagesziehung
+
+    assert ziehung.Ereignisliste is ereignisse.Ereignisliste is vertrag.Ereignisliste
+    assert tagesziehung.Ereignisliste is vertrag.Ereignisliste
+    assert ziehung.EreignisError is ereignisse.EreignisError is vertrag.EreignisError
+    assert ziehung.zugangslage is ereignisse._zugangslage is vertrag.zugangslage
+    assert ziehung.EREIGNISLISTE_SPALTEN is vertrag.EREIGNISLISTE_SPALTEN
+
+
+def test_alle_drei_leser_importieren_den_vertrag_direkt():
+    import ast
+
+    pfade = (
+        "bestand/ziehung.py", "bestand/ereignisse.py", "betrieb/ziehung.py",
+    )
+    for pfad in pfade:
+        quelltext = (REPO / "src/rechner_pipeline" / pfad).read_text()
+        imports = [k for k in ast.walk(ast.parse(quelltext)) if isinstance(k, ast.ImportFrom)]
+        vertrag = [k for k in imports if k.module == "rechner_pipeline.bestand.ereignisliste"]
+        namen = {a.name for k in vertrag for a in k.names}
+        assert {"Ereignisliste", "TOD"} <= namen, pfad
+    quelltext = (REPO / "src/rechner_pipeline/bestand/ereignisliste.py").read_text()
+    imports = [k.module for k in ast.walk(ast.parse(quelltext)) if isinstance(k, ast.ImportFrom)]
+    assert "rechner_pipeline.bestand.ziehung" not in imports
+
+
 # --------------------------------------------------------------------------- #
 # 5. Zwei Sichten auf dieselbe Config
 # --------------------------------------------------------------------------- #

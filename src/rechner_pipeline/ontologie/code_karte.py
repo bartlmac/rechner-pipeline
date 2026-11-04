@@ -164,10 +164,8 @@ VORZEIGE_NACH_WERKZEUG_ERLAUBT: Set[tuple] = {
     # 2. Die Fassade ``fortschreiben`` (ziehen, dann buchen in einem Aufruf —
     #    die Schnittstelle vor ADR-031, die Tests und cli_fortschreibung
     #    rufen). Die Buchung selbst, ``buche``, ruft keine Ziehung; den
-    #    Vertrag der Liste (Codes, Schema, Fehler, dazu zugangslage) liest sie
-    #    heute aus dem Modul der Welt — Folgepunkt: den Vertrag in ein Modul
-    #    der Fuehrung oder nach models/ legen, dann traegt nur noch die
-    #    Fassade die Kante.
+    #    Listenvertrag (Codes, Schema, Fehler, Zugangslage) liest sie direkt
+    #    aus ``bestand.ereignisliste``. Die Fassade traegt die Kante weiter.
     ("rechner_pipeline/bestand/ereignisse.py", "rechner_pipeline/bestand/ziehung.py"),
     # 3. Das Tagesjournal zieht den Meldeverzug (Strom ``meldeverzug``) —
     #    mit Tagesstrom nimmt es die Meldetage aus der Liste, ohne Strom

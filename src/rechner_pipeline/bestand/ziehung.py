@@ -41,7 +41,7 @@ Knoten: klv, bu
 from __future__ import annotations
 
 import datetime as _dt
-from typing import Any, Dict, List, Mapping, NamedTuple, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import numpy as np
 import pandas as pd
@@ -51,7 +51,6 @@ from rechner_pipeline.bestand.zufallsstroeme import STROEME
 from rechner_pipeline.kern import tafeln
 from rechner_pipeline.kern.beitragsreduktion import TEILKUENDIGUNG
 from rechner_pipeline.models.bestand import (
-    STAMM_SPALTEN,
     bu_model_point_kwargs,
     model_point_kwargs,
 )
@@ -72,89 +71,31 @@ HERABSETZUNG_STREAM = STROEME["herabsetzung"]  # Register: bestand.zufallsstroem
 #: dem Entscheid des Maintainers 2026-10-01) — aus demselben Grund.
 TEILKUENDIGUNG_STREAM = STROEME["teilkuendigung"]  # Register: bestand.zufallsstroeme
 
-#: Die Ereignisse der Liste, einzeln benannt. Die Codes sind die des
-#: Ledgers (``models.bestand.EREIGNIS_VALUES``); hier stehen sie als Namen,
-#: damit die Buchung nach ihnen verzweigt, ohne ein Literal zu nennen.
-TOD = "TOD"
-STO = "STO"
-PEX = "PEX"
-ERH = "ERH"
-RED = "RED"
-TKU = "TKU"
-INV = "INV"
-REA = "REA"
-
-#: Schema der Ereignisliste (Spalte, dtype).
-EREIGNISLISTE_SPALTEN = (
-    ("police_id", "int64"),
-    # Reihenfolge der Ziehung je Police (1, 2, ...): Die Buchung wendet die
-    # Ereignisse eines Vertrags genau in dieser Reihenfolge an.
-    ("lfd", "int64"),
-    ("vertragsjahr", "int64"),       # gebuchter Jahrestag (vollendete Jahre)
-    ("ereignis", "object"),
-    ("wirkungstag", "datetime64[ns]"),
-    # Herabsetzung/Teilkuendigung: fortgefuehrter Anteil; Erhoehung: Satz
-    # der Erhoehung (Anteil der gefuehrten Summe); sonst NaN.
-    ("anteil", "float64"),
-    # Herabsetzung/Teilkuendigung: das Verfahren (prospektiv, mit_abzug,
-    # teilkuendigung); sonst leer.
-    ("verfahren", "object"),
+# Der Listenvertrag liegt in der Fuehrung; die Namen bleiben fuer bisherige
+# Aufrufer dieses Ziehmoduls als Reexporte erhalten.
+from rechner_pipeline.bestand.ereignisliste import (  # noqa: F401
+    EREIGNISLISTE_NAMES,
+    EREIGNISLISTE_SPALTEN,
+    OHNE_ANTEIL,
+    OHNE_VERFAHREN,
+    ERH,
+    INV,
+    PEX,
+    REA,
+    RED,
+    STO,
+    TKU,
+    TOD,
+    EreignisError,
+    Ereignisliste,
+    leere_ereignisse,
+    leere_zugaenge,
+    zugangslage,
 )
-EREIGNISLISTE_NAMES = tuple(name for name, _ in EREIGNISLISTE_SPALTEN)
-#: Anteil und Verfahren eines Ereignisses, das keine traegt (Tod, Storno,
-#: Beitragsfreistellung, BU-Uebergaenge; die Erhoehung traegt einen Satz,
-#: aber kein Verfahren).
-OHNE_ANTEIL = float("nan")
-OHNE_VERFAHREN = ""
-
-
-class EreignisError(ValueError):
-    """Raised when the portfolio and config do not fit the simulation.
-
-    Der eine Fehler von Ziehung und Buchung (``bestand.ereignisse`` fuehrt
-    ihn unter demselben Namen): Was die Welt nicht ziehen kann, kann die
-    Fuehrung nicht buchen.
-    """
-
-
-class Ereignisliste(NamedTuple):
-    """Was die Welt bis zum Horizont geschehen laesst: die Zugaenge (neue
-    Vertraege als POL-Basiszeilen, Schema ``STAMM_SPALTEN``) und die
-    gezogenen Ereignisse aller Vertraege (Schema
-    :data:`EREIGNISLISTE_SPALTEN`). Die Buchung braucht nichts weiter."""
-
-    zugaenge: pd.DataFrame
-    ereignisse: pd.DataFrame
-
-
-def leere_ereignisse() -> pd.DataFrame:
-    return pd.DataFrame({name: pd.Series(dtype=dtype) for name, dtype in EREIGNISLISTE_SPALTEN})
-
-
-def leere_zugaenge() -> pd.DataFrame:
-    return pd.DataFrame({name: pd.Series(dtype=dtype) for name, dtype in STAMM_SPALTEN})
 
 
 def _add_years(d: _dt.date, years: int) -> _dt.date:
     return _dt.date(d.year + years, d.month, 1)
-
-
-def _vertragsjahr(beginn: _dt.date, datum: _dt.date) -> int:
-    monate = (datum.year - beginn.year) * 12 + (datum.month - beginn.month)
-    return max(0, monate // 12)
-
-
-def zugangslage(row: Mapping[str, Any]) -> tuple:
-    """(erstes zu simulierendes Vertragsjahr, Zustand beim Zugang, Jahr des
-    Zustandswechsels) — dieselbe Lesart wie ``ereignisse._zugangslage``:
-    ein uebernommener Vertrag tritt mit seinem Alter und Zustand ein, die
-    Jahre davor gehoeren dem abgebenden Unternehmen."""
-    beginn = pd.Timestamp(row["insurance_start"]).date()
-    zugang = pd.Timestamp(row["bestandszugang"]).date()
-    ab_jahr = _vertragsjahr(beginn, zugang)
-    zustand = str(row.get("status_code", "POL"))
-    seit = _vertragsjahr(beginn, pd.Timestamp(row["status_date"]).date())
-    return ab_jahr, zustand, seit
 
 
 def _eintrag(

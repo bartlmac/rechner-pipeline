@@ -141,29 +141,31 @@ from rechner_pipeline.models.bestand import (
     model_point_kwargs,
     reduktion_ereignis,
 )
-# Die Ziehung (Ebene 4): die EINE Kante der Buchung in die Welt. Ueber sie
-# kommen die Stromkonstanten (fuer Leser, die sie hier erwarten), die Codes
-# der Ereignisliste, der gemeinsame Fehler und die Fassade zum Erzeuger.
-from rechner_pipeline.bestand.ziehung import (  # noqa: F401 — Re-Exporte
-    EREIGNIS_STREAM,
+from rechner_pipeline.bestand.ereignisliste import (  # noqa: F401 — Re-Exporte
+    EREIGNISLISTE_NAMES,
     ERH,
-    HERABSETZUNG_STREAM,
     INV,
     PEX,
     REA,
     RED,
     STO,
-    TEILKUENDIGUNG_STREAM,
     TKU,
     TOD,
     Ereignisliste,
     EreignisError,
+    zugangslage as _zugangslage,
+)
+# Die Fassade und die Stromnamen fuer bisherige Aufrufer brauchen weiter die
+# benannte Kante zur Ziehung; die Buchung liest den Vertrag direkt oben.
+from rechner_pipeline.bestand.ziehung import (  # noqa: F401 — Re-Exporte
+    EREIGNIS_STREAM,
+    HERABSETZUNG_STREAM,
+    TEILKUENDIGUNG_STREAM,
     bu_uebergang,
     neuzugaenge as _neuzugaenge_der_welt,
     ziehe,
     ziehe_bu_vertrag,
     ziehe_vertrag,
-    zugangslage as _zugangslage,
 )
 
 #: Betrags-Art der BU-GeVos: die von diesem Geschaeftsvorfall betroffene
@@ -998,8 +1000,6 @@ def _vertraege_pruefen(gesamt: pd.DataFrame, config: BestandConfig) -> None:
 
 def _ereignisse_je_police(ereignisse: pd.DataFrame) -> Dict[int, List[Dict[str, Any]]]:
     """Police -> Eintraege in gegebener Zugreihenfolge; ungueltige Form abweisen."""
-    from rechner_pipeline.bestand.ziehung import EREIGNISLISTE_NAMES
-
     fehlend = [c for c in EREIGNISLISTE_NAMES if c not in ereignisse.columns]
     if fehlend:
         raise EreignisError(f"Ereignisliste: Spalten fehlen: {fehlend}")
@@ -1048,7 +1048,7 @@ def buche(
     Basisbestand anwenden, mit Betraegen aus dem Kern.
 
     ``liste`` ist, was die Welt geschehen laesst
-    (:class:`~rechner_pipeline.bestand.ziehung.Ereignisliste`): die
+    (:class:`~rechner_pipeline.bestand.ereignisliste.Ereignisliste`): die
     Zugaenge als POL-Basiszeilen und die Ereignisse aller Vertraege. Die
     Buchung zieht nichts; sie kennt weder Seed noch Annahmen. Jeder Zugang
     bekommt seinen ZUG-Eintrag (Summe und Beitrag), jeder Vertrag wird ab
