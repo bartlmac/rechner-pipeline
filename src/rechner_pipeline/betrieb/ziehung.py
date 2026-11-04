@@ -25,7 +25,8 @@ from typing import Iterable, NamedTuple, Optional, Tuple
 import pandas as pd
 
 from rechner_pipeline.bestand.config import BestandConfig
-from rechner_pipeline.bestand.ziehung import TOD, Ereignisliste, ziehe
+from rechner_pipeline.bestand.ereignisliste import TOD, Ereignisliste
+from rechner_pipeline.bestand.ziehung import ziehe
 # Die Ziehung des Meldeverzugs steht im Tagesjournal (die Leser des Journals
 # binden sie dort); der Strom ruft sie ueber das Modul, damit auch eine
 # dort ersetzte Ziehung hier gilt.

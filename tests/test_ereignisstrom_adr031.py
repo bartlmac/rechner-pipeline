@@ -219,8 +219,10 @@ def test_ein_ereignis_nach_dem_ende_des_vertrags_ist_ein_fehler(klv):
 def test_eine_fremde_police_in_der_liste_ist_ein_fehler(klv):
     config, stamm, zugaenge = klv
     liste = _liste(config, stamm, zugaenge)
-    fremd = liste.ereignisse.copy()
-    fremd.loc[fremd.index[0], "police_id"] = 999_999_999
+    fremde_zeile = liste.ereignisse.iloc[[0]].copy()
+    fremde_zeile.loc[:, "police_id"] = 999_999_999
+    fremde_zeile.loc[:, "lfd"] = 1
+    fremd = pd.concat([liste.ereignisse, fremde_zeile], ignore_index=True)
     with pytest.raises(ereignisse.EreignisError, match="Policen, die der Bestand nicht fuehrt"):
         ereignisse.buche(stamm, config, BIS, Ereignisliste(zugaenge, fremd))
 
@@ -324,6 +326,34 @@ def test_die_ratsche_nennt_genau_die_drei_kanten_des_adr():
         ("rechner_pipeline/bestand/ereignisse.py", "rechner_pipeline/bestand/ziehung.py"),
         ("rechner_pipeline/betrieb/tagesjournal.py", "rechner_pipeline/bestand/zufallsstroeme.py"),
     }
+
+
+def test_listenvertrag_gehoert_zur_fuehrung_und_alte_importe_bleiben():
+    from rechner_pipeline.bestand import ereignisliste as vertrag
+    from rechner_pipeline.betrieb import ziehung as tagesziehung
+
+    assert ziehung.Ereignisliste is ereignisse.Ereignisliste is vertrag.Ereignisliste
+    assert tagesziehung.Ereignisliste is vertrag.Ereignisliste
+    assert ziehung.EreignisError is ereignisse.EreignisError is vertrag.EreignisError
+    assert ziehung.zugangslage is ereignisse._zugangslage is vertrag.zugangslage
+    assert ziehung.EREIGNISLISTE_SPALTEN is vertrag.EREIGNISLISTE_SPALTEN
+
+
+def test_alle_drei_leser_importieren_den_vertrag_direkt():
+    import ast
+
+    pfade = (
+        "bestand/ziehung.py", "bestand/ereignisse.py", "betrieb/ziehung.py",
+    )
+    for pfad in pfade:
+        quelltext = (REPO / "src/rechner_pipeline" / pfad).read_text()
+        imports = [k for k in ast.walk(ast.parse(quelltext)) if isinstance(k, ast.ImportFrom)]
+        vertrag = [k for k in imports if k.module == "rechner_pipeline.bestand.ereignisliste"]
+        namen = {a.name for k in vertrag for a in k.names}
+        assert {"Ereignisliste", "TOD"} <= namen, pfad
+    quelltext = (REPO / "src/rechner_pipeline/bestand/ereignisliste.py").read_text()
+    imports = [k.module for k in ast.walk(ast.parse(quelltext)) if isinstance(k, ast.ImportFrom)]
+    assert "rechner_pipeline.bestand.ziehung" not in imports
 
 
 # --------------------------------------------------------------------------- #
@@ -570,6 +600,155 @@ def test_der_wirkungstag_eines_bu_ereignisses_ist_der_jahrestag(bu):
     df.loc[i, "wirkungstag"] = df.loc[i, "wirkungstag"] + pd.DateOffset(years=1)
     with pytest.raises(ereignisse.EreignisError, match=rf"police {pid}: {code} im Vertragsjahr {jahr}: Wirkungstag"):
         ereignisse.buche(stamm, config, BIS, Ereignisliste(liste.zugaenge, df))
+
+
+@pytest.mark.parametrize("produkt", ["klv", "bu"])
+def test_echte_gezogene_listen_haben_eine_gueltige_folge(produkt, klv, bu):
+    config, stamm, zugaenge = klv if produkt == "klv" else bu
+    liste = _liste(config, stamm, zugaenge)
+    geprueft = ereignisse._ereignisse_je_police(liste.ereignisse)
+    assert sum(map(len, geprueft.values())) == len(liste.ereignisse)
+
+
+@pytest.mark.parametrize("lfd,jahre,codes,muster", [
+    ([0], [1], ["ERH"], "lfd.*positiv"),
+    ([1, 1], [1, 2], ["ERH", "STO"], "lfd.*doppelt"),
+    ([1, 3], [1, 2], ["ERH", "STO"], "lfd.*fortlaufend"),
+    ([2, 1], [2, 1], ["STO", "PEX"], "lfd.*reihenfolge"),
+    ([1, 2], [2, 1], ["STO", "PEX"], "Vertragsjahr.*faellt"),
+    ([1, 2], [1, 1], ["ERH", "ERH"], "ERH.*doppelt"),
+    ([1, 2], [1, 1], ["TKU", "TKU"], "TKU.*doppelt"),
+    ([1, 2], [1, 1], ["PEX", "PEX"], "PEX.*doppelt"),
+    ([1, 2], [1, 1], ["RED", "RED"], "RED.*doppelt"),
+])
+def test_fremde_liste_mit_falscher_folge_wird_vor_der_buchung_verweigert(
+    lfd, jahre, codes, muster,
+):
+    df = pd.DataFrame({
+        "police_id": [17] * len(lfd), "lfd": lfd,
+        "vertragsjahr": jahre, "ereignis": codes,
+        "wirkungstag": [pd.Timestamp("2021-01-01")] * len(lfd),
+        "anteil": [float("nan")] * len(lfd), "verfahren": [""] * len(lfd),
+    })
+    with pytest.raises(ereignisse.EreignisError, match=rf"police 17: .*{muster}"):
+        ereignisse._ereignisse_je_police(df)
+
+
+def test_verschiedene_vorgaenge_im_selben_jahr_bleiben_in_zugreihenfolge():
+    df = pd.DataFrame({
+        "police_id": [17, 17, 19], "lfd": [1, 2, 1],
+        "vertragsjahr": [1, 1, 4], "ereignis": ["ERH", "PEX", "TOD"],
+        "wirkungstag": [pd.Timestamp("2021-01-01")] * 3,
+        "anteil": [0.05, float("nan"), float("nan")],
+        "verfahren": ["", "", ""],
+    })
+    assert [e["ereignis"] for e in ereignisse._ereignisse_je_police(df)[17]] == ["ERH", "PEX"]
+
+
+@pytest.mark.parametrize("nummer", [float("inf"), "falsch"])
+def test_unlesbare_laufende_nummer_gibt_den_gemeinsamen_formfehler(nummer):
+    df = pd.DataFrame([{
+        "police_id": 17, "lfd": nummer, "vertragsjahr": 1, "ereignis": "ERH",
+        "wirkungstag": pd.Timestamp("2021-01-01"), "anteil": .05, "verfahren": "",
+    }])
+    with pytest.raises(ereignisse.EreignisError, match="police 17: lfd"):
+        ereignisse._ereignisse_je_police(df)
+
+
+def test_spaetere_erhoehung_und_storno_vor_freistellung_kommen_nicht_zum_kern(klv):
+    config, stamm, _ = klv
+    row = stamm[(stamm["premium_duration"] > 3) & (stamm["duration"] > 4)].iloc[0]
+    pid, start = int(row["police_id"]), pd.Timestamp(row["insurance_start"])
+    df = pd.DataFrame([
+        {"police_id": pid, "lfd": lfd, "vertragsjahr": jahr,
+         "ereignis": code, "wirkungstag": start + pd.DateOffset(years=jahr),
+         "anteil": anteil, "verfahren": ""}
+        for lfd, jahr, code, anteil in [
+            (1, 2, "ERH", .05), (2, 3, "STO", float("nan")),
+            (3, 1, "PEX", float("nan")),
+        ]
+    ]).astype(dict(ziehung.EREIGNISLISTE_SPALTEN))
+    with pytest.raises(ereignisse.EreignisError,
+                       match=rf"police {pid}: PEX im Vertragsjahr 1: Vertragsjahr faellt"):
+        ereignisse.buche(stamm, config, BIS, Ereignisliste(leere_zugaenge(), df))
+
+
+def test_gueltige_liste_in_falscher_eingangsfolge_ist_ein_formfehler(klv):
+    config, stamm, _ = klv
+    row = stamm[(stamm["premium_duration"] > 3) & (stamm["duration"] > 4)].iloc[0]
+    pid, start = int(row["police_id"]), pd.Timestamp(row["insurance_start"])
+    eintraege = [
+        {"police_id": pid, "lfd": lfd, "vertragsjahr": jahr,
+         "ereignis": code, "wirkungstag": start + pd.DateOffset(years=jahr),
+         "anteil": anteil, "verfahren": ""}
+        for lfd, jahr, code, anteil in [
+            (1, 1, "ERH", .05), (2, 2, "PEX", float("nan")),
+        ]
+    ]
+    gut = pd.DataFrame(eintraege).astype(dict(ziehung.EREIGNISLISTE_SPALTEN))
+    assert len(ereignisse.buche(stamm, config, BIS,
+                               Ereignisliste(leere_zugaenge(), gut)).ledger) > 0
+    falsch = gut.iloc[[1, 0]].reset_index(drop=True)
+    with pytest.raises(ereignisse.EreignisError,
+                       match=rf"police {pid}: lfd nicht in Zugreihenfolge"):
+        ereignisse.buche(stamm, config, BIS, Ereignisliste(leere_zugaenge(), falsch))
+
+
+def _regelzeile(code, jahr, *, anteil=float("nan"), verfahren="", tag=None):
+    return {"vertragsjahr": jahr, "ereignis": code,
+            "wirkungstag": pd.Timestamp(tag or dt.date(2020 + jahr, 1, 1)),
+            "anteil": anteil, "verfahren": verfahren}
+
+
+@pytest.mark.parametrize("fall,schlecht,gut,fehler", [
+    ("tag", _regelzeile("ERH", 2, anteil=.05, tag="2022-02-01"),
+     _regelzeile("ERH", 2, anteil=.05), "Wirkungstag"),
+    ("erh_ende", _regelzeile("ERH", 5, anteil=.05),
+     _regelzeile("ERH", 4, anteil=.05), "Erhoehung nach dem Beitragsende"),
+    ("red_ende", _regelzeile("RED", 5, anteil=.5, verfahren="prospektiv"),
+     _regelzeile("RED", 4, anteil=.5, verfahren="prospektiv"),
+     "Herabsetzung nach dem Beitragsende"),
+    ("tku_ablauf", _regelzeile("TKU", 10, anteil=.5, verfahren="teilkuendigung"),
+     _regelzeile("TKU", 9, anteil=.5, verfahren="teilkuendigung"),
+     "Teilkuendigung im Ablaufjahr"),
+    ("pex_anteil", _regelzeile("PEX", 2, anteil=.5),
+     _regelzeile("PEX", 2), "traegt Anteil oder Verfahren"),
+])
+def test_klv_zustandsregel_mit_zulaessigem_nachbarfall(fall, schlecht, gut, fehler):
+    row = {"insurance_start": pd.Timestamp("2020-01-01"),
+           "duration": 10, "premium_duration": 5}
+    tarifwerk = {"red_verfahren": "prospektiv"}
+    assert any(fehler in f for f in ereignisse._regelverstoesse(
+        row, [schlecht], 0, None, tarifwerk=tarifwerk)), fall
+    assert ereignisse._regelverstoesse(row, [gut], 0, None, tarifwerk=tarifwerk) == [], fall
+
+
+def test_herabsetzung_bei_tarif_ohne_herabsetzung_wird_verweigert():
+    row = {"insurance_start": pd.Timestamp("2020-01-01"),
+           "duration": 10, "premium_duration": 5}
+    e = _regelzeile("RED", 2, anteil=.5, verfahren="prospektiv")
+    assert any("Tarif, der sie nicht kennt" in f for f in ereignisse._regelverstoesse(
+        row, [e], 0, None, tarifwerk={"red_verfahren": ereignisse.TEILKUENDIGUNG}))
+    assert ereignisse._regelverstoesse(
+        row, [e], 0, None, tarifwerk={"red_verfahren": "prospektiv"}) == []
+
+
+def test_bu_eintrag_ohne_parameter_ist_zulaessig():
+    row = {"insurance_start": pd.Timestamp("2020-01-01")}
+    schlecht = _regelzeile("INV", 2, anteil=.5)
+    gut = _regelzeile("INV", 2)
+    assert any("traegt Anteil oder Verfahren" in f for f in ereignisse._bu_regelverstoesse(row, [schlecht]))
+    assert ereignisse._bu_regelverstoesse(row, [gut]) == []
+
+
+def test_beitragsfrei_uebernommener_vertrag_startet_beitragsfrei():
+    row = {"insurance_start": pd.Timestamp("2020-01-01"),
+           "duration": 10, "premium_duration": 5}
+    e = _regelzeile("PEX", 3)
+    tarifwerk = {"red_verfahren": "prospektiv"}
+    assert any("zweite Beitragsfreistellung" in f for f in ereignisse._regelverstoesse(
+        row, [e], 3, 2, tarifwerk=tarifwerk))
+    assert ereignisse._regelverstoesse(row, [e], 3, None, tarifwerk=tarifwerk) == []
 
 
 # --------------------------------------------------------------------------- #
