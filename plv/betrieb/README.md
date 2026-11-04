@@ -692,6 +692,30 @@ weil das Gate die Glieder der Linie prüft (ADR-029, Entscheid e). Mit
 `AUSLIEFERUNG=nein` exportiert die Routine nur eine Momentaufnahme und
 braucht keinen dieser Schlüssel.
 
+**Revisionsangabe der A-B1 von außen prüfen.** Fehlt im Container ein
+lesbarer Git-Baum, übernimmt nur A-B1 einen vollständigen, kleingeschriebenen
+40-stelligen Hex-Hash aus `PLV_IMAGE_REVISION` in `system.commit` des
+signierten Snapshots; die Ergebnisanzeige zeigt seine ersten zwölf Stellen.
+Bei ungültiger Angabe bleibt der Commit `unbekannt`, ebenso bleiben ohne Git
+`system.branch` und `system.dirty` unbekannt. Ein lesbarer Git-Commit hat
+Vorrang. Die Image-Revision ist eine signierte Behauptung des Image-Baus;
+das Gate rechnet die Commit-Identität im Container nicht nach. Bereits
+gezeichnete A-B1-Snapshots behalten ihren bisherigen Systemstand.
+
+Ein Prüfer hält den Snapshot gegen das **konkret verwendete Image**: Den
+Image-Digest aus dem ausgelieferten `stand.json` mit dem gezogenen Image
+abgleichen und an genau diesem Digest das OCI-Label
+`org.opencontainers.image.revision` lesen. Dessen vollständiger Wert muss
+`system.commit` entsprechen. Dann einen sauberen Checkout genau dieser
+Revision herstellen und den SHA-256 des Paketbaums
+`src/rechner_pipeline` über die `.py`- und `.xml`-Dateien mit
+`rechner_pipeline.gates._provenienz.paket_sha256` unabhängig vom laufenden
+Container berechnen. Dieser Wert muss `system.quellcode_sha256` im
+signierten A-B1-Snapshot entsprechen. Ein gleicher Paket-Hash belegt den
+ausgeführten Paketinhalt, bestimmt aber den Git-Commit nicht eindeutig;
+deshalb gehören Image-Digest und Label zur Prüfung. Die Signatur des
+Snapshots ist mit dem zugehörigen Schlüsselring zu prüfen.
+
 Was sie nicht tut: kein Image umstellen, kein `CODESTAND` nachziehen,
 nichts in `main` von `plv-fiktion` ändern. Wechselt das Image, hält sie an,
 bis ein Pull Request `CODESTAND` mitgezogen hat.

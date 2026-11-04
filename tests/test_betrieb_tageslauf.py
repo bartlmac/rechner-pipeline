@@ -662,6 +662,44 @@ def _gealterte_uebernahme(ablage: Ablage, fall_wurzel: Path,
     return ueb.eingang_anlegen(_mit_config(ablage.wurzel), fall, BETRIEBSBEGINN)
 
 
+def test_tageslauf_reicht_meldetage_fuer_gebuchten_tod_an_beide_leser(tmp_path, monkeypatch):
+    """Ein echter Lauf mit Tod nutzt in Sicht und Journal den Tagesstrom.
+
+    Die Welt zieht kontrolliert sieben Meldetage. Waehrend des Laufs darf
+    der Journal-Rueckfall keine fehlende Weitergabe verdecken. Ohne
+    Tagesstrom bleibt der Rueckfall fuer andere Leser zulaessig.
+    """
+    from rechner_pipeline.bestand.config import load_config
+    from rechner_pipeline.betrieb import tagesjournal as tj
+
+    ablage = _ablage(tmp_path / "plv")
+    _gealterte_uebernahme(ablage, tmp_path / "plv-fall")
+    monkeypatch.setattr(tj, "meldeverzug_tage", lambda config, police_id, jahr: 7)
+    original = tj._meldeverzug
+    aufrufe = []
+
+    def nur_aus_strom(config, police_id, wirkungstag, meldetage):
+        assert meldetage is not None, "Meldetage des Tagesstroms fehlen"
+        aufrufe.append((int(police_id), wirkungstag.year, int(meldetage[(int(police_id), wirkungstag.year)])))
+        return original(config, police_id, wirkungstag, meldetage)
+
+    with monkeypatch.context() as kontrolle:
+        kontrolle.setattr(tj, "_meldeverzug", nur_aus_strom)
+        code, _ = tageslauf(ablage, dt.date(2026, 6, 30))
+    assert code == EXIT_OK
+    ledger = read_portfolio(ablage.stand / "ledger.parquet")
+    tode = ledger[(ledger["ereignis"] == "TOD")
+                   & (ledger["status_date"] > pd.Timestamp(BETRIEBSBEGINN))]
+    journal = read_portfolio(ablage.tagesjournal_pfad, expected_columns=TAGESJOURNAL_NAMES)
+    journal_tode = journal[journal["ereignis"] == "TOD"]
+    assert len(tode) > 0 and len(journal_tode) > 0
+    assert len(aufrufe) >= 2 * len(tode) and {a[2] for a in aufrufe} == {7}
+    # Positivkontrolle: Ein Journal-Leser ohne Tagesstrom darf weiter selbst ziehen.
+    config = load_config(ablage.config_pfad)
+    ohne_strom = tj.mit_buchungstagen(config, ledger)
+    assert len(ohne_strom[ohne_strom["ereignis"] == "TOD"]) == len(tode)
+
+
 def test_ein_abschluss_ist_dieselbe_datei_ob_am_stichtag_oder_nachgeholt(tmp_path, monkeypatch):
     """T24-02: Der Monatsabschluss ist der Stand, den das Unternehmen an
     seinem Stichtag hatte — nicht der, den es spaeter rueckblickend fuer

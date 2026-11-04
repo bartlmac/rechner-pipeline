@@ -106,6 +106,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as _dt
 import math
+from numbers import Integral
 from typing import Any, Dict, List, Mapping, NamedTuple, Tuple
 
 import numpy as np
@@ -141,29 +142,31 @@ from rechner_pipeline.models.bestand import (
     model_point_kwargs,
     reduktion_ereignis,
 )
-# Die Ziehung (Ebene 4): die EINE Kante der Buchung in die Welt. Ueber sie
-# kommen die Stromkonstanten (fuer Leser, die sie hier erwarten), die Codes
-# der Ereignisliste, der gemeinsame Fehler und die Fassade zum Erzeuger.
-from rechner_pipeline.bestand.ziehung import (  # noqa: F401 — Re-Exporte
-    EREIGNIS_STREAM,
+from rechner_pipeline.bestand.ereignisliste import (  # noqa: F401 — Re-Exporte
+    EREIGNISLISTE_NAMES,
     ERH,
-    HERABSETZUNG_STREAM,
     INV,
     PEX,
     REA,
     RED,
     STO,
-    TEILKUENDIGUNG_STREAM,
     TKU,
     TOD,
     Ereignisliste,
     EreignisError,
+    zugangslage as _zugangslage,
+)
+# Die Fassade und die Stromnamen fuer bisherige Aufrufer brauchen weiter die
+# benannte Kante zur Ziehung; die Buchung liest den Vertrag direkt oben.
+from rechner_pipeline.bestand.ziehung import (  # noqa: F401 — Re-Exporte
+    EREIGNIS_STREAM,
+    HERABSETZUNG_STREAM,
+    TEILKUENDIGUNG_STREAM,
     bu_uebergang,
     neuzugaenge as _neuzugaenge_der_welt,
     ziehe,
     ziehe_bu_vertrag,
     ziehe_vertrag,
-    zugangslage as _zugangslage,
 )
 
 #: Betrags-Art der BU-GeVos: die von diesem Geschaeftsvorfall betroffene
@@ -997,18 +1000,37 @@ def _vertraege_pruefen(gesamt: pd.DataFrame, config: BestandConfig) -> None:
 
 
 def _ereignisse_je_police(ereignisse: pd.DataFrame) -> Dict[int, List[Dict[str, Any]]]:
-    """police_id -> ihre Eintraege der Ereignisliste in Zugreihenfolge (lfd)."""
-    from rechner_pipeline.bestand.ziehung import EREIGNISLISTE_NAMES
-
+    """Police -> Eintraege in gegebener Zugreihenfolge; ungueltige Form abweisen."""
     fehlend = [c for c in EREIGNISLISTE_NAMES if c not in ereignisse.columns]
     if fehlend:
         raise EreignisError(f"Ereignisliste: Spalten fehlen: {fehlend}")
     aus: Dict[int, List[Dict[str, Any]]] = {}
     if len(ereignisse) == 0:
         return aus
-    geordnet = ereignisse.sort_values(["police_id", "lfd"], kind="stable")
-    for e in geordnet.to_dict("records"):
+    for e in ereignisse.to_dict("records"):
         aus.setdefault(int(e["police_id"]), []).append(e)
+    for police_id, eigene in aus.items():
+        nummern = [e["lfd"] for e in eigene]
+        if any(not isinstance(n, Integral) or isinstance(n, bool) or n <= 0 for n in nummern):
+            raise EreignisError(f"police {police_id}: lfd muss ganzzahlig und positiv sein")
+        if len(set(nummern)) != len(nummern):
+            raise EreignisError(f"police {police_id}: lfd doppelt")
+        if set(nummern) != set(range(1, len(nummern) + 1)):
+            raise EreignisError(f"police {police_id}: lfd nicht fortlaufend ab 1")
+        if nummern != list(range(1, len(nummern) + 1)):
+            raise EreignisError(f"police {police_id}: lfd nicht in Zugreihenfolge")
+        vorjahr: int | None = None
+        gesehen: set[tuple[int, str]] = set()
+        for e in eigene:
+            jahr, code = int(e["vertragsjahr"]), str(e["ereignis"])
+            if vorjahr is not None and jahr < vorjahr:
+                raise EreignisError(
+                    f"police {police_id}: {code} im Vertragsjahr {jahr}: Vertragsjahr faellt")
+            if code in (PEX, RED, TKU, ERH) and (jahr, code) in gesehen:
+                raise EreignisError(
+                    f"police {police_id}: {code} im Vertragsjahr {jahr}: {code} doppelt")
+            gesehen.add((jahr, code))
+            vorjahr = jahr
     return aus
 
 
@@ -1027,7 +1049,7 @@ def buche(
     Basisbestand anwenden, mit Betraegen aus dem Kern.
 
     ``liste`` ist, was die Welt geschehen laesst
-    (:class:`~rechner_pipeline.bestand.ziehung.Ereignisliste`): die
+    (:class:`~rechner_pipeline.bestand.ereignisliste.Ereignisliste`): die
     Zugaenge als POL-Basiszeilen und die Ereignisse aller Vertraege. Die
     Buchung zieht nichts; sie kennt weder Seed noch Annahmen. Jeder Zugang
     bekommt seinen ZUG-Eintrag (Summe und Beitrag), jeder Vertrag wird ab
