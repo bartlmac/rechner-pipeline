@@ -32,6 +32,10 @@ Stelle arbeitet, die sie regeln.
 
 ## Entscheidungen
 
+Beschlüsse zur Zusammenarbeit, die kein eigenes ADR brauchen, stehen in der
+[Beschlussliste](adr-beschlussliste.md), eine Zeile je Beschluss. Ein neues ADR
+entsteht aus der [Vorlage](adr-vorlage.md).
+
 **Der Fall und seine Belege**
 
 | ADR | Entscheidung | Stand |
