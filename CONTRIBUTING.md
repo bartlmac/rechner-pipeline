@@ -35,8 +35,10 @@ willkommen.
 
 ## Module
 
-Die Arbeit ist in fünf Module geteilt. Jedes hat ein Label gleichen Namens;
-wer ein Modul verantwortet, steht in [.github/CODEOWNERS](.github/CODEOWNERS).
+Die Arbeit ist in fünf Module geteilt. Jedes hat ein Label gleichen Namens.
+Die Module ordnen Zuständigkeiten; freigegeben wird jeder Pull Request
+vom Maintainer Office, gleich welches Modul er berührt
+([.github/CODEOWNERS](.github/CODEOWNERS)).
 Die Module liegen quer zu den Ebenen des Repositorys
 ([README.md](README.md), ADR-028).
 
@@ -58,7 +60,8 @@ Die Module liegen quer zu den Ebenen des Repositorys
 3. **Pull Request** nach Vorlage, mit Bezug auf das Issue und dem
    Testnachweis.
 4. **Review:** Ein Mensch reviewt, in der Regel der Verantwortliche des
-   Moduls laut CODEOWNERS. Die Pflicht-Checks müssen grün sein.
+   Moduls. Freigeben muss das Maintainer Office (CODEOWNERS). Die
+   Pflicht-Checks müssen grün sein.
 5. **Merge** durch das Maintainer Office. `main` ist geschützt; niemand
    schreibt direkt darauf.
 
