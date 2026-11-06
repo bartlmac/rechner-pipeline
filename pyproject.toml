@@ -3,7 +3,7 @@
 # setuptools und wheel bei jedem frischen Aufbau neu auf — der eine
 # Installationsweg war fuer die Laufzeit, nicht fuer den Build
 # reproduzierbar. tests/test_abhaengigkeiten.py haelt die Pins exakt.
-requires = ["setuptools==84.1.0", "wheel==0.48.0"]
+requires = ["setuptools==84.2.1", "wheel==0.48.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -26,21 +26,21 @@ classifiers = [
 dependencies = [
     "openpyxl==3.1.5",
     "oletools==0.60.2",
-    "pandas==2.3.3",
-    "pyarrow==25.0.1",
-    "matplotlib==3.11.1",
-    "pydantic==2.13.4",
+    "pandas==3.1.0",
+    "pyarrow==26.0.1",
+    "matplotlib==3.11.2",
+    "pydantic==2.14.2",
     "pypdf==6.21.4",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest==9.0.3",
-    "hypothesis==6.155.5",
+    "pytest==9.2.0",
+    "hypothesis==6.170.14",
     # ADR-019: Die volle Suite ist die Commit-Vorbedingung und war mit
     # 20:30 untragbar geworden. Mit -n 12 --dist loadfile laeuft sie in
     # 7:25 — gleiche 2373 Tests, gleiches Urteil.
-    "pytest-xdist==3.6.1",
+    "pytest-xdist==3.8.0",
 ]
 
 [project.urls]
