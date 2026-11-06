@@ -6,14 +6,101 @@ anderes System übernimmt. Es ist ein Prototyp, kein Produkt (siehe
 `README.md`). Beiträge, Rückfragen und Anstöße zur Diskussion sind
 willkommen.
 
-## Beitragen
+## Einstieg in drei Schritten
 
-- **Issues** für Fehler, methodische Fragen, Stolpersteine oder
-  Beobachtungen der Art „das hat mich überrascht“.
-- **Pull Requests aus Forks** sind willkommen. Vor größeren Änderungen
-  bitte ein Issue eröffnen, um den Umfang vorher abzustimmen.
-- Der Maintainer arbeitet auf Themenzweigen und führt sie nach der
-  Durchsicht in `main` zusammen.
+1. **Repository klonen:**
+   ```
+   git clone https://github.com/bartlmac/rechner-pipeline.git
+   cd rechner-pipeline
+   ```
+2. **Umgebung einrichten** (Python 3.11, über die Pin-Dateien wie die CI):
+   ```
+   python3.11 -m venv .venv
+   .venv/bin/python -m pip install -r requirements-dev.txt
+   .venv/bin/python -m pip install -e . --no-deps
+   ```
+   Unter Windows mit Git Bash heißt der Interpreter `.venv/Scripts/python`.
+   Den Weg über Docker und den Entwicklungs-Container beschreibt
+   [ONBOARDING.md](ONBOARDING.md).
+3. **Der 20-Minuten-Test:** die volle Suite, so wie die CI sie fährt.
+   ```
+   .venv/bin/python -m pytest -q -rs -n auto --dist loadfile
+   ```
+   Alles läuft, wenn die Ergebniszeile kein `failed` und kein `error` nennt
+   und der Exit-Code 0 ist. Einige Tests werden übersprungen; `-rs` nennt
+   je Test den Grund. Parallel dauert die Suite auf zwölf Kernen etwa sieben
+   Minuten, seriell 13 bis 14. Wer mehr sehen will, fährt danach
+   freiwillig den dritten Fall nach (etwa 45 Minuten, ONBOARDING.md,
+   Abschnitt 3).
+
+## Module
+
+Die Arbeit ist in fünf Module geteilt. Jedes hat ein Label gleichen Namens.
+Die Module ordnen Zuständigkeiten; freigegeben wird jeder Pull Request
+vom Maintainer Office, gleich welches Modul er berührt
+([.github/CODEOWNERS](.github/CODEOWNERS)).
+Die Module liegen quer zu den Ebenen des Repositorys
+([README.md](README.md), ADR-028).
+
+| Modul | Verzeichnisse |
+|---|---|
+| Maintainer Office | `.github/`, `CONTRIBUTING.md`, `SECURITY.md`, `README.md`, `ONBOARDING.md`, `AGENTS.md`, `CHANGELOG.md`, `pyproject.toml`, `requirements*.txt`, `deploy/`, die Beschlussliste; dazu alles, was keinem anderen Modul gehört |
+| Agentisches System | `.claude/`, `.agents/`, `system/`, `src/rechner_pipeline/` mit `ontologie`, `spez`, `gates`, `qa`, `models`, `zielsystem` und `fall.py` |
+| Bestandsmigration | `src/rechner_pipeline/bestand`, `src/rechner_pipeline/betrieb`, `migrationen/`, `pakete/` |
+| Cashflow-Modelle | `src/rechner_pipeline/kern`, `plv/mathematik`, `plv/tarifplaene`, `plv/configs` |
+| Excel-Landschaften | `src/rechner_pipeline/quellen`, `werkzeuge/quellsystem` |
+
+## Weg eines Beitrags
+
+1. **Issue:** Jede Arbeit beginnt mit einem Issue nach Vorlage (Aufgabe
+   oder Fehler), mit dem Modul. Den Meilenstein setzt das Maintainer
+   Office.
+2. **Zweig:** ein kurzlebiger Zweig von `main`, ein Thema je Zweig.
+   Pull Requests aus Forks sind willkommen.
+3. **Pull Request** nach Vorlage, mit Bezug auf das Issue und dem
+   Testnachweis.
+4. **Review:** Ein Mensch reviewt, in der Regel der Verantwortliche des
+   Moduls. Freigeben muss das Maintainer Office (CODEOWNERS). Die
+   Pflicht-Checks müssen grün sein.
+5. **Merge** durch das Maintainer Office. `main` ist geschützt; niemand
+   schreibt direkt darauf.
+
+Code aus Agenten geht denselben Weg: Issue, Zweig, Pull Request, Review
+durch einen Menschen. Push und Merge macht ein Mensch.
+
+## Sign-off nach DCO
+
+Es gibt kein CLA. Stattdessen trägt jeder Commit einen Sign-off nach dem
+[Developer Certificate of Origin 1.1](https://developercertificate.org/):
+```
+git commit -s
+```
+Die Zeile `Signed-off-by: <Name> <Adresse>` bestätigt, dass man den Beitrag
+einbringen darf. Signiert wird mit der Git-Identität, unter der man
+beiträgt: Konto-Name und Adresse, auch die noreply-Adresse von GitHub. Ein
+bürgerlicher Name wird nicht verlangt; Klarnamen gehören nicht in
+Commit-Botschaften (siehe Stil).
+
+Der Sign-off ist immer der eines Menschen. Ein Agent setzt ihn nur im Namen
+des Menschen, der den Auftrag gegeben und abgestimmt hat, und mit dessen
+Git-Identität; dieser Mensch steht damit für den Beitrag ein. Die Zeilen,
+mit denen ein Werkzeug seinen Anteil nennt, bleiben zusätzlich stehen.
+
+Commits vor der Einführung des Sign-offs tragen keinen; die Historie wird
+nicht umgeschrieben.
+
+## Was nicht ins Repository gehört
+
+- Nichts aus den Häusern der Mitwirkenden: keine internen Dokumente,
+  Rechner, Tarifwerke oder Daten des eigenen Arbeitgebers.
+- Keine echten Bestände. Beispielartefakte sind synthetisch oder öffentlich
+  verfügbar (siehe Stil).
+- Keine Zugangsdaten: keine Passwörter, Tokens, API-Schlüssel oder
+  Signaturschlüssel. Schlüssel liegen außerhalb des Repositorys (ADR-008).
+- Keine personenbezogenen Daten und keine Klarnamen.
+- Keine Infrastruktur einzelner Installationen (ADR-027).
+- Sicherheitslücken nicht als öffentliches Issue, sondern auf dem Weg aus
+  [SECURITY.md](SECURITY.md).
 
 ## Pull Requests schneiden
 
@@ -80,4 +167,5 @@ Requests gilt, was ADR-027 festgelegt hat:
 
 ## Kontakt
 
-Issues sind der bevorzugte Weg.
+Issues sind der bevorzugte Weg. Sicherheitslücken gehen privat, wie in
+[SECURITY.md](SECURITY.md) beschrieben.

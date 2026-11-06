@@ -1,0 +1,36 @@
+# Dependabot schlaegt Aktualisierungen als Pull Request vor. Die Pins in
+# pyproject.toml und requirements*.txt sind gewollt (CONTRIBUTING.md, Lokale
+# Konfiguration); ein Vorschlag geht denselben Weg wie jeder Beitrag:
+# Review durch einen Menschen, volle Suite, Merge durch das Maintainer Office.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      pip:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "python"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+  - package-ecosystem: docker
+    directories:
+      - "/plv/betrieb"
+      - "/deploy/dev"
+      - "/werkzeuge/engine"
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]

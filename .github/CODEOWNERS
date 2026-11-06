@@ -1,0 +1,10 @@
+# Wer Pull Requests freigibt (CONTRIBUTING.md, Weg eines Beitrags).
+#
+# Eine Zeile fuer das ganze Repository: Das Maintainer Office gibt alles
+# frei. Eigene Zeilen fuer Module gibt es nicht; die Module in
+# CONTRIBUTING.md ordnen Zustaendigkeiten, sie vergeben keine Freigabe.
+# Soll ein Lead mitreviewen, kommt das Konto als weiterer Name in diese
+# Zeile. Jedes Konto braucht Schreibrecht am Repository, sonst uebergeht
+# GitHub es ohne Meldung. tests/test_codeowners.py prueft nur die Form.
+
+* @abernert @arnorasch @bartlmac

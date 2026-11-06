@@ -1,0 +1,35 @@
+name: Aufgabe
+description: Eine Aufgabe in einem Modul, mit Meilenstein und Definition of Done
+body:
+  - type: dropdown
+    id: modul
+    attributes:
+      label: Modul
+      description: Das Modul, zu dem die Aufgabe gehört (siehe CONTRIBUTING.md, Module).
+      options:
+        - Maintainer Office
+        - Agentisches System
+        - Bestandsmigration
+        - Cashflow-Modelle
+        - Excel-Landschaften
+    validations:
+      required: true
+  - type: input
+    id: meilenstein
+    attributes:
+      label: Meilenstein
+      description: Der Meilenstein, zu dem die Aufgabe gehört. Gesetzt wird er vom Maintainer Office im Issue.
+  - type: textarea
+    id: aufgabe
+    attributes:
+      label: Worum es geht
+      description: Was soll getan werden, und warum?
+    validations:
+      required: true
+  - type: textarea
+    id: definition-of-done
+    attributes:
+      label: Definition of Done
+      description: Woran prüfbar zu erkennen ist, dass die Aufgabe erledigt ist, zum Beispiel ein Test, ein Lauf oder ein Dokument.
+    validations:
+      required: true
