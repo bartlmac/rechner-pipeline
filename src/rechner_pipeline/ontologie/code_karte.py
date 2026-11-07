@@ -79,17 +79,13 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
     # zielsystem bei ontologie, models, spez, quellen, qa seit 2026-11-02
     # (ADR-030, Stufe 1): Produkte, Parametersatz, Modellpunkt und Tafeln
     # kommen ueber den Zielvertrag statt aus kern.
-    "ontologie": {"ontologie", "kern", "models", "zielsystem"},
-    #                                                  kern: nur lesende
-    #                                                  Registry-Introspektion
-    "models": {"models", "kern", "gates", "zielsystem"},
+    "ontologie": {"ontologie", "models", "zielsystem"},
+    "models": {"models", "gates", "zielsystem"},
     #                                                  gates: Altlast
     #                                                  schemas<->Gate-Contract
-    "spez": {"spez", "ontologie", "kern", "zielsystem"},
-    #                                                  kern: lesende
-    #                                                  Introspektion (D2)
-    "quellen": {"quellen", "models", "ontologie", "kern", "spez", "zielsystem"},
-    "qa": {"qa", "models", "quellen", "kern", "zielsystem"},
+    "spez": {"spez", "ontologie", "zielsystem"},
+    "quellen": {"quellen", "models", "ontologie", "spez", "zielsystem"},
+    "qa": {"qa", "models", "quellen", "zielsystem"},
     "bestand": {"bestand", "kern", "models", "qa"},
     # betrieb seit 2026-09-05: der Tagesbetrieb der Vorzeige
     # (docs/simulation/tagesbetrieb.md, Abschnitt 9) — Neugeschaeft je
@@ -97,7 +93,7 @@ SCHICHT_ERLAUBT: Dict[str, Set[str]] = {
     # deren CLIs; die Wache P-B1 laeuft ueber die Engine
     # bestand.vorbedingungen, nicht ueber gates (keine Kante betrieb -> gates).
     "betrieb": {"betrieb", "bestand", "kern", "models", "qa"},
-    "gates": {"gates", "ontologie", "quellen", "kern", "models", "qa",
+    "gates": {"gates", "ontologie", "quellen", "models", "qa",
               "spez", "bestand", "fall", "zielsystem"},  # Pruef-CLIs lesen alles;
     #                                                  fall: Gates operieren
     #                                                  auf Faellen (ADR-002)
@@ -257,6 +253,131 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
 #: schrumpft je Stufe und waechst nie.
 ALTLAST_KANTEN: Set[tuple] = {
     k for k in TOOL_NACH_VORZEIGE_ERLAUBT if k[0] != ZIELSYSTEM_ANBIETER
+}
+#: Gemessene Modulpaare auf a225581. Die Menge ist bewusst literal: der
+#: Ist-Graph darf seine eigene Erlaubnis nicht aus sich selbst ableiten.
+GRENZKANTEN_ERLAUBT: Dict[str, Set[tuple]] = {
+    "simulation_nach_fuehrung": {
+        ("rechner_pipeline/bestand/cli_fortschreibung.py", "rechner_pipeline/bestand/config.py"),
+        ("rechner_pipeline/bestand/cli_fortschreibung.py", "rechner_pipeline/bestand/ereignisse.py"),
+        ("rechner_pipeline/bestand/cli_fortschreibung.py", "rechner_pipeline/bestand/fuehrung.py"),
+        ("rechner_pipeline/bestand/cli_fortschreibung.py", "rechner_pipeline/bestand/manifest.py"),
+        ("rechner_pipeline/bestand/cli_fortschreibung.py", "rechner_pipeline/bestand/parquet_io.py"),
+        ("rechner_pipeline/bestand/cli_fortschreibung.py", "rechner_pipeline/bestand/vorbedingungen.py"),
+        ("rechner_pipeline/bestand/generator.py", "rechner_pipeline/bestand/config.py"),
+        ("rechner_pipeline/bestand/stochastik.py", "rechner_pipeline/bestand/config.py"),
+        ("rechner_pipeline/bestand/ziehung.py", "rechner_pipeline/bestand/auswertung.py"),
+        ("rechner_pipeline/bestand/ziehung.py", "rechner_pipeline/bestand/config.py"),
+        ("rechner_pipeline/bestand/ziehung.py", "rechner_pipeline/bestand/ereignisliste.py"),
+        ("rechner_pipeline/betrieb/neugeschaeft.py", "rechner_pipeline/bestand/config.py"),
+        ("rechner_pipeline/betrieb/neugeschaeft.py", "rechner_pipeline/betrieb/nummernkreis.py"),
+        ("rechner_pipeline/betrieb/ziehung.py", "rechner_pipeline/bestand/config.py"),
+        ("rechner_pipeline/betrieb/ziehung.py", "rechner_pipeline/bestand/ereignisliste.py"),
+        ("rechner_pipeline/betrieb/ziehung.py", "rechner_pipeline/betrieb/tagesjournal.py"),
+    },
+    "fuehrung_nach_kern": {
+        ("rechner_pipeline/bestand/abschluss.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/bestand/auswertung.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/bestand/auswertung.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+        ("rechner_pipeline/bestand/auswertung.py", "rechner_pipeline/kern/korrekturschicht.py"),
+        ("rechner_pipeline/bestand/auswertung.py", "rechner_pipeline/kern/produkte/bu.py"),
+        ("rechner_pipeline/bestand/auswertung.py", "rechner_pipeline/kern/rechenkern.py"),
+        ("rechner_pipeline/bestand/auswertung.py", "rechner_pipeline/kern/vorgangsfolge.py"),
+        ("rechner_pipeline/bestand/cli_abschluss.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/bestand/config.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/bestand/config.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+        ("rechner_pipeline/bestand/config.py", "rechner_pipeline/kern/konventionen.py"),
+        ("rechner_pipeline/bestand/config.py", "rechner_pipeline/kern/model_point.py"),
+        ("rechner_pipeline/bestand/config.py", "rechner_pipeline/kern/tafeln.py"),
+        ("rechner_pipeline/bestand/config.py", "rechner_pipeline/kern/vorgangsfolge.py"),
+        ("rechner_pipeline/bestand/ereignisse.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/bestand/ereignisse.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+        ("rechner_pipeline/bestand/ereignisse.py", "rechner_pipeline/kern/korrekturschicht.py"),
+        ("rechner_pipeline/bestand/ereignisse.py", "rechner_pipeline/kern/produkte/bu.py"),
+        ("rechner_pipeline/bestand/ereignisse.py", "rechner_pipeline/kern/vorgangsfolge.py"),
+        ("rechner_pipeline/bestand/kennzahlen.py", "rechner_pipeline/kern/vorgangsfolge.py"),
+        ("rechner_pipeline/bestand/kernlauf.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/bestand/kernlauf.py", "rechner_pipeline/kern/rechenkern.py"),
+        ("rechner_pipeline/bestand/ledger_bindung.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/bestand/ledger_bindung.py", "rechner_pipeline/kern/korrekturschicht.py"),
+        ("rechner_pipeline/bestand/ledger_bindung.py", "rechner_pipeline/kern/vorgangsfolge.py"),
+        ("rechner_pipeline/bestand/manifest.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/bestand/migrationszugang.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/bestand/migrationszugang.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+        ("rechner_pipeline/bestand/migrationszugang.py", "rechner_pipeline/kern/korrekturschicht.py"),
+        ("rechner_pipeline/bestand/migrationszugang.py", "rechner_pipeline/kern/rechenkern.py"),
+        ("rechner_pipeline/bestand/migrationszugang.py", "rechner_pipeline/kern/vorgangsfolge.py"),
+        ("rechner_pipeline/bestand/schichten.py", "rechner_pipeline/kern/korrekturschicht.py"),
+        ("rechner_pipeline/bestand/vorbedingungen.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+        ("rechner_pipeline/bestand/vorbedingungen.py", "rechner_pipeline/kern/vorgangsfolge.py"),
+        ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/kern/__init__.py"),
+        ("rechner_pipeline/betrieb/zugangsprobe.py", "rechner_pipeline/kern/__init__.py"),
+    },
+    "simulation_nach_kern": {
+        ("rechner_pipeline/bestand/ziehung.py", "rechner_pipeline/kern/beitragsreduktion.py"),
+        ("rechner_pipeline/bestand/ziehung.py", "rechner_pipeline/kern/produkte/bu.py"),
+        ("rechner_pipeline/bestand/ziehung.py", "rechner_pipeline/kern/tafeln.py"),
+    },
+    "objekte_nach_tool": {
+        ("rechner_pipeline/bestand/abschluss.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/auswertung.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/berichtstexte.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/cli_fortschreibung.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/config.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/ereignisliste.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/ereignisse.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/fuehrung.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/generator.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/kennzahlen.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/kernlauf.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/ledger_bindung.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/migrationszugang.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/migrationszugang.py", "rechner_pipeline/models/fuehrungswert.py"),
+        ("rechner_pipeline/bestand/monatsbericht.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/parquet_io.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/report.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/schichten.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/tarifplan_tabellen.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/vorbedingungen.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/bestand/vorbedingungen.py", "rechner_pipeline/qa/bestand.py"),
+        ("rechner_pipeline/bestand/ziehung.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/betrieb/_zeichnung.py", "rechner_pipeline/models/anker.py"),
+        ("rechner_pipeline/betrieb/_zeichnung.py", "rechner_pipeline/models/freigabe.py"),
+        ("rechner_pipeline/betrieb/_zeichnung.py", "rechner_pipeline/models/zeichnung.py"),
+        ("rechner_pipeline/betrieb/anfangsbestand.py", "rechner_pipeline/models/anfangsbestand.py"),
+        ("rechner_pipeline/betrieb/anfangsbestand.py", "rechner_pipeline/models/anker.py"),
+        ("rechner_pipeline/betrieb/anfangsbestand.py", "rechner_pipeline/models/freigabe.py"),
+        ("rechner_pipeline/betrieb/anfangsbestand.py", "rechner_pipeline/models/ordnungslinie.py"),
+        ("rechner_pipeline/betrieb/anfangsbestand.py", "rechner_pipeline/models/standabnahme.py"),
+        ("rechner_pipeline/betrieb/neuaufsetzen.py", "rechner_pipeline/models/anker.py"),
+        ("rechner_pipeline/betrieb/neuaufsetzen.py", "rechner_pipeline/models/freigabe.py"),
+        ("rechner_pipeline/betrieb/neugeschaeft.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/betrieb/seite.py", "rechner_pipeline/models/anker.py"),
+        ("rechner_pipeline/betrieb/seite.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/betrieb/seite.py", "rechner_pipeline/models/zeichnung.py"),
+        ("rechner_pipeline/betrieb/tagesjournal.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/models/anker.py"),
+        ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/models/ordnungslinie.py"),
+        ("rechner_pipeline/betrieb/tageslauf.py", "rechner_pipeline/models/zugangsprobe.py"),
+        ("rechner_pipeline/betrieb/uebernahme.py", "rechner_pipeline/models/belegrollen.py"),
+        ("rechner_pipeline/betrieb/uebernahme.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/betrieb/uebernahme.py", "rechner_pipeline/models/freigabe.py"),
+        ("rechner_pipeline/betrieb/uebernahme.py", "rechner_pipeline/models/schemas.py"),
+        ("rechner_pipeline/betrieb/uebernahme.py", "rechner_pipeline/models/snapshot_kette.py"),
+        ("rechner_pipeline/betrieb/uebernahme.py", "rechner_pipeline/models/zeichnung.py"),
+        ("rechner_pipeline/betrieb/uebernahme.py", "rechner_pipeline/models/zugangsprobe.py"),
+        ("rechner_pipeline/betrieb/zugangsprobe.py", "rechner_pipeline/models/anker.py"),
+        ("rechner_pipeline/betrieb/zugangsprobe.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/betrieb/zugangsprobe.py", "rechner_pipeline/models/freigabe.py"),
+        ("rechner_pipeline/betrieb/zugangsprobe.py", "rechner_pipeline/models/fuehrungswert.py"),
+        ("rechner_pipeline/betrieb/zugangsprobe.py", "rechner_pipeline/models/zeichnung.py"),
+        ("rechner_pipeline/betrieb/zugangsprobe.py", "rechner_pipeline/models/zugangsprobe.py"),
+        ("rechner_pipeline/plv/bestandsdaten.py", "rechner_pipeline/models/bestand.py"),
+        ("rechner_pipeline/plv/bestandsdaten.py", "rechner_pipeline/zielsystem/bestandsdaten.py"),
+        ("rechner_pipeline/plv/bewertung.py", "rechner_pipeline/zielsystem/bewertung.py"),
+        ("rechner_pipeline/plv/rechnungsgrundlagen.py", "rechner_pipeline/zielsystem/rechnungsgrundlagen.py"),
+    },
 }
 
 
@@ -679,6 +800,34 @@ def validate(karte: Dict[str, object]) -> List[str]:
                 f"{s_nach!r} importieren (erlaubt: "
                 f"{', '.join(sorted(erlaubt)) or 'nichts'})"
             )
+    # Die vier weiteren Ebenengrenzen haben ihre eigene gemessene Baseline.
+    # Bei kleinen, synthetischen Karten ohne dieses Modul ist die Baseline
+    # nicht anwendbar; neue Kanten sind trotzdem gegen sie zu pruefen.
+    gemessen: Dict[str, Set[tuple]] = {name: set() for name in GRENZKANTEN_ERLAUBT}
+    for kante in karte["kanten"]:
+        von, nach = kante["von"], kante["nach"]
+        von_ebene = module[von]["ebene"]
+        nach_ebene = module[nach]["ebene"]
+        von_schicht = module[von]["schicht"]
+        nach_schicht = module[nach]["schicht"]
+        paar = (von, nach)
+        if (von_ebene == "werkzeug" and nach_ebene == "vorzeige"
+                and nach_schicht in {"bestand", "betrieb"}):
+            gemessen["simulation_nach_fuehrung"].add(paar)
+        if (von_ebene == "vorzeige" and von_schicht in {"bestand", "betrieb"}
+                and nach_schicht == "kern"):
+            gemessen["fuehrung_nach_kern"].add(paar)
+        if von_ebene == "werkzeug" and nach_schicht == "kern":
+            gemessen["simulation_nach_kern"].add(paar)
+        if von_ebene in {"vorzeige", "werkzeug"} and nach_ebene == "tool":
+            gemessen["objekte_nach_tool"].add(paar)
+    volle_karte = "rechner_pipeline/ontologie/code_karte.py" in module
+    for name, erlaubt in GRENZKANTEN_ERLAUBT.items():
+        for von, nach in sorted(gemessen[name] - erlaubt):
+            befunde.append(f"{name}: neue Kante {von} -> {nach}")
+        if volle_karte:
+            for von, nach in sorted(erlaubt - gemessen[name]):
+                befunde.append(f"{name}: Kante entfallen {von} -> {nach}")
     for name, nutzer in karte["extern"].items():
         if _ist_sdk(name):
             befunde.append(

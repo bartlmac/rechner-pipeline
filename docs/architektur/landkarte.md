@@ -27,6 +27,11 @@ verweigert der Generator das Bild und nennt den engeren Weg.
 
 Wer darf aus wem importieren, und wie oft wird es genutzt. Die Regeln
 dahinter sind nachrechenbar (`ontologie.code_karte`), nicht Prosa.
+Auf Modulebene bewachen vier gemessene Listen zusaetzlich die Grenzen
+Simulation nach Fuehrung (16 Paare), Fuehrung nach Kern (36), Simulation
+nach Kern (3) und Objekte nach Tool (58). Neue und entfallene Paare sind
+beide ein Befund. Die sechs Tool-Pakete `ontologie`, `models`, `spez`,
+`quellen`, `qa` und `gates` duerfen den Kern nicht importieren.
 
 ```mermaid
 %% Schichten — erzeugt von ontologie.landkarte

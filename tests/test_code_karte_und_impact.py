@@ -996,6 +996,75 @@ def test_die_ratsche_deckt_genau_die_gemessenen_kanten():
     assert all(karte["module"][k["von"]]["ebene"] == "tool" for k in karte["tool_nach_vorzeige"])
 
 
+def test_vier_grenzen_sind_exakt_und_validate_meldet_beide_abweichungen():
+    """A-078: Eine neue oder entfallene Modulkante ist ein Befund, auch im CLI."""
+    from copy import deepcopy
+    from rechner_pipeline.ontologie import code_karte
+
+    karte = baue_karte(SRC)
+    paare = {(k["von"], k["nach"]) for k in karte["kanten"]}
+    module = karte["module"]
+
+    def ebene_des(rel):
+        return module[rel]["ebene"]
+
+    def schicht_des(rel):
+        return module[rel]["schicht"]
+
+    grenzen = {
+        "simulation_nach_fuehrung": {
+            p for p in paare if ebene_des(p[0]) == "werkzeug"
+            and ebene_des(p[1]) == "vorzeige"
+            and schicht_des(p[1]) in {"bestand", "betrieb"}},
+        "fuehrung_nach_kern": {
+            p for p in paare if ebene_des(p[0]) == "vorzeige"
+            and schicht_des(p[0]) in {"bestand", "betrieb"}
+            and schicht_des(p[1]) == "kern"},
+        "simulation_nach_kern": {
+            p for p in paare if ebene_des(p[0]) == "werkzeug"
+            and schicht_des(p[1]) == "kern"},
+        "objekte_nach_tool": {
+            p for p in paare if ebene_des(p[0]) in {"vorzeige", "werkzeug"}
+            and ebene_des(p[1]) == "tool"},
+    }
+    listen = code_karte.GRENZKANTEN_ERLAUBT
+    assert {name: len(wert) for name, wert in grenzen.items()} == {
+        "simulation_nach_fuehrung": 16, "fuehrung_nach_kern": 36,
+        "simulation_nach_kern": 3, "objekte_nach_tool": 58,
+    }
+    assert grenzen == listen
+    assert validate(karte) == []
+
+    for name, gemessen in grenzen.items():
+        entfallen = deepcopy(karte)
+        paar = min(gemessen)
+        entfallen["kanten"] = [
+            k for k in entfallen["kanten"] if (k["von"], k["nach"]) != paar]
+        assert any(name in b and "entfallen" in b for b in validate(entfallen))
+
+        neu = deepcopy(karte)
+        von = paar[0]
+        moegliche_ziele = sorted(
+            rel for rel in module if rel != von and (von, rel) not in paare
+            and ((name == "simulation_nach_fuehrung"
+                  and ebene_des(rel) == "vorzeige"
+                  and schicht_des(rel) in {"bestand", "betrieb"})
+                 or (name in {"fuehrung_nach_kern", "simulation_nach_kern"}
+                     and schicht_des(rel) == "kern")
+                 or (name == "objekte_nach_tool" and ebene_des(rel) == "tool")))
+        assert moegliche_ziele, name
+        neu["kanten"].append({"von": von, "nach": moegliche_ziele[0], "symbole": ["X"]})
+        assert any(name in b and "neu" in b for b in validate(neu))
+
+
+def test_sechs_tool_pakete_duerfen_den_kern_nicht_mehr_importieren():
+    """A-078: Der ungenutzte Paket-Freibrief darf nicht wiederkehren."""
+    tool_pakete = {"ontologie", "models", "spez", "quellen", "qa", "gates"}
+    assert all("kern" not in SCHICHT_ERLAUBT[paket] for paket in tool_pakete)
+    assert all("kern" in SCHICHT_ERLAUBT[paket]
+               for paket in {"bestand", "betrieb", "plv"})
+
+
 def test_bestandsrolle_laeuft_ueber_den_zielvertrag_ohne_neue_altlast():
     """A-058: Das Gate kennt die PLV nicht und liest deren Manifest nicht
     direkt. Die beiden neuen Module sind in der Code-Karte erfasst."""
