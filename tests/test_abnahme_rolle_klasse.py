@@ -1075,8 +1075,49 @@ STERN_IN_TESTS = Counter({"test_rollenmodell_adr018.py": 1, "test_zeichnungsordn
 
 
 def _sterne(quelle: str) -> int:
-    return sum(1 for k in ast.walk(ast.parse(quelle)) if isinstance(k, ast.List)
-               and any(isinstance(e, ast.Constant) and e.value == "*" for e in k.elts))
+    """Wildcards fail-closed zaehlen; nur reine Werkzeug-Sollvergleiche ausnehmen.
+
+    Eine Assertion auf das gelesene Feld ``werkzeuge`` vergibt keine
+    Gateberechtigung. Zuweisungen, Funktionsargumente und unbekannte Felder
+    bleiben dagegen erfasst, auch innerhalb desselben Werkzeugtests.
+    """
+    baum = ast.parse(quelle)
+    eltern = {kind: knoten for knoten in ast.walk(baum) for kind in ast.iter_child_nodes(knoten)}
+
+    def werkzeug_soll(knoten):
+        vergleich = eltern.get(knoten)
+        return (
+            isinstance(vergleich, ast.Compare)
+            and isinstance(eltern.get(vergleich), ast.Assert)
+            and eltern[vergleich].test is vergleich
+            and len(vergleich.ops) == 1 and isinstance(vergleich.ops[0], ast.Eq)
+            and vergleich.comparators == [knoten]
+            and isinstance(vergleich.left, ast.Subscript)
+            and isinstance(vergleich.left.slice, ast.Constant)
+            and vergleich.left.slice.value == "werkzeuge"
+            and len(knoten.elts) == 1
+        )
+
+    return sum(1 for k in ast.walk(baum) if isinstance(k, ast.List)
+               and any(isinstance(e, ast.Constant) and e.value == "*" for e in k.elts)
+               and not werkzeug_soll(k))
+
+
+def test_sternratsche_unterscheidet_werkzeug_soll_und_gateberechtigung():
+    """Die Ausnahme erfasst weder Gate-Sollwerte noch neue Wildcard-Eingaben."""
+    assert _sterne('assert rolle["werkzeuge"] == ["*"]') == 0
+    for quelle in (
+        'assert rolle["gates"] == ["*"]',
+        'assert rolle["unbekannt"] == ["*"]',
+        'rolle = {"gates": ["*"]}',
+        'rolle = {"werkzeuge": ["*"]}',
+        'assert pruefe(["*"])',
+        'assert rolle["werkzeuge"] == ["*", "Read"]',
+        'assert rolle["werkzeuge"] == ["*"] == andere',
+        'assert True, rolle["werkzeuge"] == ["*"]',
+    ):
+        assert _sterne(quelle) == 1, quelle
+    assert _sterne('assert rolle["werkzeuge"] == ["*"]\nordnung = {"gates": ["*"]}') == 1
 
 
 def test_ratsche_kein_neuer_stern_in_test_ordnungen():
