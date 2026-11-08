@@ -367,15 +367,18 @@ def test_kein_aufrufer_der_engine_baut_die_rollen_von_hand():
     """Vier Aufrufer, vier abgetippte Listen, eine unvollstaendig — die
     Bauform war der Fehler. Wer die Engine ruft, nimmt die Tabelle."""
     aufrufer = _aufrufer_der_engine()
-    # Genau die fuenf Aufrufer — ein sechster muss hier benannt werden, damit
+    # Genau die urspruenglichen fuenf Aufrufer — ein sechster musste hier benannt werden, damit
     # die Ratsche ihn nicht still uebernimmt (Testat 5ca0306: der fuenfte,
     # der Abnahmebericht, fuehrte seine Rollen als SET, das die erste Fassung
     # der Ratsche nicht las).
     # Der sechste (Angriffsrunde Betrieb): die Registrierung eines
     # Eingangs faehrt dieselbe Pruefung wie die Wache des Tageslaufs.
+    # Der PLV-Adapter ruft die Engine fuer Anbieter-Pruefungen auf und muss
+    # dabei ihre zentrale Rollentabelle statt eigener Listen verwenden.
+    # Die beiden Gates rufen die Engine seit Stufe 4b nur noch ueber ihn auf.
     assert {p.name for p in aufrufer} == {
-        "tageslauf.py", "cli_abschluss.py", "cli_report.py", "bestand_validate.py", "abnahmebericht.py",
-        "uebernahme.py",
+        "tageslauf.py", "cli_abschluss.py", "cli_report.py",
+        "uebernahme.py", "bestandspruefung.py",
     }
     befunde = {
         str(p.relative_to(REPO_ROOT)): treffer

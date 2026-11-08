@@ -1,8 +1,8 @@
 """Der Zielvertrag (ADR-030): Version, Katalog, Wurzelprotokoll,
 Konformitaet und der eine Anbieter (Stufe 0); die Rechnungsgrundlagen
 und ihre fuenf Konsumenten (Stufe 1); die Bewertung und die drei
-qa-Module als ihre ersten Konsumenten (Stufe 2a); die lesende
-Verankerungsrolle als vorgezogenes Stueck von Stufe 3.
+qa-Module als ihre ersten Konsumenten (Stufe 2a); Bestandsdaten
+(Stufe 3) und die Bestandspruefung (Stufe 4).
 
 Jede Regel der Konformitaet hat hier eine Positivkontrolle: eine
 absichtlich falsche Implementierung, die genau diesen Befund ausloest.
@@ -27,7 +27,7 @@ from tests.test_t27_pruefstrecke_runde_c import gefahrener_fall, welt  # noqa: F
 # --------------------------------------------------------------------------- #
 
 def test_die_vertragsversion_ist_dreistellig():
-    assert version.zerlege(version.VERTRAG_VERSION) == (0, 5, 0)
+    assert version.zerlege(version.VERTRAG_VERSION) == (0, 6, 0)
 
 
 @pytest.mark.parametrize("kaputt", ["1.2", "1.2.3.4", "a.b.c", "", "1.2.x", " 1.2.3"])
@@ -65,12 +65,15 @@ def test_der_katalog_ist_unveraenderlich():
         vertrag.PROTOKOLL_JE_FAEHIGKEIT["neu"] = object  # type: ignore[index]
 
 
-def test_der_vertrag_beschreibt_auch_die_vorgezogene_bestandsrolle():
-    """Die uebrigen Faehigkeiten bleiben ohne Protokoll und Angebot."""
+def test_der_vertrag_beschreibt_alle_gebauten_faehigkeiten():
+    """Nur der Zugang bleibt ohne Protokoll und Angebot."""
+    from rechner_pipeline.zielsystem.bestandspruefung import Bestandspruefung
+
     assert dict(vertrag.PROTOKOLL_JE_FAEHIGKEIT) == {
         "rechnungsgrundlagen": rechnungsgrundlagen.Rechnungsgrundlagen,
         "bewertung": bewertung.Bewertung,
         "bestandsdaten": bestandsdaten.Bestandsdaten,
+        "bestandspruefung": Bestandspruefung,
     }
     assert set(vertrag.PROTOKOLL_JE_FAEHIGKEIT) <= set(vertrag.FAEHIGKEITEN)
 
@@ -100,6 +103,173 @@ def test_das_wurzelprotokoll_ist_strukturell():
 
 def test_die_plv_ist_konform():
     assert konformitaet.pruefe(PLV()) == []
+
+
+def test_bestandspruefung_wird_als_eigene_faehigkeit_angeboten():
+    from rechner_pipeline.zielsystem.bestandspruefung import Bestandspruefung
+
+    assert version.VERTRAG_VERSION == "0.6.0"
+    assert PLV().vertragsversion == "0.6.0"
+    assert vertrag.PROTOKOLL_JE_FAEHIGKEIT["bestandspruefung"] is Bestandspruefung
+    assert isinstance(PLV().faehigkeit("bestandspruefung"), Bestandspruefung)
+
+
+def test_bestandspruefung_liefert_gepruefte_tabelle_und_rollen(tmp_path):
+    import hashlib
+    import pandas as pd
+
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+    from rechner_pipeline.bestand.vorbedingungen import PB1_ROLLEN, PB1_ROLLEN_DATEIEN
+    from rechner_pipeline.models.bestand import STAMM_SPALTEN
+    from rechner_pipeline.zielsystem.bestandspruefung import PB1Pruefung, Rollenbeschreibung
+
+    pfad = tmp_path / "bestand_gesamt.parquet"
+    write_portfolio(pd.DataFrame({name: pd.Series(dtype=dtype)
+                                  for name, dtype in STAMM_SPALTEN}), pfad)
+    pruefung = PLV().faehigkeit("bestandspruefung")
+    rollen = pruefung.rollenbeschreibung()
+    assert type(rollen) is Rollenbeschreibung
+    assert rollen.rollen == PB1_ROLLEN
+    assert dict(rollen.dateien) == PB1_ROLLEN_DATEIEN
+    with pytest.raises(TypeError):
+        rollen.dateien["portfolio"] = "fremd.parquet"
+    ergebnis = pruefung.pruefe_eingaenge({"portfolio": pfad})
+    assert type(ergebnis) is PB1Pruefung
+    assert ergebnis.fehler == [] and ergebnis.bedienfehler == []
+    assert ergebnis.geprueft == {"portfolio_zeilen": 0}
+    assert ergebnis.tabellen["sha256"]["portfolio"] == hashlib.sha256(pfad.read_bytes()).hexdigest()
+    assert ergebnis.tabellen["portfolio"].empty
+    assert pruefung.bestandszeilen(pfad) == 0
+
+
+def test_bestandspruefung_gibt_genau_die_einmal_geprueften_tabellen_zurueck(
+    tmp_path, monkeypatch,
+):
+    """Ein Dateitausch nach dem Engine-Urteil darf keine zweite Tabelle liefern."""
+    import hashlib
+    import pandas as pd
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from rechner_pipeline.bestand import vorbedingungen
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+    from rechner_pipeline.models.bestand import STAMM_SPALTEN
+
+    pfad = tmp_path / "bestand_gesamt.parquet"
+    write_portfolio(pd.DataFrame({name: pd.Series(dtype=dtype)
+                                  for name, dtype in STAMM_SPALTEN}), pfad)
+    gepruefte_bytes = pfad.read_bytes()
+    tabelle = pq.read_table(pfad)
+    nachher = pa.BufferOutputStream()
+    pq.write_table(tabelle.replace_schema_metadata({
+        **(tabelle.schema.metadata or {}), b"probe": b"nach-der-pruefung",
+    }), nachher)
+    getauschte_bytes = nachher.getvalue().to_pybytes()
+    assert getauschte_bytes != gepruefte_bytes
+
+    echt = vorbedingungen.lies_und_pruefe_pb1
+    aufrufe = []
+
+    def spion(eingaben, **kwargs):
+        antwort = echt(eingaben, **kwargs)
+        aufrufe.append(antwort)
+        if len(aufrufe) == 1:
+            pfad.write_bytes(getauschte_bytes)
+        return antwort
+
+    monkeypatch.setattr(vorbedingungen, "lies_und_pruefe_pb1", spion)
+    ergebnis = PLV().faehigkeit("bestandspruefung").pruefe_eingaenge({"portfolio": pfad})
+
+    assert pfad.read_bytes() == getauschte_bytes  # Der Tausch fand wirklich statt.
+    assert len(aufrufe) == 1
+    assert ergebnis.fehler == [] and ergebnis.bedienfehler == []
+    assert ergebnis.tabellen is aufrufe[0][0]
+    assert ergebnis.geprueft is aufrufe[0][1]
+    assert ergebnis.tabellen["sha256"]["portfolio"] == hashlib.sha256(gepruefte_bytes).hexdigest()
+    assert ergebnis.tabellen["sha256"]["portfolio"] != hashlib.sha256(getauschte_bytes).hexdigest()
+
+
+def test_bestandspruefung_bindet_manifest_und_horizont(tmp_path):
+    import datetime as dt
+    import hashlib
+    import pandas as pd
+
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+    from rechner_pipeline.models.bestand import (
+        LEDGER_SPALTEN, SCHEIBEN_SPALTEN, STAMM_SPALTEN, STATUS_HISTORIE_SPALTEN,
+    )
+    from rechner_pipeline.zielsystem.bestandspruefung import Fortschreibungspruefung, ManifestNachrechnung
+
+    spalten = {
+        "bestand_gesamt.parquet": STAMM_SPALTEN,
+        "historie.parquet": STATUS_HISTORIE_SPALTEN,
+        "ledger.parquet": LEDGER_SPALTEN,
+        "scheiben.parquet": SCHEIBEN_SPALTEN,
+    }
+    dateien = []
+    for name, form in spalten.items():
+        pfad = tmp_path / name
+        write_portfolio(pd.DataFrame({feld: pd.Series(dtype=dtype) for feld, dtype in form}), pfad)
+        dateien.append(pfad)
+    config = tmp_path / "bestand.toml"
+    from pathlib import Path
+    config.write_text((Path(__file__).resolve().parents[1] / "plv" / "configs" /
+                       "bestand_klv.toml").read_text(encoding="utf-8"), encoding="utf-8")
+    daten = PLV().faehigkeit("bestandsdaten")
+    manifest_pfad = daten.laufmanifest_schreiben(
+        tmp_path, horizont=dt.date(2026, 1, 1), neuzugang_ab=None,
+        config_pfad=config, ausgaben=dateien, laufart="fortschreibung")
+    roh = manifest_pfad.read_bytes()
+    pruefung = PLV().faehigkeit("bestandspruefung")
+    manifest = pruefung.manifest_fuer_nachrechnung(
+        dateien[0], hashlib.sha256(roh).hexdigest())
+    assert type(manifest) is ManifestNachrechnung
+    assert manifest.fehler == [] and manifest.daten["horizont"] == "2026-01-01"
+    falsch = pruefung.manifest_fuer_nachrechnung(dateien[0], "0" * 64)
+    assert falsch.daten is None and any("anderen SHA-256" in f for f in falsch.fehler)
+    lauf = pruefung.pruefe_fortschreibung(tmp_path, config)
+    assert type(lauf) is Fortschreibungspruefung
+    assert lauf.horizont == dt.date(2026, 1, 1)
+    assert lauf.fehler == []
+
+
+def test_fremde_bestandspruefung_wird_am_vertrag_gemessen():
+    from rechner_pipeline.plv.bestandspruefung import PLVBestandspruefung
+    from rechner_pipeline.zielsystem.bestandspruefung import Bestandspruefung
+
+    class Fremd:
+        def rollenbeschreibung(self):
+            return PLVBestandspruefung().rollenbeschreibung()
+
+        def pruefe_eingaenge(self, *args, **kwargs):
+            return PLVBestandspruefung().pruefe_eingaenge(*args, **kwargs)
+
+        def pruefe_fortschreibung(self, *args):
+            return PLVBestandspruefung().pruefe_fortschreibung(*args)
+
+        def manifest_fuer_nachrechnung(self, *args):
+            return PLVBestandspruefung().manifest_fuer_nachrechnung(*args)
+
+        def bestandszeilen(self, pfad):
+            return PLVBestandspruefung().bestandszeilen(pfad)
+
+    assert isinstance(Fremd(), Bestandspruefung)
+    assert konformitaet.pruefe_bestandspruefung(Fremd()) == []
+
+
+@pytest.mark.parametrize("methode,ersatz", [
+    ("rollenbeschreibung", lambda self: object()),
+    ("pruefe_eingaenge", lambda self, *a, **k: object()),
+    ("pruefe_fortschreibung", lambda self, *a: object()),
+    ("manifest_fuer_nachrechnung", lambda self, *a: object()),
+    ("bestandszeilen", lambda self, pfad: 1),
+])
+def test_jede_bestandspruefungspflicht_hat_eine_positivkontrolle(methode, ersatz):
+    from rechner_pipeline.plv.bestandspruefung import PLVBestandspruefung
+
+    falsch = type("Fremd", (PLVBestandspruefung,), {methode: ersatz})()
+    befunde = konformitaet.pruefe_bestandspruefung(falsch)
+    assert any(methode in b for b in befunde), befunde
 
 
 def test_der_anbieter_liefert_die_plv_und_sie_ist_konform():
@@ -179,7 +349,7 @@ def test_vertragsversion_muss_eine_version_sein(v):
     assert any("ist keine Vertragsversion" in b for b in befunde), befunde
 
 
-@pytest.mark.parametrize("v", ["0.1.0", "0.2.0", "0.3.0", "0.4.0", "1.4.0", "0.0.1"])
+@pytest.mark.parametrize("v", ["0.1.0", "0.2.0", "0.3.0", "0.4.0", "0.5.0", "1.4.0", "0.0.1"])
 def test_vertragsversion_muss_vertraeglich_sein(v):
     """0.1.0 und 0.2.0 sind dabei: Die PLV der Stufen 0 und 1 waere mit dem
     Vertrag der Stufe 2 nicht mehr konform, sie musste ausdruecklich
@@ -189,7 +359,7 @@ def test_vertragsversion_muss_vertraeglich_sein(v):
 
 
 def test_die_dritte_zahl_der_version_ist_frei():
-    assert konformitaet.pruefe(_abart(vertragsversion="0.5.9")) == []
+    assert konformitaet.pruefe(_abart(vertragsversion="0.6.9")) == []
 
 
 def test_faehigkeiten_muss_ein_frozenset_sein():
@@ -213,7 +383,7 @@ def test_faehigkeit_ohne_protokoll_darf_niemand_anbieten():
 def test_eine_nicht_angebotene_faehigkeit_darf_nicht_geliefert_werden():
     befunde = konformitaet.pruefe(_abart(faehigkeit=lambda self, name: object()))
     nicht_angeboten = set(vertrag.FAEHIGKEITEN) - PLV().faehigkeiten()
-    assert len(nicht_angeboten) == 2
+    assert len(nicht_angeboten) == 1
     assert sorted(b for b in befunde if "obwohl es die Faehigkeit nicht anbietet" in b) == [
         f"liefert {n!r}, obwohl es die Faehigkeit nicht anbietet"
         for n in sorted(nicht_angeboten)
@@ -277,7 +447,7 @@ def test_die_plv_nennt_ihre_vertragsversion_selbst():
     import rechner_pipeline.plv.zielsystem as modul
 
     quelle = Path(modul.__file__).read_text(encoding="utf-8")
-    assert 'vertragsversion = "0.5.0"' in quelle
+    assert 'vertragsversion = "0.6.0"' in quelle
     assert "VERTRAG_VERSION" not in quelle
 
 
@@ -290,7 +460,9 @@ def _rg():
 
 
 def test_die_plv_bietet_die_rechnungsgrundlagen_an():
-    assert PLV().faehigkeiten() == frozenset({"rechnungsgrundlagen", "bewertung", "bestandsdaten"})
+    assert PLV().faehigkeiten() == frozenset({
+        "rechnungsgrundlagen", "bewertung", "bestandsdaten", "bestandspruefung",
+    })
     assert isinstance(_rg(), rechnungsgrundlagen.Rechnungsgrundlagen)
     assert konformitaet.pruefe_rechnungsgrundlagen(_rg()) == []
 

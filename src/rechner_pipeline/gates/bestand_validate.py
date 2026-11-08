@@ -86,10 +86,8 @@ from typing import Dict, List, Optional
 
 # Die Pruefengine wohnt in der Bestandsschicht, damit auch der
 # Abschluss-Produzent sie erreicht (Schichtenkarte verbietet
-# bestand -> gates). Der Name bleibt hier im Namensraum des Gates: der
-# Abnahmebericht ruft ihn als bestand_validate.pruefe_pb1_eingaenge.
+# bestand -> gates). Das Gate erhaelt ihr Urteil ueber den Zielvertrag.
 from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
-from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
 from rechner_pipeline.gates._common import (
     Exit,
     GateArgumentParser,
@@ -343,8 +341,10 @@ def main(argv: Optional[List[str]] = None):
     # dazwischen ergab einen gruenen Beleg ueber Bytes, die nie geprueft
     # wurden (externes Review T20-01 — dieselbe Klasse wie T18-03, eine
     # Ebene hoeher).
-    tabellen, geprueft, errors, usage_errors = lies_und_pruefe_pb1(
+    pruefung = anbieter.zielsystem().faehigkeit("bestandspruefung").pruefe_eingaenge(
         eingaben, bis=bis, manifest=manifest)
+    tabellen, geprueft = pruefung.tabellen, pruefung.geprueft
+    errors, usage_errors = pruefung.fehler, pruefung.bedienfehler
     if usage_errors:
         return _usage(usage_errors)
     gelesen: Dict[str, str] = tabellen.get("sha256", {})

@@ -6,7 +6,7 @@ Nebenversion, wenn der Vertrag etwas Neues verlangt oder beschreibt; die
 dritte Zahl bei Berichtigungen ohne Folgen fuer Implementierungen.
 Die Unterscheidung von Haupt- und Nebenversion erklaert heute nur den
 Anlass eines Sprungs; ``vertraeglich`` verlangt beide gleich, weil in
-den Stufen 0 bis 2 jede Erweiterung des Vertrags die PLV nachziehen
+den Stufen 0 bis 4 jede Erweiterung des Vertrags die PLV nachziehen
 muss. Ob eine aeltere Nebenversion einmal als vertraeglich gelten soll,
 entscheidet erst ein zweites Zielsystem.
 
@@ -25,8 +25,9 @@ from typing import Tuple
 #: Geruest (Stufe 0), 0.2.0 beschrieb die Rechnungsgrundlagen (Stufe 1),
 #: 0.3.0 beschreibt die Bewertung (Stufe 2), 0.4.0 die lesende
 #: Verankerungsrolle als vorgezogenes Stueck von Stufe 3; 0.5.0 die
-#: Bestandsdateien und Laufmanifeste der Stufe 3.
-VERTRAG_VERSION = "0.5.0"
+#: Bestandsdateien und Laufmanifeste der Stufe 3; 0.6.0 die
+#: Bestandspruefung der Stufe 4.
+VERTRAG_VERSION = "0.6.0"
 
 
 def zerlege(version: str) -> Tuple[int, int, int]:

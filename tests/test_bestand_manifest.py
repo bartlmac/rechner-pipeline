@@ -34,6 +34,7 @@ from rechner_pipeline.bestand.manifest import (
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
 from rechner_pipeline.gates import bestand_validate
+from rechner_pipeline.zielsystem import anbieter
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
@@ -257,6 +258,34 @@ def test_gate_bindet_manifest_und_traegt_es_im_ledger(lauf, tmp_path):
     ledger = json.loads(
         (tmp_path / "diag" / "bestand_validate.gate.json").read_text(encoding="utf-8"))
     assert ledger["summary"]["manifest"]["sha256"] == _sha(lauf / MANIFEST_DATEI)
+
+
+def test_gate_nutzt_die_einmal_geprueften_tabellen_des_anbieters(lauf, tmp_path, monkeypatch):
+    """Der Gate-Beleg entsteht aus der Vertragsantwort derselben P-B1-Lesung."""
+    echt = anbieter.zielsystem()
+    gesehen = []
+
+    class Pruefung:
+        def __getattr__(self, name):
+            return getattr(echt.faehigkeit("bestandspruefung"), name)
+
+        def pruefe_eingaenge(self, eingaben, *, bis=None, manifest=None):
+            antwort = echt.faehigkeit("bestandspruefung").pruefe_eingaenge(
+                eingaben, bis=bis, manifest=manifest)
+            gesehen.append((antwort, dict(eingaben)))
+            return antwort
+
+    class Ziel:
+        def faehigkeit(self, name):
+            return Pruefung() if name == "bestandspruefung" else echt.faehigkeit(name)
+
+    monkeypatch.setattr(anbieter, "zielsystem", lambda: Ziel())
+    ergebnis = bestand_validate.main(_gate_argv(lauf, tmp_path, HORIZONT))
+    assert ergebnis.exit_code == 0, ergebnis.errors
+    assert len(gesehen) == 1
+    antwort, eingaben = gesehen[0]
+    assert ergebnis.summary["portfolio_sha256"] == antwort.tabellen["sha256"]["portfolio"]
+    assert "portfolio" in eingaben
 
 
 def test_gate_weist_behaupteten_horizont_gegen_das_manifest_ab(lauf, tmp_path):
