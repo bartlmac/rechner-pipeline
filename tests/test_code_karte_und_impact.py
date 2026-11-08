@@ -1030,7 +1030,7 @@ def test_vier_grenzen_sind_exakt_und_validate_meldet_beide_abweichungen():
     listen = code_karte.GRENZKANTEN_ERLAUBT
     assert {name: len(wert) for name, wert in grenzen.items()} == {
         "simulation_nach_fuehrung": 16, "fuehrung_nach_kern": 36,
-        "simulation_nach_kern": 3, "objekte_nach_tool": 59,
+        "simulation_nach_kern": 3, "objekte_nach_tool": 60,
     }
     assert grenzen == listen
     assert validate(karte) == []

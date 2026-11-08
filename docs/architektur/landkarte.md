@@ -29,7 +29,7 @@ Wer darf aus wem importieren, und wie oft wird es genutzt. Die Regeln
 dahinter sind nachrechenbar (`ontologie.code_karte`), nicht Prosa.
 Auf Modulebene bewachen vier gemessene Listen zusaetzlich die Grenzen
 Simulation nach Fuehrung (16 Paare), Fuehrung nach Kern (36), Simulation
-nach Kern (3) und Objekte nach Tool (59). Neue und entfallene Paare sind
+nach Kern (3) und Objekte nach Tool (60). Neue und entfallene Paare sind
 beide ein Befund. Die sechs Tool-Pakete `ontologie`, `models`, `spez`,
 `quellen`, `qa` und `gates` duerfen den Kern nicht importieren.
 
@@ -44,11 +44,11 @@ flowchart TD
     kern["kern<br/>13 Module"]
     models["models<br/>18 Module"]
     ontologie["ontologie<br/>16 Module"]
-    plv["plv<br/>5 Module"]
+    plv["plv<br/>6 Module"]
     qa["qa<br/>8 Module"]
     quellen["quellen<br/>13 Module"]
     spez["spez<br/>6 Module"]
-    zielsystem["zielsystem<br/>8 Module"]
+    zielsystem["zielsystem<br/>9 Module"]
     bestand -- 37 --> kern
     bestand -- 21 --> models
     bestand -- 1 --> qa
@@ -67,10 +67,10 @@ flowchart TD
     models -- 1 --> zielsystem
     ontologie -- 6 --> models
     ontologie -- 1 --> zielsystem
-    plv -- 5 --> bestand
+    plv -- 6 --> bestand
     plv -- 8 --> kern
     plv -- 1 --> models
-    plv -- 4 --> zielsystem
+    plv -- 5 --> zielsystem
     qa -- 4 --> models
     qa -- 5 --> zielsystem
     quellen -- 7 --> models
@@ -93,13 +93,13 @@ Deshalb sind KLV und BU hier korrekt unverbunden.
 ```mermaid
 %% Fachknoten — erzeugt von ontologie.landkarte
 flowchart TD
-    bu["bu<br/>46 Module"]
-    klv["klv<br/>96 Module"]
+    bu["bu<br/>48 Module"]
+    klv["klv<br/>98 Module"]
     system_architektur["system/architektur<br/>4 Module"]
     system_assurance["system/assurance<br/>15 Module"]
     system_entscheid["system/entscheid<br/>17 Module"]
     system_fall["system/fall<br/>1 Module"]
-    system_zielsystem["system/zielsystem<br/>13 Module"]
+    system_zielsystem["system/zielsystem<br/>15 Module"]
     bu -- 3 --> system_assurance
     bu -- 19 --> system_entscheid
     bu -- 3 --> system_zielsystem

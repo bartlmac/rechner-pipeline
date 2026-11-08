@@ -377,6 +377,7 @@ GRENZKANTEN_ERLAUBT: Dict[str, Set[tuple]] = {
         ("rechner_pipeline/betrieb/zugangsprobe.py", "rechner_pipeline/models/zugangsprobe.py"),
         ("rechner_pipeline/plv/bestandsdaten.py", "rechner_pipeline/models/bestand.py"),
         ("rechner_pipeline/plv/bestandsdaten.py", "rechner_pipeline/zielsystem/bestandsdaten.py"),
+        ("rechner_pipeline/plv/bestandspruefung.py", "rechner_pipeline/zielsystem/bestandspruefung.py"),
         ("rechner_pipeline/plv/bewertung.py", "rechner_pipeline/zielsystem/bewertung.py"),
         ("rechner_pipeline/plv/rechnungsgrundlagen.py", "rechner_pipeline/zielsystem/bestandsdaten.py"),
         ("rechner_pipeline/plv/rechnungsgrundlagen.py", "rechner_pipeline/zielsystem/rechnungsgrundlagen.py"),

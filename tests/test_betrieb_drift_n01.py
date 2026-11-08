@@ -373,9 +373,11 @@ def test_kein_aufrufer_der_engine_baut_die_rollen_von_hand():
     # der Ratsche nicht las).
     # Der sechste (Angriffsrunde Betrieb): die Registrierung eines
     # Eingangs faehrt dieselbe Pruefung wie die Wache des Tageslaufs.
+    # Der PLV-Adapter ruft die Engine fuer Anbieter-Pruefungen auf und muss
+    # dabei ihre zentrale Rollentabelle statt eigener Listen verwenden.
     assert {p.name for p in aufrufer} == {
         "tageslauf.py", "cli_abschluss.py", "cli_report.py", "bestand_validate.py", "abnahmebericht.py",
-        "uebernahme.py",
+        "uebernahme.py", "bestandspruefung.py",
     }
     befunde = {
         str(p.relative_to(REPO_ROOT)): treffer

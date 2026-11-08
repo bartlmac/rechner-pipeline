@@ -12,7 +12,7 @@ was die Pruefung finden soll.
 Je Faehigkeit mit Protokoll prueft ``PRUEFUNG_JE_FAEHIGKEIT`` ueber die
 Form hinaus, was das Protokoll in Worten verlangt (Stufe 1: die
 Rechnungsgrundlagen, Stufe 2: die Bewertung, Stufe 3: die Bestandsdaten
-und die wirksame Tarifzelle der Fuehrung).
+und die wirksame Tarifzelle der Fuehrung, Stufe 4: die Bestandspruefung).
 
 Knoten: system/zielsystem
 """
@@ -34,13 +34,17 @@ from rechner_pipeline.zielsystem.bestandsdaten import (
     BestandsdatenFehler, Erfahrungsannahmen, Fuehrungsansicht,
     Fuehrungsgeneration, Laufmanifest, Verankerungsrolle,
 )
+from rechner_pipeline.zielsystem.bestandspruefung import (
+    Fortschreibungspruefung, ManifestNachrechnung, PB1Pruefung,
+    Rollenbeschreibung,
+)
 from rechner_pipeline.zielsystem.rechnungsgrundlagen import Parametersatz
 from rechner_pipeline.zielsystem.version import VERTRAG_VERSION, vertraeglich, zerlege
 from rechner_pipeline.zielsystem.vertrag import FAEHIGKEITEN, PROTOKOLL_JE_FAEHIGKEIT, Zielsystem
 
 __all__ = [
-    "PRUEFUNG_JE_FAEHIGKEIT", "pruefe", "pruefe_bestandsdaten", "pruefe_bewertung",
-    "pruefe_rechnungsgrundlagen",
+    "PRUEFUNG_JE_FAEHIGKEIT", "pruefe", "pruefe_bestandsdaten",
+    "pruefe_bestandspruefung", "pruefe_bewertung", "pruefe_rechnungsgrundlagen",
 ]
 
 _NAME = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -490,10 +494,98 @@ def pruefe_bestandsdaten(umsetzung: object) -> List[str]:
 
 
 #: Faehigkeit -> Pruefung ueber die Form des Protokolls hinaus.
+def pruefe_bestandspruefung(umsetzung: object) -> List[str]:
+    """P-B1-Rollen und die Bindung der geprueften Eingaben kontrollieren."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    befunde: List[str] = []
+    erwartete_dateien = {
+        "portfolio": "bestand_gesamt.parquet", "historie": "historie.parquet",
+        "ledger": "ledger.parquet", "scheiben": "scheiben.parquet",
+        "merkmale": "merkmale.parquet", "schichten": "schichten.parquet",
+        "verankerung": "verankerung.parquet", "reduktionen": "reduktionen.parquet",
+    }
+    try:
+        rollen = umsetzung.rollenbeschreibung()  # type: ignore[attr-defined]
+        if (type(rollen) is not Rollenbeschreibung
+                or rollen.rollen != frozenset(erwartete_dateien) | {"config"}
+                or dict(rollen.dateien) != erwartete_dateien):
+            befunde.append("rollenbeschreibung liefert nicht alle P-B1-Rollen und Dateien")
+    except Exception as exc:  # noqa: BLE001
+        befunde.append(f"rollenbeschreibung wirft {_ausnahme(exc)}")
+
+    with TemporaryDirectory() as tmp:
+        lauf = Path(tmp)
+        pfad = lauf / "bestand_gesamt.parquet"
+        spalten = {
+            "police_id": "int64", "tarif_generation": "object", "produkt": "object",
+            "status_id": "int64", "status_code": "object",
+            "status_date": "datetime64[ns]", "sex": "object",
+            "date_of_birth": "datetime64[ns]", "entry_age": "int64",
+            "duration": "int64", "premium_duration": "int64",
+            "sum_insured": "float64", "bu_rente": "float64", "zahlweise": "int64",
+            "insurance_start": "datetime64[ns]",
+            "insurance_end": "datetime64[ns]",
+            "payment_end": "datetime64[ns]",
+            "bestandszugang": "datetime64[ns]",
+        }
+        typen = {
+            "int64": pa.int64(), "object": pa.string(),
+            "datetime64[ns]": pa.date32(), "float64": pa.float64(),
+        }
+        pq.write_table(pa.table({
+            name: pa.array([], type=typen[typ]) for name, typ in spalten.items()
+        }), pfad)
+        roh = pfad.read_bytes()
+        try:
+            ergebnis = umsetzung.pruefe_eingaenge({"portfolio": pfad})  # type: ignore[attr-defined]
+            if (type(ergebnis) is not PB1Pruefung
+                    or ergebnis.geprueft != {"portfolio_zeilen": 0}
+                    or ergebnis.fehler or ergebnis.bedienfehler
+                    or ergebnis.tabellen.get("sha256", {}).get("portfolio")
+                    != hashlib.sha256(roh).hexdigest()
+                    or not ergebnis.tabellen["portfolio"].empty):
+                befunde.append("pruefe_eingaenge liefert nicht die gepruefte Tabelle")
+        except Exception as exc:  # noqa: BLE001
+            befunde.append(f"pruefe_eingaenge gueltig wirft {_ausnahme(exc)}")
+        try:
+            ergebnis = umsetzung.pruefe_eingaenge({})  # type: ignore[attr-defined]
+            if (type(ergebnis) is not PB1Pruefung
+                    or not any(f.get("code") == "portfolio" for f in ergebnis.fehler)):
+                befunde.append("pruefe_eingaenge akzeptiert fehlende Portfolio-Rolle")
+        except Exception as exc:  # noqa: BLE001
+            befunde.append(f"pruefe_eingaenge ohne Portfolio wirft {_ausnahme(exc)}")
+        try:
+            if umsetzung.bestandszeilen(pfad) != 0:  # type: ignore[attr-defined]
+                befunde.append("bestandszeilen zaehlt den leeren Bestand falsch")
+        except Exception as exc:  # noqa: BLE001
+            befunde.append(f"bestandszeilen gueltig wirft {_ausnahme(exc)}")
+        try:
+            lauf_pruefung = umsetzung.pruefe_fortschreibung(  # type: ignore[attr-defined]
+                lauf, lauf / "config.toml")
+            if (type(lauf_pruefung) is not Fortschreibungspruefung
+                    or lauf_pruefung.horizont is not None
+                    or not lauf_pruefung.fehler):
+                befunde.append("pruefe_fortschreibung akzeptiert unbelegten Horizont")
+        except Exception as exc:  # noqa: BLE001
+            befunde.append(f"pruefe_fortschreibung ohne Manifest wirft {_ausnahme(exc)}")
+        try:
+            nachrechnung = umsetzung.manifest_fuer_nachrechnung(  # type: ignore[attr-defined]
+                pfad, "0" * 64)
+            if (type(nachrechnung) is not ManifestNachrechnung
+                    or nachrechnung.daten is not None or not nachrechnung.fehler):
+                befunde.append("manifest_fuer_nachrechnung akzeptiert fehlendes Manifest")
+        except Exception as exc:  # noqa: BLE001
+            befunde.append(f"manifest_fuer_nachrechnung ohne Manifest wirft {_ausnahme(exc)}")
+    return befunde
+
+
 PRUEFUNG_JE_FAEHIGKEIT: Mapping[str, Callable[[object], List[str]]] = MappingProxyType({
     "rechnungsgrundlagen": pruefe_rechnungsgrundlagen,
     "bewertung": pruefe_bewertung,
     "bestandsdaten": pruefe_bestandsdaten,
+    "bestandspruefung": pruefe_bestandspruefung,
 })
 
 

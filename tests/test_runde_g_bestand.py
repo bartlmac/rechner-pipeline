@@ -143,9 +143,12 @@ def test_bericht_ohne_config_ist_ein_bedienfehler(verstuemmelt, tmp_path):
 #: (``cli_abschluss``: ``--config`` Pflicht; ``tageslauf``: Config der Ablage),
 #: der Zugang (``uebernahme``: Config der Ablage, wenn vorhanden), die
 #: Abnahme (``abnahmebericht``: die Rollen des P-B1-Belegs), Gate und Bericht.
+#: Der PLV-Adapter (``bestandspruefung``) reicht Anbieteraufrufe an die Engine
+#: weiter und uebernimmt deren Config-Herkunft unveraendert.
 AUFRUFER = {
     "bestand/cli_abschluss.py", "bestand/cli_report.py", "betrieb/tageslauf.py",
     "betrieb/uebernahme.py", "gates/abnahmebericht.py", "gates/bestand_validate.py",
+    "plv/bestandspruefung.py",
 }
 
 
