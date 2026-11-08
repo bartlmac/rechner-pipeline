@@ -55,7 +55,7 @@ flowchart TD
     betrieb -- 35 --> bestand
     betrieb -- 2 --> kern
     betrieb -- 32 --> models
-    gates -- 11 --> bestand
+    gates -- 9 --> bestand
     gates -- 13 --> fall
     gates -- 49 --> models
     gates -- 13 --> ontologie

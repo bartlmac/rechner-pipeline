@@ -187,7 +187,7 @@ ZIELSYSTEM_ANBIETER = "rechner_pipeline/zielsystem/anbieter.py"
 #: kennen. Die 36 Kanten vom Stand 9986830 bleiben als Altlast in dieser
 #: Menge und schrumpfen je Stufe; ``ALTLAST_KANTEN`` zaehlt sie, und ein
 #: Test haelt die Zahl fest (Stufe 0: 36, Stufe 1: 31, Stufe 2a: 24,
-#: Stufe 2b: 14, Stufe 3b: 11; der Rest sind Kanten nach bestand/).
+#: Stufe 2b: 14, Stufe 3b: 11, Stufe 3c: 9; der Rest nach bestand/).
 TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # ADR-030, Stufe 0: die Kante des Vertrags auf die PLV.
     (ZIELSYSTEM_ANBIETER, "rechner_pipeline/plv/zielsystem.py"),
@@ -199,7 +199,6 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # (kern.beitragsreduktion) — zwei Kanten, die migrationssuite_lauf und
     # verankerung_belegen laengst haben; ein Ort fuer den Anfangszustand.
     ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/bestand/migrationszugang.py"),
-    ("rechner_pipeline/gates/bestand_uebernehmen.py", "rechner_pipeline/bestand/parquet_io.py"),
     # Zuschlag der Korrekturschicht bei Beitragsfreistellung (ADR-017
     # Nachtrag 2026-09-20, Entscheid des Maintainers): Die Uebernahme
     # bucht die PEX-Umbuchung uebernommener Vertraege mit demselben
@@ -226,7 +225,6 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # bestand_validate schon hat.
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/manifest.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/migrationszugang.py"),
-    ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/parquet_io.py"),
     # ADR-030, Stufe 1 (2026-11-02): fuenf Kanten der Rechnungsgrundlagen
     # abgeloest — models/bestand -> kern/model_point (Defaults),
     # ontologie/code_index -> kern/produkte (PRODUKTE), qa/abzugsabgleich
@@ -240,6 +238,9 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # ADR-030, Stufe 3b (2026-11-08): drei lesende Gate-Kanten nach
     # bestand/parquet_io abgeloest; die Gates lesen gebundene Bytes ueber
     # die Faehigkeit bestandsdaten.
+    # ADR-030, Stufe 3c (2026-11-08): zwei schreibende Gate-Kanten nach
+    # bestand/parquet_io abgeloest; auch das Lesen in verankerung_belegen
+    # folgt nun dem Bestandsdaten-Vertrag.
     # ADR-030, Stufe 2a (2026-11-02): sieben Kanten der Bewertung abgeloest —
     # qa/abzugsabgleich -> kern/__init__ (berechne), qa/aktuarieller_test
     # -> kern/__init__, kern/beitragsreduktion, kern/korrekturschicht,

@@ -60,6 +60,7 @@ from rechner_pipeline.spez.tarifregeln import (
 # beziehen: Scope des Falls und Spez (Pruefrunde G).
 from rechner_pipeline.gates.migrationssuite_lauf import tarifregeln_des_falls
 from rechner_pipeline.models.bestand import ZUSTAENDE_TA, model_point_kwargs
+from rechner_pipeline.zielsystem import anbieter
 
 #: Zustandsuebersetzung Verankerungstabelle -> Uebernahme-Zustand.
 #: Die Tabelle spricht die Sprache der Uebernahme; die Vokabel steht in
@@ -380,7 +381,6 @@ def fuehre_verankerung(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str
 
     import pandas as pd
 
-    from rechner_pipeline.bestand.parquet_io import read_portfolio_aus_bytes
     from rechner_pipeline.gates._common import Eingangsbindung
     from rechner_pipeline.spez.validierung import lade_spez_aus_bytes, spez_pfad
 
@@ -423,7 +423,8 @@ def fuehre_verankerung(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str
         print(f"verankerung_belegen: {exc}", file=sys.stderr)
         return 2, None
     bestand_gelesen = bindung.binde(pfade["bestand"])
-    bestand = read_portfolio_aus_bytes(bestand_gelesen.roh)
+    bestand = anbieter.zielsystem().faehigkeit("bestandsdaten").tabelle_aus_bytes(
+        bestand_gelesen.roh)
     verankerung_gelesen = bindung.binde(pfade["verankerung"])
 
     anfangszustaende: Optional[Dict[str, Dict[str, Any]]] = None
@@ -634,7 +635,6 @@ def _schreibe_lauf(args: argparse.Namespace, beleg: Dict[str, Any], ueber: Path,
     # Pruefstrecke; die Fuehrung liest die Tabelle. Beide tragen dieselben
     # Parameter — R_conv (zweite Schicht) ist in der Fuehrung nicht
     # freigeschaltet und wuerde hier anhalten.
-    from rechner_pipeline.bestand.parquet_io import write_portfolio
     from rechner_pipeline.models.bestand import SCHICHTEN_NAMES, SCHICHTEN_SPALTEN, schichten_zeile
 
     zeilen_schichten = []
@@ -657,7 +657,8 @@ def _schreibe_lauf(args: argparse.Namespace, beleg: Dict[str, Any], ueber: Path,
     if zeilen_schichten and not beleg["befunde"]:
         tabelle = (pd.DataFrame(zeilen_schichten, columns=list(SCHICHTEN_NAMES))
                    .astype(dict(SCHICHTEN_SPALTEN)))
-        write_portfolio(tabelle, schicht_tabelle)
+        anbieter.zielsystem().faehigkeit("bestandsdaten").schreibe_tabelle(
+            tabelle, schicht_tabelle)
         print(f"  schichten.parquet: {len(tabelle)} Schichten im "
               f"Uebernahme-Verzeichnis {ueber}")
     elif zeilen_schichten:

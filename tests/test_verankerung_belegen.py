@@ -171,6 +171,35 @@ def _wrapper_datei(tmp_path: Path, *, kaputt: str = "",
     return fall
 
 
+def test_schichtbeleg_liest_und_schreibt_ueber_fremde_bestandsdaten(tmp_path, monkeypatch):
+    """Der Producer verarbeitet gebundene Bytes und veroeffentlicht ueber den Vertrag."""
+    from rechner_pipeline.plv.bestandsdaten import PLVBestandsdaten
+    from rechner_pipeline.plv.zielsystem import PLV
+    from rechner_pipeline.zielsystem import anbieter
+
+    gelesen = []
+    geschrieben = []
+
+    class FremdeDaten(PLVBestandsdaten):
+        def tabelle_aus_bytes(self, roh, *, erwartete_spalten=None):
+            gelesen.append(roh)
+            return super().tabelle_aus_bytes(roh, erwartete_spalten=erwartete_spalten)
+
+        def schreibe_tabelle(self, tabelle, pfad, *, exklusiv=False):
+            geschrieben.append((pfad.name, len(tabelle), exklusiv))
+            return super().schreibe_tabelle(tabelle, pfad, exklusiv=exklusiv)
+
+    class FremdesZiel(PLV):
+        def faehigkeit(self, name):
+            return FremdeDaten() if name == "bestandsdaten" else super().faehigkeit(name)
+
+    monkeypatch.setattr(anbieter, "zielsystem", lambda: FremdesZiel())
+    fall = _wrapper_datei(tmp_path)
+    assert gelesen == [(fall / "abgeleitet" / "bestand" / "bestand.parquet").read_bytes()]
+    assert geschrieben == [("schichten.parquet", 1, False)]
+    assert (fall / "abgeleitet" / "bestand" / "schichten.parquet").is_file()
+
+
 def test_abgeleiteter_beleg_wird_nur_mit_nachgerechneter_bindung_akzeptiert(
         tmp_path):
     fall = _wrapper_datei(tmp_path)
