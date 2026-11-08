@@ -21,11 +21,16 @@ from __future__ import annotations
 import re
 import hashlib
 import json
+from datetime import date
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import MappingProxyType
 from typing import Callable, List, Mapping
 
 from rechner_pipeline.zielsystem.bewertung import Vorgangsregeln
-from rechner_pipeline.zielsystem.bestandsdaten import BestandsdatenFehler, Verankerungsrolle
+from rechner_pipeline.zielsystem.bestandsdaten import (
+    BestandsdatenFehler, Laufmanifest, Verankerungsrolle,
+)
 from rechner_pipeline.zielsystem.rechnungsgrundlagen import Parametersatz
 from rechner_pipeline.zielsystem.version import VERTRAG_VERSION, vertraeglich, zerlege
 from rechner_pipeline.zielsystem.vertrag import FAEHIGKEITEN, PROTOKOLL_JE_FAEHIGKEIT, Zielsystem
@@ -181,7 +186,7 @@ def _verankerungsprobe() -> bytes:
 
 
 def pruefe_bestandsdaten(umsetzung: object) -> List[str]:
-    """Die eine Methode gegen gültige und verdrehte gebundene Bytes prüfen."""
+    """Bestands- und Manifestpflichten mit echten Bytes und Fehlerfaellen pruefen."""
     befunde: List[str] = []
     bestand = b"konformitaetsprobe-bestand"
     bestand_sha = hashlib.sha256(bestand).hexdigest()
@@ -271,6 +276,102 @@ def pruefe_bestandsdaten(umsetzung: object) -> List[str]:
             befunde.append(f"verankerungsrolle({titel}) wirft {_ausnahme(exc)}, erwartet BestandsdatenFehler")
         else:
             befunde.append(f"verankerungsrolle({titel}) geht durch, erwartet BestandsdatenFehler")
+
+    from rechner_pipeline.models.bestand import VERANKERUNG_NAMES
+
+    tabelle = None
+    try:
+        tabelle = umsetzung.tabelle_aus_bytes(  # type: ignore[attr-defined]
+            verankerung, erwartete_spalten=VERANKERUNG_NAMES)
+        if tuple(tabelle.columns) != VERANKERUNG_NAMES:
+            befunde.append("tabelle_aus_bytes liefert nicht die erwarteten Spalten")
+    except Exception as exc:  # noqa: BLE001
+        befunde.append(f"tabelle_aus_bytes gueltig wirft {_ausnahme(exc)}")
+    try:
+        umsetzung.tabelle_aus_bytes(b"kein Parquet", erwartete_spalten=VERANKERUNG_NAMES)  # type: ignore[attr-defined]
+    except ValueError:
+        pass
+    except Exception as exc:  # noqa: BLE001
+        befunde.append(f"tabelle_aus_bytes ungueltig wirft {_ausnahme(exc)}, erwartet ValueError")
+    else:
+        befunde.append("tabelle_aus_bytes akzeptiert ungueltige Bytes")
+    try:
+        rollen = umsetzung.rollen_dateien()  # type: ignore[attr-defined]
+        if not isinstance(rollen, Mapping) or rollen.get("verankerung") != "verankerung.parquet":
+            befunde.append("rollen_dateien liefert keine gueltige Verankerungsrolle")
+        else:
+            try:
+                rollen["fremd"] = "fremd.parquet"
+            except TypeError:
+                pass
+            else:
+                befunde.append("rollen_dateien ist veraenderbar")
+    except Exception as exc:  # noqa: BLE001
+        befunde.append(f"rollen_dateien wirft {_ausnahme(exc)}")
+
+    with TemporaryDirectory(prefix="zielsystem-bestandsdaten-") as ort:
+        wurzel = Path(ort)
+        if tabelle is not None:
+            ziel = wurzel / "tabelle.parquet"
+            try:
+                ist = umsetzung.schreibe_tabelle(tabelle, ziel, exklusiv=True)  # type: ignore[attr-defined]
+                if ist != ziel or not ziel.is_file():
+                    befunde.append("schreibe_tabelle veroeffentlicht die Tabelle nicht")
+                umsetzung.schreibe_tabelle(tabelle, ziel, exklusiv=True)  # type: ignore[attr-defined]
+            except FileExistsError:
+                pass
+            except Exception as exc:  # noqa: BLE001
+                befunde.append(f"schreibe_tabelle wirft {_ausnahme(exc)}")
+            else:
+                befunde.append("schreibe_tabelle ignoriert exklusiv=True")
+        manifest_pfad = wurzel / "laufmanifest.json"
+        manifest_roh = roh(manifest)
+        manifest_pfad.write_bytes(manifest_roh)
+        try:
+            beleg = umsetzung.laufmanifest_lesen(manifest_pfad)  # type: ignore[attr-defined]
+            if (type(beleg) is not Laufmanifest or beleg.daten != manifest
+                    or beleg.sha256 != hashlib.sha256(manifest_roh).hexdigest()):
+                befunde.append("laufmanifest_lesen bindet Inhalt und Hash nicht an dieselben Bytes")
+        except Exception as exc:  # noqa: BLE001
+            befunde.append(f"laufmanifest_lesen gueltig wirft {_ausnahme(exc)}")
+        manifest_pfad.write_bytes(b"kein Manifest")
+        try:
+            umsetzung.laufmanifest_lesen(manifest_pfad)  # type: ignore[attr-defined]
+        except BestandsdatenFehler:
+            pass
+        except Exception as exc:  # noqa: BLE001
+            befunde.append(f"laufmanifest_lesen ungueltig wirft {_ausnahme(exc)}")
+        else:
+            befunde.append("laufmanifest_lesen akzeptiert ungueltige Bytes")
+        config = wurzel / "probe.toml"
+        config.write_bytes(b"[meta]\n")
+        ausgabe = wurzel / "bestand.parquet"
+        ausgabe.write_bytes(verankerung)
+        for laufart, erzeuger in (
+            ("fortschreibung", "bestand_fortschreibung"),
+            ("migrationszugang", "bestand_migrationszugang"),
+        ):
+            try:
+                pfad = umsetzung.laufmanifest_schreiben(  # type: ignore[attr-defined]
+                    wurzel, horizont=date(2026, 1, 1), neuzugang_ab=None,
+                    config_pfad=config, ausgaben=[ausgabe], laufart=laufart)
+                geschrieben = json.loads(pfad.read_bytes())
+                if (geschrieben.get("erzeuger") != erzeuger
+                        or geschrieben.get("ausgaben", {}).get("bestand.parquet")
+                        != hashlib.sha256(verankerung).hexdigest()):
+                    befunde.append(f"laufmanifest_schreiben({laufart}) bindet Erzeuger oder Ausgabe nicht")
+            except Exception as exc:  # noqa: BLE001
+                befunde.append(f"laufmanifest_schreiben({laufart}) wirft {_ausnahme(exc)}")
+        try:
+            umsetzung.laufmanifest_schreiben(  # type: ignore[attr-defined]
+                wurzel, horizont=date(2026, 1, 1), neuzugang_ab=None,
+                config_pfad=config, ausgaben=[ausgabe], laufart="fremd")
+        except BestandsdatenFehler:
+            pass
+        except Exception as exc:  # noqa: BLE001
+            befunde.append(f"laufmanifest_schreiben(fremd) wirft {_ausnahme(exc)}")
+        else:
+            befunde.append("laufmanifest_schreiben akzeptiert fremde Laufart")
     return befunde
 
 

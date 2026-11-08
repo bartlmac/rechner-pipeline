@@ -79,10 +79,20 @@ BINDUNGEN = frozenset({"schreibziel", "ausserhalb_der_ablage"})
 DURCHREICHER = {
     ("rechner_pipeline.bestand.parquet_io.write_portfolio", "neue_datei",
      "path.parent, path.name"): "Ziel ist Parameter",
+    # Der PLV-Vertrag nimmt das Tabellenziel aus dem Gate entgegen; er
+    # bestimmt keinen Pfad der Tageslauf-Ablage und reicht ihn unveraendert durch.
+    ("rechner_pipeline.plv.bestandsdaten.PLVBestandsdaten.schreibe_tabelle", "write_portfolio",
+     "tabelle, pfad, exklusiv=exklusiv"): "Ziel ist Parameter des PLV-Vertrags",
     ("rechner_pipeline.bestand.abschluss.schreibe_abschluss", "write_portfolio",
      "df, pfad, exklusiv=True"): "Verzeichnis ist Parameter",
     ("rechner_pipeline.bestand.manifest.schreibe_manifest", "neue_datei",
      "lauf, ziel.name"): "Laufverzeichnis ist Parameter",
+    # Auch das Laufverzeichnis des Manifests kommt vom aufrufenden Gate;
+    # der Adapter waehlt kein Ziel innerhalb der Tageslauf-Ablage.
+    ("rechner_pipeline.plv.bestandsdaten.PLVBestandsdaten.laufmanifest_schreiben", "schreibe_manifest",
+     "lauf, horizont=horizont, neuzugang_ab=neuzugang_ab, config_pfad=config_pfad, "
+     "ausgaben=ausgaben, eingaben=eingaben, erzeuger=erzeuger"):
+        "Laufverzeichnis ist Parameter des PLV-Vertrags",
     # Monatsbericht und Jahresbericht kommen durch EINEN Schreiber auf die
     # Platte (_schreibe_bericht); beide Erzeuger reichen ihr Ziel durch.
     ("rechner_pipeline.betrieb.tageslauf._schreibe_bericht", "neue_datei",

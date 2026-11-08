@@ -24,8 +24,9 @@ from typing import Tuple
 #: Die Version des Vertrags, den dieses Paket beschreibt. 0.1.0 war das
 #: Geruest (Stufe 0), 0.2.0 beschrieb die Rechnungsgrundlagen (Stufe 1),
 #: 0.3.0 beschreibt die Bewertung (Stufe 2), 0.4.0 die lesende
-#: Verankerungsrolle als vorgezogenes Stueck von Stufe 3.
-VERTRAG_VERSION = "0.4.0"
+#: Verankerungsrolle als vorgezogenes Stueck von Stufe 3; 0.5.0 die
+#: Bestandsdateien und Laufmanifeste der Stufe 3.
+VERTRAG_VERSION = "0.5.0"
 
 
 def zerlege(version: str) -> Tuple[int, int, int]:

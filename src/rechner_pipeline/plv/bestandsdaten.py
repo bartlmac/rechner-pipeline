@@ -11,14 +11,69 @@ Knoten: system/zielsystem, klv
 from __future__ import annotations
 
 import hashlib
+from datetime import date
+from pathlib import Path
+from types import MappingProxyType
+from typing import Any, Mapping, Sequence
 
-from rechner_pipeline.zielsystem.bestandsdaten import BestandsdatenFehler, Verankerungsrolle
+from rechner_pipeline.zielsystem.bestandsdaten import (
+    BestandsdatenFehler, Laufmanifest, Verankerungsrolle,
+)
 
 __all__ = ["PLVBestandsdaten"]
 
 
 class PLVBestandsdaten:
-    """Lesende Implementierung der Verankerungsrolle fuer die PLV."""
+    """Bestands- und Manifestoperationen der PLV hinter dem Vertrag."""
+
+    def tabelle_aus_bytes(
+        self, daten: bytes, *, erwartete_spalten: Sequence[str] | None = None,
+    ) -> Any:
+        from rechner_pipeline.bestand.parquet_io import read_portfolio_aus_bytes
+
+        return read_portfolio_aus_bytes(daten, expected_columns=erwartete_spalten)
+
+    def schreibe_tabelle(self, tabelle: Any, pfad: Path, *, exklusiv: bool = False) -> Path:
+        from rechner_pipeline.bestand.parquet_io import write_portfolio
+
+        return write_portfolio(tabelle, pfad, exklusiv=exklusiv)
+
+    def rollen_dateien(self) -> Mapping[str, str]:
+        from rechner_pipeline.bestand.manifest import ROLLEN_DATEIEN
+
+        return MappingProxyType(dict(ROLLEN_DATEIEN))
+
+    def laufmanifest_lesen(self, pfad: Path) -> Laufmanifest:
+        from rechner_pipeline.bestand.manifest import (
+            ManifestError, lies_manifest_bytes, manifest_aus_bytes,
+        )
+
+        try:
+            roh = lies_manifest_bytes(pfad)
+            return Laufmanifest(manifest_aus_bytes(roh), hashlib.sha256(roh).hexdigest())
+        except ManifestError as exc:
+            raise BestandsdatenFehler(str(exc)) from exc
+
+    def laufmanifest_schreiben(
+        self, lauf: Path, *, horizont: date, neuzugang_ab: date | None,
+        config_pfad: Path, ausgaben: Sequence[Path],
+        eingaben: Mapping[str, Path] | None = None, laufart: str,
+    ) -> Path:
+        from rechner_pipeline.bestand.manifest import (
+            ERZEUGER, ERZEUGER_MIGRATIONSZUGANG, schreibe_manifest,
+        )
+
+        erzeuger = {
+            "fortschreibung": ERZEUGER,
+            "migrationszugang": ERZEUGER_MIGRATIONSZUGANG,
+        }.get(laufart)
+        if erzeuger is None:
+            raise BestandsdatenFehler(f"unbekannte Laufart {laufart!r}")
+        return schreibe_manifest(
+            lauf, horizont=horizont, neuzugang_ab=neuzugang_ab,
+            config_pfad=config_pfad, ausgaben=ausgaben, eingaben=eingaben,
+            erzeuger=erzeuger,
+        )
 
     def verankerungsrolle(
         self, *, manifest_bytes: bytes | None, bestand_bytes: bytes,
