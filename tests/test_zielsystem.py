@@ -437,6 +437,38 @@ def test_jede_neue_bestandsdaten_methode_hat_eine_positivkontrolle(methode, ersa
     assert any(methode in befund for befund in befunde), befunde
 
 
+def test_migrationssuite_nutzt_fremde_bestandsdaten_fuer_gebundene_nebentabelle(monkeypatch):
+    """Der Fuehrungswert bekommt die Adapterantwort aus den gelieferten Bytes."""
+    from rechner_pipeline.bestand import migrationszugang
+    from rechner_pipeline.gates import migrationssuite_lauf
+    from rechner_pipeline.plv.bestandsdaten import PLVBestandsdaten
+
+    gesehen = []
+    marker = object()
+
+    class FremdeDaten(PLVBestandsdaten):
+        def tabelle_aus_bytes(self, roh, *, erwartete_spalten=None):
+            gesehen.append(roh)
+            return marker
+
+    class FremdesZiel(PLV):
+        def faehigkeit(self, name):
+            return FremdeDaten() if name == "bestandsdaten" else super().faehigkeit(name)
+
+    def werte(_bestand, historie, *_args, **_kwargs):
+        assert historie is marker
+        return "fremd", {}
+
+    monkeypatch.setattr(anbieter, "zielsystem", lambda: FremdesZiel())
+    monkeypatch.setattr(migrationszugang, "fuehrungswerte", werte)
+    monkeypatch.setattr(migrationssuite_lauf, "_grundlagen_der_spez_je_police", lambda *a: {})
+    ist = migrationssuite_lauf.fuehrungswert_rechnen(
+        object(), lambda name: b"gebundene Bytes" if name == "historie.parquet" else None,
+        "", {}, tarifwerk_der_spez={}, spez=object())
+    assert ist == ("fremd", {})
+    assert gesehen == [b"gebundene Bytes"]
+
+
 @pytest.mark.parametrize("fall", [
     "beides_fehlt", "manifest_ohne_rolle", "rolle_ohne_datei", "datei_ohne_manifest",
     "datei_ohne_rolle", "bestand_hash", "verankerung_hash", "verankerung_hash_gueltiges_parquet", "leere_datei",

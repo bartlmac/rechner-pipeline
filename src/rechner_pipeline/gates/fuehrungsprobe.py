@@ -103,7 +103,6 @@ import pandas as pd
 from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline import fall as fall_mod
 from rechner_pipeline.bestand.config import BestandConfig, config_aus_text
-from rechner_pipeline.bestand.parquet_io import read_portfolio_aus_bytes
 from rechner_pipeline.gates._common import Eingangsbindung
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.gates.bestand_uebernehmen import GRUNDVERTRAG, MATERIALISIEREN
@@ -1455,7 +1454,8 @@ def fuehre_probe(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
             if pflicht:
                 raise SystemExit(f"fuehrungsprobe: Pflichttabelle fehlt: {pfad}")
             return None
-        return read_portfolio_aus_bytes(binde(pfad).roh, expected_columns=spalten)
+        return anbieter.zielsystem().faehigkeit("bestandsdaten").tabelle_aus_bytes(
+            binde(pfad).roh, erwartete_spalten=spalten)
 
     try:
         uebernahme: Dict[str, Any] = {

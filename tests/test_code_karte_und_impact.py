@@ -1078,7 +1078,7 @@ def test_bestandsrolle_laeuft_ueber_den_zielvertrag_ohne_neue_altlast():
     assert ("rechner_pipeline/zielsystem/vertrag.py", vertrag) in kanten
     assert ("rechner_pipeline/plv/zielsystem.py", plv) in kanten
     assert (gate, "rechner_pipeline/bestand/manifest.py") not in kanten
-    assert len(karte["tool_nach_vorzeige"]) == 15  # 14 Altlasten und der Anbieter
+    assert len(karte["tool_nach_vorzeige"]) == 12  # 11 Altlasten und der Anbieter
     assert validate(karte) == []
 
 
@@ -1086,13 +1086,14 @@ def test_die_altlast_der_ratsche_schrumpft_nur():
     """ADR-030: Die Ratsche besteht aus der einen Kante des Anbieters und
     der Altlast, die je Stufe schrumpft und nie waechst. Stufe 0: 36
     Kanten vom Stand 9986830; Stufe 1 (Rechnungsgrundlagen): 31; Stufe 2a
-    (Bewertung, die Pruefstrecke): 24; Stufe 2b (die Gates): 14. Die Zahl
+    (Bewertung, die Pruefstrecke): 24; Stufe 2b (die Gates): 14;
+    Stufe 3b (lesende Tabellen): 11. Die Zahl
     steht hier mit == (nicht <=), damit eine Stufe, die Kanten loest, die
-    Zahl bewusst senkt — und eine, die welche hinzufuegt, rot wird. Die 14
-    gehen alle nach bestand/ (Stufen 3 bis 5)."""
+    Zahl bewusst senkt — und eine, die welche hinzufuegt, rot wird. Die
+    verbliebenen Kanten gehen alle nach bestand/ (Stufen 3 bis 5)."""
     from rechner_pipeline.ontologie.code_karte import ALTLAST_KANTEN, ZIELSYSTEM_ANBIETER
 
-    assert len(ALTLAST_KANTEN) == 14
+    assert len(ALTLAST_KANTEN) == 11
     assert all(nach.startswith("rechner_pipeline/bestand/") for _von, nach in ALTLAST_KANTEN)
     geloest = {
         # Stufe 1
@@ -1120,6 +1121,10 @@ def test_die_altlast_der_ratsche_schrumpft_nur():
         ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/kern/beitragsreduktion.py"),
         ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/__init__.py"),
         ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/kern/rechenkern.py"),
+        # Stufe 3b
+        ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/bestand/parquet_io.py"),
+        ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/bestand/parquet_io.py"),
+        ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/bestand/parquet_io.py"),
     }
     assert not (geloest & ALTLAST_KANTEN)
     assert ALTLAST_KANTEN == {k for k in TOOL_NACH_VORZEIGE_ERLAUBT if k[0] != ZIELSYSTEM_ANBIETER}

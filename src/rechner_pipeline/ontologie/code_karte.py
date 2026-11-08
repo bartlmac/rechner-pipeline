@@ -187,12 +187,11 @@ ZIELSYSTEM_ANBIETER = "rechner_pipeline/zielsystem/anbieter.py"
 #: kennen. Die 36 Kanten vom Stand 9986830 bleiben als Altlast in dieser
 #: Menge und schrumpfen je Stufe; ``ALTLAST_KANTEN`` zaehlt sie, und ein
 #: Test haelt die Zahl fest (Stufe 0: 36, Stufe 1: 31, Stufe 2a: 24,
-#: Stufe 2b: 14; der Rest sind die Kanten nach bestand/, Stufen 3 bis 5).
+#: Stufe 2b: 14, Stufe 3b: 11; der Rest sind Kanten nach bestand/).
 TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # ADR-030, Stufe 0: die Kante des Vertrags auf die PLV.
     (ZIELSYSTEM_ANBIETER, "rechner_pipeline/plv/zielsystem.py"),
     ("rechner_pipeline/gates/abnahmebericht.py", "rechner_pipeline/bestand/vorbedingungen.py"),
-    ("rechner_pipeline/gates/aktuartest_lauf.py", "rechner_pipeline/bestand/parquet_io.py"),
     # Freischaltung (dev-docs/freischaltung-uebernommener-bestand.md,
     # Schritt 3; ADR-017 Nachtrag 2026-09-07): Die Uebernahme ruft
     # DIESELBE Anfangszustands-Ableitung wie Pruefstrecke und Verankerung
@@ -218,10 +217,8 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # migrationssuite_lauf und bestand_validate zusammen.
     ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/bestand/auswertung.py"),
     ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/bestand/config.py"),
-    ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/bestand/parquet_io.py"),
     ("rechner_pipeline/gates/bestand_validate.py", "rechner_pipeline/bestand/vorbedingungen.py"),
     ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/bestand/migrationszugang.py"),
-    ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/bestand/parquet_io.py"),
     # Laufmanifest des Migrationszugangs (ADR-017 Nachtrag 2026-09-20,
     # Entscheid des Maintainers): Ein Migrationslauf hat zwei
     # Produzenten; der zweite kennt Schicht UND Config und schreibt
@@ -239,7 +236,10 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # ADR-030, Stufe 2b (2026-11-02): zehn Kanten der Gates abgeloest —
     # aktuartest_lauf, bestand_uebernehmen, fuehrungsprobe, generation_golden,
     # migrationssuite_lauf, verankerung_belegen nach kern/*. Es bleiben die
-    # 14 Kanten nach bestand/ (Stufen 3 bis 5).
+    # Vor Stufe 3 waren es 14 Kanten nach bestand/ (Stufen 3 bis 5).
+    # ADR-030, Stufe 3b (2026-11-08): drei lesende Gate-Kanten nach
+    # bestand/parquet_io abgeloest; die Gates lesen gebundene Bytes ueber
+    # die Faehigkeit bestandsdaten.
     # ADR-030, Stufe 2a (2026-11-02): sieben Kanten der Bewertung abgeloest —
     # qa/abzugsabgleich -> kern/__init__ (berechne), qa/aktuarieller_test
     # -> kern/__init__, kern/beitragsreduktion, kern/korrekturschicht,
