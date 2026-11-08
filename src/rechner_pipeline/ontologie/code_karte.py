@@ -187,7 +187,8 @@ ZIELSYSTEM_ANBIETER = "rechner_pipeline/zielsystem/anbieter.py"
 #: kennen. Die 36 Kanten vom Stand 9986830 bleiben als Altlast in dieser
 #: Menge und schrumpfen je Stufe; ``ALTLAST_KANTEN`` zaehlt sie, und ein
 #: Test haelt die Zahl fest (Stufe 0: 36, Stufe 1: 31, Stufe 2a: 24,
-#: Stufe 2b: 14, Stufe 3b: 11, Stufe 3c: 9; der Rest nach bestand/).
+#: Stufe 2b: 14, Stufe 3b: 11, Stufe 3c: 9, Stufe 3d: 7;
+#: der Rest nach bestand/).
 TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # ADR-030, Stufe 0: die Kante des Vertrags auf die PLV.
     (ZIELSYSTEM_ANBIETER, "rechner_pipeline/plv/zielsystem.py"),
@@ -207,7 +208,6 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # aktuartest_lauf, fuehrungsprobe und qa.aktuarieller_test schon
     # haben. Ohne diese Kante haette die Uebernahme die Regel
     # abgeschrieben; genau das Abtippen war Befund T25-06.
-    ("rechner_pipeline/gates/bestand_validate.py", "rechner_pipeline/bestand/manifest.py"),
     # Freischaltung, Schritt 6 (ADR-017 Nachtrag 2026-09-07): Die
     # Fuehrungsprobe stellt den gefuehrten Bestand gegen die Pruefstrecke
     # und liest dazu, was die Fuehrung liest (Config, Tabellen,
@@ -223,7 +223,6 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # Produzenten; der zweite kennt Schicht UND Config und schreibt
     # deshalb das Manifest fuer beide. Dieselbe Tuer, die
     # bestand_validate schon hat.
-    ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/manifest.py"),
     ("rechner_pipeline/gates/verankerung_belegen.py", "rechner_pipeline/bestand/migrationszugang.py"),
     # ADR-030, Stufe 1 (2026-11-02): fuenf Kanten der Rechnungsgrundlagen
     # abgeloest — models/bestand -> kern/model_point (Defaults),
@@ -241,6 +240,8 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # ADR-030, Stufe 3c (2026-11-08): zwei schreibende Gate-Kanten nach
     # bestand/parquet_io abgeloest; auch das Lesen in verankerung_belegen
     # folgt nun dem Bestandsdaten-Vertrag.
+    # ADR-030, Stufe 3d (2026-11-08): Manifestlesen und -erzeugung
+    # ueber bestandsdaten, statt direkter Gate-Imports aus bestand/manifest.
     # ADR-030, Stufe 2a (2026-11-02): sieben Kanten der Bewertung abgeloest —
     # qa/abzugsabgleich -> kern/__init__ (berechne), qa/aktuarieller_test
     # -> kern/__init__, kern/beitragsreduktion, kern/korrekturschicht,

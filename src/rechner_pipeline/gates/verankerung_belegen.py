@@ -695,19 +695,15 @@ def _schreibe_lauf(args: argparse.Namespace, beleg: Dict[str, Any], ueber: Path,
             print("  laufmanifest.json NICHT geschrieben: dieser Lauf hat "
                   "keine vollstaendige Schicht erzeugt", file=sys.stderr)
         else:
-            from rechner_pipeline.bestand.manifest import (
-                ERZEUGER_MIGRATIONSZUGANG,
-                schreibe_manifest,
-            )
             ausgaben = sorted(
                 d for d in ueber.glob("*.parquet") if d.is_file())
-            schreibe_manifest(
+            anbieter.zielsystem().faehigkeit("bestandsdaten").laufmanifest_schreiben(
                 ueber,
                 horizont=_dt.date.fromisoformat(args.stichtag),
                 neuzugang_ab=None,
                 config_pfad=Path(args.config),
                 ausgaben=ausgaben,
-                erzeuger=ERZEUGER_MIGRATIONSZUGANG,
+                laufart="migrationszugang",
             )
             print(f"  laufmanifest.json: {len(ausgaben)} Tabellen des "
                   f"Migrationszugangs gebunden ({ueber})")

@@ -55,14 +55,14 @@ flowchart TD
     betrieb -- 35 --> bestand
     betrieb -- 2 --> kern
     betrieb -- 32 --> models
-    gates -- 9 --> bestand
+    gates -- 7 --> bestand
     gates -- 13 --> fall
     gates -- 49 --> models
     gates -- 13 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
     gates -- 13 --> spez
-    gates -- 9 --> zielsystem
+    gates -- 11 --> zielsystem
     models -- 1 --> gates
     models -- 1 --> zielsystem
     ontologie -- 6 --> models
@@ -102,11 +102,11 @@ flowchart TD
     system_zielsystem["system/zielsystem<br/>13 Module"]
     bu -- 3 --> system_assurance
     bu -- 19 --> system_entscheid
-    bu -- 1 --> system_zielsystem
+    bu -- 3 --> system_zielsystem
     klv -- 9 --> system_assurance
     klv -- 44 --> system_entscheid
     klv -- 11 --> system_fall
-    klv -- 17 --> system_zielsystem
+    klv -- 19 --> system_zielsystem
     system_architektur -- 1 --> klv
     system_architektur -- 1 --> system_zielsystem
     system_assurance -- 4 --> system_entscheid

@@ -200,6 +200,47 @@ def test_schichtbeleg_liest_und_schreibt_ueber_fremde_bestandsdaten(tmp_path, mo
     assert (fall / "abgeleitet" / "bestand" / "schichten.parquet").is_file()
 
 
+def test_schichtbeleg_schreibt_manifest_ueber_fremde_bestandsdaten(tmp_path, monkeypatch):
+    """Der zweite Erzeuger uebergibt Laufart und Ausgaben an den Vertrag."""
+    from rechner_pipeline.plv.bestandsdaten import PLVBestandsdaten
+    from rechner_pipeline.plv.zielsystem import PLV
+    from rechner_pipeline.zielsystem import anbieter
+
+    gesehen = []
+
+    class FremdeDaten(PLVBestandsdaten):
+        def laufmanifest_schreiben(self, lauf, **angaben):
+            gesehen.append((lauf, angaben))
+            return super().laufmanifest_schreiben(lauf, **angaben)
+
+    class FremdesZiel(PLV):
+        def faehigkeit(self, name):
+            return FremdeDaten() if name == "bestandsdaten" else super().faehigkeit(name)
+
+    fall = tmp_path / "fall"
+    anlegen(fall, scope="bestand")
+    eingabe = fall / "abgeleitet" / "bestand" / "verankerung.parquet"
+    eingabe.parent.mkdir(parents=True)
+    _verankerung(7000001).to_parquet(eingabe)
+    _bestand(7000001).to_parquet(eingabe.with_name("bestand.parquet"))
+    lege_spez(fall, _spez_einzellig().zellen[0].model_point)
+    config = tmp_path / "config.toml"
+    config.write_bytes(b"[meta]\n")
+    monkeypatch.setattr(anbieter, "zielsystem", lambda: FremdesZiel())
+    assert erzeuge_schichtbeleg([
+        "--fall", str(fall), "--repo-root", str(REPO_ROOT),
+        "--generation", "klv/tg2015", "--config", str(config),
+        "--stichtag", "2026-01-01",
+    ]) == 0
+    assert len(gesehen) == 1
+    assert gesehen[0][0] == eingabe.parent
+    assert gesehen[0][1]["laufart"] == "migrationszugang"
+    assert {pfad.name for pfad in gesehen[0][1]["ausgaben"]} == {
+        "bestand.parquet", "verankerung.parquet", "schichten.parquet",
+    }
+    assert (eingabe.parent / "laufmanifest.json").is_file()
+
+
 def test_abgeleiteter_beleg_wird_nur_mit_nachgerechneter_bindung_akzeptiert(
         tmp_path):
     fall = _wrapper_datei(tmp_path)
