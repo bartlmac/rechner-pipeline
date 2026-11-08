@@ -142,6 +142,53 @@ def test_bestandspruefung_liefert_gepruefte_tabelle_und_rollen(tmp_path):
     assert pruefung.bestandszeilen(pfad) == 0
 
 
+def test_bestandspruefung_gibt_genau_die_einmal_geprueften_tabellen_zurueck(
+    tmp_path, monkeypatch,
+):
+    """Ein Dateitausch nach dem Engine-Urteil darf keine zweite Tabelle liefern."""
+    import hashlib
+    import pandas as pd
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from rechner_pipeline.bestand import vorbedingungen
+    from rechner_pipeline.bestand.parquet_io import write_portfolio
+    from rechner_pipeline.models.bestand import STAMM_SPALTEN
+
+    pfad = tmp_path / "bestand_gesamt.parquet"
+    write_portfolio(pd.DataFrame({name: pd.Series(dtype=dtype)
+                                  for name, dtype in STAMM_SPALTEN}), pfad)
+    gepruefte_bytes = pfad.read_bytes()
+    tabelle = pq.read_table(pfad)
+    nachher = pa.BufferOutputStream()
+    pq.write_table(tabelle.replace_schema_metadata({
+        **(tabelle.schema.metadata or {}), b"probe": b"nach-der-pruefung",
+    }), nachher)
+    getauschte_bytes = nachher.getvalue().to_pybytes()
+    assert getauschte_bytes != gepruefte_bytes
+
+    echt = vorbedingungen.lies_und_pruefe_pb1
+    aufrufe = []
+
+    def spion(eingaben, **kwargs):
+        antwort = echt(eingaben, **kwargs)
+        aufrufe.append(antwort)
+        if len(aufrufe) == 1:
+            pfad.write_bytes(getauschte_bytes)
+        return antwort
+
+    monkeypatch.setattr(vorbedingungen, "lies_und_pruefe_pb1", spion)
+    ergebnis = PLV().faehigkeit("bestandspruefung").pruefe_eingaenge({"portfolio": pfad})
+
+    assert pfad.read_bytes() == getauschte_bytes  # Der Tausch fand wirklich statt.
+    assert len(aufrufe) == 1
+    assert ergebnis.fehler == [] and ergebnis.bedienfehler == []
+    assert ergebnis.tabellen is aufrufe[0][0]
+    assert ergebnis.geprueft is aufrufe[0][1]
+    assert ergebnis.tabellen["sha256"]["portfolio"] == hashlib.sha256(gepruefte_bytes).hexdigest()
+    assert ergebnis.tabellen["sha256"]["portfolio"] != hashlib.sha256(getauschte_bytes).hexdigest()
+
+
 def test_bestandspruefung_bindet_manifest_und_horizont(tmp_path):
     import datetime as dt
     import hashlib
