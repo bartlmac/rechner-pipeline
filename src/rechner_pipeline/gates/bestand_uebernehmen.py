@@ -85,7 +85,6 @@ from rechner_pipeline.bestand.migrationszugang import (
     MigrationszugangFehler,
     leite_pex_ursprungssumme_ab,
 )
-from rechner_pipeline.bestand.parquet_io import write_portfolio
 from rechner_pipeline.gates._common import Eingangsbindung
 from rechner_pipeline.zielsystem import anbieter
 from rechner_pipeline.spez.tarifregeln import (
@@ -1260,11 +1259,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             "ist, wozu sie gehoeren."
         )
 
-    write_portfolio(stamm, ziel / "bestand.parquet")
-    write_portfolio(historie, ziel / "historie.parquet")
-    write_portfolio(ledger, ziel / "ledger.parquet")
+    bestandsdaten = anbieter.zielsystem().faehigkeit("bestandsdaten")
+    bestandsdaten.schreibe_tabelle(stamm, ziel / "bestand.parquet")
+    bestandsdaten.schreibe_tabelle(historie, ziel / "historie.parquet")
+    bestandsdaten.schreibe_tabelle(ledger, ziel / "ledger.parquet")
     if scheiben is not None and len(scheiben):
-        write_portfolio(scheiben, ziel / "scheiben.parquet")
+        bestandsdaten.schreibe_tabelle(scheiben, ziel / "scheiben.parquet")
         print(f"  scheiben.parquet  {len(scheiben)} Alt-Erhoehungen "
               f"({beleg['mit_scheiben']} Vertraege; gamma1 "
               f"{'uebernommen' if regeln.scheiben_mit_gamma1 else '0'})")
@@ -1275,7 +1275,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # anderes als leere Stammspalten, in denen "trifft nicht zu" und
     # "unbekannt" gleich aussehen.
     if merkmale is not None and len(merkmale):
-        write_portfolio(merkmale, ziel / "merkmale.parquet")
+        bestandsdaten.schreibe_tabelle(merkmale, ziel / "merkmale.parquet")
         print(f"  merkmale.parquet: {len(merkmale)} Zeilen "
               f"({merkmale['dimension'].nunique()} Dimensionen)")
     # Die Grundlagen der Generation (und ihrer Zellen) samt Tarifwerk
@@ -1293,7 +1293,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Erwartungswerten rekonstruiert. Traegt die Lieferung sie je Zeile,
     # werden sie hier Vertragsmerkmale des Bestands.
     if len(verankerung):
-        write_portfolio(verankerung, ziel / "verankerung.parquet")
+        bestandsdaten.schreibe_tabelle(verankerung, ziel / "verankerung.parquet")
         print(f"  verankerung.parquet: {len(verankerung)} Zeilen "
               f"(t_a in Vertragsmonaten, Zustand aus der Vorgeschichte)")
 

@@ -153,6 +153,44 @@ def test_die_wache_laesst_den_richtigen_durch(tmp_path: Path, erzeuger: str):
     pruefe_erzeuger(lies_manifest(_lauf(tmp_path, erzeuger=erzeuger)), erzeuger)
 
 
+def test_pb1_nutzt_fremde_manifestantwort_und_rollen(tmp_path: Path, monkeypatch):
+    """Das Gate fragt die Vertragsrollen ab und nimmt dessen Manifesturteil."""
+    from rechner_pipeline.gates import bestand_validate
+    from rechner_pipeline.plv.bestandsdaten import PLVBestandsdaten
+    from rechner_pipeline.plv.zielsystem import PLV
+    from rechner_pipeline.zielsystem import anbieter
+    from rechner_pipeline.zielsystem.bestandsdaten import BestandsdatenFehler
+    from types import MappingProxyType
+
+    gesehen = []
+
+    class FremdeDaten(PLVBestandsdaten):
+        def rollen_dateien(self):
+            return MappingProxyType({**super().rollen_dateien(), "probe": "probe.parquet"})
+
+        def laufmanifest_lesen(self, pfad):
+            gesehen.append(pfad)
+            raise BestandsdatenFehler("fremdes Manifesturteil")
+
+    class FremdesZiel(PLV):
+        def faehigkeit(self, name):
+            return FremdeDaten() if name == "bestandsdaten" else super().faehigkeit(name)
+
+    monkeypatch.setattr(anbieter, "zielsystem", lambda: FremdesZiel())
+    assert "probe" in {a.dest for a in bestand_validate._build_parser()._actions}
+    portfolio = tmp_path / "portfolio.parquet"
+    portfolio.write_bytes(b"probe")
+    manifest = tmp_path / "laufmanifest.json"
+    manifest.write_bytes(b"probe")
+    ergebnis = bestand_validate.main([
+        "--portfolio", str(portfolio), "--manifest", str(manifest),
+        "--diagnostics-dir", str(tmp_path / "diagnostics"),
+    ])
+    assert ergebnis.exit_code == 2
+    assert gesehen == [manifest]
+    assert any("fremdes Manifesturteil" in f["message"] for f in ergebnis.errors)
+
+
 # --------------------------------------------------------------------------- #
 # 3. Ratsche: jeder Leser eines Manifests nennt seine Erwartung
 # --------------------------------------------------------------------------- #

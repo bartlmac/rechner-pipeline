@@ -43,10 +43,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline import fall as fall_mod
-from rechner_pipeline.bestand.parquet_io import (
-    read_portfolio,
-    read_portfolio_aus_bytes,
-)
 from rechner_pipeline.gates._common import Eingangsbindung
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.models.bestand import (
@@ -1116,7 +1112,8 @@ def fuehrungswert_rechnen(
     tabellen: Dict[str, Any] = {}
     for name in FUEHRUNGSWERT_NEBENTABELLEN:
         roh = lies_neben(name)
-        tabellen[name] = None if roh is None else read_portfolio_aus_bytes(roh)
+        tabellen[name] = None if roh is None else anbieter.zielsystem().faehigkeit(
+            "bestandsdaten").tabelle_aus_bytes(roh)
     if tabellen["historie.parquet"] is None:
         raise MigrationszugangFehler(
             "historie.parquet fehlt neben dem Bestand — ohne die Historie der "
@@ -1218,7 +1215,8 @@ def fuehrungswert_nachgerechnet(suite: Dict[str, Any], fall: Path,
         if spez.generation != tarifregeln.generation:
             raise ValueError("Spez-Generation weicht von den Tarifregeln ab")
         konvention, werte = fuehrungswert_rechnen(
-            read_portfolio_aus_bytes(bestand_roh), neben.get, config_roh.decode("utf-8"),
+            anbieter.zielsystem().faehigkeit("bestandsdaten").tabelle_aus_bytes(
+                bestand_roh), neben.get, config_roh.decode("utf-8"),
             {t: _parse(str(suite.get(t))) for t in ("stichtag_1", "stichtag_2")},
             tarifwerk_der_spez={tarifregeln.generation: dict(tarifregeln.tarifwerk)},
             spez=spez)
@@ -1404,7 +1402,8 @@ def fuehre_suite(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
     bindung = Eingangsbindung(fall)
     bestand_pfad = Path(args.bestand)
     bestand_gelesen = bindung.binde(bestand_pfad)
-    bestand = read_portfolio_aus_bytes(bestand_gelesen.roh)
+    bestand = anbieter.zielsystem().faehigkeit("bestandsdaten").tabelle_aus_bytes(
+        bestand_gelesen.roh)
     from rechner_pipeline.gates.aktuartest_lauf import _schichtpflicht
 
     _schichtpflicht(fall, bestand_pfad, args.schicht, bindung)
@@ -1491,8 +1490,8 @@ def fuehre_suite(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
         schichten = _schichten(fall, args.schicht, bindung=bindung,
                                repo_root=Path(args.repo_root).resolve(),
                                auskunft=auskunft_beleg)
-        ver = read_portfolio_aus_bytes(bindung.binde(
-            fall / "abgeleitet" / "bestand" / "verankerung.parquet").roh)
+        ver = anbieter.zielsystem().faehigkeit("bestandsdaten").tabelle_aus_bytes(
+            bindung.binde(fall / "abgeleitet" / "bestand" / "verankerung.parquet").roh)
         monate_ta_je_police = {
             str(z.police_id): int(z.monate_ta) for z in ver.itertuples()}
 

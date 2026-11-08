@@ -89,13 +89,6 @@ from typing import Dict, List, Optional
 # bestand -> gates). Der Name bleibt hier im Namensraum des Gates: der
 # Abnahmebericht ruft ihn als bestand_validate.pruefe_pb1_eingaenge.
 from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
-from rechner_pipeline.bestand.manifest import (
-    ManifestError,
-    ROLLEN_DATEIEN,
-    lies_manifest_bytes,
-    manifest_aus_bytes,
-    sha256_bytes,
-)
 from rechner_pipeline.bestand.vorbedingungen import lies_und_pruefe_pb1
 from rechner_pipeline.gates._common import (
     Exit,
@@ -112,6 +105,8 @@ from rechner_pipeline.gates._common import (
     utc_now,
 )
 from rechner_pipeline.gates._provenienz import systemstand
+from rechner_pipeline.zielsystem import anbieter
+from rechner_pipeline.zielsystem.bestandsdaten import BestandsdatenFehler
 
 GATE = "P-B1.bestandspruefung"
 GATE_VERSION = "4.0.0"
@@ -180,14 +175,14 @@ def _build_parser() -> GateArgumentParser:
         "--bis an den belegten Horizont und jede Tabelle an die vom Lauf "
         "geschriebenen Bytes.",
     )
-    # Jede Rolle des Erzeugers hat ein Flag — ABGELEITET aus ROLLEN_DATEIEN,
+    # Jede Rolle des Erzeugers hat ein Flag — ABGELEITET aus dem Vertrag,
     # nicht abgetippt. Die Eingabenliste unten liest die Rollen aus derselben
     # Tabelle; eine Rolle ohne Flag war dort still None (A27-02: die
     # Reduktionstabelle stand in der Tabelle, hatte kein Flag, und auch der
     # Weg ueber --request-json kannte den Schluessel deshalb nicht — Exit 20
     # mit 89 "falschen" Buchungen fuer einen korrekten Lauf).
     vorhanden = {a.dest for a in parser._actions}
-    for rolle, datei in ROLLEN_DATEIEN.items():
+    for rolle, datei in anbieter.zielsystem().faehigkeit("bestandsdaten").rollen_dateien().items():
         if rolle not in vorhanden:
             parser.add_argument(
                 f"--{rolle}", default=None,
@@ -264,12 +259,12 @@ def main(argv: Optional[List[str]] = None):
             bis = _dt.date.fromisoformat(args.bis)
         except ValueError as exc:
             return _usage([{"code": "bad_arg", "message": f"Ungueltiges --bis-Datum: {exc}"}])
-    # Die Rollen kommen aus der Tabelle des Erzeugers (ROLLEN_DATEIEN), nicht
+    # Die Rollen kommen aus der Tabelle des Zielvertrags, nicht
     # aus einer abgetippten Liste — eine neue Rolle erreicht das Gate, sobald
     # sie ein Flag hat (Betriebsbefund N-01).
     eingaben = {
         rolle: Path(wert)
-        for rolle in (*ROLLEN_DATEIEN, "config")
+        for rolle in (*anbieter.zielsystem().faehigkeit("bestandsdaten").rollen_dateien(), "config")
         if (wert := getattr(args, rolle, None))
     }
     fehlend = [str(p) for p in eingaben.values() if not p.is_file()]
@@ -332,12 +327,13 @@ def main(argv: Optional[List[str]] = None):
     if args.manifest:
         # Einmal gelesen: gehasht und geparst werden dieselben Bytes.
         try:
-            manifest_bytes = lies_manifest_bytes(Path(args.manifest))
-            manifest = manifest_aus_bytes(manifest_bytes)
-        except ManifestError as exc:
+            beleg = anbieter.zielsystem().faehigkeit("bestandsdaten").laufmanifest_lesen(
+                Path(args.manifest))
+            manifest = beleg.daten
+        except BestandsdatenFehler as exc:
             return _usage([{"code": "bad_arg", "message": str(exc)}],
                           [ERZEUGER_HINWEIS])
-        manifest_sha256 = sha256_bytes(manifest_bytes)
+        manifest_sha256 = beleg.sha256
     paths = {name: str(p) for name, p in eingaben.items()}
     repo_root = Path(args.repo_root).resolve() if args.repo_root else None
     # EIN Lesevorgang je Eingabe: Die Engine liest, hasht und parst dieselben

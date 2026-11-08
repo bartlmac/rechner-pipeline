@@ -29,7 +29,7 @@ Wer darf aus wem importieren, und wie oft wird es genutzt. Die Regeln
 dahinter sind nachrechenbar (`ontologie.code_karte`), nicht Prosa.
 Auf Modulebene bewachen vier gemessene Listen zusaetzlich die Grenzen
 Simulation nach Fuehrung (16 Paare), Fuehrung nach Kern (36), Simulation
-nach Kern (3) und Objekte nach Tool (58). Neue und entfallene Paare sind
+nach Kern (3) und Objekte nach Tool (59). Neue und entfallene Paare sind
 beide ein Befund. Die sechs Tool-Pakete `ontologie`, `models`, `spez`,
 `quellen`, `qa` und `gates` duerfen den Kern nicht importieren.
 
@@ -55,22 +55,22 @@ flowchart TD
     betrieb -- 35 --> bestand
     betrieb -- 2 --> kern
     betrieb -- 32 --> models
-    gates -- 14 --> bestand
+    gates -- 5 --> bestand
     gates -- 13 --> fall
     gates -- 49 --> models
     gates -- 13 --> ontologie
     gates -- 9 --> qa
     gates -- 4 --> quellen
     gates -- 13 --> spez
-    gates -- 9 --> zielsystem
+    gates -- 12 --> zielsystem
     models -- 1 --> gates
     models -- 1 --> zielsystem
     ontologie -- 6 --> models
     ontologie -- 1 --> zielsystem
-    plv -- 2 --> bestand
+    plv -- 5 --> bestand
     plv -- 8 --> kern
     plv -- 1 --> models
-    plv -- 3 --> zielsystem
+    plv -- 4 --> zielsystem
     qa -- 4 --> models
     qa -- 5 --> zielsystem
     quellen -- 7 --> models
@@ -102,11 +102,11 @@ flowchart TD
     system_zielsystem["system/zielsystem<br/>13 Module"]
     bu -- 3 --> system_assurance
     bu -- 19 --> system_entscheid
-    bu -- 1 --> system_zielsystem
+    bu -- 3 --> system_zielsystem
     klv -- 9 --> system_assurance
     klv -- 44 --> system_entscheid
     klv -- 11 --> system_fall
-    klv -- 17 --> system_zielsystem
+    klv -- 20 --> system_zielsystem
     system_architektur -- 1 --> klv
     system_architektur -- 1 --> system_zielsystem
     system_assurance -- 4 --> system_entscheid
@@ -115,8 +115,8 @@ flowchart TD
     system_entscheid -- 12 --> klv
     system_entscheid -- 11 --> system_assurance
     system_entscheid -- 2 --> system_fall
-    system_zielsystem -- 10 --> bu
-    system_zielsystem -- 9 --> klv
+    system_zielsystem -- 13 --> bu
+    system_zielsystem -- 11 --> klv
 ```
 
 ## 3 Der Zielrechenkern von innen

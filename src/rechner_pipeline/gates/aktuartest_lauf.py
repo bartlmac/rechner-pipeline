@@ -50,10 +50,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline import fall as fall_mod
-from rechner_pipeline.bestand.parquet_io import (
-    read_portfolio,
-    read_portfolio_aus_bytes,
-)
 from rechner_pipeline.gates._common import Eingangsbindung, lies_gehasht
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.models.bestand import model_point_kwargs
@@ -938,7 +934,8 @@ def fuehre_test(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]]
         print(f"aktuartest_lauf: {exc}", file=sys.stderr)
         return 2, None
     bestand_gelesen = bindung.binde(Path(args.bestand))
-    bestand = read_portfolio_aus_bytes(bestand_gelesen.roh)
+    bestand = anbieter.zielsystem().faehigkeit("bestandsdaten").tabelle_aus_bytes(
+        bestand_gelesen.roh)
     _schichtpflicht(fall, Path(args.bestand), args.schicht, bindung)
 
     gemeldet = lieferung.get("test")

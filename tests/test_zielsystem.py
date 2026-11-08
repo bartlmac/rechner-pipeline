@@ -19,6 +19,7 @@ from rechner_pipeline.plv.zielsystem import PLV
 from rechner_pipeline.zielsystem import (
     anbieter, bestandsdaten, bewertung, konformitaet, rechnungsgrundlagen, version, vertrag,
 )
+from tests.test_t27_pruefstrecke_runde_c import gefahrener_fall, welt  # noqa: F401
 
 
 # --------------------------------------------------------------------------- #
@@ -26,7 +27,7 @@ from rechner_pipeline.zielsystem import (
 # --------------------------------------------------------------------------- #
 
 def test_die_vertragsversion_ist_dreistellig():
-    assert version.zerlege(version.VERTRAG_VERSION) == (0, 4, 0)
+    assert version.zerlege(version.VERTRAG_VERSION) == (0, 5, 0)
 
 
 @pytest.mark.parametrize("kaputt", ["1.2", "1.2.3.4", "a.b.c", "", "1.2.x", " 1.2.3"])
@@ -113,6 +114,24 @@ def test_fremde_bestandsdaten_umsetzung_wird_am_vertrag_gemessen():
     from rechner_pipeline.plv.bestandsdaten import PLVBestandsdaten
 
     class Fremd:
+        def tabelle_aus_bytes(self, *args, **kwargs):
+            return PLVBestandsdaten().tabelle_aus_bytes(*args, **kwargs)
+
+        def schreibe_tabelle(self, *args, **kwargs):
+            return PLVBestandsdaten().schreibe_tabelle(*args, **kwargs)
+
+        def rollen_dateien(self):
+            return PLVBestandsdaten().rollen_dateien()
+
+        def laufmanifest_lesen(self, *args, **kwargs):
+            return PLVBestandsdaten().laufmanifest_lesen(*args, **kwargs)
+
+        def laufmanifest_schreiben(self, *args, **kwargs):
+            return PLVBestandsdaten().laufmanifest_schreiben(*args, **kwargs)
+
+        def fuehrungsansicht_aus_text(self, text):
+            return PLVBestandsdaten().fuehrungsansicht_aus_text(text)
+
         def verankerungsrolle(self, **eingaben):
             return PLVBestandsdaten().verankerungsrolle(**eingaben)
 
@@ -121,7 +140,9 @@ def test_fremde_bestandsdaten_umsetzung_wird_am_vertrag_gemessen():
 
 
 def test_falsche_plv_bestandsdaten_methode_faellt_bei_konformitaet_auf():
-    class Falsch:
+    from rechner_pipeline.plv.bestandsdaten import PLVBestandsdaten
+
+    class Falsch(PLVBestandsdaten):
         def verankerungsrolle(self, **eingaben):
             return bestandsdaten.Verankerungsrolle(False, "0" * 64, None)
 
@@ -158,7 +179,7 @@ def test_vertragsversion_muss_eine_version_sein(v):
     assert any("ist keine Vertragsversion" in b for b in befunde), befunde
 
 
-@pytest.mark.parametrize("v", ["0.1.0", "0.2.0", "0.3.0", "1.4.0", "0.0.1"])
+@pytest.mark.parametrize("v", ["0.1.0", "0.2.0", "0.3.0", "0.4.0", "1.4.0", "0.0.1"])
 def test_vertragsversion_muss_vertraeglich_sein(v):
     """0.1.0 und 0.2.0 sind dabei: Die PLV der Stufen 0 und 1 waere mit dem
     Vertrag der Stufe 2 nicht mehr konform, sie musste ausdruecklich
@@ -168,7 +189,7 @@ def test_vertragsversion_muss_vertraeglich_sein(v):
 
 
 def test_die_dritte_zahl_der_version_ist_frei():
-    assert konformitaet.pruefe(_abart(vertragsversion="0.4.9")) == []
+    assert konformitaet.pruefe(_abart(vertragsversion="0.5.9")) == []
 
 
 def test_faehigkeiten_muss_ein_frozenset_sein():
@@ -256,7 +277,7 @@ def test_die_plv_nennt_ihre_vertragsversion_selbst():
     import rechner_pipeline.plv.zielsystem as modul
 
     quelle = Path(modul.__file__).read_text(encoding="utf-8")
-    assert 'vertragsversion = "0.4.0"' in quelle
+    assert 'vertragsversion = "0.5.0"' in quelle
     assert "VERTRAG_VERSION" not in quelle
 
 
@@ -316,6 +337,235 @@ def test_bestandsdaten_ist_ein_eigenes_protokoll_mit_gueltiger_rolle(tmp_path):
         vorhanden=True, bestand_sha256=hashlib.sha256(bestand).hexdigest(),
         verankerung_sha256=hashlib.sha256(verankerung).hexdigest(),
     )
+
+
+def test_bestandsdaten_lest_gebundene_tabelle_und_schreibt_atomaren_stand(tmp_path):
+    """Stufe 3a: Der Vertrag liest gehashte Bytes und behaelt Exklusivschreiben."""
+    from rechner_pipeline.models.bestand import VERANKERUNG_NAMES
+
+    _bestand, verankerung, _manifest = _bestandsprobe(tmp_path)
+    daten = anbieter.zielsystem().faehigkeit("bestandsdaten")
+    tabelle = daten.tabelle_aus_bytes(verankerung, erwartete_spalten=VERANKERUNG_NAMES)
+    assert tuple(tabelle.columns) == VERANKERUNG_NAMES
+    with pytest.raises(ValueError):
+        daten.tabelle_aus_bytes(b"kein Parquet", erwartete_spalten=VERANKERUNG_NAMES)
+    ziel = tmp_path / "geschrieben.parquet"
+    assert daten.schreibe_tabelle(tabelle, ziel, exklusiv=True) == ziel
+    assert daten.tabelle_aus_bytes(ziel.read_bytes()).equals(tabelle)
+    with pytest.raises(FileExistsError):
+        daten.schreibe_tabelle(tabelle, ziel, exklusiv=True)
+
+
+def test_bestandsdaten_manifest_bindet_genau_einmal_gelesene_bytes(tmp_path, monkeypatch):
+    """Hash und Parser urteilen ueber dieselben Manifestbytes."""
+    import hashlib
+    import json
+    from pathlib import Path
+
+    from rechner_pipeline.zielsystem.bestandsdaten import Laufmanifest
+
+    _bestand, _verankerung, manifest = _bestandsprobe(tmp_path)
+    pfad = tmp_path / "laufmanifest.json"
+    roh = json.dumps(manifest, sort_keys=True).encode("utf-8")
+    pfad.write_bytes(roh)
+    original = Path.read_bytes
+    gelesen = []
+
+    def wechsel(self):
+        if self == pfad:
+            gelesen.append(self)
+            return roh if len(gelesen) == 1 else b"fremde Bytes"
+        return original(self)
+
+    monkeypatch.setattr(Path, "read_bytes", wechsel)
+    daten = anbieter.zielsystem().faehigkeit("bestandsdaten")
+    beleg = daten.laufmanifest_lesen(pfad)
+    assert type(beleg) is Laufmanifest
+    assert beleg.sha256 == hashlib.sha256(roh).hexdigest()
+    assert beleg.daten == manifest
+    assert gelesen == [pfad]
+    rollen = daten.rollen_dateien()
+    assert rollen["verankerung"] == "verankerung.parquet"
+    with pytest.raises(TypeError):
+        rollen["neu"] = "neu.parquet"
+
+
+def test_bestandsdaten_schreibt_manifest_fuer_beide_laufarten(tmp_path):
+    """Die Laufart wird fachlich benannt; die PLV schreibt den bisherigen Erzeuger."""
+    import datetime as dt
+    import hashlib
+    import json
+
+    from rechner_pipeline.zielsystem.bestandsdaten import BestandsdatenFehler
+
+    _bestand, verankerung, _manifest = _bestandsprobe(tmp_path)
+    config = tmp_path / "probe.toml"
+    config.write_bytes(b"[meta]\n")
+    ausgabe = tmp_path / "bestand.parquet"
+    ausgabe.write_bytes(verankerung)
+    daten = anbieter.zielsystem().faehigkeit("bestandsdaten")
+    for laufart, erzeuger in (
+        ("migrationszugang", "bestand_migrationszugang"),
+        ("fortschreibung", "bestand_fortschreibung"),
+    ):
+        pfad = daten.laufmanifest_schreiben(
+            tmp_path, horizont=dt.date(2026, 1, 1), neuzugang_ab=None,
+            config_pfad=config, ausgaben=[ausgabe], laufart=laufart)
+        roh = pfad.read_bytes()
+        manifest = json.loads(roh)
+        assert manifest["erzeuger"] == erzeuger
+        assert manifest["horizont"] == "2026-01-01"
+        assert manifest["ausgaben"]["bestand.parquet"] == hashlib.sha256(verankerung).hexdigest()
+        assert daten.laufmanifest_schreiben(
+            tmp_path, horizont=dt.date(2026, 1, 1), neuzugang_ab=None,
+            config_pfad=config, ausgaben=[ausgabe], laufart=laufart).read_bytes() == roh
+    with pytest.raises(BestandsdatenFehler, match="Laufart"):
+        daten.laufmanifest_schreiben(
+            tmp_path, horizont=dt.date(2026, 1, 1), neuzugang_ab=None,
+            config_pfad=config, ausgaben=[ausgabe], laufart="fremd")
+
+
+@pytest.mark.parametrize("methode,ersatz", [
+    ("tabelle_aus_bytes", lambda self, *a, **k: None),
+    ("schreibe_tabelle", lambda self, tabelle, pfad, **k: pfad),
+    ("rollen_dateien", lambda self: {"verankerung": "fremd.parquet"}),
+    ("laufmanifest_lesen", lambda self, pfad: bestandsdaten.Laufmanifest({}, "0" * 64)),
+    ("laufmanifest_schreiben", lambda self, lauf, **k: lauf / "laufmanifest.json"),
+])
+def test_jede_neue_bestandsdaten_methode_hat_eine_positivkontrolle(methode, ersatz):
+    """Eine fremde defekte Umsetzung muss fuer jede neue Pflicht einen Befund geben."""
+    from rechner_pipeline.plv.bestandsdaten import PLVBestandsdaten
+
+    falsch = type("Fremd", (PLVBestandsdaten,), {methode: ersatz})()
+    befunde = konformitaet.pruefe_bestandsdaten(falsch)
+    assert any(methode in befund for befund in befunde), befunde
+
+
+def test_fuehrungsansicht_trennt_validierte_config_und_wirksame_tarifzelle():
+    """Weg C: Erfahrung und Tarifwerk sind strukturiert, die Police loest RG auf."""
+    from pathlib import Path
+
+    from rechner_pipeline.bestand.config import BestandConfig, config_aus_text
+    from rechner_pipeline.bestand.auswertung import grundlagen_je_police
+    from rechner_pipeline.zielsystem.bestandsdaten import (
+        BestandsdatenFehler, Erfahrungsannahmen, Fuehrungsansicht,
+    )
+
+    text = (Path(__file__).resolve().parents[1] / "plv" / "configs" /
+            "bestand_klv.toml").read_text(encoding="utf-8")
+    alt = config_aus_text(text)
+    daten = anbieter.zielsystem().faehigkeit("bestandsdaten")
+    ansicht = daten.fuehrungsansicht_aus_text(text)
+    assert type(ansicht) is Fuehrungsansicht
+    assert not any(isinstance(v, BestandConfig) for v in vars(ansicht).values())
+    assert tuple(g.name for g in ansicht.generationen) == tuple(g.name for g in alt.generationen)
+    assert dict(ansicht.generationen[0].tarifwerk()) == alt.generationen[0].tarifwerk()
+    assert type(ansicht.annahmen) is Erfahrungsannahmen
+    assert ansicht.annahmen.herabsetzung(0.0) == alt.annahmen.herabsetzung(0.0)
+    assert ansicht.annahmen.red_anteil == alt.annahmen.red_anteil
+    assert ansicht.annahmen.tk_anteil == alt.annahmen.tk_anteil
+    assert ansicht.config_text == text
+    for feld in (
+        "tod", "storno", "beitragsfreistellung", "erhoehung", "herabsetzung",
+        "teilkuendigung", "invalidisierung", "reaktivierung",
+        "aktivensterblichkeit", "invalidensterblichkeit",
+    ):
+        assert getattr(ansicht.annahmen, feld)(0.01) == getattr(alt.annahmen, feld)(0.01)
+    aufloesen = anbieter.zielsystem().faehigkeit("rechnungsgrundlagen").fuehrungsgrundlagen(
+        ansicht, None)
+    assert aufloesen(1, "KLV-1994") == grundlagen_je_police(alt)(1, "KLV-1994")
+    with pytest.raises(ValueError, match="nicht in Config"):
+        aufloesen(1, "fremd")
+    with pytest.raises(BestandsdatenFehler, match="Config ungueltig"):
+        daten.fuehrungsansicht_aus_text(text.replace("seed = 20260811", "seed = 0"))
+
+
+def test_fuehrungsprobe_nutzt_fremde_tarifzellen_antwort(welt, monkeypatch):
+    """Die Probe fragt die Vertragsfaehigkeit, auch bei fremder Umsetzung."""
+    from rechner_pipeline.gates.fuehrungsprobe import pruefe_fuehrung
+
+    echt = anbieter.zielsystem()
+    text = welt["cfg_pfad"].read_text(encoding="utf-8")
+    ansicht = echt.faehigkeit("bestandsdaten").fuehrungsansicht_aus_text(text)
+    basis = dict(welt["basis"], config=ansicht)
+    gut = pruefe_fuehrung(uebernahme=welt["ueb"], fortschreibung=welt["tab"], **basis)
+    assert gut["bestanden"], gut["befunde"][:3]
+
+    gefragt = []
+
+    class FremdeGrundlagen:
+        def __getattr__(self, name):
+            return getattr(echt.faehigkeit("rechnungsgrundlagen"), name)
+
+        def fuehrungsgrundlagen(self, ansicht, merkmale):
+            aufloesen = echt.faehigkeit("rechnungsgrundlagen").fuehrungsgrundlagen(
+                ansicht, merkmale)
+
+            def andere_zelle(police, generation):
+                gefragt.append((police, generation))
+                felder = dict(aufloesen(police, generation))
+                felder["zins"] = float(felder["zins"]) + 0.01
+                return felder
+
+            return andere_zelle
+
+    class FremdesZiel:
+        name = "probe"
+        vertragsversion = echt.vertragsversion
+
+        def faehigkeiten(self):
+            return echt.faehigkeiten()
+
+        def faehigkeit(self, name):
+            return FremdeGrundlagen() if name == "rechnungsgrundlagen" else echt.faehigkeit(name)
+
+    monkeypatch.setattr(anbieter, "zielsystem", lambda: FremdesZiel())
+    schlecht = pruefe_fuehrung(uebernahme=welt["ueb"], fortschreibung=welt["tab"], **basis)
+    assert gefragt
+    assert not schlecht["bestanden"]
+
+
+def test_konformitaet_erkennt_falsche_fuehrungsansicht():
+    from rechner_pipeline.plv.bestandsdaten import PLVBestandsdaten
+
+    class Falsch(PLVBestandsdaten):
+        def fuehrungsansicht_aus_text(self, text):
+            return object()
+
+    befunde = konformitaet.pruefe_bestandsdaten(Falsch())
+    assert any("fuehrungsansicht_aus_text" in b for b in befunde), befunde
+
+
+def test_migrationssuite_nutzt_fremde_bestandsdaten_fuer_gebundene_nebentabelle(monkeypatch):
+    """Der Fuehrungswert bekommt die Adapterantwort aus den gelieferten Bytes."""
+    from rechner_pipeline.bestand import migrationszugang
+    from rechner_pipeline.gates import migrationssuite_lauf
+    from rechner_pipeline.plv.bestandsdaten import PLVBestandsdaten
+
+    gesehen = []
+    marker = object()
+
+    class FremdeDaten(PLVBestandsdaten):
+        def tabelle_aus_bytes(self, roh, *, erwartete_spalten=None):
+            gesehen.append(roh)
+            return marker
+
+    class FremdesZiel(PLV):
+        def faehigkeit(self, name):
+            return FremdeDaten() if name == "bestandsdaten" else super().faehigkeit(name)
+
+    def werte(_bestand, historie, *_args, **_kwargs):
+        assert historie is marker
+        return "fremd", {}
+
+    monkeypatch.setattr(anbieter, "zielsystem", lambda: FremdesZiel())
+    monkeypatch.setattr(migrationszugang, "fuehrungswerte", werte)
+    monkeypatch.setattr(migrationssuite_lauf, "_grundlagen_der_spez_je_police", lambda *a: {})
+    ist = migrationssuite_lauf.fuehrungswert_rechnen(
+        object(), lambda name: b"gebundene Bytes" if name == "historie.parquet" else None,
+        "", {}, tarifwerk_der_spez={}, spez=object())
+    assert ist == ("fremd", {})
+    assert gesehen == [b"gebundene Bytes"]
 
 
 @pytest.mark.parametrize("fall", [
@@ -467,6 +717,20 @@ class _RG:
         if not text:
             raise ValueError("leer")
         return {}, frozenset()
+
+    def fuehrungsgrundlagen(self, ansicht, merkmale):
+        from rechner_pipeline.plv.rechnungsgrundlagen import PLVRechnungsgrundlagen
+
+        return PLVRechnungsgrundlagen().fuehrungsgrundlagen(ansicht, merkmale)
+
+
+def test_konformitaet_erkennt_falsche_wirksame_tarifzelle():
+    class Falsch(_RG):
+        def fuehrungsgrundlagen(self, ansicht, merkmale):
+            return lambda police, generation: {"zins": 99.0}
+
+    befunde = konformitaet.pruefe_rechnungsgrundlagen(Falsch())
+    assert any("fuehrungsgrundlagen" in b for b in befunde), befunde
 
 
 def _rg_abart(**aenderungen):

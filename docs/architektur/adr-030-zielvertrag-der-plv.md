@@ -347,7 +347,43 @@ Bestand ohne beide Dateien ist daher auch ein ordentlicher Zustand. Ein
 späterer Anker könnte der Übernahmebeleg aus `bestand_uebernehmen` sein,
 dem Produzenten der `verankerung.parquet`. Dieser Auftrag schließt die
 Grenze nicht. Die übrigen Bestandsdaten-Namen der Stufe 3 und die Stufen
-4 und 5 bleiben unbeauftragt. Die Altlast-Ratsche bleibt bei 14 Kanten.
+4 und 5 waren zu diesem Zeitpunkt unbeauftragt. Die Altlast-Ratsche blieb
+damals bei 14 Kanten.
+
+### Stufe 3: Bestandsdaten und Führungsgrundlagen (A-078)
+
+Der Zielvertrag 0.5.0 bindet Tabellen und Laufmanifeste über
+`bestandsdaten`. Das Tool übergibt bereits gebundene Tabellenbytes an den
+Parser und erhält nach Spalten- und Typprüfung die Tabelle. Schreibende
+Gates übergeben Tabelle, Zielpfad und gegebenenfalls den Exklusivmodus;
+die PLV verwendet den bestehenden atomaren Schreibweg. Für ein
+Laufmanifest liefert die PLV den Inhalt und SHA-256 aus genau denselben,
+einmal gelesenen Bytes. Die Eingangsrollen und beide Erzeuger bleiben
+ausdrücklich benannt. Der bisherige Fall ohne Manifest und ohne
+Verankerungsdatei bleibt gültig.
+
+Die Führungsprobe übergibt den eingangsgebundenen Config-Text an
+`bestandsdaten`. Sie erhält eine validierte, neutrale `Fuehrungsansicht`:
+Generationennamen, Tarifwerk und die für die Buchungsbindung benötigten
+Erfahrungsannahmen dritter Ordnung sind strukturierte Werte. Die
+ursprüngliche PLV-Config wird nicht als `object` durchgereicht. Der
+gebundene Text bleibt in der Ansicht, damit `rechnungsgrundlagen` die
+wirksame Tarifzelle je Police mit ihren Merkmalsausprägungen nach den
+bisherigen PLV-Regeln auflöst. Fehlt die Merkmalszelle, wird weiter
+verweigert. Die Erfahrungsannahmen sind keine Rechnungsgrundlagen erster
+Ordnung; die Aufteilung der Zuständigkeit folgt Weg C des Entscheids
+zu A-078.
+
+Damit entfallen neun direkte Gate-Kanten nach `bestand/`: sieben für
+Tabellen und Manifeste, zwei für Config und Tarifzellenauflösung. Die
+Altlast-Ratsche steht nach Stufe 3 bei fünf Kanten plus der Anbieter-Kante.
+Die Bestandsprüfung in `bestand_validate` und die Anfangszustandsregel
+in `migrationszugang` bleiben für Stufe 4 offen; ebenso ist ein Anschluss
+eines zweiten Zielsystems erst Gegenstand von Stufe 5. Die Grenze des
+vorgezogenen Verankerungsstücks bleibt bestehen: Ein Bestand ohne
+Laufmanifest und ohne Verankerungsdatei gilt als nicht verankert. Stufe 3
+ändert weder den Kern noch Tarifwerk, Referenzwerte, Gate-Versionen oder
+die signierte Fall-3-Erwartung.
 
 ## Nachweis je Stufe
 

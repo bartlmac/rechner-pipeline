@@ -11,7 +11,8 @@ was die Pruefung finden soll.
 
 Je Faehigkeit mit Protokoll prueft ``PRUEFUNG_JE_FAEHIGKEIT`` ueber die
 Form hinaus, was das Protokoll in Worten verlangt (Stufe 1: die
-Rechnungsgrundlagen, Stufe 2: die Bewertung).
+Rechnungsgrundlagen, Stufe 2: die Bewertung, Stufe 3: die Bestandsdaten
+und die wirksame Tarifzelle der Fuehrung).
 
 Knoten: system/zielsystem
 """
@@ -21,11 +22,18 @@ from __future__ import annotations
 import re
 import hashlib
 import json
+from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import MappingProxyType
 from typing import Callable, List, Mapping
 
 from rechner_pipeline.zielsystem.bewertung import Vorgangsregeln
-from rechner_pipeline.zielsystem.bestandsdaten import BestandsdatenFehler, Verankerungsrolle
+from rechner_pipeline.zielsystem.bestandsdaten import (
+    BestandsdatenFehler, Erfahrungsannahmen, Fuehrungsansicht,
+    Fuehrungsgeneration, Laufmanifest, Verankerungsrolle,
+)
 from rechner_pipeline.zielsystem.rechnungsgrundlagen import Parametersatz
 from rechner_pipeline.zielsystem.version import VERTRAG_VERSION, vertraeglich, zerlege
 from rechner_pipeline.zielsystem.vertrag import FAEHIGKEITEN, PROTOKOLL_JE_FAEHIGKEIT, Zielsystem
@@ -36,6 +44,75 @@ __all__ = [
 ]
 
 _NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+
+# Eine vollstaendige synthetische Config mit genau einer Tarifzelle.
+# Sie ist ein Testeingang des Vertrags und liest keine PLV-Datei.
+_FUEHRUNGSTEXT = '''[meta]
+seed=1
+[[generation]]
+name="PROBE"
+produkt="klv"
+knoten="klv/probe"
+gueltig_von=2026-01-01
+gueltig_bis=2027-01-01
+max_endalter=80
+zins=0.01
+tafel="DAV2008_T_NR_U70"
+[generation.verteilungen.entry_age]
+typ="empirical_discrete"
+values=[40]
+probs=[1.0]
+[generation.verteilungen.sex]
+typ="empirical_discrete"
+values=["M"]
+probs=[1.0]
+[generation.verteilungen.duration]
+typ="empirical_discrete"
+values=[20]
+probs=[1.0]
+[generation.verteilungen.premium_duration]
+typ="empirical_discrete"
+values=[10]
+probs=[1.0]
+[generation.verteilungen.sum_insured]
+typ="empirical_discrete"
+values=[100000]
+probs=[1.0]
+[generation.verteilungen.zahlweise]
+typ="empirical_discrete"
+values=[12]
+probs=[1.0]
+[[generation.zelle]]
+auspraegungen={status="A"}
+zins=0.02
+'''
+
+
+@dataclass(frozen=True)
+class _ProbeRate:
+    a: float = 0.0
+    b: float = 0.0
+
+    def __call__(self, _erste_ordnung: float) -> float:
+        return self.a
+
+
+def _fuehrungsprobe_ansicht() -> Fuehrungsansicht:
+    rate = _ProbeRate()
+    return Fuehrungsansicht(
+        generationen=(Fuehrungsgeneration("PROBE", MappingProxyType({
+            "scheiben_mit_gamma1": False, "stoab_je_baustein": False,
+            "red_verfahren": "prospektiv", "tku_umfang": "alle_bausteine",
+        })),),
+        annahmen=Erfahrungsannahmen(
+            tod=rate, storno=rate, beitragsfreistellung=rate, erhoehung=rate,
+            herabsetzung=rate, teilkuendigung=rate, invalidisierung=rate,
+            reaktivierung=rate, aktivensterblichkeit=rate,
+            invalidensterblichkeit=rate, erh_prozent=0.0,
+            red_anteil=0.0, tk_anteil=0.0,
+        ),
+        config_text=_FUEHRUNGSTEXT,
+    )
 
 
 def _ausnahme(exc: BaseException) -> str:
@@ -104,6 +181,29 @@ def pruefe_rechnungsgrundlagen(umsetzung: object) -> List[str]:
             befunde.append(f"{text} wirft {_ausnahme(exc)}, erwartet ValueError")
         else:
             befunde.append(f"{text} geht durch, erwartet ValueError")
+    import pandas as pd
+
+    merkmale = pd.DataFrame([{
+        "police_id": 1, "dimension": "status", "auspraegung": "A",
+    }])
+    try:
+        aufloesen = umsetzung.fuehrungsgrundlagen(  # type: ignore[attr-defined]
+            _fuehrungsprobe_ansicht(), merkmale)
+        felder = aufloesen(1, "PROBE")
+        if not isinstance(felder, Mapping) or felder.get("zins") != 0.02:
+            befunde.append("fuehrungsgrundlagen loest die Tarifzelle nicht wirksam auf")
+    except Exception as exc:  # noqa: BLE001
+        befunde.append(f"fuehrungsgrundlagen gueltig wirft {_ausnahme(exc)}")
+    try:
+        aufloesen = umsetzung.fuehrungsgrundlagen(  # type: ignore[attr-defined]
+            _fuehrungsprobe_ansicht(), None)
+        aufloesen(1, "PROBE")
+    except ValueError:
+        pass
+    except Exception as exc:  # noqa: BLE001
+        befunde.append(f"fuehrungsgrundlagen ohne Merkmal wirft {_ausnahme(exc)}")
+    else:
+        befunde.append("fuehrungsgrundlagen akzeptiert fehlende Tarifzelle")
     return befunde
 
 
@@ -181,7 +281,7 @@ def _verankerungsprobe() -> bytes:
 
 
 def pruefe_bestandsdaten(umsetzung: object) -> List[str]:
-    """Die eine Methode gegen gültige und verdrehte gebundene Bytes prüfen."""
+    """Bestands- und Manifestpflichten mit echten Bytes und Fehlerfaellen pruefen."""
     befunde: List[str] = []
     bestand = b"konformitaetsprobe-bestand"
     bestand_sha = hashlib.sha256(bestand).hexdigest()
@@ -271,6 +371,121 @@ def pruefe_bestandsdaten(umsetzung: object) -> List[str]:
             befunde.append(f"verankerungsrolle({titel}) wirft {_ausnahme(exc)}, erwartet BestandsdatenFehler")
         else:
             befunde.append(f"verankerungsrolle({titel}) geht durch, erwartet BestandsdatenFehler")
+
+    from rechner_pipeline.models.bestand import VERANKERUNG_NAMES
+
+    tabelle = None
+    try:
+        tabelle = umsetzung.tabelle_aus_bytes(  # type: ignore[attr-defined]
+            verankerung, erwartete_spalten=VERANKERUNG_NAMES)
+        if tuple(tabelle.columns) != VERANKERUNG_NAMES:
+            befunde.append("tabelle_aus_bytes liefert nicht die erwarteten Spalten")
+    except Exception as exc:  # noqa: BLE001
+        befunde.append(f"tabelle_aus_bytes gueltig wirft {_ausnahme(exc)}")
+    try:
+        umsetzung.tabelle_aus_bytes(b"kein Parquet", erwartete_spalten=VERANKERUNG_NAMES)  # type: ignore[attr-defined]
+    except ValueError:
+        pass
+    except Exception as exc:  # noqa: BLE001
+        befunde.append(f"tabelle_aus_bytes ungueltig wirft {_ausnahme(exc)}, erwartet ValueError")
+    else:
+        befunde.append("tabelle_aus_bytes akzeptiert ungueltige Bytes")
+    try:
+        rollen = umsetzung.rollen_dateien()  # type: ignore[attr-defined]
+        if not isinstance(rollen, Mapping) or rollen.get("verankerung") != "verankerung.parquet":
+            befunde.append("rollen_dateien liefert keine gueltige Verankerungsrolle")
+        else:
+            try:
+                rollen["fremd"] = "fremd.parquet"
+            except TypeError:
+                pass
+            else:
+                befunde.append("rollen_dateien ist veraenderbar")
+    except Exception as exc:  # noqa: BLE001
+        befunde.append(f"rollen_dateien wirft {_ausnahme(exc)}")
+
+    with TemporaryDirectory(prefix="zielsystem-bestandsdaten-") as ort:
+        wurzel = Path(ort)
+        if tabelle is not None:
+            ziel = wurzel / "tabelle.parquet"
+            try:
+                ist = umsetzung.schreibe_tabelle(tabelle, ziel, exklusiv=True)  # type: ignore[attr-defined]
+                if ist != ziel or not ziel.is_file():
+                    befunde.append("schreibe_tabelle veroeffentlicht die Tabelle nicht")
+                umsetzung.schreibe_tabelle(tabelle, ziel, exklusiv=True)  # type: ignore[attr-defined]
+            except FileExistsError:
+                pass
+            except Exception as exc:  # noqa: BLE001
+                befunde.append(f"schreibe_tabelle wirft {_ausnahme(exc)}")
+            else:
+                befunde.append("schreibe_tabelle ignoriert exklusiv=True")
+        manifest_pfad = wurzel / "laufmanifest.json"
+        manifest_roh = roh(manifest)
+        manifest_pfad.write_bytes(manifest_roh)
+        try:
+            beleg = umsetzung.laufmanifest_lesen(manifest_pfad)  # type: ignore[attr-defined]
+            if (type(beleg) is not Laufmanifest or beleg.daten != manifest
+                    or beleg.sha256 != hashlib.sha256(manifest_roh).hexdigest()):
+                befunde.append("laufmanifest_lesen bindet Inhalt und Hash nicht an dieselben Bytes")
+        except Exception as exc:  # noqa: BLE001
+            befunde.append(f"laufmanifest_lesen gueltig wirft {_ausnahme(exc)}")
+        manifest_pfad.write_bytes(b"kein Manifest")
+        try:
+            umsetzung.laufmanifest_lesen(manifest_pfad)  # type: ignore[attr-defined]
+        except BestandsdatenFehler:
+            pass
+        except Exception as exc:  # noqa: BLE001
+            befunde.append(f"laufmanifest_lesen ungueltig wirft {_ausnahme(exc)}")
+        else:
+            befunde.append("laufmanifest_lesen akzeptiert ungueltige Bytes")
+        config = wurzel / "probe.toml"
+        config.write_bytes(b"[meta]\n")
+        ausgabe = wurzel / "bestand.parquet"
+        ausgabe.write_bytes(verankerung)
+        for laufart, erzeuger in (
+            ("fortschreibung", "bestand_fortschreibung"),
+            ("migrationszugang", "bestand_migrationszugang"),
+        ):
+            try:
+                pfad = umsetzung.laufmanifest_schreiben(  # type: ignore[attr-defined]
+                    wurzel, horizont=date(2026, 1, 1), neuzugang_ab=None,
+                    config_pfad=config, ausgaben=[ausgabe], laufart=laufart)
+                geschrieben = json.loads(pfad.read_bytes())
+                if (geschrieben.get("erzeuger") != erzeuger
+                        or geschrieben.get("ausgaben", {}).get("bestand.parquet")
+                        != hashlib.sha256(verankerung).hexdigest()):
+                    befunde.append(f"laufmanifest_schreiben({laufart}) bindet Erzeuger oder Ausgabe nicht")
+            except Exception as exc:  # noqa: BLE001
+                befunde.append(f"laufmanifest_schreiben({laufart}) wirft {_ausnahme(exc)}")
+        try:
+            umsetzung.laufmanifest_schreiben(  # type: ignore[attr-defined]
+                wurzel, horizont=date(2026, 1, 1), neuzugang_ab=None,
+                config_pfad=config, ausgaben=[ausgabe], laufart="fremd")
+        except BestandsdatenFehler:
+            pass
+        except Exception as exc:  # noqa: BLE001
+            befunde.append(f"laufmanifest_schreiben(fremd) wirft {_ausnahme(exc)}")
+        else:
+            befunde.append("laufmanifest_schreiben akzeptiert fremde Laufart")
+    try:
+        ansicht = umsetzung.fuehrungsansicht_aus_text(_FUEHRUNGSTEXT)  # type: ignore[attr-defined]
+        if (type(ansicht) is not Fuehrungsansicht
+                or ansicht.config_text != _FUEHRUNGSTEXT
+                or tuple(g.name for g in ansicht.generationen) != ("PROBE",)
+                or type(ansicht.annahmen) is not Erfahrungsannahmen
+                or ansicht.annahmen.red_anteil != 0.0):
+            befunde.append("fuehrungsansicht_aus_text liefert keine strukturierte validierte Ansicht")
+    except Exception as exc:  # noqa: BLE001
+        befunde.append(f"fuehrungsansicht_aus_text gueltig wirft {_ausnahme(exc)}")
+    try:
+        umsetzung.fuehrungsansicht_aus_text(  # type: ignore[attr-defined]
+            _FUEHRUNGSTEXT.replace("seed=1", "seed=0"))
+    except BestandsdatenFehler:
+        pass
+    except Exception as exc:  # noqa: BLE001
+        befunde.append(f"fuehrungsansicht_aus_text ungueltig wirft {_ausnahme(exc)}")
+    else:
+        befunde.append("fuehrungsansicht_aus_text akzeptiert ungueltige Config")
     return befunde
 
 

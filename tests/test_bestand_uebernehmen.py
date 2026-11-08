@@ -157,6 +157,46 @@ def test_die_uebernahme_archiviert_die_gevo_metadatenliste(tmp_path):
     assert archiv.read_bytes() == metadaten.read_bytes()
 
 
+def test_uebernahme_schreibt_tabellen_ueber_fremde_bestandsdaten(tmp_path, monkeypatch):
+    """Ein anderer Anbieter erhaelt die Tabellen samt Zielpfaden des Gates."""
+    import json
+
+    from rechner_pipeline.fall import anlegen
+    from rechner_pipeline.gates import bestand_uebernehmen
+    from rechner_pipeline.plv.bestandsdaten import PLVBestandsdaten
+    from rechner_pipeline.plv.zielsystem import PLV
+    from rechner_pipeline.zielsystem import anbieter
+
+    gesehen = []
+
+    class FremdeDaten(PLVBestandsdaten):
+        def schreibe_tabelle(self, tabelle, pfad, *, exklusiv=False):
+            gesehen.append((pfad.name, len(tabelle), exklusiv))
+            return super().schreibe_tabelle(tabelle, pfad, exklusiv=exklusiv)
+
+    class FremdesZiel(PLV):
+        def faehigkeit(self, name):
+            return FremdeDaten() if name == "bestandsdaten" else super().faehigkeit(name)
+
+    fall = tmp_path / "fall"
+    anlegen(fall, scope="bestand")
+    zeilen = tmp_path / "zeilen.json"
+    zeilen.write_text(json.dumps([dict(ZEILE)]), encoding="utf-8")
+    lege_spez(fall, GRUNDLAGEN)
+    monkeypatch.setattr(anbieter, "zielsystem", lambda: FremdesZiel())
+    assert bestand_uebernehmen.main([
+        "--fall", str(fall), "--zeilen", str(zeilen),
+        "--tarif-generation", "TG2015", "--stichtag", "2026-01-01",
+        "--generation-spez", "klv/tg2015", "--anfangszustand", "grundvertrag",
+        "--out-dir", str(fall / "abgeleitet" / "bestand"),
+    ]) == 0
+    assert gesehen[:3] == [
+        ("bestand.parquet", 1, False),
+        ("historie.parquet", 0, False),
+        ("ledger.parquet", 1, False),
+    ]
+
+
 # --------------------------------------------------------------------------- #
 # Verankerungsattribute (Grundsatzdokumentation 9.12, K3)
 # --------------------------------------------------------------------------- #

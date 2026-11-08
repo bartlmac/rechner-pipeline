@@ -1,11 +1,9 @@
 """Die PLV erfuellt die Faehigkeit Rechnungsgrundlagen des Zielvertrags
 (ADR-030, Stufe 1).
 
-Alles hier ist eine Aussage des Kerns, gelesen und weitergereicht: die
-Produkt-Registry (``kern.produkte``), der Modellpunkt je Produkt mit
-seinen Defaults (``model_point_cls`` des Produkts) und der Tafelspeicher
-(``kern.tafeln``). Keine Formel, kein eigener Wert; der abgenommene
-Kernstand bleibt unberuehrt.
+Produkt-Registry, Modellpunkt-Defaults und Tafelspeicher stammen aus dem
+abgenommenen Kern. Die wirksame Tarifzelle der Fuehrung stammt aus der
+PLV-Config und wird hier je Police aufgeloest. Der Kern bleibt unberuehrt.
 
 Knoten: system/zielsystem
 """
@@ -16,11 +14,12 @@ import dataclasses
 import xml.etree.ElementTree as ET
 from functools import lru_cache
 from types import MappingProxyType
-from typing import Any, FrozenSet, Mapping, Tuple
+from typing import Any, Callable, FrozenSet, Mapping, Tuple
 
 from rechner_pipeline.kern import tafeln
 from rechner_pipeline.kern.produkte import PRODUKTE, hole
 from rechner_pipeline.zielsystem.rechnungsgrundlagen import Parametersatz
+from rechner_pipeline.zielsystem.bestandsdaten import Fuehrungsansicht
 
 __all__ = ["PLVRechnungsgrundlagen"]
 
@@ -68,3 +67,20 @@ class PLVRechnungsgrundlagen:
         except ET.ParseError as exc:
             raise ValueError(f"Tafelspeicher ist kein XML: {exc}") from exc
         return alterstafeln, frozenset(alterstafeln) | frozenset(select_tafeln)
+
+    def fuehrungsgrundlagen(
+        self, ansicht: Fuehrungsansicht, merkmale: Any,
+    ) -> Callable[[int, str], Mapping[str, Any]]:
+        from rechner_pipeline.bestand.auswertung import grundlagen_je_police
+        from rechner_pipeline.bestand.config import BestandConfig, config_aus_text
+
+        # Direkte Aufrufer des reinen Pruefkerns geben historisch eine
+        # BestandConfig; der CLI-Weg reicht ausschliesslich die strukturierte,
+        # validierte Ansicht mit genau dem gebundenen Text weiter.
+        config = (ansicht if isinstance(ansicht, BestandConfig)
+                  else config_aus_text(ansicht.config_text))
+        if not isinstance(ansicht, BestandConfig):
+            fehler = config.validate()
+            if fehler:
+                raise ValueError("Config ungueltig: " + "; ".join(fehler))
+        return grundlagen_je_police(config, merkmale)

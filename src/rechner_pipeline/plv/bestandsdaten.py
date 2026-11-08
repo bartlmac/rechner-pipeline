@@ -1,9 +1,10 @@
-"""Die PLV liest die Verankerungsrolle aus gebundenen Bestandsbytes.
+"""Die PLV erfuellt den Bestandsdaten-Vertrag (ADR-030, Stufe 3).
 
 Das Laufmanifest wird nur fuer eine vollstaendige Schicht geschrieben.
 Darum ist auch ein Bestand ohne Manifest und ohne Verankerungsdatei ein
 ordentlicher Zustand. Sobald eine Seite die Rolle behauptet, prueft die
-PLV beide Seiten samt Hash und Tabellenform (ADR-030).
+PLV beide Seiten samt Hash und Tabellenform. Tabellen und Config bleiben
+in der PLV-Fuehrung; das Tool sieht nur die neutralen Vertragsformen.
 
 Knoten: system/zielsystem, klv
 """
@@ -11,14 +12,94 @@ Knoten: system/zielsystem, klv
 from __future__ import annotations
 
 import hashlib
+from datetime import date
+from pathlib import Path
+from types import MappingProxyType
+from typing import Any, Mapping, Sequence
 
-from rechner_pipeline.zielsystem.bestandsdaten import BestandsdatenFehler, Verankerungsrolle
+from rechner_pipeline.zielsystem.bestandsdaten import (
+    BestandsdatenFehler, Erfahrungsannahmen, Fuehrungsansicht,
+    Fuehrungsgeneration, Laufmanifest, Verankerungsrolle,
+)
 
 __all__ = ["PLVBestandsdaten"]
 
 
 class PLVBestandsdaten:
-    """Lesende Implementierung der Verankerungsrolle fuer die PLV."""
+    """Bestands- und Manifestoperationen der PLV hinter dem Vertrag."""
+
+    def tabelle_aus_bytes(
+        self, daten: bytes, *, erwartete_spalten: Sequence[str] | None = None,
+    ) -> Any:
+        from rechner_pipeline.bestand.parquet_io import read_portfolio_aus_bytes
+
+        return read_portfolio_aus_bytes(daten, expected_columns=erwartete_spalten)
+
+    def schreibe_tabelle(self, tabelle: Any, pfad: Path, *, exklusiv: bool = False) -> Path:
+        from rechner_pipeline.bestand.parquet_io import write_portfolio
+
+        return write_portfolio(tabelle, pfad, exklusiv=exklusiv)
+
+    def rollen_dateien(self) -> Mapping[str, str]:
+        from rechner_pipeline.bestand.manifest import ROLLEN_DATEIEN
+
+        return MappingProxyType(dict(ROLLEN_DATEIEN))
+
+    def laufmanifest_lesen(self, pfad: Path) -> Laufmanifest:
+        from rechner_pipeline.bestand.manifest import (
+            ManifestError, lies_manifest_bytes, manifest_aus_bytes,
+        )
+
+        try:
+            roh = lies_manifest_bytes(pfad)
+            return Laufmanifest(manifest_aus_bytes(roh), hashlib.sha256(roh).hexdigest())
+        except ManifestError as exc:
+            raise BestandsdatenFehler(str(exc)) from exc
+
+    def laufmanifest_schreiben(
+        self, lauf: Path, *, horizont: date, neuzugang_ab: date | None,
+        config_pfad: Path, ausgaben: Sequence[Path],
+        eingaben: Mapping[str, Path] | None = None, laufart: str,
+    ) -> Path:
+        from rechner_pipeline.bestand.manifest import (
+            ERZEUGER, ERZEUGER_MIGRATIONSZUGANG, schreibe_manifest,
+        )
+
+        erzeuger = {
+            "fortschreibung": ERZEUGER,
+            "migrationszugang": ERZEUGER_MIGRATIONSZUGANG,
+        }.get(laufart)
+        if erzeuger is None:
+            raise BestandsdatenFehler(f"unbekannte Laufart {laufart!r}")
+        return schreibe_manifest(
+            lauf, horizont=horizont, neuzugang_ab=neuzugang_ab,
+            config_pfad=config_pfad, ausgaben=ausgaben, eingaben=eingaben,
+            erzeuger=erzeuger,
+        )
+
+    def fuehrungsansicht_aus_text(self, text: str) -> Fuehrungsansicht:
+        from rechner_pipeline.bestand.config import config_aus_text
+
+        config = config_aus_text(text)
+        fehler = config.validate()
+        if fehler:
+            raise BestandsdatenFehler("Config ungueltig: " + "; ".join(fehler))
+        a = config.annahmen
+        return Fuehrungsansicht(
+            generationen=tuple(
+                Fuehrungsgeneration(g.name, MappingProxyType(g.tarifwerk()))
+                for g in config.generationen),
+            annahmen=Erfahrungsannahmen(
+                tod=a.tod, storno=a.storno, beitragsfreistellung=a.beitragsfreistellung,
+                erhoehung=a.erhoehung, herabsetzung=a.herabsetzung,
+                teilkuendigung=a.teilkuendigung, invalidisierung=a.invalidisierung,
+                reaktivierung=a.reaktivierung,
+                aktivensterblichkeit=a.aktivensterblichkeit,
+                invalidensterblichkeit=a.invalidensterblichkeit,
+                erh_prozent=a.erh_prozent, red_anteil=a.red_anteil, tk_anteil=a.tk_anteil,
+            ),
+            config_text=text,
+        )
 
     def verankerungsrolle(
         self, *, manifest_bytes: bytes | None, bestand_bytes: bytes,

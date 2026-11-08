@@ -31,7 +31,7 @@ class PLV:
     """Die PLV als Zielsystem."""
 
     name = "plv"
-    vertragsversion = "0.4.0"
+    vertragsversion = "0.5.0"
 
     def faehigkeiten(self) -> FrozenSet[str]:
         return frozenset(_FAEHIGKEITEN)
