@@ -188,11 +188,10 @@ ZIELSYSTEM_ANBIETER = "rechner_pipeline/zielsystem/anbieter.py"
 #: Menge und schrumpfen je Stufe; ``ALTLAST_KANTEN`` zaehlt sie, und ein
 #: Test haelt die Zahl fest (Stufe 0: 36, Stufe 1: 31, Stufe 2a: 24,
 #: Stufe 2b: 14, Stufe 3b: 11, Stufe 3c: 9, Stufe 3d: 7,
-#: Stufe 3e: 5; der Rest nach bestand/).
+#: Stufe 3e/4a: 5, Stufe 4b: 3; der Rest nach bestand/).
 TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # ADR-030, Stufe 0: die Kante des Vertrags auf die PLV.
     (ZIELSYSTEM_ANBIETER, "rechner_pipeline/plv/zielsystem.py"),
-    ("rechner_pipeline/gates/abnahmebericht.py", "rechner_pipeline/bestand/vorbedingungen.py"),
     # Freischaltung (dev-docs/freischaltung-uebernommener-bestand.md,
     # Schritt 3; ADR-017 Nachtrag 2026-09-07): Die Uebernahme ruft
     # DIESELBE Anfangszustands-Ableitung wie Pruefstrecke und Verankerung
@@ -214,7 +213,6 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # Rechnungsgrundlagen je Police) und rechnet, was die Pruefstrecke
     # rechnet (Kern, Verfahren, Schicht) — dieselbe Schnittstelle wie
     # migrationssuite_lauf und bestand_validate zusammen.
-    ("rechner_pipeline/gates/bestand_validate.py", "rechner_pipeline/bestand/vorbedingungen.py"),
     ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/bestand/migrationszugang.py"),
     # Laufmanifest des Migrationszugangs (ADR-017 Nachtrag 2026-09-20,
     # Entscheid des Maintainers): Ein Migrationslauf hat zwei

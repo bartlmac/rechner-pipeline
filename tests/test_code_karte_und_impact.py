@@ -1078,7 +1078,7 @@ def test_bestandsrolle_laeuft_ueber_den_zielvertrag_ohne_neue_altlast():
     assert ("rechner_pipeline/zielsystem/vertrag.py", vertrag) in kanten
     assert ("rechner_pipeline/plv/zielsystem.py", plv) in kanten
     assert (gate, "rechner_pipeline/bestand/manifest.py") not in kanten
-    assert len(karte["tool_nach_vorzeige"]) == 6  # 5 Altlasten und der Anbieter
+    assert len(karte["tool_nach_vorzeige"]) == 4  # 3 Altlasten und der Anbieter
     assert validate(karte) == []
 
 
@@ -1088,14 +1088,15 @@ def test_die_altlast_der_ratsche_schrumpft_nur():
     Kanten vom Stand 9986830; Stufe 1 (Rechnungsgrundlagen): 31; Stufe 2a
     (Bewertung, die Pruefstrecke): 24; Stufe 2b (die Gates): 14;
     Stufe 3b (lesende Tabellen): 11; Stufe 3c (schreibende Tabellen): 9;
-    Stufe 3d (Laufmanifest): 7; Stufe 3e (Fuehrungsgrundlagen): 5.
+    Stufe 3d (Laufmanifest): 7; Stufe 3e (Fuehrungsgrundlagen): 5;
+    Stufe 4b (Bestandspruefung): 3.
     Die Zahl
     steht hier mit == (nicht <=), damit eine Stufe, die Kanten loest, die
     Zahl bewusst senkt — und eine, die welche hinzufuegt, rot wird. Die
     verbliebenen Kanten gehen alle nach bestand/ (Stufen 3 bis 5)."""
     from rechner_pipeline.ontologie.code_karte import ALTLAST_KANTEN, ZIELSYSTEM_ANBIETER
 
-    assert len(ALTLAST_KANTEN) == 5
+    assert len(ALTLAST_KANTEN) == 3
     assert all(nach.startswith("rechner_pipeline/bestand/") for _von, nach in ALTLAST_KANTEN)
     geloest = {
         # Stufe 1
@@ -1136,6 +1137,9 @@ def test_die_altlast_der_ratsche_schrumpft_nur():
         # Stufe 3e
         ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/bestand/config.py"),
         ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/bestand/auswertung.py"),
+        # Stufe 4b
+        ("rechner_pipeline/gates/bestand_validate.py", "rechner_pipeline/bestand/vorbedingungen.py"),
+        ("rechner_pipeline/gates/abnahmebericht.py", "rechner_pipeline/bestand/vorbedingungen.py"),
     }
     assert not (geloest & ALTLAST_KANTEN)
     assert ALTLAST_KANTEN == {k for k in TOOL_NACH_VORZEIGE_ERLAUBT if k[0] != ZIELSYSTEM_ANBIETER}

@@ -92,13 +92,7 @@ from typing import Any, Dict, List, Optional
 
 from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline import fall as fall_mod
-from rechner_pipeline.bestand.vorbedingungen import (
-    PB1_ROLLEN_DATEIEN,
-    PB1_ROLLEN,
-    fortschreibung_pruefen,
-    lies_und_pruefe_pb1,
-    manifest_fuer_nachrechnung,
-)
+from rechner_pipeline.zielsystem import anbieter
 from rechner_pipeline.gates import bestand_validate
 from rechner_pipeline.gates._common import (
     Exit,
@@ -2176,10 +2170,8 @@ def _fuehrungsprobe_fehler(
     if ueber:
         stamm_pfad = fall / ueber / "bestand.parquet"
         if stamm_pfad.is_file():
-            from rechner_pipeline.bestand.vorbedingungen import bestandszeilen
-
             try:
-                zeilen = bestandszeilen(stamm_pfad)
+                zeilen = anbieter.zielsystem().faehigkeit("bestandspruefung").bestandszeilen(stamm_pfad)
             except Exception as exc:  # noqa: BLE001 — jede Leseform zaehlt
                 fehler.append(
                     f"Fuehrungsprobe: {ueber}/bestand.parquet ist keine lesbare "
@@ -2279,9 +2271,10 @@ def _fuehrungsprobe_gegenstand_fehler(probe: Dict[str, Any], fall: Path,
         return fehler + ["Fuehrungsprobe nennt keine Config im Aufruf"]
     fort = Path(str(parameter.get("fortschreibung") or ""))
     config_pfad = Path(config)
-    horizont, pb1 = fortschreibung_pruefen(
+    fort_pruefung = anbieter.zielsystem().faehigkeit("bestandspruefung").pruefe_fortschreibung(
         fort if fort.is_absolute() else fall / fort,
         config_pfad if config_pfad.is_absolute() else fall / config_pfad)
+    horizont, pb1 = fort_pruefung.horizont, fort_pruefung.fehler
     stichtag_2 = str(suite.get("stichtag_2") or "")
     if horizont is not None and stichtag_2 and horizont.isoformat() < stichtag_2:
         fehler.append(
@@ -2361,7 +2354,8 @@ def _b1_fehler(
     # abgetippt (N-01): die abgetippte Liste kannte schichten und
     # verankerung nicht und wies den ehrlichen Beleg eines
     # Freischaltungs-Falls (acht Rollen) als "ungueltig" ab.
-    erlaubte_rollen = set(PB1_ROLLEN)
+    rollenbeschreibung = anbieter.zielsystem().faehigkeit("bestandspruefung").rollenbeschreibung()
+    erlaubte_rollen = set(rollenbeschreibung.rollen)
     if (
         not isinstance(rollen, dict)
         or "portfolio" not in rollen
@@ -2445,9 +2439,13 @@ def _b1_fehler(
             "--manifest erneut fahren"
         )
     else:
-        manifest, manifest_fehler = manifest_fuer_nachrechnung(
-            aktuelle_eingaben.get("portfolio"), manifest_beleg.get("sha256")
-        ) if aktuelle_eingaben.get("portfolio") else (None, [])
+        if aktuelle_eingaben.get("portfolio"):
+            nachrechnung = anbieter.zielsystem().faehigkeit(
+                "bestandspruefung").manifest_fuer_nachrechnung(
+                    aktuelle_eingaben["portfolio"], manifest_beleg.get("sha256"))
+            manifest, manifest_fehler = nachrechnung.daten, nachrechnung.fehler
+        else:
+            manifest, manifest_fehler = None, []
         fehler.extend(manifest_fehler)
 
     # Vollprofil (T22-01): ohne diese Rollen hat P-B1 den Bestand nicht als
@@ -2463,7 +2461,7 @@ def _b1_fehler(
     # gefuehrt), Manifest da und nicht genannt (geprueft, dieser Lauf fuehrt
     # keine), kein Manifest (nichts gesagt — oben bereits ein Befund).
     vollprofil = set(PB1_VOLLPROFIL)
-    schicht_datei = PB1_ROLLEN_DATEIEN["schichten"]
+    schicht_datei = rollenbeschreibung.dateien["schichten"]
     ausgaben = (manifest or {}).get("ausgaben") or {}
     lauf_fuehrt_schicht = schicht_datei in ausgaben
     if lauf_fuehrt_schicht:
@@ -2524,11 +2522,13 @@ def _b1_fehler(
         # schreibt, NEBEN dem Portfolio, und seine Bytes muessen den Hash des
         # Belegs tragen.
         # manifest wurde oben gelesen und ist Pflicht.
-        tabellen, geprueft, pb1_errors, pb1_usage_errors = lies_und_pruefe_pb1(
+        pruefung = anbieter.zielsystem().faehigkeit("bestandspruefung").pruefe_eingaenge(
             aktuelle_eingaben,
             bis=bis,
             manifest=manifest,
         )
+        tabellen, geprueft = pruefung.tabellen, pruefung.geprueft
+        pb1_errors, pb1_usage_errors = pruefung.fehler, pruefung.bedienfehler
         gelesen = tabellen.get("sha256", {})
         for rolle, erwartet_hash in erwartete_hashes.items():
             gefunden = gelesen.get(rolle)

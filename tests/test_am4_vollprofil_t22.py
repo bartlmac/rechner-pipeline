@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 
 from rechner_pipeline.gates import bestand_validate
+from rechner_pipeline.zielsystem import anbieter
 from tests.test_baldrian2_e2e import gefahrener_fall
 from tests.test_pk1_am4_beweisvertrag import (
     einpolicen_config,
@@ -79,6 +80,36 @@ def test_vollprofil_ist_ein_am4_beleg(tmp_path: Path):
     assert pb1.exit_code == 0, pb1.errors
     assert isinstance(pb1.summary.get("betraege_hergeleitet"), int)
     assert _abnahmebericht(fall).exit_code == 0
+
+
+def test_am4_nutzt_die_bestandspruefung_des_anbieters(tmp_path: Path, monkeypatch):
+    """Die Nachrechnung des echten Positivfalls ruft den Zielvertrag auf."""
+    fall = _bereite_bestandsfall(tmp_path)
+    lauf = fall / "abgeleitet" / "bestand-nach"
+    pb1 = _pb1(fall, pb1_vollprofil_argv(
+        lauf, einpolicen_config(fall / "abgeleitet"), bis=HORIZONT_BESTANDSFALL))
+    assert pb1.exit_code == 0, pb1.errors
+    echt = anbieter.zielsystem()
+    gesehen = []
+
+    class Pruefung:
+        def __getattr__(self, name):
+            return getattr(echt.faehigkeit("bestandspruefung"), name)
+
+        def pruefe_eingaenge(self, eingaben, *, bis=None, manifest=None):
+            gesehen.append((dict(eingaben), manifest))
+            return echt.faehigkeit("bestandspruefung").pruefe_eingaenge(
+                eingaben, bis=bis, manifest=manifest)
+
+    class Ziel:
+        def faehigkeit(self, name):
+            return Pruefung() if name == "bestandspruefung" else echt.faehigkeit(name)
+
+    monkeypatch.setattr(anbieter, "zielsystem", lambda: Ziel())
+    bericht = _abnahmebericht(fall)
+    assert bericht.exit_code == 0, bericht.errors
+    assert len(gesehen) == 1
+    assert gesehen[0][1] is not None
 
 
 def test_mit_korrekturschicht_verlangt_das_vollprofil_schicht_und_verankerung(tmp_path: Path):

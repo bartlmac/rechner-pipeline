@@ -21,6 +21,7 @@ Knoten: system/bestand
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import shutil
 from pathlib import Path
@@ -29,10 +30,30 @@ import pytest
 
 from rechner_pipeline.bestand import cli_fortschreibung
 from rechner_pipeline.gates import abnahmebericht, bestand_validate
+from rechner_pipeline.zielsystem import anbieter
 from tests.test_pk1_am4_beweisvertrag import pb1_vollprofil_argv
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 HORIZONT = "2020-01-01"
+
+
+def _pruefung_ersetzen(monkeypatch, ersatz):
+    """Die echte Anbieter-Pruefung nur fuer die Nachrechnung gezielt veraendern."""
+    ziel = anbieter.zielsystem()
+    pruefung = ziel.faehigkeit("bestandspruefung")
+
+    class Pruefung:
+        def __getattr__(self, name):
+            return getattr(pruefung, name)
+
+        def pruefe_eingaenge(self, eingaben, **kwargs):
+            return ersatz(pruefung, eingaben, **kwargs)
+
+    class Ziel:
+        def faehigkeit(self, name):
+            return Pruefung() if name == "bestandspruefung" else ziel.faehigkeit(name)
+
+    monkeypatch.setattr(anbieter, "zielsystem", lambda: Ziel())
 
 
 @pytest.fixture(scope="module")
@@ -168,18 +189,16 @@ def test_nullzaehler_ist_kein_beleg_auch_wenn_beleg_und_nachrechnung_einig_sind(
         pytest.skip(f"{zaehler} kommt in diesem Profil nicht vor")
     eintrag["summary"][zaehler] = 0
     ledger_pfad.write_text(json.dumps(eintrag, indent=2), encoding="utf-8")
-    echt = abnahmebericht.lies_und_pruefe_pb1
-
-    def _nachrechnung_einig(eingaben, **kwargs):
-        tabellen, geprueft, errors, usage = echt(eingaben, **kwargs)
+    def _nachrechnung_einig(pruefung, eingaben, **kwargs):
+        antwort = pruefung.pruefe_eingaenge(eingaben, **kwargs)
         # Der ECHTE Nachrechnungspfad muss den Zaehler liefern — sonst
         # bescheinigte dieser Test einem toten Katalogeintrag ein Gruen.
-        assert zaehler in geprueft, (zaehler, sorted(geprueft))
-        geprueft = dict(geprueft)
+        assert zaehler in antwort.geprueft, (zaehler, sorted(antwort.geprueft))
+        geprueft = dict(antwort.geprueft)
         geprueft[zaehler] = 0
-        return tabellen, geprueft, errors, usage
+        return replace(antwort, geprueft=geprueft)
 
-    monkeypatch.setattr(abnahmebericht, "lies_und_pruefe_pb1", _nachrechnung_einig)
+    _pruefung_ersetzen(monkeypatch, _nachrechnung_einig)
     fehler = _b1(fall, ledger_pfad, eintrag, suite)
     assert not any("stimmt nicht mit der erneuten" in f and zaehler in f for f in fehler), (
         "Vorbedingung: Beleg und Nachrechnung sind einig — der Befund muss aus der "
@@ -201,13 +220,11 @@ def test_reviewer_beispiel_betraege_hergeleitet_null(bestandsfall, tmp_path, mon
     assert eintrag["summary"]["betraege_hergeleitet"] > 0
     eintrag["summary"]["betraege_hergeleitet"] = 0
     ledger_pfad.write_text(json.dumps(eintrag, indent=2), encoding="utf-8")
-    echt = abnahmebericht.lies_und_pruefe_pb1
+    def _keine_buchung(pruefung, eingaben, **kwargs):
+        antwort = pruefung.pruefe_eingaenge(eingaben, **kwargs)
+        return replace(antwort, geprueft={**antwort.geprueft, "betraege_hergeleitet": 0})
 
-    def _keine_buchung(eingaben, **kwargs):
-        tabellen, geprueft, errors, usage = echt(eingaben, **kwargs)
-        return tabellen, {**geprueft, "betraege_hergeleitet": 0}, errors, usage
-
-    monkeypatch.setattr(abnahmebericht, "lies_und_pruefe_pb1", _keine_buchung)
+    _pruefung_ersetzen(monkeypatch, _keine_buchung)
     fehler = _b1(fall, ledger_pfad, eintrag, suite)
     assert any("betraege_hergeleitet" in f for f in fehler), fehler
 

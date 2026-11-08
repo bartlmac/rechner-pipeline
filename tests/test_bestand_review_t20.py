@@ -23,10 +23,30 @@ import pytest
 from rechner_pipeline.bestand import cli_fortschreibung
 from rechner_pipeline.bestand.parquet_io import read_portfolio, write_portfolio
 from rechner_pipeline.gates import abnahmebericht, bestand_validate
+from rechner_pipeline.zielsystem import anbieter
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG = REPO_ROOT / "plv" / "configs" / "bestand_klv.toml"
 HORIZONT = _dt.date(2020, 1, 1)
+
+
+def _pruefung_ersetzen(monkeypatch, ersatz):
+    """Nur die P-B1-Antwort des Anbieters austauschen; andere Faehigkeiten bleiben echt."""
+    ziel = anbieter.zielsystem()
+    pruefung = ziel.faehigkeit("bestandspruefung")
+
+    class Pruefung:
+        def __getattr__(self, name):
+            return getattr(pruefung, name)
+
+        def pruefe_eingaenge(self, eingaben, **kwargs):
+            return ersatz(pruefung, eingaben, **kwargs)
+
+    class Ziel:
+        def faehigkeit(self, name):
+            return Pruefung() if name == "bestandspruefung" else ziel.faehigkeit(name)
+
+    monkeypatch.setattr(anbieter, "zielsystem", lambda: Ziel())
 
 
 def _sha(pfad: Path) -> str:
@@ -97,14 +117,12 @@ def test_pb1_beleg_nennt_die_bytes_die_geprueft_wurden(lauf, tmp_path, monkeypat
     ungueltig = ledger_pfad.read_bytes()
     assert ungueltig != gueltig
 
-    echt = bestand_validate.lies_und_pruefe_pb1
-
-    def _tausch_dann_pruefen(eingaben, **kwargs):
+    def _tausch_dann_pruefen(pruefung, eingaben, **kwargs):
         # Der atomare Publish zwischen "Gate hat gehasht" und "Engine liest".
         ledger_pfad.write_bytes(gueltig)
-        return echt(eingaben, **kwargs)
+        return pruefung.pruefe_eingaenge(eingaben, **kwargs)
 
-    monkeypatch.setattr(bestand_validate, "lies_und_pruefe_pb1", _tausch_dann_pruefen)
+    _pruefung_ersetzen(monkeypatch, _tausch_dann_pruefen)
     ergebnis = bestand_validate.main(_gate_argv(lauf_dir, tmp_path / "diag"))
 
     assert ergebnis.exit_code == 0, "die Engine sah die gueltigen Bytes"
@@ -167,13 +185,11 @@ def test_am4_neupruefung_vergleicht_die_gepruefen_bytes(lauf, tmp_path, monkeypa
     m, f = anderes.index[anderes["sex"] == "M"][0], anderes.index[anderes["sex"] == "F"][0]
     anderes.loc[m, "sex"], anderes.loc[f, "sex"] = "F", "M"
     original = portfolio_pfad.read_bytes()
-    echt = abnahmebericht.lies_und_pruefe_pb1
-
-    def _tausch_dann_pruefen(eingaben, **kwargs):
+    def _tausch_dann_pruefen(pruefung, eingaben, **kwargs):
         write_portfolio(anderes, portfolio_pfad)
-        return echt(eingaben, **kwargs)
+        return pruefung.pruefe_eingaenge(eingaben, **kwargs)
 
-    monkeypatch.setattr(abnahmebericht, "lies_und_pruefe_pb1", _tausch_dann_pruefen)
+    _pruefung_ersetzen(monkeypatch, _tausch_dann_pruefen)
     fehler = abnahmebericht._b1_fehler(
         ledger_pfad=ledger_pfad, fall=lauf_dir, repo_root=REPO_ROOT,
         suite=suite, erwartetes_system=system)

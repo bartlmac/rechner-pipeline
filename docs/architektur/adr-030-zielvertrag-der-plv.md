@@ -378,12 +378,34 @@ Damit entfallen neun direkte Gate-Kanten nach `bestand/`: sieben für
 Tabellen und Manifeste, zwei für Config und Tarifzellenauflösung. Die
 Altlast-Ratsche steht nach Stufe 3 bei fünf Kanten plus der Anbieter-Kante.
 Die Bestandsprüfung in `bestand_validate` und die Anfangszustandsregel
-in `migrationszugang` bleiben für Stufe 4 offen; ebenso ist ein Anschluss
+in `migrationszugang` blieben nach Stufe 3 für Stufe 4 offen; ebenso ist ein Anschluss
 eines zweiten Zielsystems erst Gegenstand von Stufe 5. Die Grenze des
 vorgezogenen Verankerungsstücks bleibt bestehen: Ein Bestand ohne
 Laufmanifest und ohne Verankerungsdatei gilt als nicht verankert. Stufe 3
 ändert weder den Kern noch Tarifwerk, Referenzwerte, Gate-Versionen oder
 die signierte Fall-3-Erwartung.
+
+### Stufe 4: Bestandsprüfung als Vertragsfähigkeit (A-078)
+
+Der Zielvertrag 0.6.0 bietet `bestandspruefung` mit der Rollenbeschreibung
+der einen P-B1-Engine an. Die PLV leitet Eingangsprüfung, Prüfung der
+Fortschreibung, Manifestnachrechnung und Bestandszeilenzahl an die
+bestehende Bestandsführung weiter. Die Eingangsantwort trägt dieselben
+geprüften Tabellen und SHA-256-Werte, die der Beleg verwendet; das Gate
+liest zwischen Prüfung und Belegbau keine Eingabe erneut. Die Rollenliste
+und die Dateinamen stammen aus der Engine, nicht aus einer Abschrift im
+Tool. Andere Zielsysteme müssen die Protokollantworten und die
+Konformitätsproben erfüllen.
+
+`bestand_validate` und `abnahmebericht` beziehen diese Antworten über den
+Anbieter. Ihre zwei direkten Kanten zu `bestand/vorbedingungen.py` entfallen;
+die Altlast-Ratsche sinkt von fünf auf drei Kanten plus Anbieter-Kante.
+Die beiden Gates behalten ihre Versionen 4.0.0 und 14.0.0 sowie ihre
+Beleg- und Verweigerungsregeln. Der Tagesbetrieb und die übrigen direkten
+Aufrufer der P-B1-Engine bleiben in der Bestandsführung. Die drei
+verbleibenden Altlastkanten nach `bestand/migrationszugang.py` gehören zu
+einem späteren Schnitt. Stufe 4 ändert weder Kern noch signierte
+Tarifwerke, Referenzwerte oder die Fall-3-Erwartung.
 
 ## Nachweis je Stufe
 
