@@ -42,6 +42,51 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   their parity is test-enforced (`tests/test_agent_workflow_docs.py`);
   do not move, rename, or weaken either side.
 
+## Agent task and handoff contract (ADR-032)
+
+- Every task names its ID, working mode (`Fall`, `Entwicklung`, `Betrieb`),
+  role, required skills and phase references, permitted procedural/schema
+  documents, permitted registered factual inputs, allowed output paths,
+  deterministic checks, human stop point and handoff recipient.
+- Load the required skills before the first substantive step. If the host
+  has no skill tool, read the explicit local skill file and report that
+  fallback. A denied skill is a blocker, not permission to bypass a denial
+  by reading its file. Missing instructions or contradictory mandates:
+  stop and ask. Selection follows the work type in
+  `docs/architektur/skill-architektur.md`, not the role name alone.
+- Procedural/schema documents are separate from factual sources. Each
+  extraction task sees EXACTLY ONE source's pre-digested data for one
+  generation, never another extraction's result. The deterministic merge
+  is a separate step. No implicit input channel is introduced.
+- Return task ID, loaded skills/references and loading method, artifacts,
+  executed checks and results, unexecuted checks, open questions and stop
+  reason. Loading is not proof of application; self-report is not an
+  execution record or an acceptance.
+- Direct reading is limited to the permitted named procedural/schema
+  documents and registered factual inputs of the mandate. Decision
+  evidence under `entscheide/` is read only when the mandate names it
+  explicitly; the single named case is the programme lead reading the
+  tip of the case mandate A-M6 it is mandated with. There is no general
+  read release for `entscheide/` or `eingang/`.
+- No role mutates `eingang/` or `entscheide/` directly (ADR-002); the
+  existing authorized system commands keep their provenance and
+  authority checks. A read permission is not a write permission, and a
+  named evidence does not open the rest of the case.
+- Programme leadership runs the main session and assigns bounded role
+  tasks. Native discovery/delegation must be verified per host/version.
+  If unavailable, the human starts a role session with the same task and
+  explicit local-file handoff. No nested delegation is required.
+- `.codex/agents/` and `.opencode/agents/` carry thin native adapters that
+  point to the shared `.agents/agents/` roles. Those pointers instruct
+  reading; they do not technically preload a role. No model/provider or
+  credential config is added. Existing mirror parity remains mandatory.
+- A separate development session or developer mandate does NOT lift the
+  agent write prohibition for T-Box/kernel during a running migration.
+  Migration-driven code work additionally follows
+  `integriere-migrationsinkrement`. Gate authoring additionally follows
+  `author-rechner-toolbox-gate`; it does not replace the general rules of
+  `entwickle-im-zielsystem`. Humans still decide every human gate.
+
 ## Repo Map (what an agent needs to know first)
 
 - **The tree is ordered by levels, and holds no infrastructure**

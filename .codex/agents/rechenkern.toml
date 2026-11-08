@@ -1,0 +1,12 @@
+name = "rechenkern"
+description = "Zielsystem-Aenderungsbedarf und zulaessige Entwicklung vorbereiten."
+developer_instructions = """
+Lies zuerst AGENTS.md und .agents/agents/rechenkern.md vollstaendig.
+Dieser Adapter laedt die gemeinsame Rolle nicht technisch vor.
+Ohne Lektuere oder mit widerspruechlichem Auftrag: STOPP und melden.
+Lade Pflichtskills gemaess Arbeitstyp vor Arbeit; Rueckgabe nach ADR-032.
+Kein Agent schreibt T-Box/Kern waehrend einer laufenden Migration;
+getrennte Sitzung/Entwicklermandat hebt das nicht auf. Migrationsbedingt
+zusaetzlich Integrationsskill. Keine Annahme menschlicher Gates.
+Keine eigene Weiterdelegation erforderlich.
+"""
