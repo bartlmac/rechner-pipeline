@@ -14,8 +14,8 @@ Vor dieser Stufe kannte nur ``kern/model_point.py`` den Default, und
 ihn ueber den Vertrag, und ``models.bestand.model_point_kwargs`` (der eine
 Weg des Tools zum wirksamen Satz) liest ihn von hier.
 
-Das Protokoll ist strukturell (``typing.Protocol``): Die Implementierung
-importiert nichts aus diesem Paket.
+Seit Stufe 3e kommt die wirksame Tarifzelle je Police aus der validierten
+Fuehrungsansicht hinzu. Das Protokoll ist strukturell (``typing.Protocol``).
 
 Knoten: system/zielsystem
 """
@@ -23,7 +23,9 @@ Knoten: system/zielsystem
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, FrozenSet, Mapping, Protocol, Tuple, runtime_checkable
+from typing import Any, Callable, FrozenSet, Mapping, Protocol, Tuple, runtime_checkable
+
+from rechner_pipeline.zielsystem.bestandsdaten import Fuehrungsansicht
 
 __all__ = ["Parametersatz", "Rechnungsgrundlagen"]
 
@@ -73,4 +75,13 @@ class Rechnungsgrundlagen(Protocol):
         Alterstafeln mit Werten und ALLE vergebenen Tafelnamen (auch die
         der Select-Tafeln); ``ValueError``, wenn der Text die Tafelregeln
         verletzt."""
+        ...
+
+    def fuehrungsgrundlagen(
+        self, ansicht: Fuehrungsansicht, merkmale: Any,
+    ) -> Callable[[int, str], Mapping[str, Any]]:
+        """Wirksame Tarifzelle je Police aus der validierten Fuehrungsansicht.
+
+        Fehlende Generation oder Merkmalszelle ist ein ``ValueError``.
+        """
         ...

@@ -1,9 +1,10 @@
-"""Die PLV liest die Verankerungsrolle aus gebundenen Bestandsbytes.
+"""Die PLV erfuellt den Bestandsdaten-Vertrag (ADR-030, Stufe 3).
 
 Das Laufmanifest wird nur fuer eine vollstaendige Schicht geschrieben.
 Darum ist auch ein Bestand ohne Manifest und ohne Verankerungsdatei ein
 ordentlicher Zustand. Sobald eine Seite die Rolle behauptet, prueft die
-PLV beide Seiten samt Hash und Tabellenform (ADR-030).
+PLV beide Seiten samt Hash und Tabellenform. Tabellen und Config bleiben
+in der PLV-Fuehrung; das Tool sieht nur die neutralen Vertragsformen.
 
 Knoten: system/zielsystem, klv
 """
@@ -17,7 +18,8 @@ from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
 from rechner_pipeline.zielsystem.bestandsdaten import (
-    BestandsdatenFehler, Laufmanifest, Verankerungsrolle,
+    BestandsdatenFehler, Erfahrungsannahmen, Fuehrungsansicht,
+    Fuehrungsgeneration, Laufmanifest, Verankerungsrolle,
 )
 
 __all__ = ["PLVBestandsdaten"]
@@ -73,6 +75,30 @@ class PLVBestandsdaten:
             lauf, horizont=horizont, neuzugang_ab=neuzugang_ab,
             config_pfad=config_pfad, ausgaben=ausgaben, eingaben=eingaben,
             erzeuger=erzeuger,
+        )
+
+    def fuehrungsansicht_aus_text(self, text: str) -> Fuehrungsansicht:
+        from rechner_pipeline.bestand.config import config_aus_text
+
+        config = config_aus_text(text)
+        fehler = config.validate()
+        if fehler:
+            raise BestandsdatenFehler("Config ungueltig: " + "; ".join(fehler))
+        a = config.annahmen
+        return Fuehrungsansicht(
+            generationen=tuple(
+                Fuehrungsgeneration(g.name, MappingProxyType(g.tarifwerk()))
+                for g in config.generationen),
+            annahmen=Erfahrungsannahmen(
+                tod=a.tod, storno=a.storno, beitragsfreistellung=a.beitragsfreistellung,
+                erhoehung=a.erhoehung, herabsetzung=a.herabsetzung,
+                teilkuendigung=a.teilkuendigung, invalidisierung=a.invalidisierung,
+                reaktivierung=a.reaktivierung,
+                aktivensterblichkeit=a.aktivensterblichkeit,
+                invalidensterblichkeit=a.invalidensterblichkeit,
+                erh_prozent=a.erh_prozent, red_anteil=a.red_anteil, tk_anteil=a.tk_anteil,
+            ),
+            config_text=text,
         )
 
     def verankerungsrolle(

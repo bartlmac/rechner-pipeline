@@ -3,7 +3,7 @@ kennt (ADR-030).
 
 Statischer Import, damit die Schichtenkarte die Kante sieht: Sie ist die
 einzige Kante aus dem Tool in die Vorzeige, die der Vertrag vorsieht; die
-uebrigen 36 sind die Altlast, die je Stufe schrumpft
+uebrigen fuenf sind die verbliebene Altlast nach Stufe 3, die weiter schrumpft
 (``ontologie.code_karte.TOOL_NACH_VORZEIGE_ERLAUBT``). Dynamisches Laden
 faellt aus, weil die Karte einen berechneten Importnamen als Befund
 zaehlt.

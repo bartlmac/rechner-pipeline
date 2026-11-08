@@ -19,6 +19,7 @@ from rechner_pipeline.plv.zielsystem import PLV
 from rechner_pipeline.zielsystem import (
     anbieter, bestandsdaten, bewertung, konformitaet, rechnungsgrundlagen, version, vertrag,
 )
+from tests.test_t27_pruefstrecke_runde_c import gefahrener_fall, welt  # noqa: F401
 
 
 # --------------------------------------------------------------------------- #
@@ -127,6 +128,9 @@ def test_fremde_bestandsdaten_umsetzung_wird_am_vertrag_gemessen():
 
         def laufmanifest_schreiben(self, *args, **kwargs):
             return PLVBestandsdaten().laufmanifest_schreiben(*args, **kwargs)
+
+        def fuehrungsansicht_aus_text(self, text):
+            return PLVBestandsdaten().fuehrungsansicht_aus_text(text)
 
         def verankerungsrolle(self, **eingaben):
             return PLVBestandsdaten().verankerungsrolle(**eingaben)
@@ -437,6 +441,101 @@ def test_jede_neue_bestandsdaten_methode_hat_eine_positivkontrolle(methode, ersa
     assert any(methode in befund for befund in befunde), befunde
 
 
+def test_fuehrungsansicht_trennt_validierte_config_und_wirksame_tarifzelle():
+    """Weg C: Erfahrung und Tarifwerk sind strukturiert, die Police loest RG auf."""
+    from pathlib import Path
+
+    from rechner_pipeline.bestand.config import BestandConfig, config_aus_text
+    from rechner_pipeline.bestand.auswertung import grundlagen_je_police
+    from rechner_pipeline.zielsystem.bestandsdaten import (
+        BestandsdatenFehler, Erfahrungsannahmen, Fuehrungsansicht,
+    )
+
+    text = (Path(__file__).resolve().parents[1] / "plv" / "configs" /
+            "bestand_klv.toml").read_text(encoding="utf-8")
+    alt = config_aus_text(text)
+    daten = anbieter.zielsystem().faehigkeit("bestandsdaten")
+    ansicht = daten.fuehrungsansicht_aus_text(text)
+    assert type(ansicht) is Fuehrungsansicht
+    assert not any(isinstance(v, BestandConfig) for v in vars(ansicht).values())
+    assert tuple(g.name for g in ansicht.generationen) == tuple(g.name for g in alt.generationen)
+    assert dict(ansicht.generationen[0].tarifwerk()) == alt.generationen[0].tarifwerk()
+    assert type(ansicht.annahmen) is Erfahrungsannahmen
+    assert ansicht.annahmen.herabsetzung(0.0) == alt.annahmen.herabsetzung(0.0)
+    assert ansicht.annahmen.red_anteil == alt.annahmen.red_anteil
+    assert ansicht.annahmen.tk_anteil == alt.annahmen.tk_anteil
+    assert ansicht.config_text == text
+    for feld in (
+        "tod", "storno", "beitragsfreistellung", "erhoehung", "herabsetzung",
+        "teilkuendigung", "invalidisierung", "reaktivierung",
+        "aktivensterblichkeit", "invalidensterblichkeit",
+    ):
+        assert getattr(ansicht.annahmen, feld)(0.01) == getattr(alt.annahmen, feld)(0.01)
+    aufloesen = anbieter.zielsystem().faehigkeit("rechnungsgrundlagen").fuehrungsgrundlagen(
+        ansicht, None)
+    assert aufloesen(1, "KLV-1994") == grundlagen_je_police(alt)(1, "KLV-1994")
+    with pytest.raises(ValueError, match="nicht in Config"):
+        aufloesen(1, "fremd")
+    with pytest.raises(BestandsdatenFehler, match="Config ungueltig"):
+        daten.fuehrungsansicht_aus_text(text.replace("seed = 20260811", "seed = 0"))
+
+
+def test_fuehrungsprobe_nutzt_fremde_tarifzellen_antwort(welt, monkeypatch):
+    """Die Probe fragt die Vertragsfaehigkeit, auch bei fremder Umsetzung."""
+    from rechner_pipeline.gates.fuehrungsprobe import pruefe_fuehrung
+
+    echt = anbieter.zielsystem()
+    text = welt["cfg_pfad"].read_text(encoding="utf-8")
+    ansicht = echt.faehigkeit("bestandsdaten").fuehrungsansicht_aus_text(text)
+    basis = dict(welt["basis"], config=ansicht)
+    gut = pruefe_fuehrung(uebernahme=welt["ueb"], fortschreibung=welt["tab"], **basis)
+    assert gut["bestanden"], gut["befunde"][:3]
+
+    gefragt = []
+
+    class FremdeGrundlagen:
+        def __getattr__(self, name):
+            return getattr(echt.faehigkeit("rechnungsgrundlagen"), name)
+
+        def fuehrungsgrundlagen(self, ansicht, merkmale):
+            aufloesen = echt.faehigkeit("rechnungsgrundlagen").fuehrungsgrundlagen(
+                ansicht, merkmale)
+
+            def andere_zelle(police, generation):
+                gefragt.append((police, generation))
+                felder = dict(aufloesen(police, generation))
+                felder["zins"] = float(felder["zins"]) + 0.01
+                return felder
+
+            return andere_zelle
+
+    class FremdesZiel:
+        name = "probe"
+        vertragsversion = echt.vertragsversion
+
+        def faehigkeiten(self):
+            return echt.faehigkeiten()
+
+        def faehigkeit(self, name):
+            return FremdeGrundlagen() if name == "rechnungsgrundlagen" else echt.faehigkeit(name)
+
+    monkeypatch.setattr(anbieter, "zielsystem", lambda: FremdesZiel())
+    schlecht = pruefe_fuehrung(uebernahme=welt["ueb"], fortschreibung=welt["tab"], **basis)
+    assert gefragt
+    assert not schlecht["bestanden"]
+
+
+def test_konformitaet_erkennt_falsche_fuehrungsansicht():
+    from rechner_pipeline.plv.bestandsdaten import PLVBestandsdaten
+
+    class Falsch(PLVBestandsdaten):
+        def fuehrungsansicht_aus_text(self, text):
+            return object()
+
+    befunde = konformitaet.pruefe_bestandsdaten(Falsch())
+    assert any("fuehrungsansicht_aus_text" in b for b in befunde), befunde
+
+
 def test_migrationssuite_nutzt_fremde_bestandsdaten_fuer_gebundene_nebentabelle(monkeypatch):
     """Der Fuehrungswert bekommt die Adapterantwort aus den gelieferten Bytes."""
     from rechner_pipeline.bestand import migrationszugang
@@ -618,6 +717,20 @@ class _RG:
         if not text:
             raise ValueError("leer")
         return {}, frozenset()
+
+    def fuehrungsgrundlagen(self, ansicht, merkmale):
+        from rechner_pipeline.plv.rechnungsgrundlagen import PLVRechnungsgrundlagen
+
+        return PLVRechnungsgrundlagen().fuehrungsgrundlagen(ansicht, merkmale)
+
+
+def test_konformitaet_erkennt_falsche_wirksame_tarifzelle():
+    class Falsch(_RG):
+        def fuehrungsgrundlagen(self, ansicht, merkmale):
+            return lambda police, generation: {"zins": 99.0}
+
+    befunde = konformitaet.pruefe_rechnungsgrundlagen(Falsch())
+    assert any("fuehrungsgrundlagen" in b for b in befunde), befunde
 
 
 def _rg_abart(**aenderungen):

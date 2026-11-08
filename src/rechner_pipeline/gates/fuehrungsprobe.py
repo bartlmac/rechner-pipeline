@@ -102,7 +102,6 @@ import pandas as pd
 
 from rechner_pipeline.gates._provenienz import lebendes_repo  # --repo-root (G12)
 from rechner_pipeline import fall as fall_mod
-from rechner_pipeline.bestand.config import BestandConfig, config_aus_text
 from rechner_pipeline.gates._common import Eingangsbindung
 from rechner_pipeline.gates._provenienz import systemstand
 from rechner_pipeline.gates.bestand_uebernehmen import GRUNDVERTRAG, MATERIALISIEREN
@@ -115,6 +114,7 @@ from rechner_pipeline.gates.migrationssuite_lauf import (
     tarifregeln_des_falls,
 )
 from rechner_pipeline.zielsystem import anbieter
+from rechner_pipeline.zielsystem.bestandsdaten import BestandsdatenFehler, Fuehrungsansicht
 from rechner_pipeline.zielsystem.bewertung import Bewertung, Folge, Schicht
 from rechner_pipeline.ontologie.tbox import TARIFWERK_MERKMALE
 from rechner_pipeline.spez.tarifregeln import (
@@ -475,7 +475,7 @@ def pruefe_fuehrung(
     *,
     uebernahme: Dict[str, Any],
     fortschreibung: Optional[Dict[str, Any]],
-    config: BestandConfig,
+    config: Fuehrungsansicht,
     spez,
     zeilen: List[Dict[str, Any]],
     vorgeschichte: List[Dict[str, str]],
@@ -650,8 +650,8 @@ def pruefe_fuehrung(
         for s in scheiben.to_dict("records"):
             scheiben_je_police.setdefault(int(s["police_id"]), []).append(s)
 
-    from rechner_pipeline.bestand.auswertung import grundlagen_je_police
-    grundlagen = grundlagen_je_police(config, merkmale)
+    grundlagen = anbieter.zielsystem().faehigkeit("rechnungsgrundlagen").fuehrungsgrundlagen(
+        config, merkmale)
     bewertung = _bewertung()
 
     welten: Dict[int, Dict[str, Any]] = {}
@@ -1524,10 +1524,11 @@ def fuehre_probe(args: argparse.Namespace) -> Tuple[int, Optional[Dict[str, Any]
                 return 2, None
 
     config_pfad = Path(args.config).resolve()
-    config = config_aus_text(binde(config_pfad).text())
-    fehler = config.validate()
-    if fehler:
-        print("fuehrungsprobe: Config ungueltig: " + "; ".join(fehler), file=sys.stderr)
+    try:
+        config = anbieter.zielsystem().faehigkeit("bestandsdaten").fuehrungsansicht_aus_text(
+            binde(config_pfad).text())
+    except BestandsdatenFehler as exc:
+        print(f"fuehrungsprobe: {exc}", file=sys.stderr)
         return 2, None
     # Die Spez war ueberhaupt nicht gebunden (Review T25-05): Die Probe
     # rechnete gegen die Zellen einer Datei, die ihr Beleg nicht nannte.

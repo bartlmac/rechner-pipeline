@@ -1,20 +1,24 @@
 """Bestandsdaten-Faehigkeit des Zielvertrags (ADR-030).
 
-Die erste Teilfaehigkeit meldet allein, ob die gebundenen Bytes eines
-Migrationsbestands eine Verankerung tragen. Sie liest keine Pfade und
-liefert keine Schichtwerte oder Abnahmeentscheidung.
+Sie bindet Tabellen, Laufmanifeste und den bereits gebundenen Config-Text.
+Die Verankerungsrolle bleibt eine Aussage ueber uebergebene Bytes; die
+Fuehrungsansicht enthaelt keine PLV-Config und trifft keine Abnahmeentscheidung.
 
 Knoten: system/zielsystem
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
+from typing import Any, Mapping, Protocol, Sequence, Tuple, runtime_checkable
 
-__all__ = ["Bestandsdaten", "BestandsdatenFehler", "Laufmanifest", "Verankerungsrolle"]
+__all__ = [
+    "Bestandsdaten", "BestandsdatenFehler", "Erfahrungsannahmen",
+    "Erfahrungsrate", "Fuehrungsansicht", "Fuehrungsgeneration", "Laufmanifest",
+    "Verankerungsrolle",
+]
 
 
 class BestandsdatenFehler(ValueError):
@@ -34,6 +38,58 @@ class Laufmanifest:
 
     daten: Mapping[str, Any]
     sha256: str
+
+
+class Erfahrungsrate(Protocol):
+    """Die affine Rate einer Ereignisart, ohne ihren Zielsystemtyp."""
+
+    a: float
+    b: float
+
+    def __call__(self, erste_ordnung: float) -> float:
+        ...
+
+
+@dataclass(frozen=True)
+class Erfahrungsannahmen:
+    """Die fuer die Ereignisbindung benoetigten Annahmen dritter Ordnung."""
+
+    tod: Erfahrungsrate
+    storno: Erfahrungsrate
+    beitragsfreistellung: Erfahrungsrate
+    erhoehung: Erfahrungsrate
+    herabsetzung: Erfahrungsrate
+    teilkuendigung: Erfahrungsrate
+    invalidisierung: Erfahrungsrate
+    reaktivierung: Erfahrungsrate
+    aktivensterblichkeit: Erfahrungsrate
+    invalidensterblichkeit: Erfahrungsrate
+    erh_prozent: float
+    red_anteil: float
+    tk_anteil: float
+
+
+@dataclass(frozen=True)
+class Fuehrungsgeneration:
+    name: str
+    tarifwerk_daten: Mapping[str, Any]
+
+    def tarifwerk(self) -> Mapping[str, Any]:
+        """Den belegten Satz liefern, wie ihn die Fuehrung vergleicht."""
+        return self.tarifwerk_daten
+
+
+@dataclass(frozen=True)
+class Fuehrungsansicht:
+    """Validierte Config als neutrale Fuehrungswerte und gebundener Text.
+
+    Der Text dient der PLV-internen Tarifzellenaufloesung; er ist der
+    bereits eingangsgebundene Inhalt und kein erneut zu lesender Pfad.
+    """
+
+    generationen: Tuple[Fuehrungsgeneration, ...]
+    annahmen: Erfahrungsannahmen
+    config_text: str = field(repr=False)
 
 
 @runtime_checkable
@@ -64,6 +120,13 @@ class Bestandsdaten(Protocol):
         eingaben: Mapping[str, Path] | None = None, laufart: str,
     ) -> Path:
         """Das Manifest nach den gebundenen Ausgaben schreiben."""
+        ...
+
+    def fuehrungsansicht_aus_text(self, text: str) -> Fuehrungsansicht:
+        """Gebundenen Config-Text validieren und Fuehrungswerte liefern.
+
+        Ungueltige Config: ``BestandsdatenFehler`` mit dem Befund.
+        """
         ...
 
     def verankerungsrolle(

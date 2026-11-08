@@ -187,8 +187,8 @@ ZIELSYSTEM_ANBIETER = "rechner_pipeline/zielsystem/anbieter.py"
 #: kennen. Die 36 Kanten vom Stand 9986830 bleiben als Altlast in dieser
 #: Menge und schrumpfen je Stufe; ``ALTLAST_KANTEN`` zaehlt sie, und ein
 #: Test haelt die Zahl fest (Stufe 0: 36, Stufe 1: 31, Stufe 2a: 24,
-#: Stufe 2b: 14, Stufe 3b: 11, Stufe 3c: 9, Stufe 3d: 7;
-#: der Rest nach bestand/).
+#: Stufe 2b: 14, Stufe 3b: 11, Stufe 3c: 9, Stufe 3d: 7,
+#: Stufe 3e: 5; der Rest nach bestand/).
 TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # ADR-030, Stufe 0: die Kante des Vertrags auf die PLV.
     (ZIELSYSTEM_ANBIETER, "rechner_pipeline/plv/zielsystem.py"),
@@ -214,8 +214,6 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # Rechnungsgrundlagen je Police) und rechnet, was die Pruefstrecke
     # rechnet (Kern, Verfahren, Schicht) — dieselbe Schnittstelle wie
     # migrationssuite_lauf und bestand_validate zusammen.
-    ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/bestand/auswertung.py"),
-    ("rechner_pipeline/gates/fuehrungsprobe.py", "rechner_pipeline/bestand/config.py"),
     ("rechner_pipeline/gates/bestand_validate.py", "rechner_pipeline/bestand/vorbedingungen.py"),
     ("rechner_pipeline/gates/migrationssuite_lauf.py", "rechner_pipeline/bestand/migrationszugang.py"),
     # Laufmanifest des Migrationszugangs (ADR-017 Nachtrag 2026-09-20,
@@ -232,8 +230,8 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # (verfuegbare_tafeln). Die Module lesen jetzt ueber zielsystem/anbieter.
     # ADR-030, Stufe 2b (2026-11-02): zehn Kanten der Gates abgeloest —
     # aktuartest_lauf, bestand_uebernehmen, fuehrungsprobe, generation_golden,
-    # migrationssuite_lauf, verankerung_belegen nach kern/*. Es bleiben die
-    # Vor Stufe 3 waren es 14 Kanten nach bestand/ (Stufen 3 bis 5).
+    # migrationssuite_lauf, verankerung_belegen nach kern/*. Vor Stufe 3
+    # waren es noch 14 Kanten nach bestand/ (Stufen 3 bis 5).
     # ADR-030, Stufe 3b (2026-11-08): drei lesende Gate-Kanten nach
     # bestand/parquet_io abgeloest; die Gates lesen gebundene Bytes ueber
     # die Faehigkeit bestandsdaten.
@@ -242,6 +240,8 @@ TOOL_NACH_VORZEIGE_ERLAUBT: Set[tuple] = {
     # folgt nun dem Bestandsdaten-Vertrag.
     # ADR-030, Stufe 3d (2026-11-08): Manifestlesen und -erzeugung
     # ueber bestandsdaten, statt direkter Gate-Imports aus bestand/manifest.
+    # ADR-030, Stufe 3e (2026-11-08): Config und Tarifzellen der
+    # Fuehrungsprobe ueber bestandsdaten und rechnungsgrundlagen.
     # ADR-030, Stufe 2a (2026-11-02): sieben Kanten der Bewertung abgeloest —
     # qa/abzugsabgleich -> kern/__init__ (berechne), qa/aktuarieller_test
     # -> kern/__init__, kern/beitragsreduktion, kern/korrekturschicht,
@@ -378,6 +378,7 @@ GRENZKANTEN_ERLAUBT: Dict[str, Set[tuple]] = {
         ("rechner_pipeline/plv/bestandsdaten.py", "rechner_pipeline/models/bestand.py"),
         ("rechner_pipeline/plv/bestandsdaten.py", "rechner_pipeline/zielsystem/bestandsdaten.py"),
         ("rechner_pipeline/plv/bewertung.py", "rechner_pipeline/zielsystem/bewertung.py"),
+        ("rechner_pipeline/plv/rechnungsgrundlagen.py", "rechner_pipeline/zielsystem/bestandsdaten.py"),
         ("rechner_pipeline/plv/rechnungsgrundlagen.py", "rechner_pipeline/zielsystem/rechnungsgrundlagen.py"),
     },
 }
