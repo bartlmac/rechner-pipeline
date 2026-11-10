@@ -20,11 +20,13 @@
 name: tests
 on:
   push:
-    # Nur Zweige, keine Tags: Ein Tag zeigt auf einen geschichtlichen Stand,
-    # der zu seiner Zeit geprueft wurde. fall3-vor-ebenen (82eea92) ist ein nur
-    # fuers Nachfahren abgeleiteter Stand und nie lauffaehig gedacht (ADR-028);
-    # sein Tag-Push loeste am 2026-10-09 einen roten Lauf aus.
-    branches: ["**"]
+    # Nur main, keine Tags und keine anderen Zweige. Ein Tag zeigt auf einen
+    # geschichtlichen Stand, der zu seiner Zeit geprueft wurde (fall3-vor-ebenen,
+    # ADR-028, roter Lauf am 2026-10-09). Zweige laufen nur ueber pull_request:
+    # Mit push und pull_request bekam jeder Commit eines offenen Pull Requests
+    # zwei Laeufe namens pytest, die Gruppenregel brach einen ab, und der
+    # abgebrochene zaehlte als Pflicht-Check und sperrte den Merge (2026-11-10).
+    branches: [main]
   pull_request:
 # Ein Push auf einen Zweig mit offenem PR loeste zwei Laeufe desselben
 # Commits aus (push und pull_request), die sich die Runner teilten und
