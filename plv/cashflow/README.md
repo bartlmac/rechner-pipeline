@@ -6,6 +6,21 @@ Nachtrag vom 10.11.2026). Der Bereich liegt zuerst außerhalb von `src/`,
 damit die Arbeit an den Cashflow-Modellen nicht auf einen Umbau des Pakets
 warten muss. Zum Jahresende zieht er in ein eigenes Paket der PLV um.
 
+## Einordnung
+
+Der Anwendungsfall Cashflow-Modelle verteilt sich auf dieselben Ebenen wie
+die Migration ([ADR-028](../../docs/architektur/adr-028-ordnung-nach-ebenen.md)):
+
+- System: ein System, das Cashflow-Modelle aufbaut und prüft, analog zur
+  Migrationspipeline oder als ihre Erweiterung. Das ist noch offen und wird
+  eigens entschieden.
+- Objekt PLV: das Cashflow-Modell selbst mit seinen eigenen Rechenwerken. Es
+  gehört zur PLV und ist eng auf ihren Rechenkern und ihre Bestandsführung
+  abgestimmt, wie in der Praxis. Dieser Bereich ist sein Landeplatz.
+- Simulation: ein Werkzeug, das Eingaben für das Cashflow-Modell simuliert,
+  analog zur Simulation des Bestands und der Quelle bei der Migration. Das
+  ist noch offen.
+
 ## Stand
 
 `probe.py` ist eine Probe, kein Rechenwerk. Sie liest eine Tabelle und
