@@ -61,9 +61,13 @@ Die Module liegen quer zu den Ebenen des Repositorys
    Testnachweis.
 4. **Review:** Ein Mensch reviewt, in der Regel der Verantwortliche des
    Moduls. Freigeben muss das Maintainer Office (CODEOWNERS). Die
-   Pflicht-Checks müssen grün sein.
+   Pflicht-Checks müssen grün sein. Einen Pull Request, den ein Agent
+   gestellt hat, gibt einer der beiden anderen Code Owners frei, nicht der
+   Mensch, für den der Agent arbeitet. Er gibt bis zum nächsten Arbeitstag
+   um 12:00 frei oder sagt in einem Kommentar, was fehlt.
 5. **Merge** durch das Maintainer Office. `main` ist geschützt; niemand
-   schreibt direkt darauf.
+   schreibt direkt darauf. Ein Agent mergt nie, auch nicht auf Anweisung;
+   er meldet, dass der Pull Request bereit zum Merge ist.
 
 Code aus Agenten geht denselben Weg: Issue, Zweig, Pull Request, Review
 durch einen Menschen. Push und Merge macht ein Mensch.
@@ -120,6 +124,19 @@ Requests gilt, was ADR-027 festgelegt hat:
   Bestands-Configs). Eine Änderung daran ist eine Änderung des Zielsystems
   und nie Beifang eines anderen Pull Requests; `tests/test_pakete.py` wird
   sonst rot und nennt den Ausweg.
+
+## Wann eine Karte fertig ist
+
+Eine Karte auf dem Projektboard ist fertig, wenn alle fünf Punkte erfüllt
+sind:
+
+1. Das Ergebnis liegt über einen gemergten Pull Request auf `main`; ein
+   Konzept liegt als Dokument im Repository.
+2. Die Pflicht-Checks sind grün, und keine Wache ist rot.
+3. Jede neue Regel oder Grenze hat einen Test, der ohne sie rot wird.
+4. Dokumentation, [Glossar](docs/architektur/glossar.md) und die
+   betroffenen ADRs sind nachgezogen.
+5. Das Ergebnis wurde im Sync des Teams gezeigt.
 
 ## Stil
 

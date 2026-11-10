@@ -165,3 +165,29 @@ zum System (der Vertrag, den das Tool von einem Zielsystem verlangt),
 Tabelle oben nennt beide. Der Satz „Die Schichtenkarte und die
 Importregeln im Paket ändern sich nicht" galt für den Umzug von 2026-10-08;
 ADR-030 ergänzt die Schichtenkarte um die beiden Schichten.
+
+## Nachtrag 2026-11-10: Lesart von getrennt
+
+Zwei Arbeitspakete verlangen, dass Teile des Repositorys getrennt sind:
+das KI-System von den Objekten, an denen es arbeitet (#35), und die
+Bestandsführung von Rechenkern, Simulation und Migration (#43). Der
+Maintainer hat am 10.11.2026 festgelegt, was getrennt heißt:
+
+* Vertrag statt Import. Eine Ebene spricht eine andere über einen
+  versionierten Vertrag an, so wie das Tool die PLV über den Zielvertrag
+  ([ADR-030](adr-030-zielvertrag-der-plv.md)), nicht über direkte Importe.
+* Wachen sichern jede Grenze zwischen den Ebenen. Die erlaubten Kanten
+  stehen als Listen in `ontologie/code_karte.py`; jede neue Kante und jede
+  veraltete Erlaubnis ist ein Befund.
+* Neue Anwendungen docken an Landeplätzen an, zuerst die Rechenwerke der
+  Cashflow-Modelle ([ADR-007](adr-007-parallele-migrationen-ein-kern.md),
+  Nachtrag vom 10.11.2026).
+* Getrennte Pakete oder Repositorys sind nicht gemeint. ADR-030 hat diesen
+  Weg als Option D schon nicht weiter verfolgt.
+
+Für die Zusammenarbeit gilt dasselbe: Anwendungsgruppen arbeiten im selben
+Repository und bringen ihre Arbeit per Pull Request ein. Auch die
+Rechenwerke der Cashflow-Modelle landen im selben Repository und auf dem
+einen Hauptzweig. Die Arbeit an
+Excel nach Python läuft bis zum Seminar am 27.11.2026 vorübergehend
+getrennt und wird bis Mitte Dezember 2026 per Pull Request zusammengeführt.
