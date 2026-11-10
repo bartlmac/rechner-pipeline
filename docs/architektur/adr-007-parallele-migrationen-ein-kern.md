@@ -1,6 +1,7 @@
 # ADR-007: Parallele Migrationen in einem Kern — ein Hauptzweig, knotengebundene Inkremente, Knoten-Lebenszyklus
 
-**Status:** angenommen am 2026-08-18 (Maintainer).
+**Status:** angenommen am 2026-08-18 (Maintainer); Nachtrag am 2026-11-10
+(Maintainer): zwei Rechenkerne.
 
 ## Kontext
 
@@ -89,3 +90,25 @@ arbeiten auf `faelle/<name>/`, eine Ebene tief).
   `baldrian-uebernahme`.
 * ADR-006 bleibt gültig; sein Satz zur „Parametrierung“ beschreibt den
   dortigen Präzedenzfall, nicht den Normalfall einer Migration.
+
+## Nachtrag 2026-11-10: zwei Rechenkerne
+
+Der Maintainer hat am 10.11.2026 entschieden, dass es zwei Rechenkerne
+gibt, wie es in der Praxis üblich ist.
+
+* Der Rechenkern der Bestandsführung (`src/rechner_pipeline/kern`) ist
+  sehr genau und hat ein ausformuliertes Daten- und Zeitmodell. Für ihn
+  gelten die Regeln 1 bis 4 unverändert: Jede Migration erweitert diesen
+  einen Kern auf dem einen Hauptzweig.
+* Die Cashflow-Modelle bekommen eigene Rechenwerke. Diese dürfen beim
+  Datenmodell weniger genau sein als der Kern. Ein solches Rechenwerk ist
+  kein Fork des Kerns und importiert ihn nicht.
+* Die Bestandsführung braucht zusätzlich eine Komponente für das
+  Rechnungswesen, ihr Rechenkern die Gewinnzerlegung für einen
+  HGB-Abschluss. Beides dient auch dazu, die Ergebnisse der
+  Cashflow-Modelle zu validieren.
+
+Der Ort der Rechenwerke entsteht in zwei Schritten. Zuerst bekommen sie
+einen eigenen Bereich außerhalb von `src/` unter `plv/cashflow/`, damit
+die Arbeit an den Cashflow-Modellen nicht auf einen Umbau des Pakets
+warten muss. Zum Jahresende ziehen sie in ein eigenes Paket der PLV um.
