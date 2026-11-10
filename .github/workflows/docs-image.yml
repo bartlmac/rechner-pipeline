@@ -1,6 +1,8 @@
 # Baut und veroeffentlicht die Doku-Engine als optionales ghcr-Image —
 # die Toolchain (Quarto/Pandoc/Typst) bleibt aus den Repo-Dependencies
 # heraus (Beschluss 2026-08-12). Laeuft nur bei Aenderungen an der Engine.
+# Das Versions-Tag kommt aus der FROM-Zeile des Dockerfiles, damit ein neues
+# Basis-Image nicht unter dem Tag der alten Version landet.
 name: docs-image
 
 on:
@@ -17,6 +19,15 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v7
+      - name: Quarto-Version aus der FROM-Zeile
+        id: version
+        run: |
+          v=$(sed -n 's|^FROM ghcr\.io/quarto-dev/quarto:\([0-9][0-9.]*\)$|\1|p' werkzeuge/engine/Dockerfile)
+          if [ "$(printf '%s\n' "$v" | grep -c .)" != 1 ]; then
+            echo "Keine eindeutige Quarto-Version in der FROM-Zeile von werkzeuge/engine/Dockerfile" >&2
+            exit 1
+          fi
+          echo "quarto=$v" >> "$GITHUB_OUTPUT"
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -28,4 +39,4 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/rechner-pipeline-docs:latest
-            ghcr.io/${{ github.repository_owner }}/rechner-pipeline-docs:quarto-1.6.42
+            ghcr.io/${{ github.repository_owner }}/rechner-pipeline-docs:quarto-${{ steps.version.outputs.quarto }}
