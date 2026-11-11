@@ -5,8 +5,10 @@ Option B für die Stufen 0 bis 2; die Stufen 3 bis 5 waren zunächst nicht
 beauftragt). Das lesende Stück der Stufe 3 wurde für A-058 vorgezogen.
 Ort der Implementierung entschieden am 02.11.2026 (eigenes Paket `plv/`).
 Stufe 0 und Stufe 1 umgesetzt am 02.11.2026, Stufe 2 in drei Commits ab
-dem 02.11.2026 (2a: die Prüfstrecke). Entwurf vom 22.10.2026 aus Auftrag
-A-020, Befund A29-01 der externen Prüfrunde vom 14.10.2026.
+dem 02.11.2026 (2a: die Prüfstrecke). Die Stufen 3 und 4 wurden am
+07.11.2026 beauftragt (A-078), am 08.11.2026 umgesetzt und mit #61 und #63
+gemergt. Entwurf vom 22.10.2026 aus Auftrag A-020, Befund A29-01 der
+externen Prüfrunde vom 14.10.2026.
 
 ## Kontext
 
@@ -170,9 +172,9 @@ Reihenfolge der Stufen, nach Nutzen und Größe:
 | 0 | Gerüst: Paket `zielsystem/` mit Version 0.1.0, Katalog der Fähigkeiten, Wurzelprotokoll, Konformität, Anbieter; Paket `plv/` mit der PLV, die noch keine Fähigkeit anbietet; Regel und Zähltest in der Schichtenkarte; Skill, ADR-017, ADR-028, README | umgesetzt 02.11.2026 |
 | 1 | Rechnungsgrundlagen (11 Namen): Der Vertrag liefert den wirksamen Parametersatz einer Generation bzw. einer Police vollständig, einschließlich der Defaults. Führungsprobe, Prüfstrecke und `models/bestand.py` lesen ihn von dort. Das schließt die Klasse von T28-04, nicht nur den einen Befund. | umgesetzt 02.11.2026 (unten) |
 | 2 | Bewertung (23 Namen): Werte, Verlauf und Vorgänge je Vertrag für `qa/aktuarieller_test`, `qa/migrationssuite` und `qa/abzugsabgleich`. Hier gehört die Komponentenzahl eines gelieferten Werts hin (T28-01). Spiegelt der Vertrag die Kern-Schnittstellen 1:1, ist er die Fassade aus Option C; er muss schmaler sein und dieselben Werte liefern. | 2a (Vertrag, PLV, Prüfstrecke), 2b (die Gates) und 2c (Schichtbeleg an den Bestand binden) umgesetzt 02.11.2026 |
-| 3 | Bestandsdaten (10 Namen) | Die lesende Verankerungsrolle für A-058 vorgezogen; übrige Namen nicht beauftragt |
-| 4 | Bestandsprüfung (6 Namen) | nicht beauftragt |
-| 5 | Zugang (16 Namen), zuletzt. Er ist am stärksten PLV-eigen. Vorher ist zu klären, welcher Teil der Ableitung Prüfstrecke (Tool) und welcher Führung (PLV) ist. | nicht beauftragt |
+| 3 | Bestandsdaten (10 Namen) | Die lesende Verankerungsrolle für A-058 vorgezogen; der Rest umgesetzt 08.11.2026 (#61, unten) |
+| 4 | Bestandsprüfung (6 Namen) | umgesetzt 08.11.2026 (#63, unten) |
+| 5 | Zugang (16 Namen), zuletzt. Er ist am stärksten PLV-eigen. Vorher ist zu klären, welcher Teil der Ableitung Prüfstrecke (Tool) und welcher Führung (PLV) ist. | beschlossen am 10.11.2026, Umsetzung bis Ende Dezember 2026; setzt das Fachkonzept der Bestandsführung voraus |
 
 Je Fähigkeit trägt die Stufe ihr Protokoll in `PROTOKOLL_JE_FAEHIGKEIT`
 ein. Bis dahin darf kein Zielsystem die Fähigkeit anbieten, weil der
@@ -377,8 +379,8 @@ zu A-078.
 Damit entfallen neun direkte Gate-Kanten nach `bestand/`: sieben für
 Tabellen und Manifeste, zwei für Config und Tarifzellenauflösung. Die
 Altlast-Ratsche steht nach Stufe 3 bei fünf Kanten plus der Anbieter-Kante.
-Die Bestandsprüfung in `bestand_validate` und die Anfangszustandsregel
-in `migrationszugang` blieben nach Stufe 3 für Stufe 4 offen; ebenso ist ein Anschluss
+Nach Stufe 3 blieb die Bestandsprüfung in `bestand_validate` für Stufe 4
+offen, die Anfangszustandsregel in `migrationszugang` für Stufe 5; ebenso ist ein Anschluss
 eines zweiten Zielsystems erst Gegenstand von Stufe 5. Die Grenze des
 vorgezogenen Verankerungsstücks bleibt bestehen: Ein Bestand ohne
 Laufmanifest und ohne Verankerungsdatei gilt als nicht verankert. Stufe 3
@@ -404,7 +406,7 @@ Die beiden Gates behalten ihre Versionen 4.0.0 und 14.0.0 sowie ihre
 Beleg- und Verweigerungsregeln. Der Tagesbetrieb und die übrigen direkten
 Aufrufer der P-B1-Engine bleiben in der Bestandsführung. Die drei
 verbleibenden Altlastkanten nach `bestand/migrationszugang.py` gehören zu
-einem späteren Schnitt. Stufe 4 ändert weder Kern noch signierte
+Stufe 5, dem Zugang. Stufe 4 ändert weder Kern noch signierte
 Tarifwerke, Referenzwerte oder die Fall-3-Erwartung.
 
 ## Nachweis je Stufe

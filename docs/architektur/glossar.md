@@ -36,6 +36,14 @@ nur ablehnen. Zeichnen dürfen sie nur Urheberschaft, etwa den Ankersatz
 eines Stands-Pakets. Die Rollen beschreibt
 [skill-architektur.md](skill-architektur.md).
 
+### Altlast
+
+Eine Importkante vom Tool direkt in die Bestandsführung der PLV, die noch
+nicht über den [Zielvertrag](#zielvertrag) läuft. Die Liste steht in
+`ontologie/code_karte.py`; jede neue Kante ist ein Befund, und jede Stufe
+des Zielvertrags macht die Liste kürzer. Nach Stufe 4 sind es drei Kanten,
+Stufe 5 soll sie auf null bringen ([ADR-030](adr-030-zielvertrag-der-plv.md)).
+
 ### Anker
 
 Ein Satz, den der Export eines [Stands-Pakets](#stands-paket) außerhalb
@@ -43,10 +51,23 @@ des Pakets ablegt (`--anker`, Datei `anker.jsonl`). Er bindet das Paket an
 einen Ort, den der Tagesbetrieb nicht anfasst: Ein Paket, das nur sich
 selbst belegt, könnte seine Herkunft behaupten.
 
+### Anwendungsgruppe
+
+Eine Gruppe, die eine Anwendung auf dem System baut, etwa die
+Cashflow-Modelle. Sie arbeitet im selben Repository, bringt ihre Arbeit per
+Pull Request ein und dockt an einem [Landeplatz](#landeplatz) an
+([ADR-028](adr-028-ordnung-nach-ebenen.md), Nachtrag vom 10.11.2026).
+
 ### Auslieferung
 
 Geht ein Stand der [Ablage](#ablage) nach außen, zum Beispiel für die
 Vorzeigeseite, zeichnet der Betrieb die Auslieferung (`A-B1`).
+
+### Code Owner und Maintainer Office
+
+Die Konten in `.github/CODEOWNERS` bilden das Maintainer Office. Es gibt
+Pull Requests frei und mergt sie; ein Agent mergt nie. Den Ablauf
+beschreibt [CONTRIBUTING.md](../../CONTRIBUTING.md#weg-eines-beitrags).
 
 ### Diskrepanz
 
@@ -121,6 +142,15 @@ Die fachliche Kennung, an die Code, Tests und Aussagen gebunden sind, etwa
 nennt seinen Knoten ([ADR-005](adr-005-knoten-hierarchie-und-impact.md)).
 Kennungen wie `system/architektur` sind Namen der Ontologie, keine Ordner
 des Repositorys.
+
+### Landeplatz
+
+Ein fester Ort, an dem eine neue Anwendung andockt. Code an einem
+Landeplatz importiert den übrigen Code nicht und wird von ihm nicht
+importiert; eine [Wache](#wache) prüft beides. Der erste Landeplatz nimmt
+die Rechenwerke der Cashflow-Modelle auf
+([ADR-007](adr-007-parallele-migrationen-ein-kern.md), Nachtrag vom
+10.11.2026).
 
 ### Ledger
 
@@ -202,6 +232,16 @@ zusätzlich eine laufende Nummer (Befund T22-02); die Runden G bis J
 gehören zur Durchsicht T27. Unter diesen Kennungen verweisen ADRs, Code
 und Tests auf die Regeln, die eine Runde hinzugefügt hat.
 
+### Rechenkern und Rechenwerk
+
+Der Rechenkern ist der Kern der Bestandsführung
+(`src/rechner_pipeline/kern`): sehr genau, mit ausformuliertem Daten- und
+Zeitmodell. Migrationen erweitern ihn. Ein Rechenwerk rechnet für ein
+Cashflow-Modell; es darf beim Datenmodell weniger genau sein und importiert
+den Rechenkern nicht. Beide zusammen sind die zwei Rechenkerne aus
+[ADR-007](adr-007-parallele-migrationen-ein-kern.md) (Nachtrag vom
+10.11.2026).
+
 ### Regie
 
 Die Spielleitung einer [Vorführung](#vorführung): Drehbücher und die
@@ -268,6 +308,13 @@ Tarifpläne unter `plv/tarifplaene/` und die eigenen Generationen in den
 Bestands-Configs. Abgenommen wird es am Gate `A-T1`, gebunden über
 Prüfsummen.
 
+### Trennung
+
+Getrennt heißt in diesem Repository: Vertrag statt Import, gesichert durch
+[Wachen](#wache), dazu [Landeplätze](#landeplatz) für Anwendungen.
+Getrennte Pakete oder Repositorys sind nicht gemeint
+([ADR-028](adr-028-ordnung-nach-ebenen.md), Nachtrag vom 10.11.2026).
+
 ### Vorführung
 
 Ein Fall oder Betrieb, in dem die menschlichen Rollen simuliert sind, etwa
@@ -290,6 +337,14 @@ Rechenkern, Produkten, Bestand und Bestandsführung, an dem sich das
 Migrationssystem zeigt (siehe [Ebene](#ebene)). Die Vorzeigeseite ist
 seine Webseite.
 
+### Wache
+
+Ein Test, der eine Grenze zwischen Ebenen am tatsächlichen Code prüft. Die
+erlaubten Kanten stehen als Liste in `ontologie/code_karte.py`; eine neue
+Kante über die Grenze und eine Erlaubnis, die keine Kante mehr deckt,
+machen die Wache rot. `python -m rechner_pipeline.ontologie.code_karte`
+meldet beides als Befund.
+
 ### Welt
 
 Alles, was neben dem Code nötig ist, damit die PLV läuft und ein Fall
@@ -310,6 +365,14 @@ signiert mit dem Schlüssel der Rolle. Ein Snapshot wird nie geändert.
 Die Datei, die festlegt, welche Rolle mit welchem Schlüssel welche Gates
 zeichnen darf. Ihre Fassungen stehen in der [Linie](#linie)
 ([ADR-018](adr-018-rollenmodell-und-schluesselklassen.md)).
+
+### Zielvertrag
+
+Die versionierte Schnittstelle, über die das Tool ein Zielsystem anspricht
+(`src/rechner_pipeline/zielsystem`). Die PLV erfüllt ihn in
+`src/rechner_pipeline/plv`. Er entsteht in den Stufen 0 bis 5; die Stufen 0
+bis 4 sind umgesetzt, Stufe 5 steht noch aus
+([ADR-030](adr-030-zielvertrag-der-plv.md)).
 
 ### Zugang
 
