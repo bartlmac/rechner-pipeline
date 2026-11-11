@@ -15,8 +15,10 @@ die Migration ([ADR-028](../../docs/architektur/adr-028-ordnung-nach-ebenen.md))
   Migrationspipeline oder als ihre Erweiterung. Das ist noch offen und wird
   eigens entschieden.
 - Objekt PLV: das Cashflow-Modell selbst mit seinen eigenen Rechenwerken. Es
-  gehört zur PLV und ist eng auf ihren Rechenkern und ihre Bestandsführung
-  abgestimmt, wie in der Praxis. Dieser Bereich ist sein Landeplatz.
+  gehört zur PLV und ist eng auf sie abgestimmt, wie in der Praxis: Es liest
+  ihre Produktdokumentation und ihren Bestand als Daten, und seine Ergebnisse
+  werden mit ihren Abschlüssen verglichen. Den Rechenkern der Bestandsführung
+  nutzt es nicht. Dieser Bereich ist sein Landeplatz.
 - Simulation: ein Werkzeug, das Eingaben für das Cashflow-Modell simuliert,
   analog zur Simulation des Bestands und der Quelle bei der Migration. Das
   ist noch offen.
