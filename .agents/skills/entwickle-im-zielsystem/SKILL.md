@@ -1,14 +1,18 @@
 ---
 name: entwickle-im-zielsystem
 description: >-
-  Develop code in this repository under its non-negotiable architecture: layer map
-  (quellen/ontologie/spez/gates/kern/bestand), Knoten annotation, determinism and
-  SDK-freedom, fail-fast idioms, test-before-commit, kernel acceptance protocol.
-  Trigger for ANY implementation work in src/ or tests/ — new features, fixes,
-  refactorings, extensions — whether asked directly or as part of a larger task.
-  Skip for: running migration cases (migrationsfall-durchfuehren), generating the
-  six-file comparison kernel (build-vergleichsrechenkern), authoring gates
-  (author-rechner-toolbox-gate), pure reading/analysis.
+  Develop OR review code in this repository under its non-negotiable
+  architecture: layer map (quellen/ontologie/spez/gates/kern/bestand), Knoten
+  annotation, determinism and SDK-freedom, fail-fast idioms, test-before-commit,
+  kernel acceptance protocol. Also the read-only review measure for code: an
+  architecture or diff review uses these rules as the standard (Pruefmassstab)
+  and grants no write mandate. Trigger for ANY implementation work in src/ or
+  tests/ — new features, fixes, refactorings, extensions — and for a read-only
+  architecture/diff review of code. Skip for: running migration cases
+  (migrationsfall-durchfuehren), generating the six-file comparison kernel
+  (build-vergleichsrechenkern), pure code explanation without review.
+  Gate authoring additionally requires author-rechner-toolbox-gate; it
+  does not replace these general development rules.
 ---
 
 # Entwickeln im Zielsystem
@@ -94,6 +98,24 @@ STOPP, Vorschlag formulieren, Mensch entscheidet.
    nein; `.claude`/`.agents`-Paritaet ist test-tragend.
 
 ## Arbeitsweise
+
+Der vollstaendige Aufgaben-/Rueckgabevertrag in `AGENTS.md` (ADR-032)
+gilt fuer mandatierte Rollen-/Fallarbeit; Entwicklung durch eine Fachrolle
+bleibt Rollenarbeit. Eigenstaendige Entwicklung, allgemeine Exploration
+und reine Dokumentation ausserhalb solcher Aufgaben folgen den allgemeinen
+Repo-Regeln und dem jeweiligen Skill, ohne obligatorischen vollstaendigen
+Rollen-/Fallvertrag. Der Geltungsbereich steht zentral in `AGENTS.md`.
+Ein Entwicklermandat erweitert keine Quellen- oder Schreibrechte.
+Waehrend einer laufenden Migration schreibt kein Agent an T-Box oder
+Kern, auch nicht in einer getrennten Entwicklungssitzung. Aenderungsbedarf
+vorlegen; zulaessige migrationsbedingte Codearbeit folgt zusaetzlich
+verpflichtend `integriere-migrationsinkrement`.
+Als reiner Pruefmassstab (Architektur-/Diffreview) reviewst du lesend:
+du findest und begruendest Befunde gegen die Regeln dieser Datei, ohne
+einen Code zu schreiben. Das Laden des Skills ist keine
+Anwendungsfreigabe und kein Schreibmandat; eine fuer den Auftrag noetige
+Dokumentation deines Reviews schreibst du nur in den im Auftrag erlaubten
+Arbeitsort.
 
 1. Einordnen: welche Schicht, welcher Knoten, welche bestehenden Muster
    (Nachbarmodule LESEN, bevor du schreibst — Signaturen/Kontrakte

@@ -356,8 +356,12 @@ def test_abnahme_runbook_reicht_die_neuen_pruefgroessen_durch():
     for basis in (".claude", ".agents"):
         for skill in ("pruefe-migrationscontrolling",
                       "migrationsfall-durchfuehren"):
-            text = (repo / basis / "skills" / skill / "SKILL.md").read_text(
-                encoding="utf-8")
+            wurzel = repo / basis / "skills" / skill
+            text = (wurzel / "SKILL.md").read_text(encoding="utf-8")
+            if skill == "migrationsfall-durchfuehren":
+                referenz = "references/abnahmen-und-berichte.md"
+                assert f"]({referenz})" in text, (basis, skill)
+                text = (wurzel / referenz).read_text(encoding="utf-8")
             assert "bjb_erwartet_1" in text, (basis, skill)
             assert "erwartete_anzahl" in text, (basis, skill)
 

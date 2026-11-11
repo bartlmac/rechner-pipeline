@@ -6,10 +6,16 @@ description: >-
   verified against the real code (refute-first), confirmed findings become red tests
   before they are fixed, every fix gets a ratchet and a mutation probe, and the fixed
   state is attacked again blind — a finding is "closed" only after a round finds nothing.
-  For external review rounds, the attacker is first calibrated blind on the pre-fix state. Also carries the repo's test-writing discipline
-  (mutation thinking, independent control calculations, honest skips). Trigger after
-  completing a substantial implementation block, before declaring work done, or when
-  the user asks for a review/QA of changes. Skip for: trivial one-line fixes, pure
+  Also carries the repo's test-writing discipline (mutation thinking, independent
+  control calculations, honest skips). DISTINGUISHES a READ-ONLY review (findings,
+  counter-examples and test requirements are reported; the reviewer writes no repo
+  code) from the fully mandated later round (calibration, red test, fix, ratchet,
+  mutation probe, re-attack) that requires an explicit fix mandate; a full round is
+  reported only with the evidence of each of its steps and never claimed without
+  them. For external review rounds, the attacker is first calibrated blind on the
+  pre-fix state. Trigger after completing a substantial implementation block, before
+  declaring work done, or when the user asks for a review/QA of changes — including
+  a read-only review/QA request. Skip for: trivial one-line fixes, pure
   documentation changes, running existing test suites without new work.
 ---
 
@@ -89,6 +95,34 @@ und misst, bevor es behauptet.
 Vokabular fuer Status und PR-Text: *Fix gebaut*, *kalibriert* (der
 blinde Angreifer fand den Befund vor dem Fix), *angegriffen, n Runden,
 m Funde*, *geschlossen* (letzte Runde ohne Fund). Nichts anderes.
+
+## Lese-Review und volle Fixrunde unterscheiden
+
+Zwei Auftragsformen, und der Skill unterscheidet sie ausdruecklich:
+
+- **READ-ONLY (Review-/QA-Auftrag):** Du lieferst Befunde,
+  Gegenbeispiele und Testanforderungen als Vorschlag. Du schreibst
+  keinen Code des Prueflings; eine Review-Notiz gehoert nur in einen
+  im Auftrag erlaubten Arbeitsort. Du sagst weder "geschlossen" noch
+   "Fix gebaut" fuer einen selbst gebauten Fix. Die Statusbegriffe
+   folgen ausschliesslich den oben definierten Evidenzvoraussetzungen;
+   ein Leseauftrag ersetzt keinen dieser Nachweise.
+- **Volle Fixrunde (Fix-/Kalibrierungs-/Mutations-/Reattack-Mandat):**
+  Erst hier gehoeren roter Test vor dem Fix, Fix, Ratsche und
+  Mutationsprobe (Schritte 4 bis 6) und die erneute blinde Runde
+  (Schritt 7) dazu. Der Status folgt den tatsaechlichen Nachweisen
+  und sonst nichts: Ein blosser Patch ohne roten Test vor dem Fix,
+  Mutationsprobe und Suite heisst "Patch erstellt, Pruefung offen"
+  und nennt die fehlenden Schritte. "Fix gebaut" erst mit rotem Test,
+  Fix, Mutationsprobe und Suite (Definition oben); "angegriffen" erst
+  nach der erneuten blinden Runde; "geschlossen" erst, wenn eine
+  solche Runde keinen bestaetigten Fund mehr liefert. Ein
+  READ-ONLY-Finding ist nie eine Vollrunde und dadurch auch kein
+  "Fix gebaut".
+
+Laden des Skills oder eine Lesepruefung erteilen kein Schreibmandat;
+ein separater Entwickler-/Fix-Auftrag bleibt noetig, sobald Code
+veraendert wird.
 
 ## Test-Disziplin (auch ausserhalb von Reviews)
 

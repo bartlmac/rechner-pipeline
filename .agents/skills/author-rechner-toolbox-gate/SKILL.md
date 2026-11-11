@@ -1,11 +1,14 @@
 ---
 name: author-rechner-toolbox-gate
 description: >-
-  Author a deterministic toolbox gate command (python -m rechner_pipeline.gates.<cmd>)
+  Author OR review a deterministic toolbox gate command (python -m rechner_pipeline.gates.<cmd>)
   for the agentic-rechner-pipeline. Trigger when adding/editing a gate (e.g. conventions/G3,
   algebraic/G6, roundtrip/G7) or any command that must obey the §3.3 single-JSON-stdout contract,
-  emit a §6.8.2 .gate.json ledger, and use standard exit codes. Skip for: non-toolbox code, the
-  qa/ engine modules (port those verbatim), pure read/research, or _common.py itself.
+  emit a §6.8.2 .gate.json ledger, and use standard exit codes — and when an existing gate's
+  contract is to be reviewed read-only against these rules (gate contract review, no write
+  mandate). Additive to entwickle-im-zielsystem; loading this skill grants no write mandate.
+  Skip for: non-toolbox code, the qa/ engine modules (port those verbatim), pure read/research,
+  or _common.py itself.
 ---
 
 # Authoring a rechner-pipeline toolbox gate
@@ -13,12 +16,19 @@ description: >-
 A gate is a thin CLI wrapper over a `qa/`-engine. Gate logic lives in `qa/*`; the command wires flags, hashes, ledger, and the single JSON result. Model it on `src/rechner_pipeline/gates/generation_golden.py` / `src/rechner_pipeline/gates/bestand_validate.py`.
 
 ## Mandatory skeleton (stdout purity is a MECHANISM — never `print`/`emit_result` yourself)
+Load `entwickle-im-zielsystem` before gate work. This skill adds the
+CLI/ledger conventions; it does not replace general architecture rules.
+Gate contract review is read-only: you review an existing gate's contract
+against these rules without receiving a write mandate; loading the skill is
+not an application release and grants no write rights.
+
 ```python
+import sys
 from typing import List, Optional
 from rechner_pipeline.gates._common import (
     Exit, ToolboxResult, build_result, human_review_result, log, hash_files,
     add_request_json_arg, read_request_json, merge_request_into_args,
-    run_command, write_gate_ledger, utc_now,
+    run_command, begin_gate_ledger_attempt, finalize_gate_ledger, utc_now,
 )
 COMMAND = "conventions"; GATE = "G3.architecture-conventions"; GATE_VERSION = "1.0.0"
 
