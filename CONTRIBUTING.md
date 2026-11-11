@@ -64,8 +64,9 @@ Die Module liegen quer zu den Ebenen des Repositorys
    Pflicht-Checks müssen grün sein. Einen Pull Request, den ein Agent
    gestellt hat, gibt einer der beiden anderen Code Owners frei, nicht der
    Mensch, für den der Agent arbeitet. Die Frist endet um 12:00 am ersten
-   Arbeitstag, an dem seit der Anfrage mindestens 24 Stunden vergangen sind.
-   Bis dahin gibt er frei oder sagt in einem Kommentar, was fehlt.
+   Arbeitstag, an dem um 12:00 seit der Anfrage mindestens 24 Stunden
+   vergangen sind. Bis dahin gibt er frei oder sagt in einem Kommentar, was
+   fehlt.
 5. **Merge** durch das Maintainer Office. `main` ist geschützt; niemand
    schreibt direkt darauf. Ein Agent mergt nie, auch nicht auf Anweisung;
    er meldet, dass der Pull Request bereit zum Merge ist.
