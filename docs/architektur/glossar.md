@@ -370,8 +370,9 @@ zeichnen darf. Ihre Fassungen stehen in der [Linie](#linie)
 
 Die versionierte Schnittstelle, über die das Tool ein Zielsystem anspricht
 (`src/rechner_pipeline/zielsystem`). Die PLV erfüllt ihn in
-`src/rechner_pipeline/plv`. Er entsteht in fünf Stufen; die Stufen 0 bis 4
-sind umgesetzt ([ADR-030](adr-030-zielvertrag-der-plv.md)).
+`src/rechner_pipeline/plv`. Er entsteht in den Stufen 0 bis 5; die Stufen 0
+bis 4 sind umgesetzt, Stufe 5 steht noch aus
+([ADR-030](adr-030-zielvertrag-der-plv.md)).
 
 ### Zugang
 

@@ -185,9 +185,17 @@ Maintainer hat am 10.11.2026 festgelegt, was getrennt heißt:
 * Getrennte Pakete oder Repositorys sind nicht gemeint. ADR-030 hat diesen
   Weg als Option D schon nicht weiter verfolgt.
 
+Die Rechenwerke der Cashflow-Modelle gehören zum Objekt PLV und sind eng
+auf die PLV abgestimmt, wie in der Praxis: Sie lesen die
+Produktdokumentation und den Bestand der PLV als Daten, und ihre Ergebnisse
+werden mit den Abschlüssen der PLV verglichen. Den Rechenkern der
+Bestandsführung nutzen sie nicht. Ihr Landeplatz ist `plv/cashflow/`, zum
+Jahresende ein eigenes Paket der PLV. Die Einordnung in die Ebenen steht im
+Abschnitt „Einordnung“ von `plv/cashflow/README.md`.
+
 Für die Zusammenarbeit gilt dasselbe: Anwendungsgruppen arbeiten im selben
 Repository und bringen ihre Arbeit per Pull Request ein. Auch die
 Rechenwerke der Cashflow-Modelle landen im selben Repository und auf dem
-einen Hauptzweig. Die Arbeit an
-Excel nach Python läuft bis zum Seminar am 27.11.2026 vorübergehend
-getrennt und wird bis Mitte Dezember 2026 per Pull Request zusammengeführt.
+einen Hauptzweig. Die Arbeit an Excel nach Python läuft bis zum Seminar am
+27.11.2026 vorübergehend getrennt und wird bis Mitte Dezember 2026 per Pull
+Request zusammengeführt.
