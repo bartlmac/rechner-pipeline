@@ -44,7 +44,16 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
 
 ## Agent task and handoff contract (ADR-032)
 
-- Every task names its ID, working mode (`Fall`, `Entwicklung`, `Betrieb`),
+The full contract in this section applies to mandated work of the five
+KI-Tool agent roles and to case work. Operations-role work is role work
+even without a migration case; development performed by a specialist
+role remains role work. Independent development, general exploration,
+and pure documentation outside such a role/case task follow the general
+repository rules and the applicable skill, but do not obligatorily require
+the full role/case task and handoff contract. This scope clarification
+does not extend source access, gate authority, or mandate/write rights.
+
+- Every task within this scope names its ID, working mode (`Fall`, `Entwicklung`, `Betrieb`),
   role, required skills and phase references, permitted procedural/schema
   documents, permitted registered factual inputs, allowed output paths,
   deterministic checks, human stop point and handoff recipient.

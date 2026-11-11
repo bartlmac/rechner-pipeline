@@ -62,7 +62,15 @@ Vorführung hält ihre Auftragsprofile (ADR-017).
 
 ## Aufgabenvertrag und Auswahl (ADR-032)
 
-`AGENTS.md` traegt den gemeinsamen Auftrag und die Rueckgabe. Pflichtskills
+`AGENTS.md` bestimmt den Geltungsbereich des vollstaendigen Aufgaben-/
+Rueckgabevertrags: mandatierte Arbeit der fuenf KI-Tool-Rollen und Fallarbeit.
+Betriebsrollenarbeit gehoert auch ohne Migrationsfall dazu; Entwicklung
+durch eine Fachrolle bleibt Rollenarbeit. Eigenstaendige Entwicklung,
+allgemeine Exploration und reine Dokumentation ausserhalb solcher Aufgaben
+folgen den allgemeinen Repo-Regeln und dem jeweiligen Skill, ohne
+obligatorischen vollstaendigen Rollen-/Fallvertrag. Die folgende
+Skillauswahl gilt nach Arbeitstyp; sie erweitert keine Quellen-, Gate-
+oder Mandatsrechte. Pflichtskills
 und aktuelle Phasenreferenzen werden vor Arbeit geladen. Ein gesperrter
 Skill blockiert; nur ein fehlendes Werkzeug erlaubt gemeldete lokale
 Lektuere. Verfahrens-/Schemaunterlagen sind getrennt von fachlichen

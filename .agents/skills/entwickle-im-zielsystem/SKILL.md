@@ -99,7 +99,12 @@ STOPP, Vorschlag formulieren, Mensch entscheidet.
 
 ## Arbeitsweise
 
-Vor Arbeit gilt der Aufgaben-/Rueckgabevertrag in `AGENTS.md` (ADR-032).
+Der vollstaendige Aufgaben-/Rueckgabevertrag in `AGENTS.md` (ADR-032)
+gilt fuer mandatierte Rollen-/Fallarbeit; Entwicklung durch eine Fachrolle
+bleibt Rollenarbeit. Eigenstaendige Entwicklung, allgemeine Exploration
+und reine Dokumentation ausserhalb solcher Aufgaben folgen den allgemeinen
+Repo-Regeln und dem jeweiligen Skill, ohne obligatorischen vollstaendigen
+Rollen-/Fallvertrag. Der Geltungsbereich steht zentral in `AGENTS.md`.
 Ein Entwicklermandat erweitert keine Quellen- oder Schreibrechte.
 Waehrend einer laufenden Migration schreibt kein Agent an T-Box oder
 Kern, auch nicht in einer getrennten Entwicklungssitzung. Aenderungsbedarf

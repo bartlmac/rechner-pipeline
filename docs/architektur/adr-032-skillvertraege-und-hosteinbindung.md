@@ -17,7 +17,14 @@ die berichteten Befunde sind keine hier reproduzierte Nutzungsanalyse.
 
 ## Entscheidung
 
-- `AGENTS.md` traegt den gemeinsamen Aufgaben-/Rueckgabevertrag.
+- `AGENTS.md` traegt den gemeinsamen Aufgaben-/Rueckgabevertrag fuer
+  mandatierte Arbeit der fuenf KI-Tool-Rollen und Fallarbeit. Betriebsarbeit
+  durch die Betriebsrolle gehoert auch ohne Migrationsfall dazu;
+  Entwicklung durch eine Fachrolle bleibt Rollenarbeit. Eigenstaendige
+  Entwicklung, allgemeine Exploration und reine Dokumentationsarbeit
+  ausserhalb solcher Rollen-/Fallaufgaben folgen den allgemeinen
+  Repo-Regeln und dem jeweiligen Skill, ohne obligatorischen vollstaendigen
+  Rollen-/Fallvertrag. Quellen-, Gate- und Mandatsrechte werden nicht erweitert.
   Verfahrensunterlagen werden von fachlichen Quellen getrennt.
   Extraktion verarbeitet genau eine Vorverdichtung einer Quelle.
 - Der Katalog ordnet Pflichtskills nach Aufgabe und Arbeitsmodus zu.
@@ -38,6 +45,10 @@ die berichteten Befunde sind keine hier reproduzierte Nutzungsanalyse.
   fuer T-Box/Kern waehrend einer Migration nicht auf.
 
 ## Folgen und Nachweise
+
+Die Scopepraezisierung zu Reviewpunkt 8 ist in
+[Revieweinordnung des Skillpakets](skill-paket-review-einordnung.md)
+abgegrenzt. Sie ist keine Gesamtfreigabe dieses ADRs oder des Skillpakets.
 
 Vertrag und Ladeanweisung sind Prozessregeln, keine technische
 Gate-Erzwingung. Referenz-/Katalog-/Adaptertests sichern Struktur und
