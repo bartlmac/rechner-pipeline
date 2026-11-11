@@ -174,7 +174,7 @@ Reihenfolge der Stufen, nach Nutzen und Größe:
 | 2 | Bewertung (23 Namen): Werte, Verlauf und Vorgänge je Vertrag für `qa/aktuarieller_test`, `qa/migrationssuite` und `qa/abzugsabgleich`. Hier gehört die Komponentenzahl eines gelieferten Werts hin (T28-01). Spiegelt der Vertrag die Kern-Schnittstellen 1:1, ist er die Fassade aus Option C; er muss schmaler sein und dieselben Werte liefern. | 2a (Vertrag, PLV, Prüfstrecke), 2b (die Gates) und 2c (Schichtbeleg an den Bestand binden) umgesetzt 02.11.2026 |
 | 3 | Bestandsdaten (10 Namen) | Die lesende Verankerungsrolle für A-058 vorgezogen; der Rest umgesetzt 08.11.2026 (#61, unten) |
 | 4 | Bestandsprüfung (6 Namen) | umgesetzt 08.11.2026 (#63, unten) |
-| 5 | Zugang (16 Namen), zuletzt. Er ist am stärksten PLV-eigen. Vorher ist zu klären, welcher Teil der Ableitung Prüfstrecke (Tool) und welcher Führung (PLV) ist. | beschlossen am 10.11.2026, Umsetzung bis Ende November 2026; setzt das Fachkonzept der Bestandsführung voraus |
+| 5 | Zugang (16 Namen), zuletzt. Er ist am stärksten PLV-eigen. Vorher ist zu klären, welcher Teil der Ableitung Prüfstrecke (Tool) und welcher Führung (PLV) ist. | beschlossen am 10.11.2026, Umsetzung bis Ende Dezember 2026; setzt das Fachkonzept der Bestandsführung voraus |
 
 Je Fähigkeit trägt die Stufe ihr Protokoll in `PROTOKOLL_JE_FAEHIGKEIT`
 ein. Bis dahin darf kein Zielsystem die Fähigkeit anbieten, weil der
