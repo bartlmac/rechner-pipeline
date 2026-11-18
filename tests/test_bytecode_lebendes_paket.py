@@ -39,6 +39,17 @@ from rechner_pipeline.gates import _provenienz
 REPO = Path(__file__).resolve().parents[1]
 SRC = REPO / "src" / "rechner_pipeline"
 
+
+@pytest.fixture(autouse=True, params=[None, "extern"])
+def cache_ort(request, tmp_path, monkeypatch):
+    """Pruefer und frischer Interpreter verwenden denselben isolierten Cacheort."""
+    prefix = str(tmp_path / "bytecode") if request.param else None
+    monkeypatch.setattr(sys, "pycache_prefix", prefix)
+    if prefix is None:
+        monkeypatch.delenv("PYTHONPYCACHEPREFIX", raising=False)
+    else:
+        monkeypatch.setenv("PYTHONPYCACHEPREFIX", prefix)
+
 _PROBE = (
     "import sys, json\n"
     "from rechner_pipeline.kern import tafeln\n"
@@ -57,7 +68,7 @@ def _kopie(tmp_path: Path) -> Path:
     return ziel
 
 
-def _boese_pyc(kopie: Path) -> Path:
+def _boese_pyc(kopie: Path, optimiert: int | None = None) -> Path:
     """Die pyc des Pruefers: Kopf passt zu ``kern/tafeln.py``, der Code
     verdoppelt die Sterbewahrscheinlichkeiten."""
     quelle = kopie / "src" / "rechner_pipeline" / "kern" / "tafeln.py"
@@ -67,17 +78,21 @@ def _boese_pyc(kopie: Path) -> Path:
         "\n\ndef qx_vector(sex, tafel):\n"
         "    return [min(1.0, 2.0 * q) for q in _qx_vector_echt(sex, tafel)]\n")
     st = quelle.stat()
-    pyc = Path(importlib.util.cache_from_source(str(quelle)))
+    optimiert = sys.flags.optimize if optimiert is None else optimiert
+    pyc = Path(importlib.util.cache_from_source(
+        str(quelle), optimization=optimiert or ""))
     pyc.parent.mkdir(parents=True, exist_ok=True)
     pyc.write_bytes(bytes(_code_to_timestamp_pyc(
-        compile(boese, str(quelle), "exec"), int(st.st_mtime), st.st_size)))
+        compile(boese, str(quelle), "exec", optimize=optimiert), int(st.st_mtime), st.st_size)))
     return pyc
 
 
-def _lauf(kopie: Path):
+def _lauf(kopie: Path, optimiert: int | None = None):
     env = dict(os.environ, PYTHONPATH=str(kopie / "src"))
     env.pop("PYTHONDONTWRITEBYTECODE", None)
-    return subprocess.run([sys.executable, "-c", _PROBE, str(kopie)], env=env, cwd=kopie,
+    optimiert = sys.flags.optimize if optimiert is None else optimiert
+    optionen = ["-" + "O" * optimiert] if optimiert else []
+    return subprocess.run([sys.executable, *optionen, "-c", _PROBE, str(kopie)], env=env, cwd=kopie,
                           capture_output=True, text=True, timeout=300)
 
 
@@ -98,14 +113,16 @@ def test_die_untergeschobene_pyc_aendert_die_rechnung_und_wird_verweigert(tmp_pa
     assert werte["paket"].startswith(str(kopie))
     assert werte["qx45"] == tafeln.qx_vector("M", "DAV1994_T")[45]
 
-    shutil.rmtree(kopie / "src" / "rechner_pipeline" / "kern" / "__pycache__")
+    cache = Path(importlib.util.cache_from_source(str(
+        kopie / "src" / "rechner_pipeline" / "kern" / "tafeln.py")))
+    shutil.rmtree(cache.parent)
     _boese_pyc(kopie)
     boese = _lauf(kopie)
     werte = json.loads(boese.stdout.splitlines()[0])
     assert werte["qx45"] == pytest.approx(2 * tafeln.qx_vector("M", "DAV1994_T")[45])
     assert boese.returncode != 0 and "ANGENOMMEN" not in boese.stdout
     assert "der ausgefuehrte Code ist nicht der gehashte" in boese.stderr, boese.stderr[-2000:]
-    assert "tafeln" in boese.stderr and "__pycache__" in boese.stderr
+    assert "tafeln" in boese.stderr and str(cache) in boese.stderr
     assert "loeschen" in boese.stderr
 
 
@@ -120,7 +137,7 @@ def test_bytecode_fehler_unterscheidet_was_der_interpreter_laedt(tmp_path):
     assert _provenienz.bytecode_fehler(paket) == []
     pyc = _boese_pyc(kopie)
     [befund] = _provenienz.bytecode_fehler(paket)
-    assert "kern/__pycache__/tafeln." in befund and "der Code ist ein anderer" in befund
+    assert str(pyc) in befund and "der Code ist ein anderer" in befund
 
     quelle = paket / "kern" / "tafeln.py"
     os.utime(quelle, (quelle.stat().st_atime, quelle.stat().st_mtime + 10))
@@ -128,6 +145,7 @@ def test_bytecode_fehler_unterscheidet_was_der_interpreter_laedt(tmp_path):
     pyc.unlink()
 
     fremd = paket / "kern" / "__pycache__" / "tafeln.cpython-99.pyc"
+    fremd.parent.mkdir(parents=True, exist_ok=True)
     fremd.write_bytes(b"\x00" * 32)
     waise = paket / "kern" / "__pycache__" / "geloescht.cpython-311.pyc"
     waise.write_bytes(b"\x00" * 32)
@@ -150,3 +168,36 @@ def test_die_eine_stelle_ruft_die_pruefung(tmp_path, monkeypatch):
     _boese_pyc(kopie)
     with pytest.raises(argparse.ArgumentTypeError, match="nicht der gehashte"):
         _provenienz.lebendes_repo(str(kopie))
+
+
+def test_nicht_gewaehlter_cache_wird_nicht_geprueft(tmp_path, monkeypatch):
+    """Fremder Cacheort und fremde Optimierung sind keine ausgefuehrten Quellen."""
+    kopie = _kopie(tmp_path)
+    paket = kopie / "src" / "rechner_pipeline"
+    quelle = paket / "kern" / "tafeln.py"
+    pyc = _boese_pyc(kopie)
+    andere_optimierung = 1 if sys.flags.optimize != 1 else 2
+    anderer_cache = Path(importlib.util.cache_from_source(
+        str(quelle), optimization=andere_optimierung))
+    anderer_cache.write_bytes(pyc.read_bytes())
+    pyc.unlink()
+    assert _provenienz.bytecode_fehler(paket) == []
+    _boese_pyc(kopie)
+    monkeypatch.setattr(sys, "pycache_prefix", str(tmp_path / "anderer-cache"))
+    assert _provenienz.bytecode_fehler(paket) == []
+
+
+@pytest.mark.parametrize("optimiert", [1, 2])
+def test_aktiver_optimierter_cache_wird_geprueft(tmp_path, optimiert):
+    """Auch -O und -OO nehmen echte Caches an und verweigern fremden Code."""
+    import json
+
+    kopie = _kopie(tmp_path)
+    sauber = _lauf(kopie, optimiert)
+    assert sauber.returncode == 0 and "ANGENOMMEN" in sauber.stdout, sauber.stderr[-2000:]
+    erwartung = json.loads(sauber.stdout.splitlines()[0])["qx45"]
+    _boese_pyc(kopie, optimiert)
+    boese = _lauf(kopie, optimiert)
+    assert json.loads(boese.stdout.splitlines()[0])["qx45"] == pytest.approx(2 * erwartung)
+    assert boese.returncode != 0 and "ANGENOMMEN" not in boese.stdout
+    assert "der ausgefuehrte Code ist nicht der gehashte" in boese.stderr

@@ -1978,13 +1978,39 @@ def test_rollen_wer_vorlegt_und_wer_zeichnet_ist_gemessen(tmp_path: Path):
     bibs = {b["name"]: b for b in r["bibliotheken"]}
     assert bibs["openpyxl"]["module"] and bibs["pypdf"]["module"], "Excel- und PDF-Leser ohne Modul"
     assert set(us.BIBLIOTHEK_ZWECK) == set(bibs), set(us.BIBLIOTHEK_ZWECK) ^ set(bibs)
-    assert "Rechenkern: alle Werkzeuge" in html and "<code>openpyxl</code>" in html
+    rechenkern = next(a for a in r["agenten"] if a["name"] == "rechenkern")
+    assert rechenkern["werkzeuge"] == ["Read", "Grep", "Glob", "Bash", "Write", "Edit", "Skill"]
+    assert ("Rechenkern: lesen, suchen, Kommandos ausführen, schreiben, ändern, "
+            "Verfahrensanweisungen laden") in html
+    assert "Rechenkern: alle Werkzeuge" not in html and "<code>openpyxl</code>" in html
 
     # Ratsche: Jedes zeichenbare Gate hat eine zeichnende Rolle auf der
     # Seite — ein neues Gate faellt hier auf, statt still zu fehlen.
     assert set(us.GATE_ZEICHNER) == set(GUELTIGE_GATES), (
         f"Gates ohne Rolle bzw. ohne Gate: {set(us.GATE_ZEICHNER) ^ set(GUELTIGE_GATES)}")
     assert all(rolle in us.MENSCH_TITEL for rolle, _ in us.GATE_ZEICHNER.values())
+
+
+def test_rolle_ohne_tools_zeile_behaelt_die_anzeige_aller_werkzeuge(tmp_path, monkeypatch):
+    """Fehlende tools:-Zeile ist keine leere Liste; explizite Rechte sind keine Wildcard."""
+    import falldaten as fd
+
+    repo = tmp_path / "repo"
+    rollen = repo / ".claude" / "agents"
+    rollen.mkdir(parents=True)
+    (repo / ".claude" / "skills").mkdir()
+    rolle = rollen / "rechenkern.md"
+    text = "---\nname: rechenkern\ndescription: never signs\n---\n# Rolle\n"
+    rolle.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(fd, "__file__", str(repo / "werkzeuge" / "falldaten.py"))
+    r = fd.rollen(tmp_path / "fall", {"entscheide": []})
+    assert r["agenten"][0]["werkzeuge"] == ["*"]
+    assert "Rechenkern: alle Werkzeuge" in us._html_baustein("rollen", {"rollen": r}, None)
+    rolle.write_text(text.replace("---\n# Rolle", "tools: Read\n---\n# Rolle"), encoding="utf-8")
+    r = fd.rollen(tmp_path / "fall", {"entscheide": []})
+    assert r["agenten"][0]["werkzeuge"] == ["Read"]
+    html = us._html_baustein("rollen", {"rollen": r}, None)
+    assert "Rechenkern: lesen" in html and "Rechenkern: alle Werkzeuge" not in html
 
 
 def test_monatstabelle_zeigt_zahlen_erst_wenn_das_paket_sie_traegt():
@@ -3102,4 +3128,3 @@ def test_der_aufwand_kommt_ueber_das_modell_als_beleg_auf_die_fallseite(tmp_path
     seite = _fallseite(fall, modell, tmp_path, kopiert, None)
     assert "## Dauer und Aufwand {#aufwand}" in seite
     assert "Beleg: [`aufwand.json`](artefakte/abgeleitet/aufwand.json)." in seite
-

@@ -20,6 +20,18 @@ description: >-
 
 # Aktuariellen Test durchführen
 
+## Fachreferenz vor Arbeit laden
+
+Vor der Arbeit lade diese Fachreferenz GANZ — sie ist verbindlich, nicht
+fakultativ:
+
+- [references/schicht-und-pflichtmengen.md](references/schicht-und-pflichtmengen.md#pflichtmengen)
+  — Schichtbeleg-Erzeugung (`gates.verankerung_belegen`, Anker
+  `schichtbeleg`) und Mengenregel der Pflichtziehung auskunftsgedeckter
+  Policen (Anker `pflichtmengen`). Ohne sie fehlt die verbindliche
+  Regel, welche Policen Pflichtziehung sind und wann `--schicht` Pflicht
+  ist.
+
 ## Rolle und Ziel
 
 Du führst den DETERMINISTISCHEN aktuariellen Test einer
@@ -177,16 +189,14 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    fuer A-M2 und A-M3). Erwartungswerte und Stichprobe sind
    REGISTRIERTE Quellen, keine freien Pfade.
 
-   Im Bestands-Scope ist `--schicht` bei vorhandener Datei
-   `abgeleitet/bestand/verankerung.parquet` Pflicht — für A-M1, A-M2 und
-   A-M3 gleichermaßen. Dafür zuerst `gates.verankerung_belegen` auf dem
-   festen Fallbestand fahren und seinen abgeleiteten Beleg nennen. Er
-   muss die gebundenen Bytes von `bestand.parquet` und
-   `verankerung.parquet` führen; ein registrierter Schichtbeleg genügt
-   nicht. Fehlen Laufmanifest und Verankerungsdatei beide, ist ein Lauf
-   ohne `--schicht` möglich. Widersprechen sich Manifest und Datei oder
-   ist die vorhandene Datei leer oder beschädigt, den Migrationszugang
-   und den Schichtbeleg neu erzeugen, statt die Datei zu umgehen.
+   Im Bestands-Scope gilt die Schichtbelegpflicht der Fachreferenz
+   (Anker `schichtbeleg`, vor der Arbeit ganz geladen): bei vorhandener
+   Datei `abgeleitet/bestand/verankerung.parquet` erzeugt zuerst
+   `gates.verankerung_belegen` auf genau diesem Bestand den Beleg, den
+   das Kommando dann mit `--schicht` nennt. Die Ausweich- und
+   Aenderungsregeln ("Lauf ohne `--schicht`", "neu erzeugen statt die
+   Datei zu umgehen") stehen normativ in der Fachreferenz; ein
+   registrierter Schichtbeleg genuegt hier nicht.
 
    Das JSON wird NIE von Hand nachgebessert — das Gate rechnet die
    Zusammenfassung gegen die Einzelurteile nach und bricht sonst mit

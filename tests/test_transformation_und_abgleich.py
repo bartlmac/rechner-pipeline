@@ -999,6 +999,27 @@ def test_transformations_skill_ist_abgesichert():
                         "SKILL.md").read_text(encoding="utf-8")
 
 
+def _runbook_phase(repo, basis, referenz):
+    """Ein Inhalt traegt nur, wenn der Einstieg sein normatives Verfahren verlinkt."""
+    wurzel = repo / basis / "skills" / "migrationsfall-durchfuehren"
+    einstieg = (wurzel / "SKILL.md").read_text(encoding="utf-8")
+    assert f"]({referenz})" in einstieg, (basis, referenz)
+    return (wurzel / referenz).read_text(encoding="utf-8")
+
+
+def test_runbook_phase_verlangt_den_link_auch_wenn_der_inhalt_existiert(tmp_path):
+    """Ein verwaistes Verfahren darf die Bestands-Uebergabe nicht gruennen."""
+    wurzel = tmp_path / ".claude" / "skills" / "migrationsfall-durchfuehren"
+    (wurzel / "references").mkdir(parents=True)
+    referenz = "references/quellen-und-transformation.md"
+    (wurzel / referenz).write_text("Stufe 1b", encoding="utf-8")
+    (wurzel / "SKILL.md").write_text("Stufe 1b", encoding="utf-8")
+    with pytest.raises(AssertionError, match="quellen-und-transformation"):
+        _runbook_phase(tmp_path, ".claude", referenz)
+    (wurzel / "SKILL.md").write_text(f"[Phase]({referenz})", encoding="utf-8")
+    assert _runbook_phase(tmp_path, ".claude", referenz) == "Stufe 1b"
+
+
 def test_runbook_fuehrt_die_bestands_haelfte_der_pipeline():
     """Das Orchestrierungs-Runbook kennt beide Haelften der Lieferung.
 
@@ -1011,19 +1032,33 @@ def test_runbook_fuehrt_die_bestands_haelfte_der_pipeline():
     from pathlib import Path
 
     repo = Path(__file__).resolve().parents[1]
-    runbook = (repo / ".claude/skills/migrationsfall-durchfuehren/SKILL.md"
-               ).read_text(encoding="utf-8")
-    assert runbook == (repo / ".agents/skills/migrationsfall-durchfuehren/"
-                       "SKILL.md").read_text(encoding="utf-8")      # Paritaet
-    for marke in ("Stufe 1b", "Stufe 3b",
-                  "rechner_pipeline.quellen.bestand_profil",
-                  "transformiere-quellbestand", "validate_spec", "wende_an",
-                  "qa.abzugsabgleich", "pruefe-migrationscontrolling",
-                  "aktuartest-durchfuehren",
-                  "rechner_pipeline.gates.bestand_validate",
-                  "qa.migrationssuite", "rechner_pipeline.gates.abnahmebericht",
-                  "rechner_pipeline.bestand.cli_report"):
-        assert marke in runbook, marke
+    for basis in (".claude", ".agents"):
+        quellen = _runbook_phase(repo, basis, "references/quellen-und-transformation.md")
+        abnahmen = _runbook_phase(repo, basis, "references/abnahmen-und-berichte.md")
+        for marke in ("Stufe 1b", "rechner_pipeline.quellen.bestand_profil",
+                      "transformiere-quellbestand", "validate_spec", "wende_an",
+                      "qa.abzugsabgleich"):
+            assert marke in quellen, (basis, marke)
+        for marke in ("Stufe 3b", "pruefe-migrationscontrolling",
+                      "aktuartest-durchfuehren",
+                      "rechner_pipeline.gates.bestand_validate", "qa.migrationssuite"):
+            assert marke in abnahmen, (basis, marke)
+        # Berichtskommandos gehoeren einmal dem Fachskill. Der Fall fuehrt
+        # ueber den expliziten Link und Anker dorthin, nicht ueber eine Kopie.
+        referenz = "../../pruefe-migrationscontrolling/references/fuehrung-und-berichtspaar.md#abnahmebericht"
+        assert f"]({referenz})" in abnahmen, basis
+        fachwurzel = repo / basis / "skills" / "pruefe-migrationscontrolling"
+        fachskill = (fachwurzel / "SKILL.md").read_text(encoding="utf-8")
+        assert "](references/fuehrung-und-berichtspaar.md#berichtspaar)" in fachskill
+        berichte = (fachwurzel / "references/fuehrung-und-berichtspaar.md").read_text(encoding="utf-8")
+        for marke in ('<a id="berichtspaar"></a>', '<a id="abnahmebericht"></a>',
+                      "rechner_pipeline.gates.abnahmebericht",
+                      "rechner_pipeline.bestand.cli_report"):
+            assert marke in berichte, (basis, marke)
+    for name in ("SKILL.md", "references/quellen-und-transformation.md",
+                 "references/abnahmen-und-berichte.md"):
+        assert (repo / ".claude/skills/migrationsfall-durchfuehren" / name).read_bytes() == (
+            repo / ".agents/skills/migrationsfall-durchfuehren" / name).read_bytes()
 
 
 def test_runbook_und_architektur_nennen_die_formel_grenze():
@@ -1037,13 +1072,13 @@ def test_runbook_und_architektur_nennen_die_formel_grenze():
     from pathlib import Path
 
     repo = Path(__file__).resolve().parents[1]
-    runbook = (repo / ".claude/skills/migrationsfall-durchfuehren/SKILL.md"
-               ).read_text(encoding="utf-8")
     architektur = (repo / "docs/architektur/migrations-pipeline-v01.md"
-                   ).read_text(encoding="utf-8")
-    assert "GRENZE DIESER STUFE" in runbook
-    assert "keine FORMELN" in runbook
-    assert "8.1" in runbook                       # Verweis auf die Begruendung
+                    ).read_text(encoding="utf-8")
+    for basis in (".claude", ".agents"):
+        quellen = _runbook_phase(repo, basis, "references/quellen-und-transformation.md")
+        assert "GRENZE DIESER STUFE" in quellen
+        assert "keine FORMELN" in quellen
+        assert "8.1" in quellen                 # Verweis auf die Begruendung
     assert "### 8.1" in architektur
     assert "Formelidentität" in architektur
 

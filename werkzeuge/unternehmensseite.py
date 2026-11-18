@@ -988,7 +988,7 @@ ROLLEN_TITEL = {
     "programmleitung": ("Programmleitung", "führt einen Migrationsfall von Anfang bis Ende, steuert die anderen Rollen durch die Stufen und hält an jedem menschlichen Gate an: Sie übergibt Entscheidungsvorlagen."),
     "aktuariat": ("Aktuariat", "bereitet alles vor, was das Aktuariat des aufnehmenden Unternehmens zeichnen muss: Feldabbildung, die drei aktuariellen Abnahmen, die Vorlage des Migrationscontrollings, die Fortführung des Bestands nach der Übernahme."),
     "architektur": ("Architektur", "hält die Migration in der vorgeschriebenen Architektur: Schichten, Determinismus, Gate- und Ledger-Verträge, Beweiskette aus Prüfsummen, Snapshots und Manifesten, Sicherheitsgrenzen. Bereitet Architekturentscheide vor."),
-    "rechenkern": ("Rechenkern", "die Entwicklungsrolle im Zielsystem: setzt beschlossene Änderungen am Rechenkern und Tarifparametrierungen um und hält Referenzwerte, Regressionstests und Dokumentation intakt."),
+    "rechenkern": ("Rechenkern", "bereitet Änderungsbedarf am Zielsystem vor und entwickelt im zulässigen Mandat; während einer laufenden Migration legt sie Änderungen an Kern und T-Box der menschlichen Verantwortung vor. Hält Referenzwerte, Regressionstests und Dokumentation intakt und bereitet den Kernstand für A-K2 vor; zeichnet nie."),
     "betrieb": ("Betrieb", "bereitet vor, was die Betriebsverantwortung für den Bestand zeichnen muss, den sie jeden Tag führt: die Zugangsprobe und die Vorlage der Zugangsabnahme A-B2, das Stands-Paket für die Auslieferung A-B1 und den Nachweis des Anfangsbestands eines neu eingerichteten Bestands für A-B3."),
 }
 
@@ -1000,8 +1000,8 @@ ROLLEN_STAND = {
     "aktuariat": "4a8fa61d0d00",
     "architektur": "1507b2b42128",
     "betrieb": "f6c34cada7d1",
-    "programmleitung": "a7ad05fa9688",
-    "rechenkern": "8f3a1b539872",
+    "programmleitung": "36ea9cc1bd69",
+    "rechenkern": "d2d863967cc3",
 }
 
 #: Die menschlichen Rollen (ADR-018 §1 und Nachtrag 2026-09-16). Die
@@ -1042,43 +1042,46 @@ GATE_ZEICHNER = {
 }
 
 #: Was eine Faehigkeit tut, in einem Satz. Die Definitionen unter
-#: .claude/skills/ beschreiben sich auf Englisch; der Satz hier ist die
+#: .claude/skills/ tragen die Verfahrensbeschreibung; der Satz hier ist die
 #: Unternehmensfassung. Welche Rolle eine Faehigkeit hat, steht NICHT
 #: hier — das misst falldaten an den Agentendefinitionen.
 SKILL_TITEL = {
-    "extrahiere-quellfragment": "liest eine gelieferte Quelle (Tarifbeschreibung, Tarifrechner) in ein Quellfragment; was nicht belegt ist, bleibt offen statt geraten",
-    "transformiere-quellbestand": "schlägt die Abbildung des gelieferten Bestandsabzugs auf unser Datenmodell vor; jede Unklarheit wird ein offener Konflikt",
+    "extrahiere-quellfragment": "liest die maschinelle Vorverdichtung genau einer Tarifquelle für eine Tarifgeneration und schlägt ein Quellfragment vor; was nicht belegt ist, bleibt offen statt geraten",
+    "transformiere-quellbestand": "schlägt die Abbildung des gelieferten Bestandsabzugs auf unser Datenmodell vor; überträgt dokumentierte menschliche Mappingentscheidungen nur mit ausdrücklichem Auftrag und menschlichem Abgleich, jede Unklarheit bleibt ein offener Konflikt",
     "bereite-fachkonflikt-auf": "bereitet einen Widerspruch zwischen Unterlagen zur menschlichen Entscheidung auf: beide Lesarten, Auswirkung, Empfehlung",
     "aktuartest-durchfuehren": "fährt die drei aktuariellen Abnahmen A-M1 bis A-M3 und bereitet je Abnahme die Entscheidungsvorlage auf",
     "pruefe-migrationscontrolling": "fährt das Controlling über zwei Stichtage und bereitet die Vorlage für A-M4 auf",
-    "migrationsfall-durchfuehren": "führt einen Fall durch die drei Stufen und hält an jedem menschlichen Gate an",
-    "entwickle-im-zielsystem": "der Rahmen jeder Änderung am Zielsystem: Schichten, Determinismus, Test-Pflicht",
+    "migrationsfall-durchfuehren": "führt einen Fall von den Tarifquellen und der Bestandsabbildung über die Abnahmen bis zur Betriebsübergabe und hält an jedem menschlichen Gate an",
+    "entwickle-im-zielsystem": "der Rahmen zulässiger Entwicklung und lesender Prüfung am Zielsystem: Schichten, Determinismus, Test-Pflicht; ein Entwicklungsauftrag hebt das Schreibverbot an Kern und T-Box während einer laufenden Migration nicht auf",
     "integriere-migrationsinkrement": "bringt Änderungen während eines laufenden Falls in kleinen, geprüften Schritten ein",
-    "author-rechner-toolbox-gate": "entwirft den Vertrag eines neuen Prüfkommandos: eine Ausgabe, feste Rückgabewerte, ein Ledger-Eintrag",
-    "teste-adversarial": "prüft einen fertigen Block gegen den Strich: Befunde finden, widerlegen, als Regressionstest festhalten",
+    "author-rechner-toolbox-gate": "entwickelt oder prüft lesend den Vertrag eines Prüfkommandos: eine Ausgabe, feste Rückgabewerte, ein Ledger-Eintrag; eine Prüfung erteilt keinen Änderungsauftrag",
+    "teste-adversarial": "prüft einen fertigen Block gegen den Strich: Befunde finden und widerlegen; bestätigte Befunde nur mit Änderungsauftrag durch Regressionstests, Korrektur und erneute unabhängige Prüfung bearbeiten",
     "dokumentiere-system": "hält die Dokumentation nach den Regeln des Systems nach: erzeugt schlägt handgeschrieben",
+    "uebernehme-migrationsbestand": "bereitet die Zugangsprobe und die menschliche Zugangsabnahme A-B2 vor und führt anschließend die ausdrücklich beauftragte Übernahme aus",
 }
 
 #: Gegen welche Fassung ihrer Definition jeder Satz oben geschrieben ist —
-#: dieselbe Verankerung wie ROLLEN_STAND (abgeglichen am 04.10.2026).
+#: dieselbe Verankerung wie ROLLEN_STAND (abgeglichen am 08.11.2026).
 SKILL_STAND = {
     "aktuartest-durchfuehren": "348cf6b0023a",
-    "author-rechner-toolbox-gate": "78f88225c1a9",
+    "author-rechner-toolbox-gate": "93ef99a9df93",
     "bereite-fachkonflikt-auf": "07237e41f06c",
     "dokumentiere-system": "dd8e77752879",
-    "entwickle-im-zielsystem": "0c2ef08b8163",
-    "extrahiere-quellfragment": "780c9692bfaf",
+    "entwickle-im-zielsystem": "8bd93dd16a9f",
+    "extrahiere-quellfragment": "37cbab51537b",
     "integriere-migrationsinkrement": "5cea17af20d4",
-    "migrationsfall-durchfuehren": "49bb33882750",
-    "pruefe-migrationscontrolling": "abbcb6a8cd3d",
-    "teste-adversarial": "5e0adfad86a8",
-    "transformiere-quellbestand": "833adb308688",
+    "migrationsfall-durchfuehren": "eaf6a7f37bda",
+    "pruefe-migrationscontrolling": "033076a96618",
+    "teste-adversarial": "eb4971a657b2",
+    "transformiere-quellbestand": "d4d9f316cad6",
+    "uebernehme-migrationsbestand": "6ed771133585",
 }
 
 #: Was ein Werkzeug einer Agentenrolle tut, in der Sprache des Hauses —
 #: die Definitionen nennen es mit seinem technischen Namen.
 WERKZEUG_TEXT = {"Read": "lesen", "Grep": "suchen", "Glob": "suchen",
-                 "Bash": "Kommandos ausführen", "Write": "schreiben", "Edit": "ändern"}
+                 "Bash": "Kommandos ausführen", "Write": "schreiben", "Edit": "ändern",
+                 "Skill": "Verfahrensanweisungen laden", "Agent": "begrenzte Fachaufgaben delegieren"}
 
 #: Wofuer eine Laufzeitbibliothek eingesetzt wird — in welchen Modulen,
 #: misst falldaten an den Importen.

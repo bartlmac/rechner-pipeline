@@ -11,13 +11,15 @@ woertlich angegebenes ``python -m rechner_pipeline....`` den echten
 Argumentparser des Moduls besteht (Pflichtargumente vorhanden, kein
 unbekannter Schalter, Unterbefehl bekannt, Auswahlwerte zulaessig).
 
-Die Menge: die Skills und Agenten unter ``.claude/`` (die Spiegel unter
-``.agents/`` sind byte-gleich, ``tests/test_agent_workflow_docs.py``),
-``AGENTS.md``, ``README.md``, ``ONBOARDING.md`` und die ADRs 025 und 026
-(Bedienfolgen). Gefunden wird ein Kommando in einem Codeblock (Zeilen mit
-``\\`` am Ende werden verbunden) oder in einer Inline-Code-Spanne
-(Zeilenumbrueche darin sind Leerraum), wenn ``python -m rechner_pipeline.``
-am Anfang oder hinter einer Pipe steht.
+Die Menge: die Skill-Markdowns unter ``.claude/skills/`` — je ``SKILL.md``
+UND dessen ``references/``-Fachreferenzen, beide rekursiv (die Spiegel unter
+``.agents/`` sind byte-gleich, ``tests/test_agent_workflow_docs.py``) —
+die Agenten unter ``.claude/agents/``, ``AGENTS.md``, ``README.md``,
+``ONBOARDING.md`` und die ADRs 025 und 026 (Bedienfolgen). Gefunden wird
+ein Kommando in einem Codeblock (Zeilen mit ``\\`` am Ende werden
+verbunden) oder in einer Inline-Code-Spanne (Zeilenumbrueche darin sind
+Leerraum), wenn ``python -m rechner_pipeline.`` am Anfang oder hinter
+einer Pipe steht.
 
 Behandelt, ausdruecklich und gezaehlt:
 
@@ -59,12 +61,17 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 
-#: Die Dokumente, deren woertliche Aufrufe gelten muessen.
+#: Die Dokumente, deren woertliche Aufrufe gelten muessen. Die Norm eines
+#: Vorgangs liegt entweder in einer Skill-\ ``SKILL.md`` oder — seit der
+#: Aufteilung des Migrationsskills in Phasenverfahren und Fachreferenzen —
+#: in einer Datei unter ``references/``. Deshalb wird der ganze Baum
+#: rekursiv erfasst: eine ausgelagerte Referenz darf keine Aufrufe
+#: ungeprueft lassen (I2).
 DOKUMENTE: Tuple[str, ...] = tuple(sorted(
-    [str(p.relative_to(REPO)) for p in (REPO / ".claude" / "skills").glob("*/SKILL.md")]
-    + [str(p.relative_to(REPO)) for p in (REPO / ".claude" / "agents").glob("*.md")]
+    [p.relative_to(REPO).as_posix() for p in (REPO / ".claude" / "skills").rglob("*.md")]
+    + [p.relative_to(REPO).as_posix() for p in (REPO / ".claude" / "agents").glob("*.md")]
     + ["AGENTS.md", "README.md", "ONBOARDING.md"]
-    + [str(p.relative_to(REPO)) for p in (REPO / "docs" / "architektur").glob("adr-02[56]-*.md")]
+    + [p.relative_to(REPO).as_posix() for p in (REPO / "docs" / "architektur").glob("adr-02[56]-*.md")]
 ))
 
 PRAEFIX = "python -m rechner_pipeline."
@@ -349,6 +356,41 @@ def _ausgenommen(k: Kommando) -> bool:
 def test_jedes_woertliche_kommando_besteht_den_parser(kommando: Kommando) -> None:
     befund = pruefe(kommando)
     assert befund is None, f"{kommando}\n  -> {befund}"
+
+
+def test_die_menge_umfasst_auch_jede_referenz() -> None:
+    """I2: DOKUMENTE deckt neben den SKILL.md auch die references-Dateien —
+    eine ausgelagerte Norm ist kein Freibrief ungepruefter Aufrufe.
+    Mutationsprobe: DOKUMENTE wieder auf ``*/SKILL.md`` verengen -> rot."""
+    referenzen_auf_platte = {
+        p.relative_to(REPO).as_posix()
+        for p in (REPO / ".claude" / "skills").rglob("references/*.md")
+    }
+    assert referenzen_auf_platte, "keine references gefunden — Pfad falsch?"
+    in_menge_als_referenz = {d for d in DOKUMENTE if "/references/" in d}
+    assert in_menge_als_referenz == referenzen_auf_platte
+    # Die Referenzen tragen tatsaechlich woertliche Aufrufe, die so mitgeprueft
+    # werden; der Scanner sieht sie (Positivkontrolle fuer den Baum).
+    aufrufe_in_referenzen = [k for k in KOMMANDOS if "/references/" in k.dokument]
+    assert len(aufrufe_in_referenzen) >= 20, len(aufrufe_in_referenzen)
+
+
+def test_referenzaufruf_im_referenzen_ordner_wird_gefangen(tmp_path: Path) -> None:
+    """I2-Negativkontrolle: ein fehlerhaftes Kommando in einer
+    ``references/``-Datei muss der Scanner finden und der Parser fangen —
+    sonst bliebe die ausgelagerte Norm ungeprueft, nur weil sie nicht in
+    der SKILL.md steht."""
+    skill = tmp_path / "beispiel-skill"
+    (skill / "references").mkdir(parents=True)
+    (skill / "SKILL.md").write_text("# Beispiel\n", encoding="utf-8")
+    (skill / "references" / "verfahren.md").write_text(
+        "Fahre die Suite: `python -m rechner_pipeline.gates.migrationssuite_lauf "
+        "--fall faelle/<fall> --generation klv/tg2015 --gibt-es-nicht 1 ...`\n",
+        encoding="utf-8")
+    gefunden = kommandos_aus("references/verfahren.md", skill)
+    assert len(gefunden) == 1 and "--gibt-es-nicht" in gefunden[0].text
+    befund = pruefe(gefunden[0])
+    assert befund is not None and "--gibt-es-nicht" in befund
 
 
 def test_die_menge_ist_nicht_leer_und_die_ausnahmen_gibt_es() -> None:

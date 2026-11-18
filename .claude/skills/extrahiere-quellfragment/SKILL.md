@@ -7,7 +7,7 @@ description: >-
   schema) for one Tarifgeneration. Trigger when running Stage-1 extraction inside
   migrationsfall-durchfuehren or when the user asks to extract tariff parameters from a
   single preprocessed source into the A-Box. Skip for: merging fragments (deterministic
-  code), resolving discrepancies (human), reading raw .xlsm/.docx (forbidden — only the
+  code), resolving discrepancies (human), reading raw .xlsm/.docx/.pdf (forbidden — only the
   Vorverdichtung), or multi-source comparisons.
 ---
 
@@ -98,9 +98,13 @@ einander, entsteht im Merge eine Diskrepanz am Knoten
 
 ## Regeln (nicht verhandelbar)
 
-1. Lies AUSSCHLIESSLICH die dir genannten Vorverdichtungs-Dateien.
-   Keine Rohquellen, kein Vorwissen ueber die andere Quelle oder
-   Generation, nichts aus anderen Faellen uebertragen.
+1. Fachliche Eingaben sind AUSSCHLIESSLICH die dir genannten
+   Vorverdichtungs-Dateien GENAU EINER Quelle fuer eine Generation.
+   Getrennt davon darfst du die im Auftrag erlaubten Verfahrens-/
+   Schemaunterlagen und diesen Skill lesen. Keine Rohquellen, keine
+   andere Quelle, keine Ergebnisse anderer Extraktionen und keine
+   fachlichen Werte aus anderen Faellen. Pflichtskill vor Arbeit laden;
+   eine Sperre ist ein Halt, kein Anlass fuer einen Ersatzleseweg.
 2. Jede Aussage braucht eine EXAKTE Fundstelle: Zelladresse wie
    `<Blatt>!$G$7` (CSV-Spalte Adresse plus Blattname, also der
    TATSAECHLICHE Blattname der Quelle) bzw. beim Meldungs-JSON ein
@@ -151,7 +155,11 @@ Formeln stecken (z. B. `MIN(150, MAX(50, 1%*(VS-...)))` fuer den
 Stornoabzug) — Fundstelle ist dann die Formelzelle.
 
 **Tarifmeldung (Vorverdichtung `meldung-<GEN>.json`):** Struktur
-`metadaten`, `tabellen[]` mit `zeilen[][]`, `formeln[]`. Achtung
+`metadaten`, `tabellen[]` mit `zeilen[][]`, `formeln[]`. DOCX und Text-PDF
+werden deterministisch vorverdichtet (ADR-016); PDF-Absatz-/Seitenfundstellen
+aus dem Staging uebernehmen, nicht auf eine DOCX-Tabellenform zwingen.
+Ein Scan ohne Textlayer wird extern aufbereitet; kein Roh-PDF/OCR-Weg
+in der Extraktionssitzung. Achtung
 Staging-Verluste: griechische Zeichen koennen zu Ziffern-Resten
 verflacht sein — Zeilenbedeutung aus dem Kontext belegen und die
 Unsicherheit in Konfidenz/Anmerkung tragen. Prozent- und

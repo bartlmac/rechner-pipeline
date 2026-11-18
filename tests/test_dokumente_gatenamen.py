@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
+
+import pytest
 
 from rechner_pipeline.models.zeichnung import GUELTIGE_GATES
 
@@ -39,8 +41,13 @@ def _dokumente(repo: Path) -> list:
                                     *ARCHITEKTUR_DOKUMENTE)]
     for baum in (".claude", ".agents"):
         dokumente += sorted((repo / baum / "agents").glob("*.md"))
-        dokumente += sorted((repo / baum / "skills").glob("*/SKILL.md"))
+        dokumente += sorted((repo / baum / "skills").rglob("*.md"))
     return [d for d in dokumente if d.is_file()]
+
+
+def _dokumentkennung(dokument: PurePath, repo: PurePath) -> str:
+    """Repositorykennungen sind plattformneutrale Belege, keine nativen I/O-Pfade."""
+    return dokument.relative_to(repo).as_posix()
 
 
 def _unbekannte_gates(repo: Path) -> Counter:
@@ -52,7 +59,7 @@ def _unbekannte_gates(repo: Path) -> Counter:
         for zeile in dok.read_text(encoding="utf-8").splitlines():
             for gate in GATE_NAME.findall(zeile):
                 if gate not in bekannt:
-                    funde[(str(dok.relative_to(repo)), gate, "entfallen" in zeile)] += 1
+                    funde[(_dokumentkennung(dok, repo), gate, "entfallen" in zeile)] += 1
     return funde
 
 
@@ -72,7 +79,7 @@ def test_jedes_genannte_gate_gibt_es():
     assert funde == Counter(HISTORISCH_ENTFALLEN), funde
     assert all(entfallen for (_, _, entfallen) in HISTORISCH_ENTFALLEN)
     # Die Menge der Dokumente ist nicht leer und deckt beide Baeume.
-    namen = {str(d.relative_to(REPO)) for d in _dokumente(REPO)}
+    namen = {_dokumentkennung(d, REPO) for d in _dokumente(REPO)}
     assert {"README.md", "ONBOARDING.md", "AGENTS.md", *ARCHITEKTUR_DOKUMENTE,
             ".claude/agents/rechenkern.md", ".agents/agents/rechenkern.md"} <= namen
 
@@ -87,4 +94,28 @@ def test_positivkontrolle(tmp_path):
     (tmp_path / ".claude" / "agents" / "x.md").write_text("unter A-K9\n", encoding="utf-8")
     assert _unbekannte_gates(tmp_path) == Counter({
         ("README.md", "A-K1", False): 1, ("README.md", "A-K1", True): 1,
-        (".claude/agents/x.md", "A-K9", False): 1})
+         (".claude/agents/x.md", "A-K9", False): 1})
+
+
+@pytest.mark.parametrize("pfadklasse, wurzel", [
+    (PureWindowsPath, "C:/Projekt"),
+    (PureWindowsPath, "//server/freigabe/Projekt"),
+    (PurePosixPath, "/projekt"),
+])
+def test_dokumentkennung_ist_unabhaengig_vom_betriebssystem(pfadklasse, wurzel):
+    repo = pfadklasse(wurzel)
+    assert _dokumentkennung(repo / ".claude/agents/x.md", repo) == ".claude/agents/x.md"
+    assert _dokumentkennung(repo / ARCHITEKTUR_DOKUMENTE[1], repo) == ARCHITEKTUR_DOKUMENTE[1]
+    with pytest.raises(ValueError):
+        _dokumentkennung(repo.parent / "fremdes-projekt/x.md", repo)
+
+
+def test_unbekanntes_gate_in_ausgelagerter_referenz_wird_erkannt(tmp_path):
+    for baum in (".claude", ".agents"):
+        referenz = tmp_path / baum / "skills" / "probe" / "references" / "phase.md"
+        referenz.parent.mkdir(parents=True)
+        referenz.write_text("A-K9 braucht einen Beleg\n", encoding="utf-8")
+    assert _unbekannte_gates(tmp_path) == Counter({
+        (f"{baum}/skills/probe/references/phase.md", "A-K9", False): 1
+        for baum in (".claude", ".agents")
+    })

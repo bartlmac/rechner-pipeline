@@ -328,8 +328,8 @@ def lebendes_repo(wert: object) -> Path:
             + (f" (und {len(bytecode) - 3} weitere)" if len(bytecode) > 3 else "")
             + " — Python fuehrt eine Bytecode-Datei aus, deren Kopf zur Quelle passt, deren "
             "Code aber ein anderer ist; jeder Stand-Hash liest die Quellen (Pruefrunde H). "
-            f"Ausweg: die __pycache__-Verzeichnisse des Pakets ({_ausgefuehrtes_paket()}) "
-            "loeschen und den Aufruf wiederholen")
+            "Ausweg: die genannten Bytecode-Dateien im __pycache__ oder externen "
+            "Cache loeschen und den Aufruf wiederholen")
     soll, ist = _quellcode_sha256(), paket_sha256(paket)
     if soll != ist:
         raise argparse.ArgumentTypeError(
@@ -389,13 +389,13 @@ def _pyc_urteil(pyc: Path, quelle: Path, optimiert: int) -> Optional[str]:
     except SyntaxError as exc:
         return f"{quelle}: nicht uebersetzbar ({exc})"
     if code != soll:
-        return (f"{pyc.relative_to(pyc.parents[2]) if len(pyc.parents) > 2 else pyc}: Kopf passt "
+        return (f"{pyc}: Kopf passt "
                 f"zu {quelle.name}, der Code ist ein anderer")
     return None
 
 
 def bytecode_fehler(paket: Path) -> List[str]:
-    """Jede Bytecode-Datei im Paketbaum, die der Interpreter laden wuerde, ist
+    """Jede Bytecode-Datei fuer das Paket, die der Interpreter laden wuerde, ist
     der Code ihrer Quelle — sonst je Datei ein Befund (Pruefrunde H, H07).
 
     Befund: Python laedt ``__pycache__/<modul>.<tag>.pyc``, wenn deren Kopf
@@ -419,30 +419,31 @@ def bytecode_fehler(paket: Path) -> List[str]:
       ``__pycache__``) ohne gleichnamige Quelle: Befund — Python importiert
       sie als quellenloses Modul, und kein Hash sieht sie.
 
+    Der aktive Cachepfad wird je Quelle durch ``cache_from_source`` bestimmt:
+    ``sys.pycache_prefix`` kann ihn ausserhalb des Paketbaums legen. Nur die
+    Optimierungsstufe des laufenden Interpreters wird geladen; fremde
+    Cacheorte und Optimierungsstufen sind kein ausgefuehrter Code.
+
     Je Prozess einmal je Datei gerechnet, gebunden an (Pfad, mtime_ns,
     Groesse) von pyc und Quelle.
     """
+    import importlib.util
     import sys
 
     paket = Path(paket)
-    tag = sys.implementation.cache_tag
     befunde: List[str] = []
+    # Quellenlose Module bleiben auch mit externem Cache importierbar.
     for pyc in sorted(paket.rglob("*.pyc")):
         if pyc.parent.name != "__pycache__":
             if not pyc.with_suffix(".py").exists():
                 befunde.append(f"{pyc.relative_to(paket)}: Bytecode ohne Quelle neben den "
                                "Quellen — Python importiert ihn, kein Hash sieht ihn")
             continue
-        teile = pyc.name.split(".")
-        # <modul>.<tag>.pyc oder <modul>.<tag>.opt-<n>.pyc
-        if len(teile) not in (3, 4) or teile[1] != tag:
+    optimiert = sys.flags.optimize
+    for quelle in sorted(paket.rglob("*.py")):
+        pyc = Path(importlib.util.cache_from_source(str(quelle)))
+        if not pyc.is_file():
             continue
-        optimiert = 0
-        if len(teile) == 4:
-            if not teile[2].startswith("opt-") or not teile[2][4:].isdigit():
-                continue
-            optimiert = int(teile[2][4:])
-        quelle = pyc.parent.parent / f"{teile[0]}.py"
         schluessel = (str(pyc), _stat_schluessel(pyc), _stat_schluessel(quelle), optimiert)
         if schluessel[2] is None:
             continue

@@ -1,22 +1,37 @@
 ---
 name: pruefe-migrationscontrolling
 description: >-
-  Run the deterministic migration controlling checks for a portfolio
-  migration and prepare the human acceptance decision: two-reporting-date
-  Deckungskapital comparison over the FULL portfolio, GeVo amounts between
-  the dates, the transformation mapping table, and the before/after
-  Bestandsbericht pair — rendered as one acceptance report for Gate A-M4.
-  Trigger when a migration case has a transformed portfolio plus delivered
-  expectation data (second extract, GeVo protocol) and acceptance is due,
-  or the user asks to "die Migration abnehmen/pruefen". Skip for: the
-  actuarial test at each contract's own anchor date
-  (aktuartest-durchfuehren, Gate A-M1 — it comes FIRST), deciding the
-  acceptance itself (human, Gate A-M4), computing any actuarial value by
-  hand (deterministic suite only), resolving discrepancies
-  (bereite-fachkonflikt-auf).
+  Run the deterministic migration controlling of a full portfolio over TWO
+  reporting dates and prepare the human acceptance decision for Gate A-M4:
+  two-reporting-date Deckungskapital comparison over the FULL portfolio,
+  GeVo amounts between the dates, the transformation mapping table, and
+  the before/after Bestandsbericht pair, rendered as one acceptance
+  report. Trigger ONLY for Gate A-M4: a migration case with a transformed
+  portfolio plus the delivered second Bestandsabzug, the GeVo protocol
+  and the before/after report pair, with stichtag_2 greater than
+  stichtag_1. A vague "pruefe die Migration" request without that
+  evidence is not a trigger: clarify the phase first, never run an A-M4
+  as a default. Skip for: the actuarial test at each contract's own anchor
+  date (aktuartest-durchfuehren, Gates A-M1/A-M2/A-M3 — they come FIRST and
+  are separate acceptances), deciding the acceptance itself (human, Gate
+  A-M4), computing any actuarial value by hand (deterministic suite
+  only), resolving discrepancies (bereite-fachkonflikt-auf).
 ---
 
 # Migrationscontrolling prüfen
+
+## Fachreferenz vor Arbeit laden
+
+Vor der Arbeit lade diese Fachreferenz GANZ — sie ist verbindlich,
+nicht fakultativ:
+
+- [references/fuehrung-und-berichtspaar.md](references/fuehrung-und-berichtspaar.md#berichtspaar)
+  — Fortschreibung des uebernommenen Bestands (Anker `fortschreibung`),
+  Freischaltung inkl. Fuehrungsprobe (Anker `freischaltung`), das
+  Bestandsberichtspaar vor/nach mit den vollstaendigen Aufrufen (Anker
+  `berichtspaar`) und der Abnahmebericht (Anker `abnahmebericht`). Was
+  sie benennt, steht nicht zusätzlich in dieser Skill-Datei — die
+  Referenz ist ihr Zuhause.
 
 ## Rolle und Ziel
 
@@ -148,47 +163,33 @@ Werkzeuge (alle deterministisch, du rechnest NIE selbst):
    Das JSON wird NIE von Hand nachgebessert — das Kommando in
    Schritt 4 prüft die Zusammenfassung gegen die Einzelurteile und
    bricht sonst mit `20` ab.
-3. Bestandsberichte vor/nach erzeugen (gleiche Parameter, gleicher
-   Horizont — nur so ist der visuelle Vergleich fair). Im
-   Bestands-Scope muss außerdem Gate P-B1
-   (`gates.bestand_validate`) grün gelaufen sein: Sein Ledger ist
-   Pflichtbeleg für A-M4 und wird vom Abnahmebericht mitgebunden.
-4. Bericht erzeugen und protokollieren. ALLE aufgeführten Angaben
-   sind Pflicht — fehlt eine, bricht das Kommando als Usage-Fehler ab:
-
-   ```
-   python -m rechner_pipeline.gates.abnahmebericht \
-       --fall faelle/<fall> \
-       --suite faelle/<fall>/abgeleitet/berichte/migrationssuite.json \
-       --titel "Migrationsabnahme <Fall>" \
-       --stichtag-1 <ISO> --stichtag-2 <ISO> \
-       --spec <transformationsspec.json> \
-       --transformation-ergebnis <ergebnis.json> \
-       --bestandsbericht-vor <pfad> --bestandsbericht-nach <pfad>
-   ```
-
-   Vor- und Nachbericht müssen verschiedene Dateien sein; keine der
-   Angaben darf auf dieselbe Datei zeigen wie eine andere oder wie
-   der Gate-Ledger. Im Bestands-Scope zieht das Kommando das
-   P-B1-Ledger automatisch aus
-   `<fall>/abgeleitet/diagnostics/bestand_validate.gate.json`
-   (abweichend: `--pb1-ledger`).
-
-   Der Bericht landet unter `<fall>/abgeleitet/berichte/`, der
-   Ledger-Eintrag `abnahmebericht.gate.json` unter
-   `<fall>/abgeleitet/diagnostics/`. Fehlschläge und Befunde werden
-   vollständig ausgewiesen (keine Stichproben-Beschönigung); ein
-   roter Bericht wird geschrieben wie ein grüner — er IST das
-   Beweisstück.
-
-   Im Bestands-Scope rechnet das Kommando den Führungswert der Suite
-   auf den gebundenen Bytes nach (Bestand, Nebentabellen, Config,
-   Tarifwerk der Spez) und weist ihn aus (Summary `fuehrungswert`,
-   HTML je Vertrag); es bindet die Spez der Generation (Summary
-   `tarifregeln`) und verweigert jeden Beleg der Bestandsstrecke
-   (Übernahme, Schicht, aktuarieller Test, Suite, Führungsprobe), der
-   andere Regeln nennt oder eine andere Spez gelesen hat. Weicht etwas
-   ab, wird der Lauf neu gefahren — nie der Beleg nachgebessert.
+3. Bestandsberichte vor/nach erzeugen: gleiche fachliche Bewertungs-
+   und Darstellungsregeln, aber jeweils Datenbasis und Horizont des
+   geprueften Bestandsstands. VOR: Uebernahmebestand mit zugehoeriger
+   Historie/Ledger bis `stichtag_1`; NACH: fortgeschriebener Gesamtbestand
+   mit seinem Laufjournal bis `stichtag_2`. Die Horizonte sind bewusst
+   verschieden; dies ist nicht Eigenbestand vor/nach Zugang. Die
+   vollstaendigen VOR-/NACH-Aufrufe und ihre verbindlichen Regeln
+   (Fortschreibung, Freischaltung mit Fuehrungsprobe, Abnahmebericht)
+   stehen in der Fachreferenz
+   [fuehrung-und-berichtspaar.md](references/fuehrung-und-berichtspaar.md#berichtspaar),
+   die du vor der Arbeit ganz gelesen hast (Anker `berichtspaar`).
+   Den Betriebsbericht
+   mit `--berichtsstichtag` nicht als Fallbericht-Aufruf wiederverwenden.
+   Die Zwei-Stichtags-Pruefung liefert die Suite; die Berichte sind
+   gebundene visuelle Artefakte, deren fachliche HTML-Semantik A-M4
+   nicht automatisch prueft. Im Bestands-Scope muss ausserdem Gate P-B1
+   (`gates.bestand_validate`) gruen gelaufen sein: Sein Ledger ist
+   Pflichtbeleg fuer A-M4 und wird vom Abnahmebericht mitgebunden.
+4. Bericht erzeugen und protokollieren: der vollstaendige Aufruf von
+   `gates.abnahmebericht` samt Pflichtartefakten, Ablage und Bindung
+   des gruenen Gate-Ledgers steht normativ in der Fachreferenz (Anker
+   `abnahmebericht`), die du vor der Arbeit ganz gelesen hast — rufe
+   das Kommando wörtlich mit allen dort genannten Angaben auf. Im
+   Bestands-Scope zieht es das P-B1-Ledger automatisch (abweichend:
+   `--pb1-ledger`) und rechnet den Fuehrungswert der Suite auf den
+   gebundenen Bytes nach; Fehlschlag und Befunde werden vollstaendig
+   ausgewiesen und nie nachgebessert.
 5. Ergebnis dem Menschen zur A-M4-Entscheidung vorlegen, STOPP.
 
 ## Abbruchkriterien (STOPP und Mensch fragen)
