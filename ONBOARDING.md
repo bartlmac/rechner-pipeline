@@ -154,6 +154,73 @@ und in den Bedienfolgen von
 [ADR-025](docs/architektur/adr-025-erstabnahme-des-zielsystems.md) und
 [ADR-026](docs/architektur/adr-026-lebenslauf-eines-falls.md).
 
+### Offenes Modell mit einem Harness
+
+Ein Harness ist das Werkzeug, das ein Sprachmodell aufruft und ihm je nach
+Einstellung Dateien und Werkzeuge bereitstellt. Ein offenes Modell kann auf
+einem eigenen Inferenzserver laufen; der Modellname allein sagt weder, wo die
+Daten verarbeitet werden, noch ob das Modell für eine Aufgabe geeignet ist.
+Die Agenten schlagen vor; fachliche Widersprüche und Abnahmen entscheiden
+Menschen. Die deterministischen Gates rufen kein Modell auf.
+
+**Geprüfter Verbindungstest:** Pi 0.80.6 mit einem lokalen,
+OpenAI-kompatiblen llama.cpp-Server und dem dort als `qwen3.8-27b`
+angebotenen Modell. Voraussetzung sind ein installiertes `pi`, ein bereits
+gestarteter Server mit geladenem Modell und dessen Zugangsschlüssel. Der
+Server muss auf `127.0.0.1:8080` erreichbar sein; Modell-ID und Adresse sind
+gegebenenfalls an die eigene Installation anzupassen. Pi und der Modellserver
+werden getrennt vom Python-Paket installiert und betrieben.
+
+Für den Test ein eigenes Pi-Konfigurationsverzeichnis wählen. Die Datei
+`models.json` darin enthält beispielsweise (die Modell-ID muss der vom
+Server angebotenen ID entsprechen):
+
+```json
+{
+  "providers": {
+    "lokal": {
+      "baseUrl": "http://127.0.0.1:8080/v1",
+      "api": "openai-completions",
+      "apiKey": "$LOKAL_MODELL_KEY",
+      "authHeader": true,
+      "models": [{
+        "id": "qwen3.8-27b",
+        "name": "Lokales Modell",
+        "reasoning": false,
+        "input": ["text"],
+        "contextWindow": 32768,
+        "maxTokens": 1024,
+        "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
+      }]
+    }
+  }
+}
+```
+
+`contextWindow` und `maxTokens` müssen zum Server und Modell passen. Den
+Schlüssel außerhalb des Repositorys als Umgebungsvariable `LOKAL_MODELL_KEY`
+bereitstellen; er gehört nicht in die Datei oder in einen Fall. Anschließend
+aus dem Repository-Wurzelverzeichnis, mit dem Pfad zum eigenen
+Konfigurationsverzeichnis:
+
+```bash
+PI_CODING_AGENT_DIR=/pfad/zur/pi-konfiguration pi --offline --no-session \
+  --no-extensions --no-skills --no-context-files --no-tools \
+  --provider lokal --model qwen3.8-27b --thinking off \
+  -p 'Antworte ausschließlich mit OK.'
+```
+
+Bei erfolgreicher Verbindung antwortete der geprüfte Server mit `OK`.
+Der Test schaltet Werkzeuge, Skills, Kontextdateien und Sitzungsablage ab;
+er prüft nur die Modellverbindung, keine Extraktion und keinen Migrationsfall.
+Für einen Fall müssen Harness, Modell und deren Berechtigungen gesondert
+erprobt werden. Insbesondere ist zu prüfen, ob die Repository-Skills und
+Rollen tatsächlich geladen werden. Ein lokaler Server macht ein Harness
+nicht automatisch sicher: Dateizugriff, Werkzeugfreigaben und der Umgang mit
+Fall- und Schlüsseldaten hängen von seiner Konfiguration ab. Schlüssel bleiben
+außerhalb des Falls und stehen Agenten für menschliche Zeichnungen nicht zur
+Verfügung ([ADR-018](docs/architektur/adr-018-rollenmodell-und-schluesselklassen.md)).
+
 ## 4. Am Code arbeiten
 
 **Wo Code hingehört.** Welches Paket welches importieren darf, legt die
