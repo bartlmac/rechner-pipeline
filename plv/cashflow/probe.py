@@ -11,13 +11,22 @@ from typing import Dict
 import pandas as pd
 
 
+def _ganzes_jahr(wert, spalte: str) -> int:
+    """Ein Jahr als int; Wahrheitswerte und Bruchjahre brechen ab."""
+    bruch = pd.api.types.is_float(wert) and not float(wert).is_integer()
+    if pd.api.types.is_bool(wert) or bruch:
+        raise ValueError(f"Spalte {spalte!r} hat einen Wert, der kein ganzes Jahr ist: {wert!r}")
+    return int(wert)
+
+
 def beitragsreihe(pfad: Path, *, jahr: str, beitrag: str) -> Dict[int, float]:
     """Summe der Spalte ``beitrag`` je vorkommendem Jahr, aufsteigend.
 
     Die Spaltennamen nennt der Aufrufer; die Probe legt kein Format fest.
     Eine fehlende Spalte bricht beim Lesen ab. Leere Werte in einer der beiden
-    Spalten und eine nicht numerische Beitragsspalte brechen hier ab. Das Jahr
-    wird vor der Gruppierung in int umgewandelt, der Beitrag nicht.
+    Spalten, eine nicht numerische Beitragsspalte und ein Jahr, das keine ganze
+    Zahl ist, brechen hier ab. Das Jahr wird vor der Gruppierung in int
+    umgewandelt, der Beitrag nicht.
     """
     tabelle = pd.read_parquet(pfad, columns=[jahr, beitrag])
     for spalte in (jahr, beitrag):
@@ -26,6 +35,6 @@ def beitragsreihe(pfad: Path, *, jahr: str, beitrag: str) -> Dict[int, float]:
     werte = tabelle[beitrag]
     if not pd.api.types.is_numeric_dtype(werte) or pd.api.types.is_bool_dtype(werte):
         raise ValueError(f"Spalte {beitrag!r} ist nicht numerisch ({werte.dtype})")
-    jahre = pd.Series([int(j) for j in tabelle[jahr]], index=tabelle.index)
+    jahre = pd.Series([_ganzes_jahr(j, jahr) for j in tabelle[jahr]], index=tabelle.index)
     summen = werte.groupby(jahre, sort=True).sum()
     return {int(j): float(s) for j, s in summen.items()}

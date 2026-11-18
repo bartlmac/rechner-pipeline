@@ -30,9 +30,10 @@ def _namen(quelle: str) -> list:
     """Absolut importierte Modulnamen und alle Zeichenketten einer Datei.
 
     Bei ``from a import b`` zaehlen ``a`` und ``a.b``, weil ``b`` ein
-    Untermodul sein kann (``from plv import cashflow``). Zeichenketten zaehlen mit, damit ein Laden ueber importlib oder ueber
-    einen Pfad nicht an der Wache vorbeigeht. Relative Importe bleiben im
-    eigenen Paket und zaehlen nicht.
+    Untermodul sein kann (``from plv import cashflow``). Zeichenketten
+    zaehlen mit, damit ein Laden ueber importlib oder ueber einen Pfad nicht
+    an der Wache vorbeigeht. Relative Importe bleiben im eigenen Paket und
+    zaehlen nicht.
     """
     namen = []
     for knoten in ast.walk(ast.parse(quelle)):
@@ -162,6 +163,14 @@ def test_probe_verweigert_ein_leeres_jahr(tmp_path, jahre):
     pfad = tmp_path / "bestand.parquet"
     pd.DataFrame({"jahr": jahre, "beitrag": [100.0, 200.0]}).to_parquet(pfad)
     with pytest.raises(ValueError, match="'jahr' hat leere Werte"):
+        _probe().beitragsreihe(pfad, jahr="jahr", beitrag="beitrag")
+
+
+@pytest.mark.parametrize("jahre", [[2026.0, 2026.5], [True, False]])
+def test_probe_verweigert_ein_jahr_das_keine_ganze_zahl_ist(tmp_path, jahre):
+    pfad = tmp_path / "bestand.parquet"
+    pd.DataFrame({"jahr": jahre, "beitrag": [100.0, 200.0]}).to_parquet(pfad)
+    with pytest.raises(ValueError, match="'jahr' hat einen Wert, der kein ganzes Jahr ist"):
         _probe().beitragsreihe(pfad, jahr="jahr", beitrag="beitrag")
 
 
