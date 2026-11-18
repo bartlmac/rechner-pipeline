@@ -29,7 +29,8 @@ NACHBARN = ("src", "werkzeuge", "system")
 def _namen(quelle: str) -> list:
     """Absolut importierte Modulnamen und alle Zeichenketten einer Datei.
 
-    Zeichenketten zaehlen mit, damit ein Laden ueber importlib oder ueber
+    Bei ``from a import b`` zaehlen ``a`` und ``a.b``, weil ``b`` ein
+    Untermodul sein kann (``from plv import cashflow``). Zeichenketten zaehlen mit, damit ein Laden ueber importlib oder ueber
     einen Pfad nicht an der Wache vorbeigeht. Relative Importe bleiben im
     eigenen Paket und zaehlen nicht.
     """
@@ -39,6 +40,7 @@ def _namen(quelle: str) -> list:
             namen += [a.name for a in knoten.names]
         elif isinstance(knoten, ast.ImportFrom) and knoten.level == 0 and knoten.module:
             namen.append(knoten.module)
+            namen += [f"{knoten.module}.{a.name}" for a in knoten.names]
         elif isinstance(knoten, ast.Constant) and isinstance(knoten.value, str):
             namen.append(knoten.value)
     return namen
@@ -93,15 +95,18 @@ def test_w2_kein_nachbar_importiert_den_landeplatz():
 
 # --- Gegenproben: jede Wache meldet, was sie verbietet -------------------------
 
-@pytest.mark.parametrize("quelle", [
-    "import rechner_pipeline.kern\n",
-    "from rechner_pipeline.bestand import parquet_io\n",
-    "import rechner_pipeline\n",
-    "import importlib\nimportlib.import_module('rechner_pipeline.kern')\n",
+@pytest.mark.parametrize("quelle, gemeldet", [
+    ("import rechner_pipeline.kern\n", ["rechner_pipeline.kern"]),
+    ("from rechner_pipeline.bestand import parquet_io\n",
+     ["rechner_pipeline.bestand", "rechner_pipeline.bestand.parquet_io"]),
+    ("from rechner_pipeline import kern\n", ["rechner_pipeline", "rechner_pipeline.kern"]),
+    ("import rechner_pipeline\n", ["rechner_pipeline"]),
+    ("import importlib\nimportlib.import_module('rechner_pipeline.kern')\n",
+     ["rechner_pipeline.kern"]),
 ])
-def test_w1_meldet_einen_import_aus_dem_system(tmp_path, quelle):
+def test_w1_meldet_einen_import_aus_dem_system(tmp_path, quelle, gemeldet):
     (tmp_path / "rechenwerk.py").write_text("import pandas as pd\n" + quelle, encoding="utf-8")
-    assert len(befunde_w1(tmp_path)) == 1
+    assert befunde_w1(tmp_path) == [f"rechenwerk.py: {n}" for n in gemeldet]
 
 
 def test_w1_laesst_fremde_bibliotheken_zu(tmp_path):
@@ -110,23 +115,27 @@ def test_w1_laesst_fremde_bibliotheken_zu(tmp_path):
     assert befunde_w1(tmp_path) == []
 
 
-@pytest.mark.parametrize("teil, quelle", [
-    ("src", "from plv.cashflow import probe\n"),
+@pytest.mark.parametrize("teil, quelle, gemeldet", [
+    ("src", "from plv.cashflow import probe\n", ["plv.cashflow", "plv.cashflow.probe"]),
+    ("src", "from plv import cashflow\n", ["plv.cashflow"]),
+    ("werkzeuge", "from plv import cashflow as cf\n", ["plv.cashflow"]),
     ("werkzeuge", "import importlib.util\n"
-                  "importlib.util.spec_from_file_location('p', 'plv/cashflow/probe.py')\n"),
-    ("system", "import cashflow.probe\n"),
+                  "importlib.util.spec_from_file_location('p', 'plv/cashflow/probe.py')\n",
+     ["plv/cashflow/probe.py"]),
+    ("system", "import cashflow.probe\n", ["cashflow.probe"]),
 ])
-def test_w2_meldet_einen_import_des_landeplatzes(tmp_path, teil, quelle):
+def test_w2_meldet_einen_import_des_landeplatzes(tmp_path, teil, quelle, gemeldet):
     for t in NACHBARN:
         (tmp_path / t).mkdir()
     (tmp_path / teil / "modul.py").write_text(quelle, encoding="utf-8")
-    assert len(befunde_w2(tmp_path)) == 1
+    assert befunde_w2(tmp_path) == [f"{teil}/modul.py: {n}" for n in gemeldet]
 
 
-def test_w2_laesst_relative_importe_im_eigenen_paket_zu(tmp_path):
+@pytest.mark.parametrize("quelle", ["from .cashflow import x\n", "from . import cashflow\n"])
+def test_w2_laesst_relative_importe_im_eigenen_paket_zu(tmp_path, quelle):
     for t in NACHBARN:
         (tmp_path / t).mkdir()
-    (tmp_path / "src" / "modul.py").write_text("from .cashflow import x\n", encoding="utf-8")
+    (tmp_path / "src" / "modul.py").write_text(quelle, encoding="utf-8")
     assert befunde_w2(tmp_path) == []
 
 
@@ -146,3 +155,29 @@ def test_probe_verweigert_einen_leeren_beitrag(tmp_path):
     pd.DataFrame({"jahr": [2026, 2026], "beitrag": [100.0, None]}).to_parquet(pfad)
     with pytest.raises(ValueError, match="leere Werte"):
         _probe().beitragsreihe(pfad, jahr="jahr", beitrag="beitrag")
+
+
+@pytest.mark.parametrize("jahre", [[2026, None], [None, None]])
+def test_probe_verweigert_ein_leeres_jahr(tmp_path, jahre):
+    pfad = tmp_path / "bestand.parquet"
+    pd.DataFrame({"jahr": jahre, "beitrag": [100.0, 200.0]}).to_parquet(pfad)
+    with pytest.raises(ValueError, match="'jahr' hat leere Werte"):
+        _probe().beitragsreihe(pfad, jahr="jahr", beitrag="beitrag")
+
+
+@pytest.mark.parametrize("beitraege", [["100", "200"], [True, False]])
+def test_probe_verweigert_eine_nicht_numerische_beitragsspalte(tmp_path, beitraege):
+    pfad = tmp_path / "bestand.parquet"
+    pd.DataFrame({"jahr": [2026, 2026], "beitrag": beitraege}).to_parquet(pfad)
+    with pytest.raises(ValueError, match="'beitrag' ist nicht numerisch"):
+        _probe().beitragsreihe(pfad, jahr="jahr", beitrag="beitrag")
+
+
+def test_probe_nennt_nur_beobachtete_jahre_als_int_aufsteigend(tmp_path):
+    pfad = tmp_path / "bestand.parquet"
+    jahre = pd.Categorical(["2027", "2026"], categories=["2027", "2026", "2025"])
+    pd.DataFrame({"jahr": jahre, "beitrag": [50.0, 100.0]}).to_parquet(pfad)
+    assert pd.read_parquet(pfad)["jahr"].dtype == "category"
+    reihe = _probe().beitragsreihe(pfad, jahr="jahr", beitrag="beitrag")
+    assert list(reihe.items()) == [(2026, 100.0), (2027, 50.0)]
+    assert [type(j) for j in reihe] == [int, int]

@@ -12,13 +12,20 @@ import pandas as pd
 
 
 def beitragsreihe(pfad: Path, *, jahr: str, beitrag: str) -> Dict[int, float]:
-    """Summe der Spalte ``beitrag`` je Wert der Spalte ``jahr``, aufsteigend.
+    """Summe der Spalte ``beitrag`` je vorkommendem Jahr, aufsteigend.
 
     Die Spaltennamen nennt der Aufrufer; die Probe legt kein Format fest.
-    Eine fehlende Spalte bricht beim Lesen ab, ein leerer Beitrag hier.
+    Eine fehlende Spalte bricht beim Lesen ab. Leere Werte in einer der beiden
+    Spalten und eine nicht numerische Beitragsspalte brechen hier ab. Das Jahr
+    wird vor der Gruppierung in int umgewandelt, der Beitrag nicht.
     """
     tabelle = pd.read_parquet(pfad, columns=[jahr, beitrag])
-    if tabelle[beitrag].isna().any():
-        raise ValueError(f"Spalte {beitrag!r} hat leere Werte")
-    summen = tabelle.groupby(jahr, sort=True)[beitrag].sum()
+    for spalte in (jahr, beitrag):
+        if tabelle[spalte].isna().any():
+            raise ValueError(f"Spalte {spalte!r} hat leere Werte")
+    werte = tabelle[beitrag]
+    if not pd.api.types.is_numeric_dtype(werte) or pd.api.types.is_bool_dtype(werte):
+        raise ValueError(f"Spalte {beitrag!r} ist nicht numerisch ({werte.dtype})")
+    jahre = pd.Series([int(j) for j in tabelle[jahr]], index=tabelle.index)
+    summen = werte.groupby(jahre, sort=True).sum()
     return {int(j): float(s) for j, s in summen.items()}
