@@ -668,11 +668,12 @@ es nicht mehr. Jeden Entscheid des Falls zeichnet der Mensch mit
 der Zeichnungsordnung, und jede Vorbedingung wird gegen die Ordnung
 gelesen, unter der sie gezeichnet wurde (ADR-025).
 
-**In der Laufzeit einer Migration schreibst du nicht an der T-Box und
-nicht am Kern.** Du legst den Aenderungsvorschlag vor; der Mensch prueft
-die Diffs und zeichnet (im Regie-Modus die simulierte Rolle unter Mandat).
-Einen Entwurf im Arbeitsbaum baut ein Agent nur in der ENTWICKLUNG der
-Loesung, unter Auftrag des Maintainers.
+**In der Laufzeit einer Migration schreibst du nicht an der T-Box.** Du
+legst den Aenderungsvorschlag vor; der Mensch prueft die Diffs und
+zeichnet (im Regie-Modus die simulierte Rolle unter Mandat). Am Kern
+aendert in der Laufzeit nur der Rechenkern-Agent, voruebergehend fuer
+Pruefrechnungen oder dauerhaft als Vorschlag zur Erweiterung; gueltig wird
+eine dauerhafte Aenderung erst mit A-K2 (ADR-018, Nachtrag 2026-11-18).
 
 ### Stufe 3b — Pruefung des uebernommenen Bestands (wenn Stufe 1b lief)
 

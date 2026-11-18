@@ -11,6 +11,7 @@ jede andere Änderung.
 
 | Datum | Beschluss | Beleg |
 |---|---|---|
+| 18.11.2026 | Während einer laufenden Migration darf der Rechenkern-Agent den Kern ändern; gültig wird eine dauerhafte Änderung erst mit `A-K2`. Die anderen KI-Rollen ändern den Kern nicht, sie melden, was sie brauchen. Für die T-Box bleibt die Regel aus dem Nachtrag vom 2026-10-01. | [ADR-018](adr-018-rollenmodell-und-schluesselklassen.md), Nachtrag 2026-11-18 |
 | 11.11.2026 | Die Frist für die Freigabe eines Pull Requests von einem Agenten endet um 12:00 am ersten Arbeitstag, an dem um 12:00 seit der Anfrage mindestens 24 Stunden vergangen sind. Sie ersetzt die Frist aus der Zeile vom 10.11.2026. | [CONTRIBUTING.md](../../CONTRIBUTING.md#weg-eines-beitrags) |
 | 10.11.2026 | Gemergt wird nur durch das Maintainer Office, nie durch einen Agenten. Pull Requests von Agenten gibt einer der beiden anderen Code Owners bis zum nächsten Arbeitstag um 12:00 frei oder sagt in einem Kommentar, was fehlt. | [CONTRIBUTING.md](../../CONTRIBUTING.md#weg-eines-beitrags) |
 | 10.11.2026 | Eine Karte ist fertig, wenn die fünf Punkte des Fertig-Kriteriums erfüllt sind. | [CONTRIBUTING.md](../../CONTRIBUTING.md#wann-eine-karte-fertig-ist) |

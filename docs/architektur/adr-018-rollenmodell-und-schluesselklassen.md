@@ -381,6 +381,7 @@ kein Agent an der T-Box: Er legt den Änderungsvorschlag vor
 `mensch/architektur` prüft die Diffs und zeichnet `A-O1`. Für den Kern gilt
 dasselbe: Der Rechenkern-Agent legt den Kernstand vor
 (`gates.kernstand_belegen`), `mensch/rechenkern` zeichnet `A-K2`.
+Für den Kern ersetzt durch den Nachtrag vom 2026-11-18.
 
 **Grenze.** Die Signaturprüfung bleibt HMAC: Wer `A-M4` zeichnet, braucht
 die Schlüssel von `mensch/rechenkern` und `mensch/architektur` im Ring, um
@@ -472,6 +473,29 @@ Rollenmodell:
 4. **Der lebende Stand ist der des Codes, der rechnet** (G12): `--repo-root`
    muss das ausgeführte Paket tragen, sonst verweigert jedes Kommando der
    Gates.
+
+## Nachtrag 2026-11-18: Der Kern während einer Migration
+
+Dieser Nachtrag ersetzt für den Kern den Absatz „Wer an Kern und T-Box
+schreibt“ im Nachtrag vom 2026-10-01. Für die T-Box gilt jener Absatz
+weiter.
+
+Während einer laufenden Migration darf der Rechenkern-Agent den Kern
+ändern: vorübergehend für Prüfrechnungen oder dauerhaft als Vorschlag zur
+Erweiterung. Gültig wird eine dauerhafte Änderung erst, wenn der
+Kern-Verantwortliche des Unternehmens sie abnimmt. Die anderen KI-Rollen
+ändern den Kern nicht, sie melden, was sie brauchen.
+
+Für die T-Box bleibt die heutige Regel: Während einer Migration ändert sie
+kein Agent. Der Architektur-Agent legt einen Vorschlag vor, der
+Architektur-Verantwortliche prüft und nimmt ab.
+
+Bezüge: Eine dauerhafte Änderung des Kerns landet nach ADR-007 als
+Inkrement (`integriere-migrationsinkrement`) und wird mit `A-K2` durch
+`mensch/rechenkern` abgenommen. Die Änderung der T-Box nimmt
+`mensch/architektur` mit `A-O1` ab. Eine laufende Migration reicht vom
+gezeichneten Fallauftrag `A-M6` bis zur Migrationsabnahme `A-M4` oder zum
+Abbruch `A-M5` (ADR-026).
 
 ## Bewusst nicht Bestandteil
 
