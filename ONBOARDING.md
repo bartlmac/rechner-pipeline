@@ -82,7 +82,8 @@ Die Suite läuft parallel; jede Testdatei läuft ganz in einem Prozess
 ([ADR-019](docs/architektur/adr-019-parallele-testsuite.md)). Mit zwölf
 Prozessen dauert sie etwa sieben Minuten, seriell ein Vielfaches davon. Bei
 knappem Arbeitsspeicher weniger Prozesse wählen, etwa `-n 4`. Die CI fährt
-sie bei jedem Push und jedem Pull Request (`.github/workflows/tests.yml`).
+sie bei jedem Push auf `main` und bei jedem Pull Request
+(`.github/workflows/tests.yml`).
 
 Zu einem Ergebnis gehören drei Angaben: die Zeile mit `passed` und `failed`,
 die Zeile des Baumwächters und der Exit-Code. Der Baumwächter
