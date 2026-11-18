@@ -59,3 +59,7 @@ migrationen/*/berichte/*_files/
 # Baum waehrend des Laufs sichtbar veraendert, kippt den Systemstand
 # (dirty) unter parallel laufenden Fixtures.
 .todo-*/
+
+# Arbeitsordner von Quarto: ab 1.10 legt render.sh ihn neben der Quelle an
+# (werkzeuge/quellsystem/.quarto/), sonst meldet ihn der Baumwaechter.
+.quarto/
