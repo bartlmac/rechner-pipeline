@@ -343,7 +343,12 @@ Ein Test, der eine Grenze zwischen Ebenen am tatsächlichen Code prüft. Die
 erlaubten Kanten stehen als Liste in `ontologie/code_karte.py`; eine neue
 Kante über die Grenze und eine Erlaubnis, die keine Kante mehr deckt,
 machen die Wache rot. `python -m rechner_pipeline.ontologie.code_karte`
-meldet beides als Befund.
+meldet neue Kanten an allen Grenzen, entfallene Kanten nur an den vier
+Grenzen, deren Liste dem Code genau gleichen muss (`GRENZKANTEN_ERLAUBT`).
+Ob eine Erlaubnis der [Altlast](#altlast) oder der Liste von der Vorzeige
+in die Werkzeuge keine Kante mehr deckt, prüfen nur die Tests
+`test_die_ratsche_deckt_genau_die_gemessenen_kanten` und
+`test_die_werkzeug_ratsche_deckt_genau_die_gemessenen_kanten`.
 
 ### Welt
 
