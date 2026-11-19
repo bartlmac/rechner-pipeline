@@ -309,9 +309,16 @@ repository. Deep-dive: `ONBOARDING.md`, architecture and ADRs in
   case can be signed (ADR-026). Until the
   regression tool exists, the A-K2 regression record is the named
   EXCEPTION "nicht gefahren, Werkzeug noch nicht erstellt", never a pass.
-  During a running migration no agent writes to the T-Box or the kernel:
-  it presents the change, the human role reviews the diffs and signs
-  (ADR-018, addendum 2026-10-01).
+  During a running migration (from the signed case order A-M6 to the
+  migration acceptance A-M4 or the case abort A-M5) `agent/rechenkern` may
+  change the kernel: temporarily for check calculations or permanently as
+  a proposal to extend it. A permanent change lands as an increment under
+  ADR-007 (`$integriere-migrationsinkrement`) and takes effect only when
+  `mensch/rechenkern` signs A-K2. The other agent roles do not change the
+  kernel; they present the change they need. No agent writes to the T-Box
+  during a running migration: it presents the change, `mensch/architektur`
+  reviews the diffs and signs A-O1 (ADR-018, addenda 2026-10-01 and
+  2026-11-18).
 - For implementation work in `src/`/`tests/`, follow
   `$entwickle-im-zielsystem` (the architecture rules there are
   non-negotiable); code changes during a running migration additionally

@@ -152,6 +152,15 @@ die Rechenwerke der Cashflow-Modelle auf
 ([ADR-007](adr-007-parallele-migrationen-ein-kern.md), Nachtrag vom
 10.11.2026).
 
+### Laufende Migration
+
+Ein [Fall](#fall) zwischen dem gezeichneten Fallauftrag (`A-M6`) und der
+Migrationsabnahme (`A-M4`) oder dem Abbruch (`A-M5`)
+([ADR-026](adr-026-lebenslauf-eines-falls.md)). In dieser Zeit ändert von
+den KI-Rollen nur der Rechenkern-Agent den Kern, und die T-Box ändert kein
+Agent ([ADR-018](adr-018-rollenmodell-und-schluesselklassen.md), Nachträge
+vom 2026-10-01 und 2026-11-18).
+
 ### Ledger
 
 Die JSON-Datei, die ein Prüf-Gate über seinen Lauf schreibt
