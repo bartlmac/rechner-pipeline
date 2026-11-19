@@ -30,7 +30,7 @@ dependencies = [
     "pyarrow==25.0.1",
     "matplotlib==3.11.2",
     "pydantic==2.14.3",
-    "pypdf==6.21.4",
+    "pypdf==7.1.0",
 ]
 
 [project.optional-dependencies]
