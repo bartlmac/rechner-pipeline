@@ -8,9 +8,13 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    # Die Gruppe buendelt nur Neben- und Patch-Versionen. Ein grosser
+    # Sprung (etwa pandas 3) kommt als eigener Pull Request;
+    # Sicherheitskorrekturen bleiben davon unberuehrt.
     groups:
       pip:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
     open-pull-requests-limit: 5
     labels: ["dependencies", "python"]
   - package-ecosystem: github-actions
