@@ -51,8 +51,10 @@ ist — einschliesslich der Aenderungen, die ausserhalb des Falls entstanden
 sind (ADR-025: einmal im Linienbereich abgenommen, die Erstabnahme). Ist
 er seit der geltenden Abnahme unveraendert, belegst du das im Fall mit dem
 Verweis (Kommando `stand_belegen verweisen` der Gates, mit der Linie) — kein neuer
-Entscheid. Hat er sich geaendert, legst du ihn vor; in der Laufzeit einer
-Migration schreibst du dafuer nicht am Kern, du zeigst die Aenderungen.
+Entscheid. Hat er sich geaendert, legst du ihn vor. In der Laufzeit einer
+Migration darfst du den Kern aendern, voruebergehend fuer Pruefrechnungen oder
+dauerhaft als Vorschlag zur Erweiterung; gueltig wird eine dauerhafte Aenderung
+erst mit A-K2 (ADR-018, Nachtrag 2026-11-18).
 Du erzeugst die Vorlage mit dem Kommando `kernstand_belegen` der
 Gates (Fall, Repo-Wurzel, `von` = zuletzt abgenommener Kernstand, eine
 Kurzbegruendung): die
