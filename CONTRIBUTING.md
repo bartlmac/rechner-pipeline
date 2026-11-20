@@ -47,7 +47,7 @@ Die Module liegen quer zu den Ebenen des Repositorys
 | Maintainer Office | `.github/`, `CONTRIBUTING.md`, `SECURITY.md`, `README.md`, `ONBOARDING.md`, `AGENTS.md`, `CHANGELOG.md`, `pyproject.toml`, `requirements*.txt`, `deploy/`, die Beschlussliste; dazu alles, was keinem anderen Modul gehört |
 | Agentisches System | `.claude/`, `.agents/`, `system/`, `src/rechner_pipeline/` mit `ontologie`, `spez`, `gates`, `qa`, `models`, `zielsystem` und `fall.py` |
 | Bestandsmigration | `src/rechner_pipeline/bestand`, `src/rechner_pipeline/betrieb`, `migrationen/`, `pakete/` |
-| Cashflow-Modelle | `src/rechner_pipeline/kern`, `plv/mathematik`, `plv/tarifplaene`, `plv/configs` |
+| Cashflow-Modelle | `src/rechner_pipeline/kern`, `plv/mathematik`, `plv/tarifplaene`, `plv/configs`, `plv/cashflow` |
 | Excel-Landschaften | `src/rechner_pipeline/quellen`, `werkzeuge/quellsystem` |
 
 ## Weg eines Beitrags
