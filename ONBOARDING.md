@@ -155,6 +155,150 @@ und in den Bedienfolgen von
 [ADR-025](docs/architektur/adr-025-erstabnahme-des-zielsystems.md) und
 [ADR-026](docs/architektur/adr-026-lebenslauf-eines-falls.md).
 
+### Offenes Modell mit einem Harness
+
+Ein Harness ist das Werkzeug, das ein Sprachmodell aufruft und ihm je nach
+Einstellung Dateien und Werkzeuge bereitstellt. Herdr kann mehrere
+Agentensitzungen koordinieren; für den hier beschriebenen Verbindungstest ist
+es nicht erforderlich. Der konkrete Einsatz in einem Migrationslauf wird noch in
+[Issue #71](https://github.com/bartlmac/rechner-pipeline/issues/71)
+ausgearbeitet. Ein offenes Modell kann auf
+einem eigenen Inferenzserver laufen; der Modellname allein sagt weder, wo die
+Daten verarbeitet werden, noch ob das Modell für eine Aufgabe geeignet ist.
+Die Agenten schlagen vor; fachliche Widersprüche und Abnahmen entscheiden
+Menschen. Die deterministischen Gates rufen kein Modell auf.
+
+**Lokaler Modellserver.** Das Beispiel verwendet Qwen3.8-27B als
+GGUF-Datei in der Quantisierung Q4_K_M. llama.cpp und das Modell benötigen
+ausreichend Arbeitsspeicher beziehungsweise GPU-Speicher; der Bedarf hängt
+auch von Kontextgröße und GPU-Auslagerung ab. Nach der
+[llama.cpp-Installation](https://github.com/ggml-org/llama.cpp#install)
+startet ein Terminal den Server so:
+
+```bash
+llama serve -hf ggml-org/Qwen3.8-27B-GGUF:Q4_K_M \
+  --alias qwen3.8-27b --host 127.0.0.1 --port 8080 \
+  --ctx-size 32768 --jinja
+```
+
+Beim ersten Start lädt llama.cpp das Modell herunter; danach rechnet der
+Server lokal. Das Terminal bleibt geöffnet. Der Alias ist die Modell-ID für
+die folgenden Harness-Konfigurationen. Der Aufruf bindet nur an den lokalen
+Rechner und aktiviert keine Authentifizierung. Hat der bereits laufende
+Server einen Schlüssel, wird dieser stattdessen wie unten beschrieben über
+`LOKAL_MODELL_KEY` bereitgestellt. Port und Kontextgröße müssen bei Server
+und Harness zusammenpassen. GPU-Auslagerung und größere Kontexte hängen von
+der Hardware ab; ein laufender Server belegt den Port bereits.
+
+**Geprüfter Verbindungstest:** Pi 0.80.6 mit einem lokalen,
+OpenAI-kompatiblen llama.cpp-Server und dem dort als `qwen3.8-27b`
+angebotenen Modell. Voraussetzung sind ein installiertes `pi` und ein bereits
+gestarteter Server mit geladenem Modell. Falls der Server Authentifizierung
+verlangt, wird auch dessen Zugangsschlüssel benötigt; andernfalls genügt für
+die Pi-Konfiguration ein beliebiger Platzhalter. Der Server muss auf
+`127.0.0.1:8080` erreichbar sein; Modell-ID und Adresse sind gegebenenfalls an
+die eigene Installation anzupassen. Pi und der Modellserver werden getrennt
+vom Python-Paket installiert und betrieben.
+
+Für den Test ein eigenes Pi-Konfigurationsverzeichnis wählen. Die Datei
+`models.json` darin enthält beispielsweise (die Modell-ID muss der vom
+Server angebotenen ID entsprechen):
+
+```json
+{
+  "providers": {
+    "lokal": {
+      "baseUrl": "http://127.0.0.1:8080/v1",
+      "api": "openai-completions",
+      "apiKey": "$LOKAL_MODELL_KEY",
+      "authHeader": true,
+      "models": [{
+        "id": "qwen3.8-27b",
+        "name": "Lokales Modell",
+        "reasoning": false,
+        "input": ["text"],
+        "contextWindow": 32768,
+        "maxTokens": 1024,
+        "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
+      }]
+    }
+  }
+}
+```
+
+`contextWindow` und `maxTokens` müssen zum Server und Modell passen. Den
+Schlüssel außerhalb des Repositorys als Umgebungsvariable `LOKAL_MODELL_KEY`
+bereitstellen; er gehört nicht in die Datei oder in einen Fall. Anschließend
+aus dem Repository-Wurzelverzeichnis, mit dem Pfad zum eigenen
+Konfigurationsverzeichnis:
+
+```bash
+PI_CODING_AGENT_DIR=/pfad/zur/pi-konfiguration pi --offline --no-session \
+  --no-extensions --no-skills --no-context-files --no-tools \
+  --provider lokal --model qwen3.8-27b --thinking off \
+  -p 'Antworte ausschließlich mit OK.'
+```
+
+Bei erfolgreicher Verbindung antwortete der geprüfte Server mit `OK`.
+Der Test schaltet Werkzeuge, Skills, Kontextdateien und Sitzungsablage ab;
+er prüft nur die Modellverbindung. Für den oben ohne Schlüssel gestarteten
+Server kann `LOKAL_MODELL_KEY` ein beliebiger Platzhalter sein.
+
+**OpenCode:** Der folgende Weg wurde mit OpenCode 2.2.7 und dem lokalen
+llama.cpp-Server mit `qwen3.8-27b` geprüft. OpenCode wird separat
+[installiert](https://opencode.ai/docs/). In der persönlichen Konfiguration
+`~/.config/opencode/opencode.json` den Provider ergänzen; eine bestehende
+Datei dabei zusammenführen, nicht überschreiben:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "llamacpp/qwen3.8-27b",
+  "providers": {
+    "llamacpp": {
+      "name": "Lokales llama.cpp",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://127.0.0.1:8080/v1",
+        "apiKey": "{env:LOKAL_MODELL_KEY}"
+      },
+      "models": {
+        "qwen3.8-27b": {
+          "modelID": "qwen3.8-27b",
+          "capabilities": {"tools": true, "input": ["text"], "output": ["text"]},
+          "limit": {"context": 32768, "output": 1024}
+        }
+      }
+    }
+  }
+}
+```
+
+Der Schlüsselwert wird beim Start aus der Umgebung gelesen; er gehört nicht
+in die Konfigurationsdatei. Bei dem oben ohne Authentifizierung gestarteten
+Server kann die Zeile `apiKey` entfallen. Bei einem geschützten Server muss
+`LOKAL_MODELL_KEY` dessen Schlüssel enthalten. Bei anderer Modell-ID oder
+anderen Servergrenzen die Konfiguration anpassen. Dann im
+Repository-Wurzelverzeichnis OpenCode starten und das Modell testen:
+
+```bash
+opencode run -m llamacpp/qwen3.8-27b 'Antworte ausschließlich mit OK.'
+```
+
+Der Probelauf lieferte `OK`; ein weiterer las über das Lesewerkzeug eine
+Testdatei und gab ihren Inhalt aus. OpenCode kann je nach Konfiguration
+Werkzeuge nutzen und Sitzungen speichern. Interaktiv startet `opencode` im
+Repository; das Modell kann dort ebenfalls ausgewählt werden. Der Test belegt
+noch keine Extraktion und keinen Migrationsfall.
+
+Für einen Fall müssen Harness, Modell und deren Berechtigungen gesondert
+erprobt werden. Insbesondere ist zu prüfen, ob die Repository-Skills und
+Rollen tatsächlich geladen werden. Ein lokaler Server macht ein Harness
+nicht automatisch sicher: Dateizugriff, Werkzeugfreigaben und der Umgang mit
+Fall- und Schlüsseldaten hängen von seiner Konfiguration ab. Schlüssel bleiben
+außerhalb des Falls und stehen Agenten für menschliche Zeichnungen nicht zur
+Verfügung ([ADR-018](docs/architektur/adr-018-rollenmodell-und-schluesselklassen.md)).
+
 ## 4. Am Code arbeiten
 
 **Wo Code hingehört.** Welches Paket welches importieren darf, legt die
