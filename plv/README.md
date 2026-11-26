@@ -12,6 +12,7 @@ Fall bringt einen übernommenen Bestand in ihre Ablage.
 | Parametrierung der Tarifgenerationen (abgenommen, Teil des Tarifwerks) | [configs/](configs/README.md) |
 | Image, Compose und Dienst der Laufzeit | [betrieb/](betrieb/README.md) |
 | Quellen des Auftritts, der Vorzeigeseite | [seite/](seite/) |
+| Landeplatz der Rechenwerke der Cashflow-Modelle (Probe) | [cashflow/](cashflow/README.md) |
 
 Kernstand und Tarifwerk ändern sich nur mit einer neuen Abnahme (A-K2,
 A-T1); auch ein Umzug ist eine Änderung
