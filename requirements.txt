@@ -4,7 +4,7 @@
 openpyxl==3.1.5
 oletools==0.60.2
 pandas==2.3.3
-pyarrow==25.0.1
+pyarrow==26.0.1
 matplotlib==3.11.2
 pypdf==7.1.1
 # Transitive deps (pinned for reproducibility):
